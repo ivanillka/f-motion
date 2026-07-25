@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Accessibility Settings</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-variant": "#353534",
+                        "tertiary-container": "#ffccd6",
+                        "surface-container-low": "#1c1b1b",
+                        "error-container": "#93000a",
+                        "on-error-container": "#ffdad6",
+                        "on-tertiary-fixed-variant": "#8f0041",
+                        "outline": "#849495",
+                        "surface": "#131313",
+                        "on-secondary": "#480081",
+                        "surface-dim": "#131313",
+                        "secondary-fixed": "#efdbff",
+                        "surface-container-lowest": "#0e0e0e",
+                        "surface-bright": "#393939",
+                        "on-primary": "#00363a",
+                        "surface-container-highest": "#353534",
+                        "tertiary": "#fff3f4",
+                        "primary-fixed-dim": "#00dbe9",
+                        "on-background": "#e5e2e1",
+                        "error": "#ffb4ab",
+                        "secondary-fixed-dim": "#dcb8ff",
+                        "on-primary-container": "#006970",
+                        "tertiary-fixed": "#ffd9e0",
+                        "on-secondary-fixed": "#2c0051",
+                        "primary": "#dbfcff",
+                        "on-surface": "#e5e2e1",
+                        "background": "#131313",
+                        "surface-container": "#201f1f",
+                        "primary-fixed": "#7df4ff",
+                        "on-tertiary-fixed": "#3f0019",
+                        "on-surface-variant": "#b9cacb",
+                        "inverse-surface": "#e5e2e1",
+                        "on-primary-fixed-variant": "#004f54",
+                        "surface-tint": "#00dbe9",
+                        "primary-container": "#00f0ff",
+                        "inverse-on-surface": "#313030",
+                        "secondary": "#dcb8ff",
+                        "on-secondary-fixed-variant": "#6700b5",
+                        "on-error": "#690005",
+                        "secondary-container": "#7701d0",
+                        "on-tertiary": "#66002c",
+                        "inverse-primary": "#006970",
+                        "on-tertiary-container": "#bb0058",
+                        "on-secondary-container": "#dcb7ff",
+                        "surface-container-high": "#2a2a2a",
+                        "outline-variant": "#3b494b",
+                        "tertiary-fixed-dim": "#ffb1c3",
+                        "on-primary-fixed": "#002022"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "panel-padding": "12px",
+                        "stack-sm": "8px",
+                        "unit": "4px",
+                        "stack-lg": "32px",
+                        "gutter": "16px",
+                        "margin-desktop": "24px",
+                        "margin-mobile": "16px",
+                        "stack-md": "16px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["JetBrains Mono"],
+                        "display-lg": ["Geist"],
+                        "headline-sm": ["Geist"],
+                        "headline-md-mobile": ["Geist"],
+                        "body-lg": ["Inter"],
+                        "label-sm": ["JetBrains Mono"],
+                        "headline-md": ["Geist"],
+                        "body-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "headline-md-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "label-sm": ["10px", { "lineHeight": "14px", "fontWeight": "500" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .custom-toggle:checked {
+            background-color: theme('colors.primary-container');
+            border-color: theme('colors.primary-container');
+        }
+        .custom-toggle:checked + div {
+            transform: translateX(100%);
+            background-color: theme('colors.on-primary-fixed-variant');
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md min-h-screen flex flex-col md:flex-row overflow-x-hidden">
+<!-- TopNavBar (Web) -->
+<nav class="bg-surface dark:bg-surface text-primary dark:text-primary-container font-headline-md text-headline-md font-label-md text-label-md docked full-width top-0 bg-surface-container-lowest border-b border-outline-variant flat no shadows flex justify-between items-center px-margin-desktop w-full h-16 md:hidden z-50 fixed">
+<div class="flex items-center gap-gutter">
+<span class="material-symbols-outlined text-primary cursor-pointer active:opacity-80 hover:text-primary transition-colors">menu</span>
+<span class="text-headline-md-mobile font-headline-md-mobile font-bold text-primary">Fotium Motion</span>
+</div>
+<div class="flex items-center gap-gutter">
+<span class="material-symbols-outlined cursor-pointer active:opacity-80 text-on-surface-variant font-medium hover:text-primary transition-colors">notifications</span>
+<span class="material-symbols-outlined cursor-pointer active:opacity-80 text-on-surface-variant font-medium hover:text-primary transition-colors">account_circle</span>
+</div>
+</nav>
+<!-- SideNavBar (Desktop) -->
+<aside class="bg-surface-container-low dark:bg-surface-container-low text-primary dark:text-primary-container font-label-md text-label-md docked left-0 h-screen w-[280px] bg-surface-container-low border-r border-outline-variant flat no shadows hidden md:flex flex-col py-panel-padding fixed z-40">
+<div class="px-gutter mb-stack-lg flex items-center gap-stack-sm">
+<span class="text-headline-sm font-headline-sm text-primary">Fotium Motion</span>
+</div>
+<div class="px-gutter mb-stack-lg flex items-center gap-stack-sm p-3 bg-surface-container-high rounded-xl mx-gutter border border-outline-variant/30">
+<div class="w-10 h-10 rounded-full bg-surface-variant flex items-center justify-center overflow-hidden shrink-0">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="A macro shot of a sleek, dark grey metallic camera lens aperture closing, illuminated by a single cyan neon light in a pitch-black studio setting. The image should convey high-end technology and precision. Deep blacks, cool cyan accents, minimal composition." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB6c6tcR4NWnz3DpBHgYGXC3IobT2w9dtjb6E6JrD1bSOTlRHHxKzaLGan_Lm6KOJTEfBrZjws0bMpMKmbFEwE0CgL1AwrvdDK6HLfFT6Nn9Mu-Pwwm1iykVbRGGa28lRhABqHSbmXHPHvJKd3Oy5l9FUmb7Jyp5Jw2_Xlik6nMZoDWMujMROs6zdzjvg5aNdHHsu0w75XKSlu2mLsQClXAiLhqvegVYCr-AvNiY9NMEfkNuK2_IrT6DZrMl3qzpCJUCod_R6AXWaI"/>
+</div>
+<div class="flex flex-col">
+<span class="font-body-md text-on-surface font-semibold">Workspace</span>
+<span class="font-label-sm text-on-surface-variant">Pro Plan</span>
+</div>
+</div>
+<nav class="flex-1 px-panel-padding flex flex-col gap-unit">
+<a class="flex items-center gap-stack-sm px-gutter py-3 rounded-lg text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">home</span>
+<span>Home</span>
+</a>
+<a class="flex items-center gap-stack-sm px-gutter py-3 rounded-lg text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">add_box</span>
+<span>Create</span>
+</a>
+<a class="flex items-center gap-stack-sm px-gutter py-3 rounded-lg text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">description</span>
+<span>Drafts</span>
+</a>
+<a class="flex items-center gap-stack-sm px-gutter py-3 rounded-lg bg-surface-variant text-primary border-r-4 border-primary transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">settings</span>
+<span>Settings</span>
+</a>
+<a class="flex items-center gap-stack-sm px-gutter py-3 rounded-lg text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+<span>Credits</span>
+</a>
+</nav>
+<div class="px-panel-padding mb-stack-md">
+<button class="w-full bg-primary-container text-on-primary-fixed-variant font-label-md py-3 rounded-lg hover:bg-primary-fixed transition-colors flex items-center justify-center gap-unit">
+<span class="material-symbols-outlined">add</span>
+                New Project
+            </button>
+</div>
+<div class="px-panel-padding flex flex-col gap-unit border-t border-outline-variant/30 pt-stack-md mt-auto">
+<a class="flex items-center gap-stack-sm px-gutter py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">help</span>
+<span>Help</span>
+</a>
+<a class="flex items-center gap-stack-sm px-gutter py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">logout</span>
+<span>Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 md:ml-[280px] pt-16 md:pt-0 min-h-screen bg-background relative pb-24 md:pb-0">
+<!-- Page Header -->
+<header class="px-margin-mobile md:px-margin-desktop py-stack-lg border-b border-surface-container-high bg-surface/50 backdrop-blur-md sticky top-16 md:top-0 z-30">
+<div class="max-w-4xl mx-auto flex items-center gap-stack-md">
+<a class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors border border-outline-variant/30" href="#">
+<span class="material-symbols-outlined">arrow_back</span>
+</a>
+<div>
+<h1 class="font-headline-md text-headline-md text-on-surface font-bold tracking-tight">Accessibility</h1>
+<p class="font-body-md text-on-surface-variant mt-1">Customize interface behaviors, motion, and visual contrast for your workspace.</p>
+</div>
+</div>
+</header>
+<div class="max-w-4xl mx-auto px-margin-mobile md:px-margin-desktop py-stack-lg">
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-stack-lg">
+<!-- Settings Content -->
+<div class="lg:col-span-2 space-y-stack-lg">
+<!-- Motion Group -->
+<section class="bg-surface-container-low rounded-xl border border-outline-variant/30 overflow-hidden">
+<div class="px-gutter py-4 border-b border-outline-variant/30 bg-surface-container/50">
+<h2 class="font-label-md text-label-md text-primary uppercase tracking-wider flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">animation</span>
+                                Motion &amp; Animation
+                            </h2>
+</div>
+<div class="p-gutter space-y-6">
+<!-- Setting Item -->
+<div class="flex items-start justify-between gap-4">
+<div>
+<h3 class="font-body-lg text-body-lg text-on-surface font-medium">Follow System Reduced-Motion</h3>
+<p class="font-body-md text-on-surface-variant mt-1">Automatically respect your OS-level accessibility preferences for reduced animation.</p>
+</div>
+<label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+<input checked="" class="sr-only peer custom-toggle" type="checkbox" value=""/>
+<div class="w-11 h-6 bg-surface-variant border border-outline-variant rounded-full peer peer-focus:ring-2 peer-focus:ring-primary-container/50 transition-all"></div>
+<div class="absolute left-[2px] top-[2px] bg-on-surface-variant w-5 h-5 rounded-full transition-transform duration-200 ease-in-out"></div>
+</label>
+</div>
+<div class="h-px bg-outline-variant/30 w-full"></div>
+<!-- Setting Item -->
+<div class="flex items-start justify-between gap-4">
+<div>
+<h3 class="font-body-lg text-body-lg text-on-surface font-medium">Reduce Motion Override</h3>
+<p class="font-body-md text-on-surface-variant mt-1">Force minimal UI animations within Fotium, overriding system defaults. Disables complex transitions and parallax.</p>
+</div>
+<label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+<input class="sr-only peer custom-toggle" type="checkbox" value=""/>
+<div class="w-11 h-6 bg-surface-variant border border-outline-variant rounded-full peer peer-focus:ring-2 peer-focus:ring-primary-container/50 transition-all"></div>
+<div class="absolute left-[2px] top-[2px] bg-on-surface-variant w-5 h-5 rounded-full transition-transform duration-200 ease-in-out"></div>
+</label>
+</div>
+</div>
+</section>
+<!-- Visual Group -->
+<section class="bg-surface-container-low rounded-xl border border-outline-variant/30 overflow-hidden">
+<div class="px-gutter py-4 border-b border-outline-variant/30 bg-surface-container/50">
+<h2 class="font-label-md text-label-md text-primary uppercase tracking-wider flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">visibility</span>
+                                Visual &amp; Contrast
+                            </h2>
+</div>
+<div class="p-gutter space-y-6">
+<!-- Setting Item -->
+<div class="flex items-start justify-between gap-4">
+<div>
+<h3 class="font-body-lg text-body-lg text-on-surface font-medium">Larger Interface Text</h3>
+<p class="font-body-md text-on-surface-variant mt-1">Increases base font size across panels and timeline markers.</p>
+</div>
+<label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+<input class="sr-only peer custom-toggle" type="checkbox" value=""/>
+<div class="w-11 h-6 bg-surface-variant border border-outline-variant rounded-full peer peer-focus:ring-2 peer-focus:ring-primary-container/50 transition-all"></div>
+<div class="absolute left-[2px] top-[2px] bg-on-surface-variant w-5 h-5 rounded-full transition-transform duration-200 ease-in-out"></div>
+</label>
+</div>
+<div class="h-px bg-outline-variant/30 w-full"></div>
+<!-- Setting Item -->
+<div class="flex items-start justify-between gap-4">
+<div>
+<h3 class="font-body-lg text-body-lg text-on-surface font-medium">High-Visibility Focus</h3>
+<p class="font-body-md text-on-surface-variant mt-1">Adds a thick, high-contrast cyan border to active UI elements for keyboard navigation.</p>
+</div>
+<label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+<input class="sr-only peer custom-toggle" type="checkbox" value=""/>
+<div class="w-11 h-6 bg-surface-variant border border-outline-variant rounded-full peer peer-focus:ring-2 peer-focus:ring-primary-container/50 transition-all"></div>
+<div class="absolute left-[2px] top-[2px] bg-on-surface-variant w-5 h-5 rounded-full transition-transform duration-200 ease-in-out"></div>
+</label>
+</div>
+</div>
+</section>
+<!-- Media Group -->
+<section class="bg-surface-container-low rounded-xl border border-outline-variant/30 overflow-hidden">
+<div class="px-gutter py-4 border-b border-outline-variant/30 bg-surface-container/50">
+<h2 class="font-label-md text-label-md text-primary uppercase tracking-wider flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">play_circle</span>
+                                Media Previews
+                            </h2>
+</div>
+<div class="p-gutter space-y-6">
+<!-- Setting Item -->
+<div class="flex items-start justify-between gap-4">
+<div>
+<h3 class="font-body-lg text-body-lg text-on-surface font-medium">Preview Autoplay</h3>
+<p class="font-body-md text-on-surface-variant mt-1">Automatically play video assets when hovering over thumbnails in the library.</p>
+</div>
+<label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+<input checked="" class="sr-only peer custom-toggle" type="checkbox" value=""/>
+<div class="w-11 h-6 bg-surface-variant border border-outline-variant rounded-full peer peer-focus:ring-2 peer-focus:ring-primary-container/50 transition-all"></div>
+<div class="absolute left-[2px] top-[2px] bg-on-surface-variant w-5 h-5 rounded-full transition-transform duration-200 ease-in-out"></div>
+</label>
+</div>
+<div class="h-px bg-outline-variant/30 w-full"></div>
+<!-- Setting Item -->
+<div class="flex items-start justify-between gap-4">
+<div>
+<h3 class="font-body-lg text-body-lg text-on-surface font-medium">Preview Sound Default</h3>
+<p class="font-body-md text-on-surface-variant mt-1">Unmute audio by default during timeline scrubbing and thumbnail previews.</p>
+</div>
+<label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+<input class="sr-only peer custom-toggle" type="checkbox" value=""/>
+<div class="w-11 h-6 bg-surface-variant border border-outline-variant rounded-full peer peer-focus:ring-2 peer-focus:ring-primary-container/50 transition-all"></div>
+<div class="absolute left-[2px] top-[2px] bg-on-surface-variant w-5 h-5 rounded-full transition-transform duration-200 ease-in-out"></div>
+</label>
+</div>
+<div class="h-px bg-outline-variant/30 w-full"></div>
+<!-- Select Item -->
+<div>
+<label class="block font-body-lg text-body-lg text-on-surface font-medium mb-1" for="captions">Caption Preferences</label>
+<p class="font-body-md text-on-surface-variant mb-3">Default styling for AI-generated subtitles and timeline captions.</p>
+<div class="relative">
+<select class="w-full md:w-2/3 bg-surface border border-outline-variant rounded-lg px-4 py-2.5 text-on-surface font-body-md focus:ring-1 focus:ring-primary-container focus:border-primary-container appearance-none outline-none transition-colors" id="captions">
+<option value="system">Use System Default</option>
+<option value="large">Large Text, High Contrast</option>
+<option value="overlay">Translucent Background Overlay</option>
+<option value="custom">Custom Studio Profile</option>
+</select>
+<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 md:right-[33%] text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">expand_more</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Right Sidebar / Preview context -->
+<div class="hidden lg:block space-y-stack-lg">
+<div class="sticky top-32 bg-surface-container-low rounded-xl border border-outline-variant/30 p-gutter">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary">info</span>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Accessibility Profile</h3>
+</div>
+<p class="font-body-md text-on-surface-variant mb-6 text-sm">Your settings are saved automatically to your workspace profile and will sync across devices when using the Pro Plan.</p>
+<div class="aspect-video w-full rounded-lg bg-surface border border-outline-variant/30 relative overflow-hidden flex items-center justify-center">
+<!-- Simulated preview area showing effect of settings -->
+<div class="absolute inset-0 bg-gradient-to-br from-surface-variant/20 to-surface-container-lowest"></div>
+<img alt="Settings Preview" class="w-full h-full object-cover opacity-60 mix-blend-luminosity" data-alt="A dark cinematic shot of a glowing cyan sound wave visualizing audio on a sleek black monitor screen in a moody editing studio. The image represents media accessibility settings in action." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDVv9qRsXZWDyLCdOWTZkBmw9p7RHgsSg1YMAyMeOuap6NMI7bX678H2crgchGCv34RZaiaZ85B_S400xd6RWjCMmqPHKYT8xdeGDbDjb_fe6mKLr3KVYlDNO1oZ7E_Ghj53F5lO2_clMU79DiqgrXbu8-KUBJ-_HICBh-OrO01RwFX7MSEpSB0F8wR0GKwiocflhOvSR5GiRy9M4a6MKguHvPiBOYSeJfJYapwgQz_v7g4a_7CyGO_qPgQ0IBP3Eyac8BNTrvR9Rs"/>
+<div class="absolute bottom-2 left-2 flex gap-1">
+<span class="bg-surface-container-high text-on-surface font-label-sm px-2 py-0.5 rounded text-[10px] border border-outline-variant/50">PREVIEW</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar (Mobile) -->
+<nav class="bg-surface-container dark:bg-surface-container text-primary dark:text-primary-container font-label-sm-mobile text-label-sm-mobile docked full-width bottom-0 rounded-t-xl bg-surface-container border-t border-outline-variant shadow-lg fixed bottom-0 left-0 w-full z-50 flex md:hidden justify-around items-center px-margin-mobile py-unit pb-6">
+<a class="flex flex-col items-center justify-center text-on-surface-variant active:bg-surface-variant scale-95 transition-transform w-16 py-2 rounded-lg" href="#">
+<span class="material-symbols-outlined mb-1 text-xl">home</span>
+<span>Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant active:bg-surface-variant scale-95 transition-transform w-16 py-2 rounded-lg" href="#">
+<span class="material-symbols-outlined mb-1 text-xl">movie_creation</span>
+<span>Create</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant active:bg-surface-variant scale-95 transition-transform w-16 py-2 rounded-lg" href="#">
+<span class="material-symbols-outlined mb-1 text-xl">folder</span>
+<span>Drafts</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-fixed-variant rounded-full px-4 py-1 scale-95 transition-transform" href="#">
+<span class="material-symbols-outlined mb-1 text-xl" style="font-variation-settings: 'FILL' 1;">person</span>
+<span>Account</span>
+</a>
+</nav>
+</body></html>

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Status Indicators</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;family=Geist:wght@400;600;700;900&amp;family=Inter:wght@400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-surface": "#e5e2e1",
+                      "on-error": "#690005",
+                      "secondary": "#dcb8ff",
+                      "on-secondary": "#480081",
+                      "tertiary-fixed": "#ffd9e0",
+                      "on-primary-fixed-variant": "#004f54",
+                      "on-primary-container": "#006970",
+                      "on-secondary-fixed": "#2c0051",
+                      "on-primary-fixed": "#002022",
+                      "secondary-fixed-dim": "#dcb8ff",
+                      "on-tertiary-fixed-variant": "#8f0041",
+                      "error": "#ffb4ab",
+                      "tertiary-fixed-dim": "#ffb1c3",
+                      "on-surface-variant": "#b9cacb",
+                      "surface-container-lowest": "#0e0e0e",
+                      "on-tertiary": "#66002c",
+                      "on-tertiary-container": "#bb0058",
+                      "inverse-surface": "#e5e2e1",
+                      "background": "#131313",
+                      "primary-container": "#00f0ff",
+                      "inverse-on-surface": "#313030",
+                      "primary": "#dbfcff",
+                      "error-container": "#93000a",
+                      "surface-container-highest": "#353534",
+                      "surface-container-high": "#2a2a2a",
+                      "outline-variant": "#3b494b",
+                      "on-primary": "#00363a",
+                      "tertiary-container": "#ffccd6",
+                      "surface-container": "#201f1f",
+                      "surface-container-low": "#1c1b1b",
+                      "on-error-container": "#ffdad6",
+                      "on-background": "#e5e2e1",
+                      "primary-fixed-dim": "#00dbe9",
+                      "surface-bright": "#393939",
+                      "on-secondary-container": "#dcb7ff",
+                      "surface-variant": "#353534",
+                      "secondary-fixed": "#efdbff",
+                      "tertiary": "#fff3f4",
+                      "secondary-container": "#7701d0",
+                      "primary-fixed": "#7df4ff",
+                      "surface": "#131313",
+                      "outline": "#849495",
+                      "inverse-primary": "#006970",
+                      "surface-dim": "#131313",
+                      "on-secondary-fixed-variant": "#6700b5",
+                      "surface-tint": "#00dbe9",
+                      "on-tertiary-fixed": "#3f0019"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "unit": "4px",
+                      "gutter": "16px",
+                      "margin-mobile": "16px",
+                      "panel-padding": "12px",
+                      "stack-lg": "32px",
+                      "margin-desktop": "24px",
+                      "stack-md": "16px",
+                      "stack-sm": "8px"
+              },
+              "fontFamily": {
+                      "label-sm": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-md-mobile": [
+                              "Geist"
+                      ],
+                      "display-lg": [
+                              "Geist"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "label-md": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-sm": [
+                              "Geist"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ]
+              },
+              "fontSize": {
+                      "label-sm": [
+                              "10px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-md-mobile": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-md": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+    </script>
+<style>
+        .spin {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface min-h-screen font-body-md flex antialiased selection:bg-primary-container selection:text-on-primary-container">
+<!-- Desktop SideNav Shell -->
+<nav class="bg-surface-container-low dark:bg-surface-container-low h-screen w-[280px] fixed left-0 top-0 border-r border-outline-variant dark:border-outline-variant flex flex-col py-margin-desktop hidden md:flex z-40">
+<div class="px-gutter mb-stack-lg">
+<h1 class="font-headline-md text-headline-md font-bold text-on-surface dark:text-on-surface">Fotium Motion</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest mt-1">Studio</p>
+</div>
+<div class="px-gutter mb-stack-lg">
+<button class="w-full bg-primary-container text-on-primary-container font-label-md text-label-md py-2 px-4 rounded hover:bg-primary transition-colors flex items-center justify-center gap-2 active:scale-95 duration-150">
+<span class="material-symbols-outlined text-[18px]">add_circle</span>
+                Create New
+            </button>
+</div>
+<ul class="flex-1 px-3 space-y-1">
+<li>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high transition-colors rounded font-label-md text-label-md active:scale-95 duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">home</span>
+                    Home
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high transition-colors rounded font-label-md text-label-md active:scale-95 duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">add_circle</span>
+                    Create
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high transition-colors rounded font-label-md text-label-md active:scale-95 duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">drafts</span>
+                    Drafts
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 text-primary dark:text-primary font-bold border-r-2 border-primary bg-surface-container-high rounded-l font-label-md text-label-md active:scale-95 duration-150" href="#">
+<span class="material-symbols-outlined text-[20px] shadow-[0_0_8px_rgba(0,240,255,0.2)]">settings</span>
+                    Settings
+                </a>
+</li>
+</ul>
+<div class="px-gutter mt-auto flex items-center gap-3">
+<img class="w-8 h-8 rounded-full object-cover border border-outline-variant" data-alt="A small, circular avatar portrait of a creative professional in a dark studio setting. The lighting is cinematic with subtle cyan rim light. High quality, dark corporate aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBn8EZux2ZMOVk3ZQjPbVZA4woXIc9JVDZwo9XwUzK-vmjGNLY44jjdk-SUCdbgUnYn_qVN9MaMuW-Zw-KUKl9UYbpkGV_4IRwmrmzegoIaeW13T6Q7tF1fd-_rFZL6zTpSXw--9HEnVh8-NHjoPmqSx-WjLKmsYyIijqDWBhkeSTA8BXuFcc3tdzb13fmRUG5zrL7BwqzJ-2XUQgDTnFzHNDbS3uUCm5Vr6hJejyoJb0dIaAVxHe_DAXfmz-BDILHrhy-YMeVHye4"/>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-on-surface">Admin User</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant text-[10px]">Pro Plan</span>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="md:ml-[280px] flex-1 flex flex-col min-h-screen relative">
+<!-- Top App Bar -->
+<header class="bg-background dark:bg-background flex justify-between items-center w-full px-margin-desktop h-16 sticky top-0 z-30 transition-all duration-200 border-b border-surface-container-high">
+<div class="flex-1"></div> <!-- Spacer for center alignment if needed -->
+<div class="flex items-center gap-4">
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">help_outline</span>
+</button>
+</div>
+</header>
+<div class="p-margin-desktop flex-1">
+<div class="max-w-4xl mx-auto space-y-stack-lg">
+<!-- Section Header -->
+<div>
+<h2 class="font-headline-sm text-headline-sm text-on-surface font-bold">System Status Patterns</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-2 max-w-2xl">Collection of banners and micro-indicators for connectivity and synchronization states within the studio environment.</p>
+</div>
+<!-- Global Banners -->
+<section class="space-y-stack-md">
+<h3 class="font-label-md text-label-md text-primary uppercase tracking-widest border-b border-surface-container-high pb-2">Global Banners</h3>
+<!-- Offline Sync Banner -->
+<div class="bg-surface-container-high border border-outline-variant rounded p-4 flex items-center justify-between gap-4 shadow-[0_4px_24px_rgba(0,0,0,0.2)]">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center border border-outline-variant">
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]">cloud_off</span>
+</div>
+<div class="flex flex-col">
+<span class="font-body-md text-body-md font-medium text-on-surface">Offline</span>
+<span class="font-body-md text-body-md text-on-surface-variant text-sm">Working locally. Changes waiting to sync.</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<span class="font-label-sm text-label-sm text-on-surface-variant bg-surface-container px-2 py-1 rounded border border-outline-variant">AUTO-SAVE ACTIVE</span>
+</div>
+</div>
+<!-- Error Retry Banner -->
+<div class="bg-[#1A0A0A] border border-error/20 rounded p-4 flex items-start sm:items-center justify-between flex-col sm:flex-row gap-4 relative overflow-hidden">
+<!-- Subtle danger glow -->
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-error"></div>
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-error-container/20 flex items-center justify-center border border-error/30">
+<span class="material-symbols-outlined text-error text-[18px]">error</span>
+</div>
+<div class="flex flex-col">
+<span class="font-body-md text-body-md font-medium text-error">Save failed</span>
+<span class="font-body-md text-body-md text-on-surface-variant text-sm">Network connection interrupted during synchronization.</span>
+</div>
+</div>
+<button class="bg-surface-container-high border border-outline-variant hover:border-error/50 hover:bg-surface-bright text-on-surface font-label-md text-label-md py-1.5 px-4 rounded transition-all flex items-center gap-2 whitespace-nowrap">
+<span class="material-symbols-outlined text-[16px]">refresh</span>
+                            Retry Sync
+                        </button>
+</div>
+</section>
+<!-- Contextual Indicators (Corner / Toolbar style) -->
+<section class="space-y-stack-md pt-stack-md">
+<h3 class="font-label-md text-label-md text-primary uppercase tracking-widest border-b border-surface-container-high pb-2">Micro-Indicators (Canvas Corner)</h3>
+<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+<!-- Saving State -->
+<div class="bg-surface-container-low border border-outline-variant rounded p-6 flex flex-col items-center justify-center gap-3 h-32 relative group">
+<!-- Simulated Canvas Background for context -->
+<div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0iIzMzMyIgLz48L3N2Zz4=')] opacity-20 pointer-events-none rounded"></div>
+<div class="bg-surface-container-high border border-[#FFFFFF10] rounded-full px-4 py-1.5 flex items-center gap-2 shadow-[0_4px_12px_rgba(0,0,0,0.5)] backdrop-blur-sm relative z-10">
+<span class="material-symbols-outlined text-primary text-[14px] spin shadow-[0_0_8px_rgba(0,240,255,0.2)]">sync</span>
+<span class="font-label-sm text-label-sm text-on-surface tracking-wider">Saving...</span>
+</div>
+</div>
+<!-- Saved State -->
+<div class="bg-surface-container-low border border-outline-variant rounded p-6 flex flex-col items-center justify-center gap-3 h-32 relative">
+<div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0iIzMzMyIgLz48L3N2Zz4=')] opacity-20 pointer-events-none rounded"></div>
+<div class="bg-surface-container-high border border-[#FFFFFF10] rounded-full px-4 py-1.5 flex items-center gap-2 shadow-[0_4px_12px_rgba(0,0,0,0.5)] backdrop-blur-sm relative z-10 opacity-70 hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-on-surface-variant text-[14px]">cloud_done</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant tracking-wider">Saved to Cloud</span>
+</div>
+</div>
+<!-- Offline Micro -->
+<div class="bg-surface-container-low border border-outline-variant rounded p-6 flex flex-col items-center justify-center gap-3 h-32 relative">
+<div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0iIzMzMyIgLz48L3N2Zz4=')] opacity-20 pointer-events-none rounded"></div>
+<div class="bg-surface-container-high border border-[#FFFFFF10] rounded-full px-4 py-1.5 flex items-center gap-2 shadow-[0_4px_12px_rgba(0,0,0,0.5)] backdrop-blur-sm relative z-10">
+<span class="material-symbols-outlined text-error/80 text-[14px]">cloud_off</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant tracking-wider">Local Only</span>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>
+</main>
+</body></html>

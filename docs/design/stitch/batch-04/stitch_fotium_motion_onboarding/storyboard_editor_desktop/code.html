@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Storyboard Editor</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "secondary": "#dcb8ff",
+                      "on-primary-fixed-variant": "#004f54",
+                      "surface-container-highest": "#353534",
+                      "surface-container-high": "#2a2a2a",
+                      "on-surface": "#e5e2e1",
+                      "secondary-fixed": "#efdbff",
+                      "on-error-container": "#ffdad6",
+                      "error-container": "#93000a",
+                      "on-surface-variant": "#b9cacb",
+                      "outline-variant": "#3b494b",
+                      "background": "#131313",
+                      "surface-container": "#201f1f",
+                      "outline": "#849495",
+                      "surface-tint": "#00dbe9",
+                      "on-background": "#e5e2e1",
+                      "on-primary-container": "#006970",
+                      "tertiary-fixed-dim": "#ffb1c3",
+                      "surface-variant": "#353534",
+                      "on-secondary-fixed": "#2c0051",
+                      "on-secondary-container": "#dcb7ff",
+                      "on-tertiary-fixed": "#3f0019",
+                      "primary-fixed-dim": "#00dbe9",
+                      "primary-container": "#00f0ff",
+                      "surface-bright": "#393939",
+                      "on-tertiary": "#66002c",
+                      "on-primary-fixed": "#002022",
+                      "surface-dim": "#131313",
+                      "on-tertiary-container": "#bb0058",
+                      "inverse-primary": "#006970",
+                      "on-secondary": "#480081",
+                      "inverse-on-surface": "#313030",
+                      "primary": "#dbfcff",
+                      "tertiary-fixed": "#ffd9e0",
+                      "on-error": "#690005",
+                      "tertiary-container": "#ffccd6",
+                      "surface-container-lowest": "#0e0e0e",
+                      "surface-container-low": "#1c1b1b",
+                      "on-secondary-fixed-variant": "#6700b5",
+                      "tertiary": "#fff3f4",
+                      "surface": "#131313",
+                      "secondary-fixed-dim": "#dcb8ff",
+                      "error": "#ffb4ab",
+                      "secondary-container": "#7701d0",
+                      "primary-fixed": "#7df4ff",
+                      "inverse-surface": "#e5e2e1",
+                      "on-tertiary-fixed-variant": "#8f0041",
+                      "on-primary": "#00363a"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "stack-md": "16px",
+                      "unit": "4px",
+                      "panel-padding": "12px",
+                      "stack-lg": "32px",
+                      "margin-mobile": "16px",
+                      "margin-desktop": "24px",
+                      "stack-sm": "8px",
+                      "gutter": "16px"
+              },
+              "fontFamily": {
+                      "label-md": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-md-mobile": [
+                              "Geist"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ],
+                      "display-lg": [
+                              "Geist"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "label-sm": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-sm": [
+                              "Geist"
+                      ]
+              },
+              "fontSize": {
+                      "label-md": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-md-mobile": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-sm": [
+                              "10px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+</head>
+<body class="bg-background text-on-background font-body-md text-body-md overflow-hidden flex h-screen">
+<!-- SideNavBar (Shared Component) -->
+<nav class="hidden md:flex flex-col h-screen w-[280px] fixed left-0 top-0 bg-surface-container-low py-panel-padding z-50">
+<!-- Brand/Header -->
+<div class="px-margin-desktop mb-stack-lg flex items-center gap-stack-sm">
+<div class="w-8 h-8 rounded bg-primary-container text-on-primary-container flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="animation" data-weight="fill" style="font-variation-settings: 'FILL' 1;">animation</span>
+</div>
+<div>
+<h1 class="font-headline-md text-headline-md font-bold text-primary">Fotium Motion</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Pro Studio</p>
+</div>
+</div>
+<!-- Navigation Tabs -->
+<div class="flex-1 px-stack-sm space-y-unit">
+<!-- Projects -->
+<a class="flex items-center gap-stack-sm px-stack-md py-stack-sm rounded-lg text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="folder_open">folder_open</span>
+<span class="font-label-md text-label-md">Projects</span>
+</a>
+<!-- Storyboard (ACTIVE) -->
+<a class="flex items-center gap-stack-sm px-stack-md py-stack-sm rounded-lg text-primary-fixed-dim font-bold bg-surface-container-highest transition-colors scale-[0.98]" href="#">
+<span class="material-symbols-outlined" data-icon="auto_story" data-weight="fill" style="font-variation-settings: 'FILL' 1;">animated_images</span>
+<span class="font-label-md text-label-md">Storyboard</span>
+</a>
+<!-- Assets -->
+<a class="flex items-center gap-stack-sm px-stack-md py-stack-sm rounded-lg text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="video_library">video_library</span>
+<span class="font-label-md text-label-md">Assets</span>
+</a>
+<!-- Effects -->
+<a class="flex items-center gap-stack-sm px-stack-md py-stack-sm rounded-lg text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="auto_fix_high">auto_fix_high</span>
+<span class="font-label-md text-label-md">Effects</span>
+</a>
+<!-- Export -->
+<a class="flex items-center gap-stack-sm px-stack-md py-stack-sm rounded-lg text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="ios_share">ios_share</span>
+<span class="font-label-md text-label-md">Export</span>
+</a>
+</div>
+<!-- CTA -->
+<div class="px-margin-desktop mb-stack-md">
+<button class="w-full bg-primary-container text-on-primary-container font-label-md text-label-md py-stack-sm rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-unit">
+<span class="material-symbols-outlined text-[16px]" data-icon="magic_button" data-weight="fill" style="font-variation-settings: 'FILL' 1;">magic_button</span>
+                Generate AI
+            </button>
+</div>
+<!-- Footer Tabs -->
+<div class="px-stack-sm space-y-unit mt-auto border-t border-surface-container pt-stack-sm">
+<a class="flex items-center gap-stack-sm px-stack-md py-stack-sm rounded-lg text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="settings">settings</span>
+<span class="font-label-md text-label-md">Settings</span>
+</a>
+<a class="flex items-center gap-stack-sm px-stack-md py-stack-sm rounded-lg text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="help">help</span>
+<span class="font-label-md text-label-md">Support</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col ml-[280px] h-screen bg-background">
+<!-- Editor Top Bar (Specific to this screen, distinct from global nav) -->
+<header class="flex justify-between items-center h-16 px-margin-desktop border-b border-surface-container bg-surface-container-low shrink-0 z-40">
+<div class="flex items-center gap-stack-md">
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface font-semibold">Neo Genesis</span>
+<div class="flex items-center gap-unit text-on-surface-variant">
+<span class="material-symbols-outlined text-[14px]" data-icon="aspect_ratio">aspect_ratio</span>
+<span class="font-label-sm text-label-sm">16:9 YouTube</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-stack-md">
+<div class="flex bg-surface-container rounded-lg p-1">
+<button class="p-1 rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-colors" title="Undo">
+<span class="material-symbols-outlined text-[20px]" data-icon="undo">undo</span>
+</button>
+<button class="p-1 rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-colors opacity-50 cursor-not-allowed" title="Redo">
+<span class="material-symbols-outlined text-[20px]" data-icon="redo">redo</span>
+</button>
+</div>
+<div class="flex items-center gap-unit text-on-surface-variant">
+<span class="material-symbols-outlined text-[14px]" data-icon="cloud_done">cloud_done</span>
+<span class="font-label-sm text-label-sm">Saved</span>
+</div>
+<button class="bg-primary-container text-on-primary-container font-label-md text-label-md px-stack-md py-stack-sm rounded-lg hover:opacity-90 transition-opacity flex items-center gap-stack-sm shadow-[0_0_15px_rgba(0,240,255,0.15)]">
+<span class="material-symbols-outlined text-[18px]" data-icon="play_circle" data-weight="fill" style="font-variation-settings: 'FILL' 1;">play_circle</span>
+                    Render accurate preview
+                </button>
+</div>
+</header>
+<!-- Editor Workspace -->
+<div class="flex-1 flex overflow-hidden">
+<!-- Scene Rail (Left) -->
+<div class="w-[200px] bg-surface-container-low border-r border-surface-container flex flex-col shrink-0">
+<div class="p-panel-padding border-b border-surface-container flex justify-between items-center">
+<span class="font-label-md text-label-md text-on-surface-variant">SCENES</span>
+<button class="text-primary hover:text-primary-fixed-dim transition-colors">
+<span class="material-symbols-outlined text-[18px]" data-icon="add">add</span>
+</button>
+</div>
+<div class="flex-1 overflow-y-auto p-panel-padding space-y-stack-sm custom-scrollbar">
+<!-- Scene 1 (Active) -->
+<div class="relative group rounded-lg overflow-hidden border-2 border-primary cursor-pointer">
+<div class="aspect-video bg-surface-container-highest relative">
+<img class="w-full h-full object-cover opacity-80" data-alt="A futuristic cyberpunk city landscape at night with glowing neon cyan and magenta lights, high-contrast digital art style, deep blacks and vibrant reflections on wet streets, perfect for a cinematic motion graphics background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCX2YiRng5kI5DHC-7A0MxGFpK92bZ7QvfUrnnBFCYzQs69bG4HsPxfDpU8IHyQtA0md8ya2SESVEiJLflggcz9Vk19mmIAb5_Mt40QYyPmK_6s7HpGmFMY9Wjcn59yCau5eT_MToL8wE0SNNGI7yz3-9pgk8kzqXNBMzd0moKz3HWMZ7P04Z6NuSdfdWkkssvkVndd93Eyctl018vvyqlgnFChRxaTX0HGK0OMakEg7pS5ur1jMHwwi05FixOmyzNm-d2QRlAa8Yo"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
+<!-- Badges -->
+<div class="absolute top-unit left-unit flex gap-unit">
+<span class="bg-surface-container-high/80 backdrop-blur text-on-surface font-label-sm text-label-sm px-1.5 py-0.5 rounded">01</span>
+</div>
+<div class="absolute top-unit right-unit">
+<span class="bg-[#05a081]/90 text-white font-label-sm text-label-sm px-1.5 py-0.5 rounded flex items-center gap-1 shadow-sm">
+<span class="material-symbols-outlined text-[10px]" data-icon="imagesmode">imagesmode</span> Pexels
+                                </span>
+</div>
+<!-- Subtitle preview -->
+<div class="absolute bottom-unit left-unit right-unit text-center">
+<p class="font-label-sm text-label-sm text-white truncate px-1">"In the year 2142..."</p>
+</div>
+</div>
+</div>
+<!-- Scene 2 -->
+<div class="relative group rounded-lg overflow-hidden border border-surface-container hover:border-surface-variant transition-colors cursor-pointer">
+<div class="aspect-video bg-surface-container-highest relative">
+<img class="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity" data-alt="A sleek, high-tech robot hand reaching out towards a glowing holographic interface, dark studio lighting with rim lights highlighting the metallic textures, modern artificial intelligence theme." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCkDldIXV3DNd0fKzaBm3mEoizchwGqCN0gpRaK7Ex41-PCjj_9MoBzJQ9_VHDumuMsmqE0biysHijYIefPCdhew588PcbmvbFk3tJR2gM2lFvzoyAzbC7c1UxCtj_PYVNNw16VZcdRO9-0_Nb9yfFrbXc4_6U3ZjalhLNpD9kM38kg4s6a8Y1QSOxFJSTc9SD1hRA2rHBYJFQ7BI8_9NwsQjvmRJBEqLkOGjeU5o0eLckleytttVduyAYkfpFcb5ksWqOhXHorXUg"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
+<div class="absolute top-unit left-unit flex gap-unit">
+<span class="bg-surface-container-high/80 backdrop-blur text-on-surface-variant font-label-sm text-label-sm px-1.5 py-0.5 rounded">02</span>
+</div>
+<div class="absolute top-unit right-unit">
+<span class="bg-surface-variant/90 text-on-surface-variant font-label-sm text-label-sm px-1.5 py-0.5 rounded flex items-center gap-1">
+<span class="material-symbols-outlined text-[10px]" data-icon="upload">upload</span> Upload
+                                </span>
+</div>
+<div class="absolute bottom-unit left-unit right-unit text-center">
+<p class="font-label-sm text-label-sm text-on-surface-variant truncate px-1">"Technology evolved."</p>
+</div>
+</div>
+</div>
+<!-- Scene 3 -->
+<div class="relative group rounded-lg overflow-hidden border border-surface-container hover:border-surface-variant transition-colors cursor-pointer">
+<div class="aspect-video bg-surface-container-highest relative flex items-center justify-center">
+<!-- Generation state -->
+<div class="flex flex-col items-center text-primary-fixed-dim">
+<span class="material-symbols-outlined animate-spin text-[20px]" data-icon="progress_activity">progress_activity</span>
+<span class="font-label-sm text-label-sm mt-1">Generating AI...</span>
+</div>
+<div class="absolute top-unit left-unit flex gap-unit">
+<span class="bg-surface-container-high/80 backdrop-blur text-on-surface-variant font-label-sm text-label-sm px-1.5 py-0.5 rounded">03</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Center: Storyboard Preview -->
+<div class="flex-1 flex flex-col bg-[#0A0A0A] relative">
+<!-- Warning Banner -->
+<div class="bg-surface-container-high/50 text-on-surface-variant font-label-sm text-label-sm py-unit px-stack-md flex items-center justify-center gap-unit border-b border-surface-container backdrop-blur-sm z-10">
+<span class="material-symbols-outlined text-[14px] text-primary" data-icon="info">info</span>
+                    Storyboard Preview - Timing and AI effects are approximate. Render for final accuracy.
+                </div>
+<!-- Canvas Area -->
+<div class="flex-1 flex items-center justify-center p-stack-lg relative overflow-hidden">
+<!-- The Video Frame (16:9) -->
+<div class="relative w-full max-w-[800px] aspect-video bg-black shadow-2xl rounded overflow-hidden ring-1 ring-surface-variant">
+<!-- Main Image -->
+<img class="w-full h-full object-cover" data-alt="A futuristic cyberpunk city landscape at night with glowing neon cyan and magenta lights, high-contrast digital art style, deep blacks and vibrant reflections on wet streets, cinematic wide shot." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCiOUvel-IRXea_8OS9Gjo6JfUt6aN8w-i8bTXmvZnNx0P9LNVjSYG4D7gQb3mbSzwyWICuU1zWotPD1kVwTQjck-nNcY4AyGUCk3ukbRxNDcGLCroxJHe0Bgcj9Ga23o_e-vQhw8UW48X6siI0Zruz3cjlmJoZXcOgODa4hqOE6_LYpTxkswZHB8K6xVjUdK90ovbBvMAokAMOGXoKim693Hn5hpwvLSeD3j1vHfb_c530TK51Q1WoKgJvV4YAM8EWCm3c67JhllQ"/>
+<!-- Safe Area Grid Overlay -->
+<div class="absolute inset-0 pointer-events-none">
+<!-- Action Safe (Inner) -->
+<div class="absolute inset-[10%] border border-primary/30 border-dashed rounded-sm"></div>
+<!-- Title Safe (Outer) -->
+<div class="absolute inset-[5%] border border-on-surface-variant/20 rounded-sm"></div>
+<!-- Crosshairs -->
+<div class="absolute top-1/2 left-0 w-full h-[1px] bg-primary/20"></div>
+<div class="absolute top-0 left-1/2 w-[1px] h-full bg-primary/20"></div>
+</div>
+<!-- Caption Overlay Element -->
+<div class="absolute bottom-[15%] w-full flex justify-center pointer-events-none cursor-move">
+<div class="px-stack-md py-stack-sm bg-black/60 backdrop-blur-md border border-white/10 rounded pointer-events-auto hover:border-primary/50 transition-colors">
+<p class="font-headline-sm text-headline-sm text-white font-bold tracking-wide" style="text-shadow: 0 2px 4px rgba(0,0,0,0.8);">
+                                    "In the year 2142..."
+                                </p>
+</div>
+</div>
+</div>
+<!-- Floating Canvas Controls (Zoom/Pan) -->
+<div class="absolute bottom-stack-md right-stack-md flex bg-surface-container-high/80 backdrop-blur rounded-lg p-1 border border-surface-variant">
+<button class="p-1.5 rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-[18px]" data-icon="zoom_out">zoom_out</span>
+</button>
+<div class="px-2 flex items-center font-label-sm text-label-sm text-on-surface-variant">100%</div>
+<button class="p-1.5 rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-[18px]" data-icon="zoom_in">zoom_in</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Contextual Panel (Right) -->
+<div class="w-[320px] bg-surface-container-low border-l border-surface-container flex flex-col shrink-0">
+<div class="p-panel-padding border-b border-surface-container">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Scene 1: Introduction</h2>
+<p class="font-label-sm text-label-sm text-on-surface-variant mt-1">Duration: 4.5s</p>
+</div>
+<div class="flex-1 overflow-y-auto p-panel-padding space-y-stack-lg custom-scrollbar">
+<!-- Scene Text Control -->
+<div class="space-y-stack-sm">
+<label class="flex items-center gap-unit text-on-surface font-label-md text-label-md">
+<span class="material-symbols-outlined text-[16px]" data-icon="subtitles">subtitles</span>
+                            Scene Text
+                        </label>
+<div class="relative">
+<textarea class="w-full bg-surface-container border-b-2 border-surface-variant focus:border-primary focus:ring-0 rounded-t-lg p-stack-sm text-on-surface font-body-md text-body-md min-h-[80px] resize-none" placeholder="Enter caption...">"In the year 2142..."</textarea>
+</div>
+</div>
+<!-- Text Style Presets -->
+<div class="space-y-stack-sm">
+<label class="flex items-center justify-between text-on-surface font-label-md text-label-md">
+<div class="flex items-center gap-unit">
+<span class="material-symbols-outlined text-[16px]" data-icon="font_download">font_download</span>
+                                Text Style
+                            </div>
+<button class="text-primary hover:text-primary-fixed-dim font-label-sm text-label-sm">Advanced</button>
+</label>
+<div class="flex flex-wrap gap-unit">
+<button class="px-3 py-1.5 rounded bg-secondary-container/20 border border-secondary text-secondary font-label-sm text-label-sm hover:bg-secondary-container/40 transition-colors">
+                                Cinematic
+                            </button>
+<button class="px-3 py-1.5 rounded bg-surface-container border border-surface-variant text-on-surface-variant font-label-sm text-label-sm hover:bg-surface-container-highest transition-colors">
+                                Minimal
+                            </button>
+<button class="px-3 py-1.5 rounded bg-surface-container border border-surface-variant text-on-surface-variant font-label-sm text-label-sm hover:bg-surface-container-highest transition-colors">
+                                Bold Type
+                            </button>
+<button class="px-3 py-1.5 rounded bg-surface-container border border-surface-variant text-on-surface-variant font-label-sm text-label-sm hover:bg-surface-container-highest transition-colors">
+                                Subtitle
+                            </button>
+</div>
+</div>
+<!-- Position Grid -->
+<div class="space-y-stack-sm">
+<label class="flex items-center gap-unit text-on-surface font-label-md text-label-md">
+<span class="material-symbols-outlined text-[16px]" data-icon="align_horizontal_center">align_horizontal_center</span>
+                            Position
+                        </label>
+<div class="bg-surface-container p-stack-sm rounded-lg border border-surface-variant">
+<div class="grid grid-cols-3 gap-1 w-full aspect-video p-2 border border-surface-variant/50 rounded bg-background">
+<!-- Top Row -->
+<button class="bg-surface-container-high rounded-sm hover:bg-surface-variant transition-colors"></button>
+<button class="bg-surface-container-high rounded-sm hover:bg-surface-variant transition-colors"></button>
+<button class="bg-surface-container-high rounded-sm hover:bg-surface-variant transition-colors"></button>
+<!-- Middle Row -->
+<button class="bg-surface-container-high rounded-sm hover:bg-surface-variant transition-colors"></button>
+<button class="bg-surface-container-high rounded-sm hover:bg-surface-variant transition-colors flex items-center justify-center">
+<div class="w-2 h-2 rounded-full bg-primary/20"></div>
+</button>
+<button class="bg-surface-container-high rounded-sm hover:bg-surface-variant transition-colors"></button>
+<!-- Bottom Row (Active) -->
+<button class="bg-surface-container-high rounded-sm hover:bg-surface-variant transition-colors"></button>
+<button class="bg-primary/20 border border-primary rounded-sm transition-colors flex items-center justify-center shadow-[0_0_10px_rgba(0,240,255,0.2)]">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+</button>
+<button class="bg-surface-container-high rounded-sm hover:bg-surface-variant transition-colors"></button>
+</div>
+</div>
+</div>
+<!-- AI Effect (Teaser) -->
+<div class="space-y-stack-sm pt-stack-sm border-t border-surface-container">
+<label class="flex items-center gap-unit text-on-surface font-label-md text-label-md">
+<span class="material-symbols-outlined text-[16px]" data-icon="auto_awesome">auto_awesome</span>
+                            Scene AI Effect
+                        </label>
+<button class="w-full flex items-center justify-between p-stack-sm rounded-lg border border-surface-variant bg-surface-container hover:bg-surface-container-highest transition-colors group">
+<div class="flex items-center gap-stack-sm">
+<div class="w-6 h-6 rounded bg-surface-container-highest flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-[14px]" data-icon="blur_on">blur_on</span>
+</div>
+<span class="font-body-md text-body-md text-on-surface-variant group-hover:text-on-surface transition-colors">None applied</span>
+</div>
+<span class="material-symbols-outlined text-[18px] text-on-surface-variant" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</main>
+<style>
+        /* Custom scrollbar for panels */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #353534; /* surface-variant */
+            border-radius: 10px;
+        }
+        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+            background-color: #849495; /* outline */
+        }
+    </style>
+</body></html>

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Welcome</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary-fixed-dim": "#ffb1c3",
+                        "on-primary-container": "#006970",
+                        "on-secondary-fixed": "#2c0051",
+                        "tertiary-fixed": "#ffd9e0",
+                        "inverse-primary": "#006970",
+                        "on-secondary-fixed-variant": "#6700b5",
+                        "outline": "#849495",
+                        "on-primary-fixed": "#002022",
+                        "on-error": "#690005",
+                        "surface-bright": "#393939",
+                        "on-background": "#e5e2e1",
+                        "secondary": "#dcb8ff",
+                        "on-surface": "#e5e2e1",
+                        "tertiary": "#fff3f4",
+                        "on-error-container": "#ffdad6",
+                        "on-surface-variant": "#b9cacb",
+                        "surface-tint": "#00dbe9",
+                        "inverse-surface": "#e5e2e1",
+                        "surface-container-highest": "#353534",
+                        "background": "#131313",
+                        "surface-container-lowest": "#0e0e0e",
+                        "secondary-fixed-dim": "#dcb8ff",
+                        "outline-variant": "#3b494b",
+                        "surface-container": "#201f1f",
+                        "surface-container-low": "#1c1b1b",
+                        "secondary-container": "#7701d0",
+                        "primary": "#dbfcff",
+                        "surface-dim": "#131313",
+                        "on-primary": "#00363a",
+                        "secondary-fixed": "#efdbff",
+                        "on-secondary-container": "#dcb7ff",
+                        "on-tertiary": "#66002c",
+                        "error-container": "#93000a",
+                        "on-tertiary-container": "#bb0058",
+                        "on-tertiary-fixed-variant": "#8f0041",
+                        "on-primary-fixed-variant": "#004f54",
+                        "primary-fixed-dim": "#00dbe9",
+                        "surface": "#131313",
+                        "surface-container-high": "#2a2a2a",
+                        "inverse-on-surface": "#313030",
+                        "primary-container": "#00f0ff",
+                        "on-tertiary-fixed": "#3f0019",
+                        "tertiary-container": "#ffccd6",
+                        "surface-variant": "#353534",
+                        "error": "#ffb4ab",
+                        "primary-fixed": "#7df4ff",
+                        "on-secondary": "#480081"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "stack-sm": "8px",
+                        "unit": "4px",
+                        "margin-desktop": "24px",
+                        "stack-lg": "32px",
+                        "panel-padding": "12px",
+                        "gutter": "16px",
+                        "stack-md": "16px",
+                        "margin-mobile": "16px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "display-lg": ["Geist"],
+                        "headline-sm": ["Geist"],
+                        "headline-md-mobile": ["Geist"],
+                        "label-sm": ["JetBrains Mono"],
+                        "label-md": ["JetBrains Mono"],
+                        "headline-md": ["Geist"],
+                        "body-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "headline-md-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "label-sm": ["10px", { "lineHeight": "14px", "fontWeight": "500" }],
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .bg-grid-pattern {
+            background-size: 32px 32px;
+            background-image: 
+                linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        }
+        .hero-gradient {
+            background: radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.15) 0%, transparent 60%);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface h-screen w-full overflow-hidden flex flex-col font-body-lg antialiased">
+<!-- Immersive Background Canvas -->
+<div class="absolute inset-0 z-0 bg-grid-pattern opacity-50"></div>
+<div class="absolute inset-0 z-0 hero-gradient"></div>
+<!-- Main Content Area -->
+<main class="relative z-10 flex flex-col flex-1 px-margin-mobile pt-16 pb-8 justify-between h-full">
+<!-- Top Section: Brand & Headline -->
+<div class="flex flex-col items-center text-center space-y-stack-lg mt-8">
+<!-- Product Lockup -->
+<div class="flex flex-col items-center space-y-stack-sm">
+<div class="w-16 h-16 bg-surface-container-high rounded-xl border border-outline-variant flex items-center justify-center shadow-[0_0_24px_rgba(0,240,255,0.15)] relative overflow-hidden group">
+<div class="absolute inset-0 bg-primary-container/10 transition-opacity duration-300"></div>
+<span class="material-symbols-outlined text-primary-container text-4xl" data-weight="fill" style="font-variation-settings: 'FILL' 1;">
+                        video_camera_front
+                    </span>
+</div>
+<h1 class="font-display-lg text-headline-md-mobile tracking-tighter text-on-surface">Fotium Motion</h1>
+</div>
+<!-- Headline -->
+<div class="max-w-[280px] mx-auto">
+<h2 class="font-display-lg text-[32px] leading-[40px] tracking-tight font-bold text-on-surface">
+                    Turn your idea into a <span class="text-primary-container">ready-to-share</span> video
+                </h2>
+</div>
+</div>
+<!-- Middle Section: Format Examples Carousel (Decorative) -->
+<div class="relative w-full h-[240px] flex items-center justify-center my-auto perspective-1000">
+<!-- Format Cards Layout -->
+<div class="relative w-full max-w-[320px] h-[180px]">
+<!-- Card 1: Reel / Story Format (Left, pushed back) -->
+<div class="absolute top-1/2 left-4 -translate-y-1/2 w-28 h-40 bg-surface-container-high rounded-lg border border-outline-variant transform -rotate-6 scale-90 opacity-70 flex flex-col justify-end p-2 overflow-hidden shadow-lg shadow-black/50 transition-transform duration-500 hover:scale-95 hover:opacity-100 z-10">
+<img class="absolute inset-0 w-full h-full object-cover opacity-60" data-alt="A vertical 9:16 mobile video frame showing a fast-paced urban parkour scene. Cinematic lighting, deep charcoal tones with neon cyan accents highlighting movement trails. Modern corporate AI studio aesthetic, dark mode styling." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBN92wX2fR-9ppr3EGHlUKgBQa78MBXvA4zU23Fy0mAG-wWnmy4gDX0yOTdSmLARq0z-J-IFfPTJzSfoB6ITOwV8HXrkD4J6tj0uaO51z9bea-0invkfx_ibjhbVZ1Gpy1qo0Kij2JTdWbZvpdlcc6RzEqpCIplIarPsQe7PjcfUh313UtOMPoOg5QU0bUwU5sOrQl6oSwoTxd9sMY1a8dp8_XI4ug9wT2jYmcSGDGFy0hARpd4M0WdBqkZPz8Joyy9YIzHI0GK_4c"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent"></div>
+<div class="relative z-10">
+<span class="font-label-sm text-label-sm text-primary uppercase bg-surface-container/80 px-2 py-0.5 rounded shadow-sm">9:16 Social</span>
+</div>
+</div>
+<!-- Card 2: Cinematic Wide (Center, prominent) -->
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-[130px] bg-surface-container border border-outline-variant rounded-xl transform scale-110 shadow-xl shadow-primary-container/5 flex flex-col justify-end p-3 overflow-hidden z-30 transition-transform duration-500 hover:scale-[1.15]">
+<img class="absolute inset-0 w-full h-full object-cover opacity-80" data-alt="A cinematic 16:9 widescreen video frame featuring a sweeping sci-fi landscape at dusk. Deep purples and blacks dominate the scene, accented by glowing cyan structural elements. Sleek, minimal dark-first studio interface style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBP1IfJ3EVrNm0Moe93ojosKLcFe7Q5QYnAUBnSXsslCNDjPFoJOK5Q8cI6WlG1jwTrV4ad39sUCFzbEH1SXKg_HEXDGj5rHpAfUpr7nFECL88Wl7gP6dYarAbslwpi-AGYTtAPbTgUxSkadmYC1QBwrugsp8CpqlFtO-aHhOl23iC0PkSv9Rq0S1fY8jM9vGkxG24BAECxH4NWwk1AaWBdtXJnD_FJ_2cQZ1DSsrGaLGb1j4eWQJaDCef4kISHEOA32m9JwcgmAVU"/>
+<div class="absolute inset-0 bg-gradient-to-t from-[#131313] via-[#131313]/50 to-transparent"></div>
+<!-- Faux Timeline UI within card -->
+<div class="relative z-10 w-full flex flex-col gap-1">
+<div class="flex justify-between items-center mb-1">
+<span class="font-label-sm text-label-sm text-on-surface uppercase tracking-wider">Cinematic</span>
+<span class="material-symbols-outlined text-[14px] text-primary-container">auto_awesome</span>
+</div>
+<!-- Timeline tracks -->
+<div class="h-1.5 w-full bg-surface-container-lowest rounded-full overflow-hidden">
+<div class="h-full w-2/3 bg-secondary-container rounded-full"></div>
+</div>
+<div class="h-1.5 w-4/5 bg-surface-container-lowest rounded-full overflow-hidden">
+<div class="h-full w-1/2 bg-primary-container/70 rounded-full"></div>
+</div>
+</div>
+</div>
+<!-- Card 3: Square / Feed (Right, pushed back) -->
+<div class="absolute top-1/2 right-4 -translate-y-1/2 w-32 h-32 bg-surface-container-low rounded-lg border border-outline-variant transform rotate-6 scale-90 opacity-70 flex flex-col justify-end p-2 overflow-hidden shadow-lg shadow-black/50 transition-transform duration-500 hover:scale-95 hover:opacity-100 z-20">
+<img class="absolute inset-0 w-full h-full object-cover opacity-60" data-alt="A 1:1 square video frame showing a high-end macro product shot of a metallic sphere. Soft studio lighting, dark minimalist environment, with a subtle glowing aura reflecting off the surface. Professional grade aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAuxp9d34kinR3LlvX_IEc9bfd9FBeLhGsAeujkXOh_meqUsaxv8PmyBqvmW_e6xUuWqP7aGSoCmNqqAavI62nZRy6ASWndGTfuztV5_7XZGuLtzIRQrFyDGSi3M01n2ziQ80Ae9lGgG-loN9u71aeGOsWEhvuTPfZpuO5zNxm_9O4Z9mER5sSwbjrgZ0vXBNVNcK9oBRl0hWJ5B_Ks4FlkVbXDQuzxilV-2oFR9qJ0nDa0wh3GJ2nbNZ3_rlLK142kQCPxO7KYfwo"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent"></div>
+<div class="relative z-10 text-right">
+<span class="font-label-sm text-label-sm text-secondary uppercase bg-surface-container/80 px-2 py-0.5 rounded shadow-sm">1:1 Feed</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Section: Actions -->
+<div class="flex flex-col space-y-stack-md pb-margin-mobile w-full mt-auto">
+<!-- Primary Action -->
+<button class="w-full min-h-[48px] h-14 bg-primary-container text-on-primary-fixed flex items-center justify-center rounded-xl font-headline-sm text-[16px] font-semibold tracking-wide transition-all active:scale-95 hover:bg-primary-fixed-dim shadow-[0_4px_14px_0_rgba(0,240,255,0.2)]">
+<span class="mr-2">Get started</span>
+<span class="material-symbols-outlined text-[20px]">arrow_forward</span>
+</button>
+<!-- Secondary Action -->
+<button class="w-full min-h-[48px] h-14 bg-transparent border border-outline-variant text-on-surface flex items-center justify-center rounded-xl font-headline-sm text-[16px] font-medium transition-all active:scale-95 hover:bg-surface-container-low">
+                I already have an account
+            </button>
+<!-- Legal snippet (optional for context, typical in these screens) -->
+<p class="text-center font-label-sm text-label-sm text-on-surface-variant mt-stack-md opacity-60">
+                By continuing, you agree to our <a class="underline hover:text-on-surface" href="#">Terms</a> &amp; <a class="underline hover:text-on-surface" href="#">Privacy</a>
+</p>
+</div>
+</main>
+</body></html>

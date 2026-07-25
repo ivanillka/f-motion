@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Rendering Preview</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500&amp;family=Inter:wght@400&amp;family=Geist:wght@600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "secondary": "#dcb8ff",
+                      "on-primary-fixed-variant": "#004f54",
+                      "surface-container-highest": "#353534",
+                      "surface-container-high": "#2a2a2a",
+                      "on-surface": "#e5e2e1",
+                      "secondary-fixed": "#efdbff",
+                      "on-error-container": "#ffdad6",
+                      "error-container": "#93000a",
+                      "on-surface-variant": "#b9cacb",
+                      "outline-variant": "#3b494b",
+                      "background": "#131313",
+                      "surface-container": "#201f1f",
+                      "outline": "#849495",
+                      "surface-tint": "#00dbe9",
+                      "on-background": "#e5e2e1",
+                      "on-primary-container": "#006970",
+                      "tertiary-fixed-dim": "#ffb1c3",
+                      "surface-variant": "#353534",
+                      "on-secondary-fixed": "#2c0051",
+                      "on-secondary-container": "#dcb7ff",
+                      "on-tertiary-fixed": "#3f0019",
+                      "primary-fixed-dim": "#00dbe9",
+                      "primary-container": "#00f0ff",
+                      "surface-bright": "#393939",
+                      "on-tertiary": "#66002c",
+                      "on-primary-fixed": "#002022",
+                      "surface-dim": "#131313",
+                      "on-tertiary-container": "#bb0058",
+                      "inverse-primary": "#006970",
+                      "on-secondary": "#480081",
+                      "inverse-on-surface": "#313030",
+                      "primary": "#dbfcff",
+                      "tertiary-fixed": "#ffd9e0",
+                      "on-error": "#690005",
+                      "tertiary-container": "#ffccd6",
+                      "surface-container-lowest": "#0e0e0e",
+                      "surface-container-low": "#1c1b1b",
+                      "on-secondary-fixed-variant": "#6700b5",
+                      "tertiary": "#fff3f4",
+                      "surface": "#131313",
+                      "secondary-fixed-dim": "#dcb8ff",
+                      "error": "#ffb4ab",
+                      "secondary-container": "#7701d0",
+                      "primary-fixed": "#7df4ff",
+                      "inverse-surface": "#e5e2e1",
+                      "on-tertiary-fixed-variant": "#8f0041",
+                      "on-primary": "#00363a"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "stack-md": "16px",
+                      "unit": "4px",
+                      "panel-padding": "12px",
+                      "stack-lg": "32px",
+                      "margin-mobile": "16px",
+                      "margin-desktop": "24px",
+                      "stack-sm": "8px",
+                      "gutter": "16px"
+              },
+              "fontFamily": {
+                      "label-md": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-md-mobile": [
+                              "Geist"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ],
+                      "display-lg": [
+                              "Geist"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "label-sm": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-sm": [
+                              "Geist"
+                      ]
+              },
+              "fontSize": {
+                      "label-md": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-md-mobile": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-sm": [
+                              "10px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+          .bg-scrim {
+              background-color: rgba(10, 10, 10, 0.85);
+              backdrop-filter: blur(12px);
+              -webkit-backdrop-filter: blur(12px);
+          }
+          
+          @keyframes pulse-glow {
+              0%, 100% {
+                  box-shadow: 0 0 0 0 rgba(0, 240, 255, 0);
+              }
+              50% {
+                  box-shadow: 0 0 15px 2px rgba(0, 240, 255, 0.2);
+              }
+          }
+          
+          .pulse-active {
+              animation: pulse-glow 2s infinite ease-in-out;
+          }
+
+          .progress-shimmer {
+              background: linear-gradient(90deg, 
+                  rgba(0, 240, 255, 1) 0%, 
+                  rgba(125, 244, 255, 1) 50%, 
+                  rgba(0, 240, 255, 1) 100%);
+              background-size: 200% 100%;
+              animation: shimmer 2s infinite linear;
+          }
+
+          @keyframes shimmer {
+              0% { background-position: 100% 0; }
+              100% { background-position: -100% 0; }
+          }
+      </style>
+</head>
+<body class="bg-background text-on-background font-body-md antialiased overflow-hidden min-h-screen">
+<!-- Blurred Background Context (Draft Grid) -->
+<div class="fixed inset-0 w-full h-full z-0 opacity-40 pointer-events-none filter blur-sm" data-alt="A dark-themed professional video editing interface displaying a grid of high-fidelity cinematic video drafts. The workspace features dark charcoal panels with a sophisticated studio aesthetic, displaying 16:9 thumbnails of dramatic, high-contrast AI-generated video scenes. Subtle cyan accents highlight interface elements in a modern, minimalistic workspace environment optimized for professional creatives." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDs0BxHEHFH0eoRel-avqhAdL3sejmklbiLV0IR8b1_JzUW_Cs2o5LcVV2a-C4uvL3l4ko3iT__R4d4Y3aDtXN8puZT3khHvGwGRyxELpPUITNcH3yEUfcLm_vJoX37YY2p44wo2p-kO2xfF23cbMiIoJIhdAmdLgfFmGQ9CskXN1Kzmt-qV0hwnsYNh4DXrSuF5V-r2Bg8DnYnVNeeZh9nbXc4OIBpcAAQYODwXlTRGjwExdSK0AiteeZAkjHPYHtWqC7cBKK9rA4')"></div>
+<!-- Navigation Shell Suppressed as this is a linear/transactional modal overlay state -->
+<!-- Modal Overlay -->
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-margin-mobile md:p-margin-desktop">
+<!-- Rendering Modal Container -->
+<div class="bg-surface-container-high w-full max-w-[480px] rounded-xl border border-white/10 shadow-2xl overflow-hidden flex flex-col transform transition-all relative">
+<!-- Subtle Top Highlight -->
+<div class="absolute top-0 left-0 w-full h-1 bg-surface-container-highest">
+<div class="h-full bg-primary-container w-2/3 progress-shimmer"></div>
+</div>
+<div class="p-stack-lg flex flex-col gap-stack-lg">
+<!-- Header -->
+<div class="flex flex-col items-center text-center gap-stack-sm">
+<span class="material-symbols-outlined text-primary-container text-4xl mb-2" style="font-variation-settings: 'FILL' 0;">movie_edit</span>
+<h2 class="font-headline-md text-headline-md text-on-surface">Rendering Preview</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Generating high-fidelity sequence</p>
+</div>
+<!-- Progress Steps Container -->
+<div class="flex flex-col gap-stack-md relative">
+<!-- Vertical Connecting Line -->
+<div class="absolute left-[15px] top-6 bottom-6 w-[2px] bg-surface-container-highest z-0"></div>
+<!-- Step 1: Completed -->
+<div class="flex items-start gap-gutter relative z-10">
+<div class="w-[32px] h-[32px] rounded-full bg-surface-container flex items-center justify-center border border-primary-container text-primary-container shrink-0 mt-1">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface">Preparing project</span>
+<span class="font-body-md text-body-md text-on-surface-variant opacity-70 text-sm">Assets cached successfully</span>
+</div>
+</div>
+<!-- Step 2: Active -->
+<div class="flex items-start gap-gutter relative z-10">
+<div class="w-[32px] h-[32px] rounded-full bg-surface-container flex items-center justify-center border border-primary-container text-primary-container shrink-0 mt-1 pulse-active relative">
+<div class="w-2 h-2 rounded-full bg-primary-container"></div>
+</div>
+<div class="flex flex-col w-full">
+<div class="flex justify-between items-center mb-1">
+<span class="font-label-md text-label-md text-primary">Rendering preview</span>
+<span class="font-label-sm text-label-sm text-primary-fixed-dim">64%</span>
+</div>
+<!-- Inline Progress Bar for the active step -->
+<div class="w-full h-1.5 bg-surface-container-highest rounded-full overflow-hidden mt-1">
+<div class="h-full bg-primary-container w-[64%] progress-shimmer rounded-full"></div>
+</div>
+<span class="font-body-md text-body-md text-on-surface-variant opacity-70 text-sm mt-1">Synthesizing frames 124/480...</span>
+</div>
+</div>
+<!-- Step 3: Pending -->
+<div class="flex items-start gap-gutter relative z-10">
+<div class="w-[32px] h-[32px] rounded-full bg-surface-container flex items-center justify-center border border-outline-variant text-outline-variant shrink-0 mt-1">
+<div class="w-2 h-2 rounded-full bg-outline-variant opacity-50"></div>
+</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-outline">Finalizing preview</span>
+<span class="font-body-md text-body-md text-outline-variant opacity-70 text-sm">Waiting to compile...</span>
+</div>
+</div>
+</div>
+<!-- Help Text -->
+<div class="bg-surface-container rounded-lg p-panel-padding flex items-start gap-3 border border-white/5">
+<span class="material-symbols-outlined text-on-surface-variant text-lg shrink-0 mt-0.5" style="font-variation-settings: 'FILL' 0;">info</span>
+<p class="font-body-md text-body-md text-on-surface-variant text-sm leading-relaxed">
+                        You can safely leave this screen. Your project will be waiting in Drafts.
+                    </p>
+</div>
+</div>
+<!-- Action Area -->
+<div class="bg-surface-container-low p-panel-padding px-stack-lg flex justify-end border-t border-white/5">
+<button class="font-label-md text-label-md px-6 py-2 rounded border border-white/20 text-on-surface hover:bg-surface-container-highest transition-colors flex items-center gap-2">
+                    Cancel
+                </button>
+</div>
+</div>
+</div>
+</body></html>

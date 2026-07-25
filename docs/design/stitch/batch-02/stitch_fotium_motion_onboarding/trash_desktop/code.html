@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Trash</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700;900&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface": "#e5e2e1",
+                        "on-error": "#690005",
+                        "secondary": "#dcb8ff",
+                        "on-secondary": "#480081",
+                        "tertiary-fixed": "#ffd9e0",
+                        "on-primary-fixed-variant": "#004f54",
+                        "on-primary-container": "#006970",
+                        "on-secondary-fixed": "#2c0051",
+                        "on-primary-fixed": "#002022",
+                        "secondary-fixed-dim": "#dcb8ff",
+                        "on-tertiary-fixed-variant": "#8f0041",
+                        "error": "#ffb4ab",
+                        "tertiary-fixed-dim": "#ffb1c3",
+                        "on-surface-variant": "#b9cacb",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-tertiary": "#66002c",
+                        "on-tertiary-container": "#bb0058",
+                        "inverse-surface": "#e5e2e1",
+                        "background": "#131313",
+                        "primary-container": "#00f0ff",
+                        "inverse-on-surface": "#313030",
+                        "primary": "#dbfcff",
+                        "error-container": "#93000a",
+                        "surface-container-highest": "#353534",
+                        "surface-container-high": "#2a2a2a",
+                        "outline-variant": "#3b494b",
+                        "on-primary": "#00363a",
+                        "tertiary-container": "#ffccd6",
+                        "surface-container": "#201f1f",
+                        "surface-container-low": "#1c1b1b",
+                        "on-error-container": "#ffdad6",
+                        "on-background": "#e5e2e1",
+                        "primary-fixed-dim": "#00dbe9",
+                        "surface-bright": "#393939",
+                        "on-secondary-container": "#dcb7ff",
+                        "surface-variant": "#353534",
+                        "secondary-fixed": "#efdbff",
+                        "tertiary": "#fff3f4",
+                        "secondary-container": "#7701d0",
+                        "primary-fixed": "#7df4ff",
+                        "surface": "#131313",
+                        "outline": "#849495",
+                        "inverse-primary": "#006970",
+                        "surface-dim": "#131313",
+                        "on-secondary-fixed-variant": "#6700b5",
+                        "surface-tint": "#00dbe9",
+                        "on-tertiary-fixed": "#3f0019"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "unit": "4px",
+                        "gutter": "16px",
+                        "margin-mobile": "16px",
+                        "panel-padding": "12px",
+                        "stack-lg": "32px",
+                        "margin-desktop": "24px",
+                        "stack-md": "16px",
+                        "stack-sm": "8px"
+                    },
+                    "fontFamily": {
+                        "label-sm": ["JetBrains Mono"],
+                        "headline-md-mobile": ["Geist"],
+                        "display-lg": ["Geist"],
+                        "body-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "label-md": ["JetBrains Mono"],
+                        "headline-sm": ["Geist"],
+                        "headline-md": ["Geist"]
+                    },
+                    "fontSize": {
+                        "label-sm": ["10px", { "lineHeight": "14px", "fontWeight": "500" }],
+                        "headline-md-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .geist { font-family: 'Geist', sans-serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        
+        /* Custom Scrollbar for dark theme */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #131313; }
+        ::-webkit-scrollbar-thumb { background: #3b494b; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #849495; }
+        
+        /* Hide dialog by default */
+        dialog {
+            display: none;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+        }
+        dialog[open] {
+            display: flex;
+            opacity: 1;
+        }
+        dialog::backdrop {
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface h-screen w-full overflow-hidden flex flex-col md:flex-row antialiased">
+<!-- Desktop SideNavBar (Hidden on Mobile) -->
+<aside class="hidden md:flex flex-col h-screen w-[280px] fixed left-0 top-0 bg-surface-container-low border-r border-outline-variant py-margin-desktop z-40">
+<div class="px-margin-desktop mb-stack-lg">
+<h1 class="font-headline-md text-headline-md font-bold text-on-surface">Fotium Motion<span class="text-on-surface-variant text-body-md block font-normal mt-1">Studio</span></h1>
+</div>
+<button class="mx-margin-desktop mb-stack-lg bg-primary-container text-on-primary-container font-label-md text-label-md py-3 px-4 rounded flex items-center justify-center gap-2 hover:bg-primary transition-colors active:scale-95 duration-150">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">add_circle</span>
+            Create New
+        </button>
+<nav class="flex-1 px-4 space-y-2">
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-high transition-colors group" href="#">
+<span class="material-symbols-outlined text-[20px] group-hover:text-primary transition-colors">home</span>
+                Home
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-high transition-colors group" href="#">
+<span class="material-symbols-outlined text-[20px] group-hover:text-primary transition-colors">video_library</span>
+                Library
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-high transition-colors group" href="#">
+<span class="material-symbols-outlined text-[20px] group-hover:text-primary transition-colors">drafts</span>
+                Drafts
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-primary font-bold border-r-2 border-primary bg-surface-container-high font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined text-[20px] text-primary" style="font-variation-settings: 'FILL' 1;">delete</span>
+                Trash
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-high transition-colors group" href="#">
+<span class="material-symbols-outlined text-[20px] group-hover:text-primary transition-colors">settings</span>
+                Settings
+            </a>
+</nav>
+<div class="px-margin-desktop mt-auto pt-4 border-t border-outline-variant/30 flex items-center gap-3 cursor-pointer hover:bg-surface-container-high p-2 rounded mx-2 transition-colors">
+<img alt="User avatar" class="w-8 h-8 rounded-full object-cover border border-outline-variant" data-alt="A detailed close-up portrait of a professional video editor in a dark, high-tech studio environment, illuminated by cyan and purple rim lighting. Sharp focus, cinematic mood." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBhuvq8Fr_1rkkgG2214WXHyFd-X_gVigHGmVzGqXMNFyiBkvfkCqD5Rq1Zzb5O6C-LOWnnqWycQWb-t3W1otnoZTCG1EBhyprnucvX7EyoCoHm4UblV6awYMHvQCUXVoRKz6pj3M4CfBqiwPafQgjJhXajFVeUZBPLtD5GQEQza0apGmAlWOUYtUO7zGbiDMFUl3rsdmrs5iWxDpNBIJCBccdmM_uP9eljoDdP55-BKhKaiIloen82lHw8KcvvzkAq8trnj3FV-7Y"/>
+<div class="flex-1">
+<p class="font-label-md text-label-md text-on-surface">Alex Mercer</p>
+<p class="text-[10px] text-on-surface-variant font-mono">Pro Tier</p>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col h-full md:ml-[280px] relative overflow-hidden bg-background">
+<!-- TopAppBar (Mobile only for branding, hidden on Desktop since sidebar handles it) -->
+<header class="md:hidden flex justify-between items-center w-full px-margin-mobile h-16 bg-background z-40 border-b border-outline-variant/30">
+<h1 class="font-headline-md-mobile text-headline-md-mobile font-bold text-on-surface">Fotium Motion</h1>
+<img alt="User avatar" class="w-8 h-8 rounded-full object-cover border border-outline-variant" data-alt="A detailed close-up portrait of a professional video editor in a dark, high-tech studio environment, illuminated by cyan and purple rim lighting. Sharp focus, cinematic mood." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAa803sjDePS3oEX4c_Kwvswwa2dbwXT3l5Kd5g5t6wRY5isYNP7meoYZzcVoM0Q-baFEKf3S9o3_B_keKRONaiv46S9oGo-alu8RicuvnbSgQHFfjAja38-dpFZyEu-GM_Dl1Yqnj4pZv65vfMslv_LyXWmCSM-D-S1rR5v_sR2-kwcAvN-ICPci8N0atgaDxwaQFf0SHhTsr2pLNlJ4rMh6KspykhX6FacEwowsL3vI9pjL_K_6oV6OhW0JT084UGHF5unSkAhRU"/>
+</header>
+<!-- Page Header -->
+<div class="px-margin-desktop pt-margin-desktop pb-stack-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
+<div>
+<h2 class="font-display-lg text-display-lg text-on-surface">Trash</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-2">Projects in trash will be permanently deleted after 30 days.</p>
+</div>
+<button class="group flex items-center gap-2 px-4 py-2 border border-outline-variant rounded hover:bg-error-container hover:border-error-container hover:text-on-error-container transition-all duration-200" onclick="document.getElementById('empty-trash-dialog').showModal()">
+<span class="material-symbols-outlined text-[18px]">delete_sweep</span>
+<span class="font-label-md text-label-md">Empty Trash</span>
+</button>
+</div>
+<!-- Scrollable Canvas -->
+<div class="flex-1 overflow-y-auto px-margin-desktop pb-32 md:pb-margin-desktop">
+<!-- Grid Layout for Trashed Projects -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-gutter" id="trash-grid">
+<!-- Card 1 -->
+<div class="group bg-surface-container flex flex-col rounded-xl overflow-hidden border border-outline-variant/30 hover:border-outline-variant transition-colors relative isolate">
+<!-- Thumbnail -->
+<div class="aspect-video bg-surface-container-high relative overflow-hidden">
+<div class="w-full h-full bg-cover bg-center opacity-40 group-hover:opacity-60 transition-opacity duration-300" data-alt="A cinematic, wide-angle shot of a futuristic cyberpunk city at night, with towering skyscrapers covered in neon signs reflecting in rain-slicked streets. Volumetric fog and moody cyan and magenta lighting." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAm3fSjaLImsI_6L2Dky2mbsHh15wIM_5H-HYpfut9hYw6ekXO1NLjjs7kJMGWfzU031G0VnAvpIseX6tQJMt4qWJjPkv6B84tGn4auvMnOytLk5jgxZYHEQ8cWAAdVyJNM-sLFepanCllba74c4ZQ7GG0CM8JR11CVZ4G5VMczBwExVe8sUiGoIGdctuo3fyViM2Jlu73cFrTNbEZAkqKns24HnB0NkcvvcAws3HfA03AihL0HAwuvOcqImx0BXK1eJgqmvsPoGM8')"></div>
+<!-- 30 Days Badge -->
+<div class="absolute top-2 left-2 bg-error/90 text-on-error px-2 py-1 rounded text-[10px] font-mono font-bold flex items-center gap-1 shadow-md">
+<span class="material-symbols-outlined text-[12px]">schedule</span>
+                            4 Days Left
+                        </div>
+</div>
+<!-- Content -->
+<div class="p-panel-padding flex-1 flex flex-col">
+<div class="flex justify-between items-start mb-2">
+<h3 class="font-headline-sm text-headline-sm text-on-surface truncate">Urban Cyberpunk</h3>
+</div>
+<div class="flex flex-wrap gap-1 mb-4 mt-auto">
+<span class="px-2 py-0.5 bg-surface-container-highest text-on-surface-variant rounded text-[10px] font-mono">4K</span>
+<span class="px-2 py-0.5 bg-surface-container-highest text-on-surface-variant rounded text-[10px] font-mono">AI Upscaled</span>
+</div>
+<!-- Actions -->
+<div class="flex gap-2 pt-3 border-t border-outline-variant/30">
+<button class="flex-1 py-1.5 bg-surface-bright hover:bg-surface-container-highest text-on-surface font-label-md text-label-md rounded border border-outline-variant/50 transition-colors flex justify-center items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">restore</span>
+                                Restore
+                            </button>
+<button class="w-8 flex justify-center items-center text-on-surface-variant hover:text-error hover:bg-error-container/20 rounded transition-colors" onclick="openDeleteDialog('Urban Cyberpunk')" title="Delete Permanently">
+<span class="material-symbols-outlined text-[18px]">delete_forever</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="group bg-surface-container flex flex-col rounded-xl overflow-hidden border border-outline-variant/30 hover:border-outline-variant transition-colors relative isolate">
+<div class="aspect-video bg-surface-container-high relative overflow-hidden">
+<div class="w-full h-full bg-cover bg-center opacity-40 group-hover:opacity-60 transition-opacity duration-300" data-alt="A high-contrast, macro shot of abstract fluid dynamics in space. Swirling colors of deep violet, cyan, and pitch black interacting. High fidelity, hyper-realistic rendering with dramatic lighting." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDltEFDmd7SVW-lBI-O77y8KDgXV1cJEcCpeZIh6ebZDcr1LGG9FD1F4uXYEnvjCziLxaHjEHEzgmsq-aiqsPPy_-kGE9uyiJ7O--CEwAp4mSQtyzNtPicgL-SOXJ1OHzDOrPMr1tShP7-ZkKOm17maicCxHrzQ2CyHJvo8XtLwsX7qjzUqAPx5ja3oY4IugSG2Nt4LnL82VMVBc7OJcp94WrAevGX0I-W97YlJtMu8lDGYBRnFxdotW7JQ8zi13eo2O_Imdr3mcSM')"></div>
+<div class="absolute top-2 left-2 bg-surface-bright/90 text-on-surface-variant border border-outline-variant/50 px-2 py-1 rounded text-[10px] font-mono font-bold flex items-center gap-1 shadow-md backdrop-blur-sm">
+<span class="material-symbols-outlined text-[12px]">schedule</span>
+                            12 Days Left
+                        </div>
+</div>
+<div class="p-panel-padding flex-1 flex flex-col">
+<div class="flex justify-between items-start mb-2">
+<h3 class="font-headline-sm text-headline-sm text-on-surface truncate">Nebula Intro</h3>
+</div>
+<div class="flex flex-wrap gap-1 mb-4 mt-auto">
+<span class="px-2 py-0.5 bg-surface-container-highest text-on-surface-variant rounded text-[10px] font-mono">1080p</span>
+<span class="px-2 py-0.5 bg-surface-container-highest text-on-surface-variant rounded text-[10px] font-mono">Draft</span>
+</div>
+<div class="flex gap-2 pt-3 border-t border-outline-variant/30">
+<button class="flex-1 py-1.5 bg-surface-bright hover:bg-surface-container-highest text-on-surface font-label-md text-label-md rounded border border-outline-variant/50 transition-colors flex justify-center items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">restore</span>
+                                Restore
+                            </button>
+<button class="w-8 flex justify-center items-center text-on-surface-variant hover:text-error hover:bg-error-container/20 rounded transition-colors" onclick="openDeleteDialog('Nebula Intro')" title="Delete Permanently">
+<span class="material-symbols-outlined text-[18px]">delete_forever</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="group bg-surface-container flex flex-col rounded-xl overflow-hidden border border-outline-variant/30 hover:border-outline-variant transition-colors relative isolate">
+<div class="aspect-video bg-surface-container-high relative overflow-hidden">
+<div class="w-full h-full bg-cover bg-center opacity-40 group-hover:opacity-60 transition-opacity duration-300" data-alt="A sleek, minimalist product showcase scene. A dark grey geometric podium against an almost black background, illuminated by a single, sharp cyan spotlight. High end, luxurious commercial aesthetic." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCojLhiOGKR0E5z2LHN4fcgKmo_ktSR4IttOUUJskGtpWyRIZVADZuuWLDjXps4sNpQs8HZxCIQKjB89hRw-S6Hmmr7oO4B3ZTqlmr73z0adMcsamkYmKnfFlC4yOYjo58iJuML6hYkdZy1Hhr0dzWaKu-_k-CuYLd68I3iuSAMhDV75dBjrCq6TIlrOTu7I-ydFS6JFIhupjKYjRq6PcV4Cr2NsgBNB9AxC7Du8Ia9lFXnK_P6sPqWAYifQ872LFJEyVmAlI19TTM')"></div>
+<div class="absolute top-2 left-2 bg-surface-bright/90 text-on-surface-variant border border-outline-variant/50 px-2 py-1 rounded text-[10px] font-mono font-bold flex items-center gap-1 shadow-md backdrop-blur-sm">
+<span class="material-symbols-outlined text-[12px]">schedule</span>
+                            28 Days Left
+                        </div>
+</div>
+<div class="p-panel-padding flex-1 flex flex-col">
+<div class="flex justify-between items-start mb-2">
+<h3 class="font-headline-sm text-headline-sm text-on-surface truncate">Product Reveal_v2</h3>
+</div>
+<div class="flex flex-wrap gap-1 mb-4 mt-auto">
+<span class="px-2 py-0.5 bg-surface-container-highest text-on-surface-variant rounded text-[10px] font-mono">4K</span>
+</div>
+<div class="flex gap-2 pt-3 border-t border-outline-variant/30">
+<button class="flex-1 py-1.5 bg-surface-bright hover:bg-surface-container-highest text-on-surface font-label-md text-label-md rounded border border-outline-variant/50 transition-colors flex justify-center items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">restore</span>
+                                Restore
+                            </button>
+<button class="w-8 flex justify-center items-center text-on-surface-variant hover:text-error hover:bg-error-container/20 rounded transition-colors" onclick="openDeleteDialog('Product Reveal_v2')" title="Delete Permanently">
+<span class="material-symbols-outlined text-[18px]">delete_forever</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Empty State (Hidden by default, can be toggled via JS) -->
+<div class="hidden flex-col items-center justify-center h-64 text-center mt-stack-lg" id="empty-state">
+<div class="w-24 h-24 mb-4 rounded-full bg-surface-container-highest flex items-center justify-center opacity-50">
+<span class="material-symbols-outlined text-[48px] text-on-surface-variant">delete</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-2">Trash is empty</h3>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-sm">Items moved to the trash will appear here and be permanently deleted after 30 days.</p>
+</div>
+</div>
+</main>
+<!-- Mobile BottomNavBar (Hidden on Desktop) -->
+<nav class="md:hidden fixed bottom-0 w-full z-50 flex justify-around items-center px-4 py-2 bg-surface-container border-t border-outline-variant rounded-t-full shadow-lg">
+<a class="flex flex-col items-center justify-center text-on-surface-variant w-16 h-14 hover:bg-surface-bright rounded-lg active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined">home</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant w-16 h-14 hover:bg-surface-bright rounded-lg active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined">add_circle</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1">Create</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant w-16 h-14 hover:bg-surface-bright rounded-lg active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined">drafts</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1">Drafts</span>
+</a>
+<!-- Using Settings instead of Trash in mobile nav based on typical constraints, or we could highlight Trash if forced. Sticking to standard options for bottom nav. -->
+<a class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full w-16 h-14 active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">delete</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1">Trash</span>
+</a>
+</nav>
+<!-- Confirmation Dialogs -->
+<!-- Single Item Delete Dialog -->
+<dialog class="bg-surface-container-high rounded-xl border border-outline-variant shadow-2xl p-0 w-full max-w-md mx-auto my-auto self-center justify-center isolate" id="delete-dialog">
+<div class="p-6 flex flex-col relative">
+<div class="absolute top-0 left-0 w-full h-1 bg-error"></div>
+<div class="flex items-center gap-3 mb-4 text-error">
+<span class="material-symbols-outlined text-[28px]" style="font-variation-settings: 'FILL' 1;">warning</span>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Permanently delete?</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mb-6">
+                Permanently delete '<span class="font-bold text-on-surface" id="delete-item-name">Project</span>'? This action cannot be undone.
+            </p>
+<div class="flex justify-end gap-3 mt-auto">
+<button class="px-4 py-2 rounded bg-surface-bright text-on-surface font-label-md text-label-md hover:bg-surface-container-highest transition-colors border border-outline-variant" onclick="document.getElementById('delete-dialog').close()">
+                    Cancel
+                </button>
+<button class="px-4 py-2 rounded bg-error text-on-error font-label-md text-label-md hover:bg-error/80 transition-colors" onclick="confirmDelete()">
+                    Delete Permanently
+                </button>
+</div>
+</div>
+</dialog>
+<!-- Empty Trash Dialog -->
+<dialog class="bg-surface-container-high rounded-xl border border-outline-variant shadow-2xl p-0 w-full max-w-md mx-auto my-auto self-center justify-center isolate" id="empty-trash-dialog">
+<div class="p-6 flex flex-col relative">
+<div class="absolute top-0 left-0 w-full h-1 bg-error"></div>
+<div class="flex items-center gap-3 mb-4 text-error">
+<span class="material-symbols-outlined text-[28px]" style="font-variation-settings: 'FILL' 1;">delete_sweep</span>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Empty Trash?</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mb-6">
+                Are you sure you want to permanently delete all items in the trash? This action cannot be undone.
+            </p>
+<div class="flex justify-end gap-3 mt-auto">
+<button class="px-4 py-2 rounded bg-surface-bright text-on-surface font-label-md text-label-md hover:bg-surface-container-highest transition-colors border border-outline-variant" onclick="document.getElementById('empty-trash-dialog').close()">
+                    Cancel
+                </button>
+<button class="px-4 py-2 rounded bg-error text-on-error font-label-md text-label-md hover:bg-error/80 transition-colors" onclick="emptyTrash()">
+                    Empty Trash
+                </button>
+</div>
+</div>
+</dialog>
+<script>
+        function openDeleteDialog(itemName) {
+            document.getElementById('delete-item-name').textContent = itemName;
+            document.getElementById('delete-dialog').showModal();
+        }
+
+        function confirmDelete() {
+            // Logic to delete the specific item would go here
+            document.getElementById('delete-dialog').close();
+            // Optional: Show a brief toast notification
+        }
+
+        function emptyTrash() {
+            // Logic to empty all items
+            document.getElementById('trash-grid').style.display = 'none';
+            document.getElementById('empty-state').style.display = 'flex';
+            document.getElementById('empty-trash-dialog').close();
+            
+            // Disable the empty trash button
+            const emptyBtn = document.querySelector('button[onclick="document.getElementById(\'empty-trash-dialog\').showModal()"]');
+            if(emptyBtn) {
+                emptyBtn.disabled = true;
+                emptyBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+        }
+    </script>
+</body></html>

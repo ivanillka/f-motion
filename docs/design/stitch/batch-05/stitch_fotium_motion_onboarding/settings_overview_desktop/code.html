@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Settings</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400;500&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed-variant": "#8f0041",
+                        "secondary-container": "#7701d0",
+                        "tertiary-container": "#ffccd6",
+                        "on-tertiary": "#66002c",
+                        "surface-variant": "#353534",
+                        "surface-container-low": "#1c1b1b",
+                        "on-secondary-fixed-variant": "#6700b5",
+                        "surface-container-high": "#2a2a2a",
+                        "primary-fixed-dim": "#00dbe9",
+                        "surface-bright": "#393939",
+                        "secondary": "#dcb8ff",
+                        "on-surface-variant": "#b9cacb",
+                        "on-background": "#e5e2e1",
+                        "on-secondary": "#480081",
+                        "primary-container": "#00f0ff",
+                        "tertiary-fixed": "#ffd9e0",
+                        "outline": "#849495",
+                        "on-tertiary-container": "#bb0058",
+                        "surface-container-lowest": "#0e0e0e",
+                        "inverse-primary": "#006970",
+                        "secondary-fixed-dim": "#dcb8ff",
+                        "surface": "#131313",
+                        "primary": "#dbfcff",
+                        "on-primary-fixed-variant": "#004f54",
+                        "on-primary": "#00363a",
+                        "error-container": "#93000a",
+                        "surface-tint": "#00dbe9",
+                        "surface-dim": "#131313",
+                        "surface-container": "#201f1f",
+                        "tertiary-fixed-dim": "#ffb1c3",
+                        "on-secondary-fixed": "#2c0051",
+                        "on-primary-fixed": "#002022",
+                        "secondary-fixed": "#efdbff",
+                        "outline-variant": "#3b494b",
+                        "on-secondary-container": "#dcb7ff",
+                        "surface-container-highest": "#353534",
+                        "tertiary": "#fff3f4",
+                        "inverse-surface": "#e5e2e1",
+                        "error": "#ffb4ab",
+                        "on-error": "#690005",
+                        "on-surface": "#e5e2e1",
+                        "on-primary-container": "#006970",
+                        "on-error-container": "#ffdad6",
+                        "on-tertiary-fixed": "#3f0019",
+                        "inverse-on-surface": "#313030",
+                        "primary-fixed": "#7df4ff",
+                        "background": "#131313"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "stack-sm": "8px",
+                        "stack-lg": "32px",
+                        "margin-desktop": "24px",
+                        "gutter": "16px",
+                        "unit": "4px",
+                        "panel-padding": "12px",
+                        "margin-mobile": "16px",
+                        "stack-md": "16px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["JetBrains Mono"],
+                        "headline-sm": ["Geist"],
+                        "body-lg": ["Inter"],
+                        "display-lg": ["Geist"],
+                        "headline-md": ["Geist"],
+                        "headline-md-mobile": ["Geist"],
+                        "body-md": ["Inter"],
+                        "label-sm": ["JetBrains Mono"]
+                    },
+                    "fontSize": {
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "headline-md-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-sm": ["10px", { "lineHeight": "14px", "fontWeight": "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md text-body-md min-h-screen flex overflow-hidden">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col h-screen w-64 docked left-0 bg-surface-container-low border-r border-outline-variant flat no shadows py-stack-lg px-panel-padding z-10 shrink-0">
+<div class="mb-stack-lg">
+<h1 class="font-display-lg text-headline-sm text-primary">Creator Workspace</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">Pro Plan</p>
+</div>
+<button class="w-full bg-primary-container text-on-primary-container font-headline-sm text-headline-sm py-2 px-4 rounded-lg flex items-center justify-center gap-2 mb-stack-lg hover:bg-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]">add</span>
+            New Project
+        </button>
+<ul class="flex flex-col gap-1 flex-1">
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">video_library</span>
+<span class="font-body-md text-body-md">Projects</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">folder_open</span>
+<span class="font-body-md text-body-md">Assets</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">auto_awesome</span>
+<span class="font-body-md text-body-md">AI Studio</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">account_balance_wallet</span>
+<span class="font-body-md text-body-md">Billing</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-secondary-container text-on-secondary-container font-semibold Active: scale-98 transition-transform" href="#">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+<span class="font-body-md text-body-md">Settings</span>
+</a>
+</li>
+</ul>
+<ul class="flex flex-col gap-1 mt-auto pt-stack-md border-t border-outline-variant/30">
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">contact_support</span>
+<span class="font-body-md text-body-md">Help</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">logout</span>
+<span class="font-body-md text-body-md">Logout</span>
+</a>
+</li>
+</ul>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-1 flex flex-col h-screen overflow-y-auto bg-surface-lowest relative">
+<!-- Top Nav Mobile (Fallback) -->
+<header class="md:hidden flex justify-between items-center px-margin-mobile w-full h-16 bg-surface-container-low border-b border-outline-variant shrink-0 sticky top-0 z-20">
+<h1 class="font-display-lg text-headline-md-mobile tracking-tighter text-primary">Fotium Motion</h1>
+<button class="text-on-surface-variant">
+<span class="material-symbols-outlined text-[24px]">menu</span>
+</button>
+</header>
+<div class="flex-1 px-margin-mobile md:px-margin-desktop py-stack-lg max-w-5xl mx-auto w-full">
+<header class="mb-stack-lg flex justify-between items-end">
+<div>
+<h2 class="font-display-lg text-display-lg text-on-surface">Settings</h2>
+<p class="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest mt-1">Workspace Configuration</p>
+</div>
+</header>
+<div class="grid grid-cols-1 md:grid-cols-12 gap-gutter">
+<!-- Main Settings List -->
+<div class="md:col-span-8 flex flex-col gap-unit">
+<!-- Account Section -->
+<div class="group bg-surface-container-high hover:bg-surface-bright transition-colors rounded-lg border border-outline-variant/20 overflow-hidden">
+<div class="p-panel-padding flex items-start gap-gutter cursor-pointer">
+<div class="w-10 h-10 rounded bg-surface-container-low flex items-center justify-center border border-outline-variant shrink-0 text-on-surface-variant group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">manage_accounts</span>
+</div>
+<div class="flex-1">
+<div class="flex items-center justify-between">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Account</h3>
+<span class="font-label-sm text-label-sm px-2 py-1 bg-surface-container rounded-sm border border-outline-variant/50 flex items-center gap-1 text-primary-container">
+<span class="material-symbols-outlined text-[12px] leading-none">check_circle</span>
+                                        VERIFIED
+                                    </span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1">Profile, authentication, and security preferences.</p>
+<div class="mt-stack-sm flex gap-3 opacity-60 group-hover:opacity-100 transition-opacity">
+<span class="font-label-md text-label-md bg-surface-container-low px-2 py-0.5 rounded text-on-surface-variant">ID: FOT-8924</span>
+<span class="font-label-md text-label-md bg-surface-container-low px-2 py-0.5 rounded text-on-surface-variant">SSO Active</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant self-center opacity-50 group-hover:opacity-100 transform group-hover:translate-x-1 transition-all">chevron_right</span>
+</div>
+</div>
+<!-- Services Section -->
+<div class="group bg-surface-container-high hover:bg-surface-bright transition-colors rounded-lg border border-outline-variant/20 overflow-hidden">
+<div class="p-panel-padding flex items-start gap-gutter cursor-pointer">
+<div class="w-10 h-10 rounded bg-surface-container-low flex items-center justify-center border border-outline-variant shrink-0 text-on-surface-variant group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">hub</span>
+</div>
+<div class="flex-1">
+<div class="flex items-center justify-between">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Connected Services</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1">API keys and external tool integrations.</p>
+<div class="mt-stack-sm flex flex-wrap gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
+<span class="font-label-md text-label-md bg-surface-container-lowest px-2 py-1 rounded-sm border border-outline-variant/30 text-on-surface flex items-center gap-1">
+<div class="w-1.5 h-1.5 rounded-full bg-primary-container"></div>
+                                        PEXELS READY
+                                    </span>
+<span class="font-label-md text-label-md bg-surface-container-lowest px-2 py-1 rounded-sm border border-outline-variant/30 text-on-surface flex items-center gap-1">
+<div class="w-1.5 h-1.5 rounded-full bg-primary-container"></div>
+                                        FAL MANAGED
+                                    </span>
+<span class="font-label-md text-label-md bg-surface-container-lowest px-2 py-1 rounded-sm border border-outline-variant/30 text-on-surface-variant flex items-center gap-1">
+<div class="w-1.5 h-1.5 rounded-full bg-outline"></div>
+                                        ELEVENLABS
+                                    </span>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant self-center opacity-50 group-hover:opacity-100 transform group-hover:translate-x-1 transition-all">chevron_right</span>
+</div>
+</div>
+</div>
+<!-- Right Side Widgets -->
+<div class="md:col-span-4 flex flex-col gap-unit">
+<!-- Credits Widget -->
+<div class="bg-surface-container-high rounded-lg p-panel-padding border border-outline-variant/20 relative overflow-hidden group">
+<div class="absolute top-0 right-0 p-3 opacity-10 pointer-events-none">
+<span class="material-symbols-outlined text-[64px]" style="font-variation-settings: 'FILL' 1;">toll</span>
+</div>
+<div class="flex justify-between items-start mb-2">
+<h4 class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">generating_tokens</span>
+                                AI Credits
+                            </h4>
+</div>
+<div class="flex items-baseline gap-2">
+<span class="font-display-lg text-display-lg text-on-surface">120</span>
+<span class="font-label-sm text-label-sm text-primary-container uppercase">Remaining</span>
+</div>
+<div class="w-full bg-surface-container-lowest h-1.5 rounded-full mt-3 overflow-hidden">
+<div class="bg-primary-container h-full w-[12%] rounded-full opacity-80"></div>
+</div>
+<button class="mt-4 w-full py-1.5 bg-surface-container-low hover:bg-surface-bright border border-outline-variant/50 rounded font-label-md text-label-md text-on-surface transition-colors flex justify-center items-center gap-2 group-hover:border-primary/30">
+                            Purchase Credits
+                            <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+<!-- Storage Widget -->
+<div class="bg-surface-container-high rounded-lg p-panel-padding border border-error-container/50 relative overflow-hidden shadow-[0_0_15px_rgba(147,0,10,0.1)]">
+<div class="flex justify-between items-start mb-2">
+<h4 class="font-label-md text-label-md text-error uppercase tracking-wider flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">hard_drive</span>
+                                Storage
+                            </h4>
+<span class="material-symbols-outlined text-error text-[16px]">warning</span>
+</div>
+<div class="flex items-baseline gap-2">
+<span class="font-display-lg text-headline-md text-on-surface">65%</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase">Used (65GB / 100GB)</span>
+</div>
+<div class="w-full bg-surface-container-lowest h-1.5 rounded-full mt-3 overflow-hidden">
+<div class="bg-error h-full w-[65%] rounded-full shadow-[0_0_5px_rgba(255,180,171,0.5)]"></div>
+</div>
+<div class="mt-4 p-2 bg-surface-container-low rounded border border-outline-variant/30 flex justify-between items-center">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase">Trash Can</span>
+<span class="font-body-md text-label-md text-on-surface">4.2 GB recoverable</span>
+</div>
+<button class="text-error hover:text-error-container font-label-md text-label-md underline transition-colors">Empty</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Creative Services</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&amp;family=Geist:wght@600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "tertiary-fixed-dim": "#ffb1c3",
+                      "on-primary-container": "#006970",
+                      "on-secondary-fixed": "#2c0051",
+                      "tertiary-fixed": "#ffd9e0",
+                      "inverse-primary": "#006970",
+                      "on-secondary-fixed-variant": "#6700b5",
+                      "outline": "#849495",
+                      "on-primary-fixed": "#002022",
+                      "on-error": "#690005",
+                      "surface-bright": "#393939",
+                      "on-background": "#e5e2e1",
+                      "secondary": "#dcb8ff",
+                      "on-surface": "#e5e2e1",
+                      "tertiary": "#fff3f4",
+                      "on-error-container": "#ffdad6",
+                      "on-surface-variant": "#b9cacb",
+                      "surface-tint": "#00dbe9",
+                      "inverse-surface": "#e5e2e1",
+                      "surface-container-highest": "#353534",
+                      "background": "#131313",
+                      "surface-container-lowest": "#0e0e0e",
+                      "secondary-fixed-dim": "#dcb8ff",
+                      "outline-variant": "#3b494b",
+                      "surface-container": "#201f1f",
+                      "surface-container-low": "#1c1b1b",
+                      "secondary-container": "#7701d0",
+                      "primary": "#dbfcff",
+                      "surface-dim": "#131313",
+                      "on-primary": "#00363a",
+                      "secondary-fixed": "#efdbff",
+                      "on-secondary-container": "#dcb7ff",
+                      "on-tertiary": "#66002c",
+                      "error-container": "#93000a",
+                      "on-tertiary-container": "#bb0058",
+                      "on-tertiary-fixed-variant": "#8f0041",
+                      "on-primary-fixed-variant": "#004f54",
+                      "primary-fixed-dim": "#00dbe9",
+                      "surface": "#131313",
+                      "surface-container-high": "#2a2a2a",
+                      "inverse-on-surface": "#313030",
+                      "primary-container": "#00f0ff",
+                      "on-tertiary-fixed": "#3f0019",
+                      "tertiary-container": "#ffccd6",
+                      "surface-variant": "#353534",
+                      "error": "#ffb4ab",
+                      "primary-fixed": "#7df4ff",
+                      "on-secondary": "#480081"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "stack-sm": "8px",
+                      "unit": "4px",
+                      "margin-desktop": "24px",
+                      "stack-lg": "32px",
+                      "panel-padding": "12px",
+                      "gutter": "16px",
+                      "stack-md": "16px",
+                      "margin-mobile": "16px"
+              },
+              "fontFamily": {
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "display-lg": [
+                              "Geist"
+                      ],
+                      "headline-sm": [
+                              "Geist"
+                      ],
+                      "headline-md-mobile": [
+                              "Geist"
+                      ],
+                      "label-sm": [
+                              "JetBrains Mono"
+                      ],
+                      "label-md": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "headline-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-md-mobile": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "label-sm": [
+                              "10px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "label-md": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        body {
+            background-color: #0A0A0A;
+            color: #e5e2e1;
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        .scrim-bottom {
+            background: linear-gradient(to top, rgba(10,10,10,0.9) 0%, rgba(10,10,10,0) 100%);
+        }
+        
+        /* Mobile Specific Overrides */
+        @media (max-width: 768px) {
+            .mobile-bottom-nav-padding {
+                padding-bottom: 80px; 
+            }
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="flex flex-col min-h-screen">
+<!-- TopNavBar (Web Only) -->
+<header class="hidden md:flex bg-background dark:bg-background flex justify-between items-center px-margin-desktop w-full h-16 sticky top-0 z-50">
+<div class="flex items-center gap-4">
+<span class="font-display-lg text-headline-md tracking-tighter text-primary dark:text-primary">Fotium Motion</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="w-[44px] h-[44px] flex items-center justify-center rounded-full hover:bg-surface-container-high transition-colors text-primary dark:text-primary scale-95 duration-100 hover:text-primary-fixed-dim">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+</button>
+<button class="w-[44px] h-[44px] flex items-center justify-center rounded-full hover:bg-surface-container-high transition-colors text-primary dark:text-primary scale-95 duration-100 hover:text-primary-fixed-dim">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+</button>
+</div>
+</header>
+<!-- Mobile Header -->
+<header class="md:hidden flex justify-between items-center px-margin-mobile h-16 bg-background sticky top-0 z-50">
+<span class="font-display-lg text-headline-md-mobile tracking-tighter text-primary">Fotium Motion</span>
+</header>
+<div class="flex flex-1 w-full h-full">
+<!-- SideNavBar (Web Only) -->
+<nav class="hidden md:flex flex-col h-full py-stack-lg px-panel-padding bg-surface-container-low dark:bg-surface-container-low border-r border-outline-variant w-64 fixed left-0 top-16 bottom-0 z-40">
+<div class="mb-stack-lg px-4">
+<div class="font-headline-sm text-on-surface">Creator Workspace</div>
+<div class="font-label-sm text-on-surface-variant mt-1">Pro Plan</div>
+</div>
+<button class="bg-primary text-on-primary font-label-md rounded-lg py-3 px-4 mb-stack-lg flex items-center justify-center gap-2 hover:bg-primary-container transition-colors w-full">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                New Project
+            </button>
+<div class="flex flex-col gap-unit flex-1">
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all font-body-md" href="#">
+<span class="material-symbols-outlined">video_library</span>
+                    Projects
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all font-body-md" href="#">
+<span class="material-symbols-outlined">folder_open</span>
+                    Assets
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg bg-secondary-container text-on-secondary-container font-semibold transition-all Active: scale-98 transition-transform" href="#">
+<span class="material-symbols-outlined">auto_awesome</span>
+                    AI Studio
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all font-body-md" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+                    Billing
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all font-body-md" href="#">
+<span class="material-symbols-outlined">settings</span>
+                    Settings
+                </a>
+</div>
+<div class="flex flex-col gap-unit mt-auto">
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all font-body-md" href="#">
+<span class="material-symbols-outlined">contact_support</span>
+                    Help
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all font-body-md" href="#">
+<span class="material-symbols-outlined">logout</span>
+                    Logout
+                </a>
+</div>
+</nav>
+<!-- Main Canvas -->
+<main class="flex-1 md:ml-64 p-margin-mobile md:p-margin-desktop mobile-bottom-nav-padding w-full max-w-3xl mx-auto">
+<div class="mb-stack-lg">
+<h1 class="font-headline-sm md:font-headline-md text-on-surface mb-2">Creative Services</h1>
+<p class="font-body-md text-on-surface-variant">Manage active AI generation tasks and service states.</p>
+</div>
+<!-- Service List -->
+<div class="flex flex-col gap-stack-md">
+<!-- Card 1: Ready State -->
+<div class="bg-surface-container-high rounded-xl p-4 border border-outline-variant flex flex-col sm:flex-row gap-4 items-start sm:items-center relative overflow-hidden">
+<div class="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 border border-primary/20">
+<span class="material-symbols-outlined text-primary text-[24px]" data-icon="auto_fix_high">auto_fix_high</span>
+</div>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<h3 class="font-body-lg text-on-surface font-semibold">Motion Sync Upscale</h3>
+<span class="font-label-sm bg-[#2A2A2A] text-on-surface-variant px-2 py-0.5 rounded uppercase">4K</span>
+</div>
+<p class="font-body-md text-on-surface-variant">Asset ready for final export. 24fps render completed.</p>
+</div>
+<div class="flex items-center gap-2 mt-2 sm:mt-0 w-full sm:w-auto">
+<div class="font-label-md text-primary mr-2 uppercase tracking-wider flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                            Ready
+                        </div>
+<button class="h-[44px] px-6 bg-primary text-on-primary font-label-md rounded-lg hover:bg-primary-container transition-colors ml-auto sm:ml-0 flex-1 sm:flex-none flex items-center justify-center">
+                            Export
+                        </button>
+</div>
+</div>
+<!-- Card 2: Choose State -->
+<div class="bg-[#1E1E1E] rounded-xl p-4 border border-[#FFFFFF10] flex flex-col sm:flex-row gap-4 items-start sm:items-center opacity-90">
+<div class="w-12 h-12 rounded-lg bg-surface-container-lowest flex items-center justify-center shrink-0 border border-outline-variant">
+<span class="material-symbols-outlined text-on-surface-variant text-[24px]" data-icon="brush">brush</span>
+</div>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<h3 class="font-body-lg text-on-surface font-semibold">Style Transfer</h3>
+<span class="font-label-sm bg-[#2A2A2A] text-on-surface-variant px-2 py-0.5 rounded uppercase">Pending</span>
+</div>
+<p class="font-body-md text-on-surface-variant">Awaiting style reference image selection.</p>
+</div>
+<div class="flex items-center gap-2 mt-2 sm:mt-0 w-full sm:w-auto">
+<div class="font-label-md text-on-surface-variant mr-2 uppercase tracking-wider">
+                            Action Rq
+                        </div>
+<button class="h-[44px] px-6 border border-[#FFFFFF20] text-on-surface font-label-md rounded-lg hover:bg-surface-container-high transition-colors ml-auto sm:ml-0 flex-1 sm:flex-none flex items-center justify-center">
+                            Choose
+                        </button>
+</div>
+</div>
+<!-- Card 3: Processing State -->
+<div class="bg-[#1E1E1E] rounded-xl p-4 border border-[#FFFFFF10] flex flex-col sm:flex-row gap-4 items-start sm:items-center relative overflow-hidden">
+<!-- Progress Bar Background -->
+<div class="absolute bottom-0 left-0 h-1 bg-surface-container-lowest w-full"></div>
+<div class="absolute bottom-0 left-0 h-1 bg-primary/50 w-[45%]"></div>
+<div class="w-12 h-12 rounded-lg bg-surface-container-lowest flex items-center justify-center shrink-0 border border-outline-variant">
+<span class="material-symbols-outlined text-secondary-fixed-dim text-[24px] animate-spin" data-icon="progress_activity" style="animation-duration: 3s;">progress_activity</span>
+</div>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<h3 class="font-body-lg text-on-surface font-semibold">Audio Transcription</h3>
+<span class="font-label-sm bg-[#2A2A2A] text-on-surface-variant px-2 py-0.5 rounded uppercase">V2</span>
+</div>
+<p class="font-body-md text-on-surface-variant">Processing track 2. Estimated time: 2m</p>
+</div>
+<div class="flex items-center gap-2 mt-2 sm:mt-0 w-full sm:w-auto justify-end sm:justify-start">
+<div class="font-label-md text-on-surface-variant uppercase tracking-wider">
+                            45%
+                        </div>
+<button class="w-[44px] h-[44px] flex items-center justify-center text-primary font-label-md rounded-lg hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined" data-icon="close">close</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- Bottom Navigation (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 right-0 bg-surface-container-low border-t border-outline-variant flex justify-around items-center h-[72px] z-50 px-2 pb-safe">
+<a class="flex flex-col items-center justify-center w-16 h-full text-on-surface-variant hover:text-on-surface" href="#">
+<span class="material-symbols-outlined text-[24px] mb-1">video_library</span>
+<span class="font-label-sm">Projects</span>
+</a>
+<a class="flex flex-col items-center justify-center w-16 h-full text-on-surface-variant hover:text-on-surface" href="#">
+<span class="material-symbols-outlined text-[24px] mb-1">folder_open</span>
+<span class="font-label-sm">Assets</span>
+</a>
+<a class="flex flex-col items-center justify-center w-16 h-full text-primary font-bold" href="#">
+<div class="bg-secondary-container text-on-secondary-container px-4 py-1 rounded-full mb-1">
+<span class="material-symbols-outlined text-[24px]">auto_awesome</span>
+</div>
+<span class="font-label-sm">Studio</span>
+</a>
+<a class="flex flex-col items-center justify-center w-16 h-full text-on-surface-variant hover:text-on-surface" href="#">
+<span class="material-symbols-outlined text-[24px] mb-1">settings</span>
+<span class="font-label-sm">Settings</span>
+</a>
+</nav>
+</body></html>

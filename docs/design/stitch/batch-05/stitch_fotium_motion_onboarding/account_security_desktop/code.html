@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Account &amp; Security</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400&amp;family=Geist:wght@600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-tertiary-fixed-variant": "#8f0041",
+                    "secondary-container": "#7701d0",
+                    "tertiary-container": "#ffccd6",
+                    "on-tertiary": "#66002c",
+                    "surface-variant": "#353534",
+                    "surface-container-low": "#1c1b1b",
+                    "on-secondary-fixed-variant": "#6700b5",
+                    "surface-container-high": "#2a2a2a",
+                    "primary-fixed-dim": "#00dbe9",
+                    "surface-bright": "#393939",
+                    "secondary": "#dcb8ff",
+                    "on-surface-variant": "#b9cacb",
+                    "on-background": "#e5e2e1",
+                    "on-secondary": "#480081",
+                    "primary-container": "#00f0ff",
+                    "tertiary-fixed": "#ffd9e0",
+                    "outline": "#849495",
+                    "on-tertiary-container": "#bb0058",
+                    "surface-container-lowest": "#0e0e0e",
+                    "inverse-primary": "#006970",
+                    "secondary-fixed-dim": "#dcb8ff",
+                    "surface": "#131313",
+                    "primary": "#dbfcff",
+                    "on-primary-fixed-variant": "#004f54",
+                    "on-primary": "#00363a",
+                    "error-container": "#93000a",
+                    "surface-tint": "#00dbe9",
+                    "surface-dim": "#131313",
+                    "surface-container": "#201f1f",
+                    "tertiary-fixed-dim": "#ffb1c3",
+                    "on-secondary-fixed": "#2c0051",
+                    "on-primary-fixed": "#002022",
+                    "secondary-fixed": "#efdbff",
+                    "outline-variant": "#3b494b",
+                    "on-secondary-container": "#dcb7ff",
+                    "surface-container-highest": "#353534",
+                    "tertiary": "#fff3f4",
+                    "inverse-surface": "#e5e2e1",
+                    "error": "#ffb4ab",
+                    "on-error": "#690005",
+                    "on-surface": "#e5e2e1",
+                    "on-primary-container": "#006970",
+                    "on-error-container": "#ffdad6",
+                    "on-tertiary-fixed": "#3f0019",
+                    "inverse-on-surface": "#313030",
+                    "primary-fixed": "#7df4ff",
+                    "background": "#131313"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "stack-sm": "8px",
+                    "stack-lg": "32px",
+                    "margin-desktop": "24px",
+                    "gutter": "16px",
+                    "unit": "4px",
+                    "panel-padding": "12px",
+                    "margin-mobile": "16px",
+                    "stack-md": "16px"
+            },
+            "fontFamily": {
+                    "label-md": [
+                            "JetBrains Mono"
+                    ],
+                    "headline-sm": [
+                            "Geist"
+                    ],
+                    "body-lg": [
+                            "Inter"
+                    ],
+                    "display-lg": [
+                            "Geist"
+                    ],
+                    "headline-md": [
+                            "Geist"
+                    ],
+                    "headline-md-mobile": [
+                            "Geist"
+                    ],
+                    "body-md": [
+                            "Inter"
+                    ],
+                    "label-sm": [
+                            "JetBrains Mono"
+                    ]
+            },
+            "fontSize": {
+                    "label-md": [
+                            "12px",
+                            {
+                                    "lineHeight": "16px",
+                                    "letterSpacing": "0.05em",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "headline-sm": [
+                            "20px",
+                            {
+                                    "lineHeight": "28px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "body-lg": [
+                            "16px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "display-lg": [
+                            "48px",
+                            {
+                                    "lineHeight": "56px",
+                                    "letterSpacing": "-0.02em",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "headline-md": [
+                            "24px",
+                            {
+                                    "lineHeight": "32px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "headline-md-mobile": [
+                            "20px",
+                            {
+                                    "lineHeight": "28px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "body-md": [
+                            "14px",
+                            {
+                                    "lineHeight": "20px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "label-sm": [
+                            "10px",
+                            {
+                                    "lineHeight": "14px",
+                                    "fontWeight": "500"
+                            }
+                    ]
+            }
+    },
+        },
+      }
+    </script>
+</head>
+<body class="bg-background text-on-background antialiased flex h-screen overflow-hidden">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col h-screen w-64 docked left-0 bg-surface-container-low border-r border-outline-variant py-stack-lg px-panel-padding flat no shadows shrink-0">
+<div class="mb-stack-lg px-panel-padding">
+<h1 class="font-display-lg text-headline-sm text-primary">Creator Workspace</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">Pro Plan</p>
+</div>
+<button class="bg-primary-container text-on-primary-container font-label-md text-label-md rounded-lg py-3 px-4 mb-stack-lg flex items-center justify-center gap-2 hover:bg-primary transition-colors">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">add</span>
+            New Project
+        </button>
+<ul class="flex flex-col gap-unit flex-grow">
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined">video_library</span>
+                    Projects
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined">folder_open</span>
+                    Assets
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined">auto_awesome</span>
+                    AI Studio
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+                    Billing
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 bg-secondary-container text-on-secondary-container rounded-lg font-semibold Active: scale-98 transition-transform font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">settings</span>
+                    Settings
+                </a>
+</li>
+</ul>
+<div class="mt-auto border-t border-outline-variant pt-stack-sm">
+<ul class="flex flex-col gap-unit">
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined">contact_support</span>
+                        Help
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined">logout</span>
+                        Logout
+                    </a>
+</li>
+</ul>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col h-screen overflow-y-auto bg-surface-container-lowest">
+<!-- TopNavBar (Mobile only for this layout context, but included per generic shell logic, though visually hidden on desktop if sidebar is present. Following instructions to render it.) -->
+<header class="md:hidden flex justify-between items-center px-margin-desktop w-full h-16 bg-background full-width top-0 sticky flat no shadows z-10 border-b border-outline-variant">
+<div class="font-display-lg text-headline-md-mobile tracking-tighter text-primary">Fotium Motion</div>
+<div class="flex gap-4">
+<button class="text-on-surface-variant hover:text-primary-fixed-dim transition-colors duration-200 scale-95 duration-100">
+<span class="material-symbols-outlined">account_circle</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary-fixed-dim transition-colors duration-200 scale-95 duration-100">
+<span class="material-symbols-outlined">help</span>
+</button>
+</div>
+</header>
+<div class="flex-1 p-margin-mobile md:p-margin-desktop lg:p-stack-lg max-w-5xl mx-auto w-full">
+<div class="mb-stack-lg">
+<h2 class="font-headline-md md:text-display-lg text-on-surface mb-2">Account &amp; Security</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Manage your profile details and active sessions to ensure workspace security.</p>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter md:gap-margin-desktop">
+<!-- Profile Section -->
+<section class="lg:col-span-5 flex flex-col gap-gutter">
+<div class="bg-surface-container-low rounded-xl p-margin-desktop border border-outline-variant relative overflow-hidden group">
+<!-- Subtle Glow effect on hover -->
+<div class="absolute inset-0 bg-primary opacity-0 group-hover:opacity-[0.02] transition-opacity pointer-events-none"></div>
+<div class="flex items-center gap-4 mb-stack-md">
+<div class="w-16 h-16 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center overflow-hidden shrink-0">
+<img class="w-full h-full object-cover" data-alt="A highly detailed close-up portrait avatar of a professional designer in a dark-mode studio setting. The lighting is cinematic, utilizing deep charcoal shadows contrasted with a sharp, vibrant cyan rim light on one side. The aesthetic is modern, serious, and technologically sophisticated, fitting a high-performance AI video creation environment." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC8Exj7ThJwTu2qiOSIfDVyuBPeCYIQi3rzrdCZMMTU-XvAZFEDORq4TManByL7TU0GVq4iIu6c4HIq7cGLcO71ypt_Jkd3rnbhsOOGp7bcDb0qsruu1NBy5wo1c8W3M9dnTwybjhXHz-Rs2UihmBZjmBQpHruOZGpP4gM_3YaSPu0mMZhWKaxCO47LJj5V4aosO9hPidt_fAYg0pCjiISjJb9ALpHEfJ6r_mNSet0X7D5soA8V-NUATw5tlpESh2XKIc0orDjHi_4"/>
+</div>
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Alex Mercer</h3>
+<div class="flex items-center gap-1.5 mt-1">
+<span class="material-symbols-outlined text-primary-container text-[16px]">verified</span>
+<p class="font-body-md text-body-md text-on-surface-variant">Pro Creator</p>
+</div>
+</div>
+</div>
+<div class="space-y-4">
+<div>
+<label class="font-label-md text-label-md text-on-surface-variant uppercase mb-1 block">Primary Email</label>
+<div class="flex items-center justify-between bg-surface-container-highest rounded-lg px-4 py-3 border border-outline-variant">
+<span class="font-body-md text-body-md text-on-surface">alex.mercer@studio.io</span>
+<span class="font-label-sm text-label-sm bg-primary-container text-on-primary-container px-2 py-0.5 rounded uppercase tracking-wider">Verified</span>
+</div>
+</div>
+<button class="w-full bg-transparent border border-outline-variant text-on-surface hover:text-primary-container hover:border-primary-container/30 transition-colors font-label-md text-label-md py-3 rounded-lg flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]">mail</span>
+                                Change Email
+                            </button>
+</div>
+</div>
+<div class="bg-surface-container-low rounded-xl p-margin-desktop border border-outline-variant">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-error">shield_lock</span>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Authentication</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mb-6">Enhance your account security with multi-factor authentication.</p>
+<div class="flex items-center justify-between p-4 bg-surface-container-highest rounded-lg border border-outline-variant">
+<div>
+<h4 class="font-body-lg text-body-lg text-on-surface">Two-Factor Auth</h4>
+<p class="font-label-md text-label-md text-on-surface-variant mt-1">Currently disabled</p>
+</div>
+<button class="bg-surface-bright text-on-surface px-4 py-2 rounded-lg font-label-md text-label-md hover:bg-primary-container hover:text-on-primary-container transition-colors">
+                                Setup
+                            </button>
+</div>
+</div>
+</section>
+<!-- Active Sessions Section -->
+<section class="lg:col-span-7">
+<div class="bg-surface-container-low rounded-xl p-margin-desktop border border-outline-variant h-full">
+<div class="flex justify-between items-end mb-stack-md border-b border-outline-variant pb-4">
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-container">devices</span>
+                                    Active Sessions
+                                </h3>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1">Devices currently logged into your account.</p>
+</div>
+<button class="text-error hover:text-error-container transition-colors font-label-md text-label-md flex items-center gap-1.5 uppercase tracking-wider">
+<span class="material-symbols-outlined text-[16px]">logout</span>
+                                Sign out all
+                            </button>
+</div>
+<div class="space-y-3">
+<!-- Current Session -->
+<div class="flex items-start justify-between p-4 bg-surface-container-highest rounded-lg border border-primary-container/20 relative overflow-hidden">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary-container"></div>
+<div class="flex gap-4">
+<div class="mt-1">
+<span class="material-symbols-outlined text-on-surface-variant text-[24px]">computer</span>
+</div>
+<div>
+<h4 class="font-body-lg text-body-lg text-on-surface flex items-center gap-2">
+                                            MacBook Pro 16"
+                                            <span class="font-label-sm text-label-sm bg-primary-container/10 text-primary-container px-2 py-0.5 rounded uppercase border border-primary-container/20">Current</span>
+</h4>
+<div class="flex flex-col gap-1 mt-2 font-label-md text-label-md text-on-surface-variant">
+<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px]">location_on</span> San Francisco, USA (IP: 192.168.1.1)</span>
+<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px]">schedule</span> Active now</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Other Session 1 -->
+<div class="flex items-center justify-between p-4 bg-surface-container hover:bg-surface-container-high transition-colors rounded-lg border border-outline-variant/50">
+<div class="flex gap-4">
+<div class="mt-1">
+<span class="material-symbols-outlined text-on-surface-variant text-[24px]">smartphone</span>
+</div>
+<div>
+<h4 class="font-body-lg text-body-lg text-on-surface">iPhone 14 Pro</h4>
+<div class="flex flex-col gap-1 mt-2 font-label-md text-label-md text-on-surface-variant">
+<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px]">location_on</span> New York, USA</span>
+<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px]">schedule</span> Last active: 2 hours ago</span>
+</div>
+</div>
+</div>
+<button aria-label="Revoke session" class="text-on-surface-variant hover:text-error transition-colors p-2 rounded-lg hover:bg-surface-bright flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">close</span>
+</button>
+</div>
+<!-- Other Session 2 -->
+<div class="flex items-center justify-between p-4 bg-surface-container hover:bg-surface-container-high transition-colors rounded-lg border border-outline-variant/50">
+<div class="flex gap-4">
+<div class="mt-1">
+<span class="material-symbols-outlined text-on-surface-variant text-[24px]">tablet_mac</span>
+</div>
+<div>
+<h4 class="font-body-lg text-body-lg text-on-surface">iPad Pro</h4>
+<div class="flex flex-col gap-1 mt-2 font-label-md text-label-md text-on-surface-variant">
+<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px]">location_on</span> London, UK</span>
+<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px]">schedule</span> Last active: 3 days ago</span>
+</div>
+</div>
+</div>
+<button aria-label="Revoke session" class="text-on-surface-variant hover:text-error transition-colors p-2 rounded-lg hover:bg-surface-bright flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">close</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Footer (Injected per shell logic, though often hidden on app dashboards, requirements dictate its inclusion if it represents a global shell element) -->
+<footer class="mt-auto pt-stack-lg border-t border-outline-variant mt-stack-lg flex justify-between items-center w-full py-stack-md bg-background flat">
+<div class="font-label-sm text-label-sm text-on-surface-variant">© 2024 Fotium Motion AI. Professional Grade.</div>
+<div class="flex gap-4">
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Terms of Service</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Privacy Policy</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">API Status</a>
+</div>
+</footer>
+</div>
+</main>
+</body></html>

@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Guided Brief</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Geist:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-family: 'Material Symbols Outlined';
+            font-weight: normal;
+            font-style: normal;
+            font-size: 24px;
+            line-height: 1;
+            letter-spacing: normal;
+            text-transform: none;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            -webkit-font-smoothing: antialiased;
+        }
+    </style>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#dcb8ff",
+                        "on-surface": "#e5e2e1",
+                        "surface-container-high": "#2a2a2a",
+                        "outline-variant": "#3b494b",
+                        "on-secondary-fixed-variant": "#6700b5",
+                        "on-primary": "#00363a",
+                        "on-error-container": "#ffdad6",
+                        "primary-container": "#00f0ff",
+                        "on-primary-container": "#006970",
+                        "inverse-primary": "#006970",
+                        "secondary-container": "#7701d0",
+                        "primary-fixed-dim": "#00dbe9",
+                        "surface-container-low": "#1c1b1b",
+                        "on-secondary": "#480081",
+                        "surface": "#131313",
+                        "secondary-fixed-dim": "#dcb8ff",
+                        "secondary-fixed": "#efdbff",
+                        "on-surface-variant": "#b9cacb",
+                        "on-tertiary-fixed-variant": "#8f0041",
+                        "on-primary-fixed-variant": "#004f54",
+                        "surface-container-highest": "#353534",
+                        "tertiary-fixed": "#ffd9e0",
+                        "surface-container-lowest": "#0e0e0e",
+                        "surface-variant": "#353534",
+                        "inverse-surface": "#e5e2e1",
+                        "surface-container": "#201f1f",
+                        "error": "#ffb4ab",
+                        "primary-fixed": "#7df4ff",
+                        "inverse-on-surface": "#313030",
+                        "on-tertiary": "#66002c",
+                        "surface-tint": "#00dbe9",
+                        "outline": "#849495",
+                        "on-secondary-fixed": "#2c0051",
+                        "on-background": "#e5e2e1",
+                        "tertiary-fixed-dim": "#ffb1c3",
+                        "error-container": "#93000a",
+                        "surface-bright": "#393939",
+                        "on-primary-fixed": "#002022",
+                        "surface-dim": "#131313",
+                        "tertiary-container": "#ffccd6",
+                        "on-tertiary-fixed": "#3f0019",
+                        "tertiary": "#fff3f4",
+                        "on-tertiary-container": "#bb0058",
+                        "primary": "#dbfcff",
+                        "on-secondary-container": "#dcb7ff",
+                        "background": "#131313",
+                        "on-error": "#690005"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "panel-padding": "12px",
+                        "gutter": "16px",
+                        "margin-desktop": "24px",
+                        "unit": "4px",
+                        "margin-mobile": "16px",
+                        "stack-sm": "8px",
+                        "stack-md": "16px",
+                        "stack-lg": "32px"
+                    },
+                    "fontFamily": {
+                        "headline-sm": ["Geist"],
+                        "headline-md": ["Geist"],
+                        "body-lg": ["Inter"],
+                        "label-sm": ["JetBrains Mono"],
+                        "headline-md-mobile": ["Geist"],
+                        "body-md": ["Inter"],
+                        "display-lg": ["Geist"],
+                        "label-md": ["JetBrains Mono"]
+                    },
+                    "fontSize": {
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "label-sm": ["10px", { "lineHeight": "14px", "fontWeight": "500" }],
+                        "headline-md-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface font-body-lg antialiased overflow-hidden selection:bg-primary-container selection:text-background">
+<!-- Shared Component: SideNavBar -->
+<nav class="bg-surface-container-low dark:bg-surface-container-low docked h-full w-[280px] left-0 flex flex-col fixed top-0 py-6 px-4 z-50 border-r border-outline-variant/20">
+<!-- Brand Header -->
+<div class="flex items-center gap-3 mb-8 px-2">
+<div class="w-10 h-10 rounded-lg bg-surface-container-high border border-outline-variant/30 flex items-center justify-center overflow-hidden">
+<span class="material-symbols-outlined text-primary-fixed-dim" style="font-variation-settings: 'FILL' 1;">animation</span>
+</div>
+<div>
+<h1 class="font-headline-md text-headline-md font-bold text-primary-fixed-dim dark:text-primary-fixed-dim">Fotium Studio</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Pro Plan</p>
+</div>
+</div>
+<!-- CTA -->
+<button class="mb-8 w-full py-3 px-4 bg-primary-container text-background font-label-md text-label-md rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity font-bold">
+<span class="material-symbols-outlined text-[18px]">add</span>
+            New Project
+        </button>
+<!-- Navigation Tabs -->
+<div class="flex flex-col gap-1 flex-1">
+<!-- Active Tab: Workspace -->
+<a class="flex items-center gap-3 px-3 py-3 rounded-lg bg-surface-container-high/50 text-primary font-bold border-r-2 border-primary hover:bg-surface-container-high dark:hover:bg-surface-container-high hover:text-primary transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">space_dashboard</span>
+<span class="font-label-md text-label-md">Workspace</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-3 rounded-lg text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high hover:text-primary transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">video_library</span>
+<span class="font-label-md text-label-md">Projects</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-3 rounded-lg text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high hover:text-primary transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">cloud_upload</span>
+<span class="font-label-md text-label-md">Assets</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-3 rounded-lg text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high hover:text-primary transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+<span class="font-label-md text-label-md">Credits</span>
+</a>
+</div>
+<div class="mt-auto">
+<a class="flex items-center gap-3 px-3 py-3 rounded-lg text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high hover:text-primary transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-md text-label-md">Settings</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="ml-[280px] h-screen flex flex-col bg-background relative">
+<!-- Shared Component: TopAppBar -->
+<header class="bg-surface dark:bg-surface docked full-width top-0 flex justify-between items-center w-full px-margin-desktop h-16 sticky top-0 z-40 border-b border-outline-variant/20">
+<!-- Navigation Links -->
+<div class="flex items-center gap-8 h-full">
+<!-- Active Link -->
+<a class="h-full flex items-center text-primary font-bold border-b-2 border-primary pb-1 transition-colors Active: scale-95 duration-150" href="#">
+<span class="font-label-md text-label-md">Studio</span>
+</a>
+<a class="h-full flex items-center text-on-surface-variant dark:text-on-surface-variant hover:text-primary-container transition-colors" href="#">
+<span class="font-label-md text-label-md">Library</span>
+</a>
+<a class="h-full flex items-center text-on-surface-variant dark:text-on-surface-variant hover:text-primary-container transition-colors" href="#">
+<span class="font-label-md text-label-md">History</span>
+</a>
+</div>
+<!-- Trailing Actions -->
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2 text-on-surface-variant">
+<button class="p-2 rounded-full hover:bg-surface-container-high hover:text-primary-container transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">notifications</span>
+</button>
+<button class="p-2 rounded-full hover:bg-surface-container-high hover:text-primary-container transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">help_outline</span>
+</button>
+</div>
+<button class="px-4 py-2 border border-outline-variant rounded bg-surface-container-high font-label-md text-label-md text-on-surface hover:border-primary-container hover:text-primary-container transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">magic_button</span>
+                    Generate
+                </button>
+<div class="w-8 h-8 rounded-full bg-surface-container-highest border border-outline-variant/30 overflow-hidden ml-2 cursor-pointer">
+<!-- Avatar Placeholder -->
+<img class="w-full h-full object-cover" data-alt="A macro photography shot of a sleek, abstract geometric sphere glowing with a subtle cyan internal light against a pitch-black background, representing a high-tech AI user avatar." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBhREBKm-d_mXdYRQ8PWpAhnqNNc6VSggsGxZP3MMAfTnOxw2jz_ll0UCZYS89wrIpFGkTRe-k3VnVm75CnNvhKlEBxdxv1iuCWphz27NI-OeEJ0Pak8KJJS60bU0IwGeGUtDqPrrjb6mazv8W4-KtKQ2smg-zC0r_WRmW8cbLcgMLO1bepzDGx5puzie799lj1yup_omP3pFlAcFdDHHrlrqpYiVVz57S-yfkXozAmDCCoMfff9StCSZaT1UlJLOlH4Y2nf0rJ3QM"/>
+</div>
+</div>
+</header>
+<!-- Studio Workspace Content -->
+<div class="flex flex-1 overflow-hidden">
+<!-- Center Column: Chat/Brief Area -->
+<div class="flex-1 flex flex-col relative border-r border-outline-variant/20 bg-[#0A0A0A]">
+<!-- Chat Header -->
+<div class="px-8 py-6 border-b border-outline-variant/10 flex items-center gap-4 bg-surface/50 backdrop-blur-sm z-10">
+<h2 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-3">
+<span class="material-symbols-outlined text-primary-container" style="font-variation-settings: 'FILL' 1;">assistant</span>
+                        Guided Brief
+                    </h2>
+<div class="px-3 py-1 bg-surface-container-high border border-outline-variant/30 rounded-full flex items-center gap-2">
+<span class="material-symbols-outlined text-[14px] text-error">play_circle</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">YouTube Format</span>
+</div>
+</div>
+<!-- Chat Messages Area -->
+<div class="flex-1 overflow-y-auto p-8 space-y-8 no-scrollbar pb-32">
+<!-- Assistant Message 1 -->
+<div class="flex gap-4 max-w-3xl">
+<div class="w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant/30 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[16px] text-primary-container">psychiatry</span>
+</div>
+<div class="bg-[#1E1E1E] rounded-2xl rounded-tl-sm p-5 border border-outline-variant/10 shadow-[0_4px_24px_rgba(0,0,0,0.2)]">
+<p class="font-body-md text-body-md text-on-surface leading-relaxed">
+                                Great. You've selected the YouTube format. To optimize the AI generation pipeline, what is the primary goal and style of this video?
+                            </p>
+</div>
+</div>
+<!-- User Message 1 -->
+<div class="flex gap-4 max-w-3xl ml-auto flex-row-reverse">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest border border-outline-variant/30 flex items-center justify-center shrink-0 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A sleek, abstract geometric sphere glowing with a subtle cyan internal light against a pitch-black background, representing a high-tech AI user avatar." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDXbhnyeHwjDZe5LRpyf8SHruVdjxcGkoaZuiZjB-Jtc9qjrcr7m1c2rM13XlrFZsBK_1Kdhx0ahvWj-2dVqlKrIxqCzy-e289jGriBqHQuQvQg59YwBPppOEyOh7VDFe7BaX-Iv994CqToaEz7XTJvbLQ9DL8iormjnXnVGtyepL5DqcqInAFSMQCYGLm5KRhDCPvsZIijHjPxTN7Sc50K_0PRaaW8MugKzDtm3fPDyABPr-57g-yKT8jB8Ca28oJ0v_CPEVsWKqI"/>
+</div>
+<div class="bg-surface-container-high/40 rounded-2xl rounded-tr-sm p-5 border border-primary-container/20 shadow-[0_0_15px_rgba(0,240,255,0.05)]">
+<p class="font-body-md text-body-md text-on-surface">
+                                A fast-paced tech review
+                            </p>
+</div>
+</div>
+<!-- Assistant Message 2 (Active context) -->
+<div class="flex gap-4 max-w-3xl">
+<div class="w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant/30 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[16px] text-primary-container">psychiatry</span>
+</div>
+<div class="bg-[#1E1E1E] rounded-2xl rounded-tl-sm p-5 border border-outline-variant/10 shadow-[0_4px_24px_rgba(0,0,0,0.2)] w-full">
+<p class="font-body-md text-body-md text-on-surface mb-6 leading-relaxed">
+                                Noted. "Fast-paced tech review" implies quick cuts and high-contrast visuals. <br/>
+                                Which <strong>visual preference</strong> aligns best with your vision? Select one or more:
+                            </p>
+<!-- Multi-Select Chips -->
+<div class="flex flex-wrap gap-3">
+<button class="px-5 py-2.5 rounded bg-[#121212] border border-outline-variant/50 font-label-md text-label-md text-on-surface-variant hover:border-primary-container hover:text-primary-container hover:shadow-[0_0_10px_rgba(0,240,255,0.1)] transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">check_box_outline_blank</span>
+                                    Minimal
+                                </button>
+<button class="px-5 py-2.5 rounded bg-primary-container/10 border border-primary-container font-label-md text-label-md text-primary-container shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">check_box</span>
+                                    Neon/Glow
+                                </button>
+<button class="px-5 py-2.5 rounded bg-[#121212] border border-outline-variant/50 font-label-md text-label-md text-on-surface-variant hover:border-primary-container hover:text-primary-container hover:shadow-[0_0_10px_rgba(0,240,255,0.1)] transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">check_box_outline_blank</span>
+                                    Cinematic
+                                </button>
+<button class="px-5 py-2.5 rounded bg-[#121212] border border-outline-variant/50 font-label-md text-label-md text-on-surface-variant hover:border-primary-container hover:text-primary-container hover:shadow-[0_0_10px_rgba(0,240,255,0.1)] transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">check_box_outline_blank</span>
+                                    Documentary
+                                </button>
+</div>
+</div>
+</div>
+</div>
+<!-- Input Area (Fixed Bottom) -->
+<div class="absolute bottom-0 w-full p-6 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A] to-transparent">
+<div class="relative max-w-4xl mx-auto flex items-end gap-3">
+<div class="flex-1 bg-[#121212] rounded-lg border border-outline-variant/30 focus-within:border-primary-container focus-within:shadow-[0_2px_0_rgba(0,240,255,1)] transition-all flex items-center px-4 py-3">
+<span class="material-symbols-outlined text-outline-variant mr-3">terminal</span>
+<input class="w-full bg-transparent border-none focus:ring-0 font-label-md text-label-md text-on-surface placeholder:text-outline-variant p-0 h-8" placeholder="Type your instruction or select options above..." type="text"/>
+<button class="ml-2 text-on-surface-variant hover:text-primary-container transition-colors">
+<span class="material-symbols-outlined">mic</span>
+</button>
+</div>
+<button class="h-14 px-6 bg-primary-container text-[#000000] rounded-lg font-label-md text-label-md font-bold flex items-center gap-2 hover:opacity-90 transition-opacity">
+                            Send
+                            <span class="material-symbols-outlined text-[18px]">send</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Right Panel: Context & Metadata -->
+<aside class="w-[320px] bg-[#1E1E1E] border-l border-outline-variant/20 flex flex-col">
+<div class="p-6 border-b border-outline-variant/10">
+<h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-[20px]">tune</span>
+                        Project Context
+                    </h3>
+</div>
+<div class="p-6 space-y-8 flex-1 overflow-y-auto">
+<!-- Metadata Block 1 -->
+<div>
+<p class="font-label-sm text-label-sm text-outline-variant uppercase tracking-widest mb-3">Target Platform</p>
+<div class="p-4 bg-[#2A2A2A] rounded-lg border border-[#FFFFFF10] flex items-center justify-between">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-error">smart_display</span>
+<span class="font-body-md text-body-md text-on-surface">YouTube Base</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface-variant bg-[#121212] px-2 py-1 rounded">16:9</span>
+</div>
+</div>
+<!-- Metadata Block 2 -->
+<div>
+<div class="flex items-center justify-between mb-3">
+<p class="font-label-sm text-label-sm text-outline-variant uppercase tracking-widest">Brief Progress</p>
+<span class="font-label-sm text-label-sm text-primary-container">2/8 answers</span>
+</div>
+<div class="space-y-4">
+<!-- Progress Bar -->
+<div class="h-1 w-full bg-[#121212] rounded-full overflow-hidden">
+<div class="h-full bg-primary-container w-1/4 shadow-[0_0_10px_rgba(0,240,255,0.5)]"></div>
+</div>
+<!-- Steps Outline -->
+<div class="space-y-2 border-l border-outline-variant/20 ml-2 pl-4">
+<div class="flex items-center gap-3 relative">
+<div class="absolute -left-[21px] w-2 h-2 rounded-full bg-primary-container shadow-[0_0_8px_rgba(0,240,255,0.8)]"></div>
+<span class="font-label-md text-label-md text-on-surface">1. Primary Goal</span>
+</div>
+<div class="flex items-center gap-3 relative">
+<div class="absolute -left-[23px] w-3 h-3 rounded-full bg-background border-2 border-primary-container"></div>
+<span class="font-label-md text-label-md text-primary-container font-bold">2. Visual Preference</span>
+</div>
+<div class="flex items-center gap-3 relative">
+<div class="absolute -left-[21px] w-2 h-2 rounded-full bg-outline-variant/30"></div>
+<span class="font-label-md text-label-md text-outline-variant">3. Audio Identity</span>
+</div>
+<div class="flex items-center gap-3 relative">
+<div class="absolute -left-[21px] w-2 h-2 rounded-full bg-outline-variant/30"></div>
+<span class="font-label-md text-label-md text-outline-variant">4. Pacing &amp; Cuts</span>
+</div>
+<div class="flex items-center gap-3 relative">
+<span class="font-label-md text-label-md text-outline-variant/50">... 4 more steps</span>
+</div>
+</div>
+</div>
+</div>
+<!-- AI Confidence Indicator -->
+<div class="mt-8 pt-8 border-t border-outline-variant/10">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-[16px] text-primary-fixed-dim">analytics</span>
+<p class="font-label-sm text-label-sm text-outline-variant uppercase tracking-widest">Generation Readiness</p>
+</div>
+<div class="flex items-end gap-2">
+<span class="font-headline-md text-headline-md text-on-surface">15%</span>
+<span class="font-body-md text-body-md text-on-surface-variant mb-1">Low Confidence</span>
+</div>
+<p class="font-label-sm text-label-sm text-outline-variant mt-2">More context required for optimal scene synthesis.</p>
+</div>
+</div>
+</aside>
+</div>
+</main>
+</body></html>

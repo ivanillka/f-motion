@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Create</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=Inter:wght@100..900&amp;family=JetBrains+Mono:wght@100..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "secondary": "#dcb8ff",
+                      "on-surface": "#e5e2e1",
+                      "surface-container-high": "#2a2a2a",
+                      "outline-variant": "#3b494b",
+                      "on-secondary-fixed-variant": "#6700b5",
+                      "on-primary": "#00363a",
+                      "on-error-container": "#ffdad6",
+                      "primary-container": "#00f0ff",
+                      "on-primary-container": "#006970",
+                      "inverse-primary": "#006970",
+                      "secondary-container": "#7701d0",
+                      "primary-fixed-dim": "#00dbe9",
+                      "surface-container-low": "#1c1b1b",
+                      "on-secondary": "#480081",
+                      "surface": "#131313",
+                      "secondary-fixed-dim": "#dcb8ff",
+                      "secondary-fixed": "#efdbff",
+                      "on-surface-variant": "#b9cacb",
+                      "on-tertiary-fixed-variant": "#8f0041",
+                      "on-primary-fixed-variant": "#004f54",
+                      "surface-container-highest": "#353534",
+                      "tertiary-fixed": "#ffd9e0",
+                      "surface-container-lowest": "#0e0e0e",
+                      "surface-variant": "#353534",
+                      "inverse-surface": "#e5e2e1",
+                      "surface-container": "#201f1f",
+                      "error": "#ffb4ab",
+                      "primary-fixed": "#7df4ff",
+                      "inverse-on-surface": "#313030",
+                      "on-tertiary": "#66002c",
+                      "surface-tint": "#00dbe9",
+                      "outline": "#849495",
+                      "on-secondary-fixed": "#2c0051",
+                      "on-background": "#e5e2e1",
+                      "tertiary-fixed-dim": "#ffb1c3",
+                      "error-container": "#93000a",
+                      "surface-bright": "#393939",
+                      "on-primary-fixed": "#002022",
+                      "surface-dim": "#131313",
+                      "tertiary-container": "#ffccd6",
+                      "on-tertiary-fixed": "#3f0019",
+                      "tertiary": "#fff3f4",
+                      "on-tertiary-container": "#bb0058",
+                      "primary": "#dbfcff",
+                      "on-secondary-container": "#dcb7ff",
+                      "background": "#131313",
+                      "on-error": "#690005"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "panel-padding": "12px",
+                      "gutter": "16px",
+                      "margin-desktop": "24px",
+                      "unit": "4px",
+                      "margin-mobile": "16px",
+                      "stack-sm": "8px",
+                      "stack-md": "16px",
+                      "stack-lg": "32px"
+              },
+              "fontFamily": {
+                      "headline-sm": [
+                              "Geist"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "label-sm": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-md-mobile": [
+                              "Geist"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "display-lg": [
+                              "Geist"
+                      ],
+                      "label-md": [
+                              "JetBrains Mono"
+                      ]
+              },
+              "fontSize": {
+                      "headline-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-sm": [
+                              "10px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-md-mobile": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "label-md": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen flex flex-col font-body-md overflow-hidden">
+<!-- TopAppBar (Small, Compact for Project) -->
+<header class="docked full-width top-0 bg-background dark:bg-background flex justify-between items-center w-full px-margin-mobile h-16 shrink-0 z-50">
+<div class="flex items-center gap-2">
+<button class="p-2 text-on-surface-variant hover:text-primary transition-all duration-200 rounded-full">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">arrow_back</span>
+</button>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm font-black text-on-surface">Untitled Project</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[10px]">cloud_done</span> Saved
+                </span>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-on-surface-variant hover:text-primary transition-all duration-200">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</div>
+</header>
+<!-- Main Conversation Area -->
+<main class="flex-1 overflow-y-auto px-margin-mobile py-stack-md flex flex-col gap-stack-lg relative pb-24">
+<!-- Assistant Message -->
+<div class="flex flex-col gap-stack-md animate-fade-in-up">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container-high flex items-center justify-center border border-outline-variant">
+<span class="material-symbols-outlined text-primary-container text-sm">smart_toy</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface">Fotium Assistant</span>
+</div>
+<div class="bg-surface-container-low p-panel-padding rounded-xl rounded-tl-none border border-outline-variant max-w-[85%] self-start shadow-sm">
+<p class="font-body-md text-on-surface">What would you like to create today? Select a format to get started, or describe your vision.</p>
+</div>
+</div>
+<!-- Format Selection Cards (Bento Grid Style) -->
+<div class="grid grid-cols-2 gap-unit w-full max-w-[85%] self-start ml-11">
+<!-- YouTube (Horizontal) -->
+<button class="col-span-2 bg-surface-container flex items-center justify-between p-panel-padding rounded-xl border border-outline-variant hover:border-primary-container/30 hover:bg-surface-container-high transition-all group relative overflow-hidden text-left focus:outline-none focus:ring-1 focus:ring-primary-container">
+<div class="absolute inset-0 bg-gradient-to-r from-primary-container/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+<div class="flex flex-col gap-1 z-10">
+<span class="font-headline-md-mobile text-headline-md-mobile text-on-surface">YouTube</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">16:9 • Cinematic</span>
+</div>
+<div class="w-10 h-6 border-2 border-on-surface-variant rounded-sm flex items-center justify-center opacity-50 group-hover:border-primary-container group-hover:opacity-100 transition-all z-10">
+<span class="material-symbols-outlined text-[16px]">play_arrow</span>
+</div>
+</button>
+<!-- Reel (Vertical) -->
+<button class="col-span-1 bg-surface-container flex flex-col justify-between p-panel-padding rounded-xl border border-outline-variant hover:border-primary-container/30 hover:bg-surface-container-high transition-all group relative overflow-hidden text-left focus:outline-none focus:ring-1 focus:ring-primary-container min-h-[120px]">
+<div class="absolute inset-0 bg-gradient-to-b from-primary-container/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+<div class="w-6 h-10 border-2 border-on-surface-variant rounded-sm mx-auto mb-2 opacity-50 group-hover:border-primary-container group-hover:opacity-100 transition-all z-10 flex items-center justify-center">
+<span class="material-symbols-outlined text-[12px]">smartphone</span>
+</div>
+<div class="flex flex-col gap-1 z-10">
+<span class="font-headline-sm text-headline-sm text-on-surface">Reel</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">9:16</span>
+</div>
+</button>
+<!-- Story (Vertical) -->
+<button class="col-span-1 bg-surface-container flex flex-col justify-between p-panel-padding rounded-xl border border-outline-variant hover:border-primary-container/30 hover:bg-surface-container-high transition-all group relative overflow-hidden text-left focus:outline-none focus:ring-1 focus:ring-primary-container min-h-[120px]">
+<div class="absolute inset-0 bg-gradient-to-b from-secondary-container/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+<div class="w-6 h-10 border-2 border-on-surface-variant rounded-sm mx-auto mb-2 opacity-50 group-hover:border-secondary-container group-hover:opacity-100 transition-all z-10 flex items-center justify-center border-dashed">
+<span class="material-symbols-outlined text-[12px]">history</span>
+</div>
+<div class="flex flex-col gap-1 z-10">
+<span class="font-headline-sm text-headline-sm text-on-surface">Story</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">9:16 • Ephemeral</span>
+</div>
+</button>
+</div>
+<!-- Invisible spacer for bottom composer -->
+<div class="h-20"></div>
+</main>
+<!-- Bottom Composer -->
+<div class="fixed bottom-0 left-0 w-full bg-background border-t border-outline-variant/30 p-margin-mobile pb-6 z-40 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+<div class="flex items-end gap-2 bg-[#121212] rounded-xl border border-outline-variant focus-within:border-primary-container focus-within:ring-1 focus-within:ring-primary-container/50 transition-all p-2 relative overflow-hidden">
+<button class="p-2 text-on-surface-variant hover:text-primary-container transition-colors rounded-lg flex-shrink-0">
+<span class="material-symbols-outlined">add_photo_alternate</span>
+</button>
+<textarea class="flex-1 bg-transparent border-none text-on-surface font-label-md text-label-md resize-none max-h-32 min-h-[40px] py-3 px-1 focus:ring-0 placeholder:text-on-surface-variant/50" placeholder="Describe what you want to create..." rows="1"></textarea>
+<button class="p-2 bg-primary-container text-on-primary-container rounded-lg hover:bg-primary-fixed transition-colors flex-shrink-0 flex items-center justify-center">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">send</span>
+</button>
+</div>
+</div>
+<style>
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .animate-fade-in-up {
+            animation: fadeInUp 0.4s ease-out forwards;
+        }
+        
+        /* Custom scrollbar for text area */
+        textarea::-webkit-scrollbar {
+            width: 4px;
+        }
+        textarea::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        textarea::-webkit-scrollbar-thumb {
+            background: #3b494b;
+            border-radius: 4px;
+        }
+    </style>
+<script>
+        // Simple auto-resize for textarea
+        const textarea = document.querySelector('textarea');
+        textarea.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+            if(this.value.trim() !== '') {
+                this.classList.add('font-body-md');
+                this.classList.remove('font-label-md');
+            } else {
+                 this.classList.remove('font-body-md');
+                 this.classList.add('font-label-md');
+            }
+        });
+    </script>
+</body></html>

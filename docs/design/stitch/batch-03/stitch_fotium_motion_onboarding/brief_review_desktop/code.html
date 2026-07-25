@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Brief Review</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "secondary": "#dcb8ff",
+                      "on-surface": "#e5e2e1",
+                      "surface-container-high": "#2a2a2a",
+                      "outline-variant": "#3b494b",
+                      "on-secondary-fixed-variant": "#6700b5",
+                      "on-primary": "#00363a",
+                      "on-error-container": "#ffdad6",
+                      "primary-container": "#00f0ff",
+                      "on-primary-container": "#006970",
+                      "inverse-primary": "#006970",
+                      "secondary-container": "#7701d0",
+                      "primary-fixed-dim": "#00dbe9",
+                      "surface-container-low": "#1c1b1b",
+                      "on-secondary": "#480081",
+                      "surface": "#131313",
+                      "secondary-fixed-dim": "#dcb8ff",
+                      "secondary-fixed": "#efdbff",
+                      "on-surface-variant": "#b9cacb",
+                      "on-tertiary-fixed-variant": "#8f0041",
+                      "on-primary-fixed-variant": "#004f54",
+                      "surface-container-highest": "#353534",
+                      "tertiary-fixed": "#ffd9e0",
+                      "surface-container-lowest": "#0e0e0e",
+                      "surface-variant": "#353534",
+                      "inverse-surface": "#e5e2e1",
+                      "surface-container": "#201f1f",
+                      "error": "#ffb4ab",
+                      "primary-fixed": "#7df4ff",
+                      "inverse-on-surface": "#313030",
+                      "on-tertiary": "#66002c",
+                      "surface-tint": "#00dbe9",
+                      "outline": "#849495",
+                      "on-secondary-fixed": "#2c0051",
+                      "on-background": "#e5e2e1",
+                      "tertiary-fixed-dim": "#ffb1c3",
+                      "error-container": "#93000a",
+                      "surface-bright": "#393939",
+                      "on-primary-fixed": "#002022",
+                      "surface-dim": "#131313",
+                      "tertiary-container": "#ffccd6",
+                      "on-tertiary-fixed": "#3f0019",
+                      "tertiary": "#fff3f4",
+                      "on-tertiary-container": "#bb0058",
+                      "primary": "#dbfcff",
+                      "on-secondary-container": "#dcb7ff",
+                      "background": "#131313",
+                      "on-error": "#690005"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "panel-padding": "12px",
+                      "gutter": "16px",
+                      "margin-desktop": "24px",
+                      "unit": "4px",
+                      "margin-mobile": "16px",
+                      "stack-sm": "8px",
+                      "stack-md": "16px",
+                      "stack-lg": "32px"
+              },
+              "fontFamily": {
+                      "headline-sm": [
+                              "Geist"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "label-sm": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-md-mobile": [
+                              "Geist"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "display-lg": [
+                              "Geist"
+                      ],
+                      "label-md": [
+                              "JetBrains Mono"
+                      ]
+              },
+              "fontSize": {
+                      "headline-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-sm": [
+                              "10px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-md-mobile": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "label-md": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+          .bg-noise {
+              background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
+          }
+      </style>
+</head>
+<body class="bg-background text-on-surface h-screen overflow-hidden flex font-body-lg">
+<!-- SideNavBar -->
+<nav class="hidden md:flex bg-surface-container-low flex flex-col h-screen fixed left-0 top-0 py-6 px-4 docked h-full w-[280px] left-0 flat no shadows z-50 transition-all duration-200 ease-in-out border-r border-surface-container-high">
+<div class="mb-stack-lg flex items-center gap-3 px-panel-padding">
+<div class="w-8 h-8 rounded bg-primary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary-container" style="font-variation-settings: 'FILL' 1;">movie</span>
+</div>
+<div>
+<h1 class="font-headline-md text-headline-md font-bold text-primary-fixed-dim">Fotium Studio</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Pro Plan</p>
+</div>
+</div>
+<ul class="flex flex-col gap-2 flex-grow">
+<li>
+<a class="flex items-center gap-3 px-panel-padding py-2 rounded-lg text-primary font-bold bg-surface-container-high transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">space_dashboard</span>
+<span class="font-label-md text-label-md">Workspace</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-panel-padding py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="video_library">video_library</span>
+<span class="font-label-md text-label-md">Projects</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-panel-padding py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="cloud_upload">cloud_upload</span>
+<span class="font-label-md text-label-md">Assets</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-panel-padding py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="font-label-md text-label-md">Credits</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-panel-padding py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-md text-label-md">Settings</span>
+</a>
+</li>
+</ul>
+<div class="mt-auto pt-stack-md">
+<button class="w-full bg-primary-container text-on-primary-container font-label-md text-label-md py-2 px-4 rounded flex items-center justify-center gap-2 hover:bg-primary-fixed transition-colors">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">add</span>
+                New Project
+            </button>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col md:ml-[280px] h-full relative bg-noise">
+<!-- TopAppBar -->
+<header class="bg-surface flex justify-between items-center w-full px-margin-desktop h-16 sticky top-0 z-40 flat no shadows">
+<div class="flex items-center gap-gutter md:hidden">
+<span class="material-symbols-outlined text-primary-fixed-dim" style="font-variation-settings: 'FILL' 1;">menu</span>
+<span class="font-headline-md text-headline-md font-bold text-primary-fixed-dim">Fotium Motion</span>
+</div>
+<nav class="hidden md:flex items-center gap-gutter h-full">
+<a class="h-full flex items-center text-primary font-bold border-b-2 border-primary pb-1 font-label-md text-label-md" href="#">Studio</a>
+<a class="h-full flex items-center text-on-surface-variant hover:text-primary-container transition-colors font-label-md text-label-md" href="#">Library</a>
+<a class="h-full flex items-center text-on-surface-variant hover:text-primary-container transition-colors font-label-md text-label-md" href="#">History</a>
+</nav>
+<div class="flex items-center gap-gutter">
+<div class="relative hidden sm:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+<input class="bg-[#121212] border-none text-on-surface font-label-md text-label-md rounded pl-9 pr-4 py-1.5 focus:ring-0 focus:border-b focus:border-primary-container w-48 transition-all" placeholder="Search..." type="text"/>
+</div>
+<button class="bg-primary-container text-on-primary-container font-label-md text-label-md px-4 py-1.5 rounded hover:bg-primary-fixed transition-colors hidden sm:block">
+                    Generate
+                </button>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<button class="hover:text-primary-container transition-colors p-1"><span class="material-symbols-outlined" data-icon="notifications">notifications</span></button>
+<button class="hover:text-primary-container transition-colors p-1"><span class="material-symbols-outlined" data-icon="help_outline">help_outline</span></button>
+</div>
+<img alt="User Avatar" class="w-8 h-8 rounded-full object-cover border border-surface-container-high" data-alt="A small circular avatar image of a professional creative user in a dimly lit studio setting. The lighting is cinematic with subtle blue and purple rim lights, casting a soft glow on the subject's face against a dark, minimalist background. Corporate modern aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA8PDM2j4U16fj7YR_yw0OI_GIudhmUPsOjTbXKyo2HmanBkJXPVWKoSkdU4wY8KUwxeLTOYAuGF6AxqXVDZ-EfwNd8kkSb3a58Uc8EMjMOg_VCKNsOC2Suw6TQu3AzE6bzYC2VDjgNTF1RwZJIM52pH9YNPg1L_frJcFA9WGaTzQq-iK_4Grl6UFp6SKre7OKX4-s22rcIg9JAl3E1SpAn7ySZAm7hvyqRscxWGj5fgZWQ_HbX4msQj6EupBhJpZqkb1yVaYG54IA"/>
+</div>
+</header>
+<!-- Canvas -->
+<div class="flex-1 overflow-y-auto p-margin-desktop flex gap-margin-desktop flex-col lg:flex-row">
+<!-- Left Panel: Brief Review Card -->
+<div class="flex-1 flex flex-col gap-stack-md max-w-4xl mx-auto lg:mx-0">
+<div class="mb-stack-sm">
+<h2 class="font-headline-md text-headline-md text-on-surface mb-1 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-container">summarize</span>
+                        Project Brief Review
+                    </h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Review your AI generation parameters before proceeding.</p>
+</div>
+<!-- Conversational Summary Card (Bento/Glassmorphism inspired) -->
+<div class="bg-surface-container-low rounded-xl p-6 border border-surface-container-high relative overflow-hidden group">
+<!-- Subtle ambient glow -->
+<div class="absolute -top-24 -right-24 w-48 h-48 bg-primary-container opacity-[0.03] rounded-full blur-3xl group-hover:opacity-[0.08] transition-opacity duration-700"></div>
+<div class="flex gap-4 items-start relative z-10">
+<div class="w-10 h-10 rounded-full bg-[#121212] border border-surface-container-highest flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary-fixed-dim">smart_toy</span>
+</div>
+<div class="flex-1">
+<p class="font-body-lg text-body-lg text-on-surface leading-relaxed mb-6">
+                                Perfect. I've compiled your requirements. We're creating a <span class="text-primary-container font-medium">Tech Review</span> video tailored for <span class="text-primary-container font-medium">YouTube</span>. The primary goal is to highlight the latest features of the new device while maintaining an energetic, professional tone. 
+                            </p>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+<div class="bg-[#121212] p-4 rounded-lg border border-surface-container-highest">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-sm text-on-surface-variant">tune</span>
+<h4 class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Format &amp; Aspect</h4>
+</div>
+<div class="flex flex-wrap gap-2">
+<span class="font-label-md text-label-md bg-surface-container-high px-2 py-1 rounded text-on-surface">16:9 Landscape</span>
+<span class="font-label-md text-label-md bg-surface-container-high px-2 py-1 rounded text-on-surface">4K UHD</span>
+</div>
+</div>
+<div class="bg-[#121212] p-4 rounded-lg border border-surface-container-highest">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-sm text-on-surface-variant">palette</span>
+<h4 class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Aesthetic</h4>
+</div>
+<div class="flex flex-wrap gap-2">
+<span class="font-label-md text-label-md bg-surface-container-high px-2 py-1 rounded text-on-surface">Dark Mode Studio</span>
+<span class="font-label-md text-label-md bg-surface-container-high px-2 py-1 rounded text-on-surface">Neon Accents</span>
+</div>
+</div>
+<div class="bg-[#121212] p-4 rounded-lg border border-surface-container-highest">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-sm text-on-surface-variant">model_training</span>
+<h4 class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">AI Generation Mode</h4>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-body-md text-body-md text-on-surface">Managed Credits</span>
+<span class="font-label-sm text-label-sm text-primary-container bg-primary-container/10 px-2 py-0.5 rounded">High Priority</span>
+</div>
+</div>
+<div class="bg-[#121212] p-4 rounded-lg border border-surface-container-highest">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-sm text-on-surface-variant">timer</span>
+<h4 class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Est. Duration</h4>
+</div>
+<span class="font-body-md text-body-md text-on-surface">~45 seconds</span>
+</div>
+</div>
+<div class="flex items-center gap-4 border-t border-surface-container-highest pt-6">
+<button class="bg-primary-container text-on-primary-container font-label-md text-label-md px-6 py-2.5 rounded flex items-center gap-2 hover:bg-primary-fixed hover:shadow-[0_0_15px_rgba(0,240,255,0.3)] transition-all">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+                                    Create 3 Concepts
+                                </button>
+<button class="text-on-surface font-label-md text-label-md px-4 py-2.5 rounded border border-surface-container-highest hover:bg-surface-container-high transition-colors">
+                                    Change an answer
+                                </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Panel: Context / Asset State (Fully Populated) -->
+<div class="w-full lg:w-[320px] bg-surface-container-low border border-surface-container-high rounded-xl flex flex-col h-fit sticky top-24 shrink-0">
+<div class="p-4 border-b border-surface-container-high flex items-center justify-between">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Context Library</h3>
+<button class="text-on-surface-variant hover:text-primary-container transition-colors">
+<span class="material-symbols-outlined text-sm">more_horiz</span>
+</button>
+</div>
+<div class="p-4 flex flex-col gap-4">
+<div class="flex items-center justify-between mb-2">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Source Assets</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">3 Selected</span>
+</div>
+<!-- Asset Items -->
+<div class="flex items-center gap-3 p-2 rounded-lg bg-[#121212] border border-surface-container-highest hover:border-outline-variant transition-colors group cursor-pointer">
+<div class="w-12 h-12 rounded bg-surface-container-highest overflow-hidden relative shrink-0">
+<img alt="Device Front" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" data-alt="A highly detailed close-up shot of a modern, sleek smartphone with a glossy black finish, resting on a dark, textured studio surface. The lighting emphasizes the phone's metallic edges with a subtle, futuristic cyan rim light. Cinematic, professional tech product photography aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCccmxOgffOrRx48eOmKbZWF9pSEjsVxwV8pOU372YfboSHXfTkJeG5Ml1U62QdnIVzE6I4dd8_Xb0Fe9IxBMldr94XFHGXbjvxbTZvZtGOODlPRIuc6QTUa9VNgizYVyx4TixrMZ-F3rYlJupHXuq7f7nPHJOM9Sc8YoJyeu5EG3v4VHOts9kYd9UjcyMStaEEiMxWHE8p7VVdStH7FBUUydHfJHjeVahAqjuMxn77NIOozoTk4Ky0zHKb4dziylk1KP1FCx6MN60"/>
+<div class="absolute inset-0 ring-1 ring-inset ring-white/10 rounded"></div>
+</div>
+<div class="overflow-hidden">
+<p class="font-label-md text-label-md text-on-surface truncate">Device_Front_4K.mov</p>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Video • 0:12</p>
+</div>
+</div>
+<div class="flex items-center gap-3 p-2 rounded-lg bg-[#121212] border border-surface-container-highest hover:border-outline-variant transition-colors group cursor-pointer">
+<div class="w-12 h-12 rounded bg-surface-container-highest overflow-hidden relative shrink-0">
+<img alt="Device Angled" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" data-alt="A highly detailed angled shot of a modern, sleek smartphone highlighting its sophisticated camera module on the back. Resting on a dark, matte studio surface. The lighting is dramatic, casting deep shadows while a distinct neon cyan light accents the camera lenses. Cinematic tech product aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAJGUxTmfgP2Dz1WnCY2uEtLakxhJk1EeV5n73_Dma-BlrfqNgKtk-dZEUxfoBliM1Ln-kijpzWxY6MPNcaweNUsb2qpDSxH_Cr77cfnFdufxj2OMc_Xwxu6-j02fAwt071U4LbBLypl-VioctzNsitPlhraN4FhrtBP18W61MNKwBCb-Ls1CfXnYB6z66VfImU7-DKfvoxxN4TKkxgqmmiCXF8JNMrpyrbrrMZSuHpTVbU0eD_p8bJ7UOaUpDzTTrmftst21dwoBg"/>
+<div class="absolute inset-0 ring-1 ring-inset ring-white/10 rounded"></div>
+</div>
+<div class="overflow-hidden">
+<p class="font-label-md text-label-md text-on-surface truncate">Camera_Module_Pan.mov</p>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Video • 0:08</p>
+</div>
+</div>
+<div class="flex items-center gap-3 p-2 rounded-lg bg-[#121212] border border-surface-container-highest hover:border-outline-variant transition-colors group cursor-pointer">
+<div class="w-12 h-12 rounded bg-surface-container-highest flex items-center justify-center relative shrink-0">
+<span class="material-symbols-outlined text-on-surface-variant">audio_file</span>
+</div>
+<div class="overflow-hidden">
+<p class="font-label-md text-label-md text-on-surface truncate">VO_Draft_01.wav</p>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Audio • 0:42</p>
+</div>
+</div>
+</div>
+<div class="p-4 border-t border-surface-container-high bg-surface-container-lowest/50 rounded-b-xl">
+<div class="flex justify-between items-center mb-2">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Credit Usage Estimate</span>
+<span class="font-label-md text-label-md text-primary-fixed-dim">45 ⚡</span>
+</div>
+<div class="w-full bg-[#121212] h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary-container w-[15%] h-full rounded-full shadow-[0_0_8px_rgba(0,240,255,0.5)]"></div>
+</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant mt-2 text-right">955 remaining</p>
+</div>
+</div>
+</div>
+</main>
+</body></html>

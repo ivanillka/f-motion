@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Account Deletion</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&amp;family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed-variant": "#8f0041",
+                        "secondary-container": "#7701d0",
+                        "tertiary-container": "#ffccd6",
+                        "on-tertiary": "#66002c",
+                        "surface-variant": "#353534",
+                        "surface-container-low": "#1c1b1b",
+                        "on-secondary-fixed-variant": "#6700b5",
+                        "surface-container-high": "#2a2a2a",
+                        "primary-fixed-dim": "#00dbe9",
+                        "surface-bright": "#393939",
+                        "secondary": "#dcb8ff",
+                        "on-surface-variant": "#b9cacb",
+                        "on-background": "#e5e2e1",
+                        "on-secondary": "#480081",
+                        "primary-container": "#00f0ff",
+                        "tertiary-fixed": "#ffd9e0",
+                        "outline": "#849495",
+                        "on-tertiary-container": "#bb0058",
+                        "surface-container-lowest": "#0e0e0e",
+                        "inverse-primary": "#006970",
+                        "secondary-fixed-dim": "#dcb8ff",
+                        "surface": "#131313",
+                        "primary": "#dbfcff",
+                        "on-primary-fixed-variant": "#004f54",
+                        "on-primary": "#00363a",
+                        "error-container": "#93000a",
+                        "surface-tint": "#00dbe9",
+                        "surface-dim": "#131313",
+                        "surface-container": "#201f1f",
+                        "tertiary-fixed-dim": "#ffb1c3",
+                        "on-secondary-fixed": "#2c0051",
+                        "on-primary-fixed": "#002022",
+                        "secondary-fixed": "#efdbff",
+                        "outline-variant": "#3b494b",
+                        "on-secondary-container": "#dcb7ff",
+                        "surface-container-highest": "#353534",
+                        "tertiary": "#fff3f4",
+                        "inverse-surface": "#e5e2e1",
+                        "error": "#ffb4ab",
+                        "on-error": "#690005",
+                        "on-surface": "#e5e2e1",
+                        "on-primary-container": "#006970",
+                        "on-error-container": "#ffdad6",
+                        "on-tertiary-fixed": "#3f0019",
+                        "inverse-on-surface": "#313030",
+                        "primary-fixed": "#7df4ff",
+                        "background": "#131313"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "stack-sm": "8px",
+                        "stack-lg": "32px",
+                        "margin-desktop": "24px",
+                        "gutter": "16px",
+                        "unit": "4px",
+                        "panel-padding": "12px",
+                        "margin-mobile": "16px",
+                        "stack-md": "16px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["JetBrains Mono"],
+                        "headline-sm": ["Geist"],
+                        "body-lg": ["Inter"],
+                        "display-lg": ["Geist"],
+                        "headline-md": ["Geist"],
+                        "headline-md-mobile": ["Geist"],
+                        "body-md": ["Inter"],
+                        "label-sm": ["JetBrains Mono"]
+                    },
+                    "fontSize": {
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "headline-md-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-sm": ["10px", { "lineHeight": "14px", "fontWeight": "500" }]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            background-color: #131313;
+            color: #e5e2e1;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-background min-h-screen flex flex-col font-body-lg text-body-lg text-on-background selection:bg-primary-container selection:text-on-primary-container">
+<!-- Navbar: Minimal for transactional page -->
+<nav class="flex justify-between items-center px-margin-desktop w-full h-16 bg-background">
+<div class="flex items-center gap-gutter">
+<span class="font-display-lg text-headline-md tracking-tighter text-primary dark:text-primary">Fotium Motion</span>
+</div>
+<div class="flex items-center gap-stack-sm">
+<button aria-label="Cancel and return" class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-variant transition-colors duration-200">
+<span class="material-symbols-outlined text-on-surface-variant">close</span>
+</button>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-grow flex items-center justify-center p-margin-mobile md:p-margin-desktop relative overflow-hidden">
+<!-- Subtle Background Glow -->
+<div class="absolute inset-0 pointer-events-none overflow-hidden flex items-center justify-center opacity-10">
+<div class="w-[800px] h-[800px] bg-error rounded-full blur-[120px] mix-blend-screen"></div>
+</div>
+<div class="w-full max-w-2xl relative z-10">
+<!-- Warning Header -->
+<div class="mb-stack-lg text-center">
+<span class="material-symbols-outlined text-error text-[48px] mb-stack-md mx-auto block" style="font-variation-settings: 'FILL' 1;">warning</span>
+<h1 class="font-display-lg text-display-lg text-on-surface mb-stack-sm">Delete Account</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-lg mx-auto">
+                    This action is permanent and cannot be undone. Please review the consequences of deleting your Fotium Motion account.
+                </p>
+</div>
+<!-- Consequences Grid (Bento Style) -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-stack-sm mb-stack-lg">
+<!-- Consequence 1 -->
+<div class="bg-surface-container-high border border-outline-variant rounded-xl p-panel-padding md:p-margin-desktop flex flex-col gap-stack-sm">
+<div class="w-10 h-10 rounded-lg bg-surface-variant flex items-center justify-center mb-stack-sm">
+<span class="material-symbols-outlined text-error">video_library</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Loss of Projects</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">All your rendering queues, AI studio settings, and active video projects will be permanently destroyed.</p>
+</div>
+<!-- Consequence 2 -->
+<div class="bg-surface-container-high border border-outline-variant rounded-xl p-panel-padding md:p-margin-desktop flex flex-col gap-stack-sm">
+<div class="w-10 h-10 rounded-lg bg-surface-variant flex items-center justify-center mb-stack-sm">
+<span class="material-symbols-outlined text-error">folder_delete</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Asset Deletion</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Uploaded raw footage, generated assets, and custom AI models will be wiped from our servers immediately.</p>
+</div>
+<!-- Consequence 3 -->
+<div class="bg-surface-container-high border border-outline-variant rounded-xl p-panel-padding md:p-margin-desktop flex flex-col gap-stack-sm md:col-span-2">
+<div class="flex items-start gap-stack-md">
+<div class="w-10 h-10 shrink-0 rounded-lg bg-surface-variant flex items-center justify-center">
+<span class="material-symbols-outlined text-error">account_balance_wallet</span>
+</div>
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-unit">Forfeiture of Credits</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Any remaining processing credits or subscription time will be forfeited without a refund. Your billing profile will be disconnected.</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Authentication Requirement -->
+<div class="bg-surface-container-low border border-outline-variant rounded-xl p-margin-desktop mb-stack-lg relative overflow-hidden">
+<div class="absolute top-0 left-0 w-1 h-full bg-primary-container"></div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-stack-sm flex items-center gap-unit">
+<span class="material-symbols-outlined text-primary-container text-lg">lock</span>
+                    Authentication Required
+                </h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-stack-md">
+                    To proceed with deletion, you must re-authenticate your session.
+                </p>
+<div class="flex flex-col gap-stack-sm">
+<label class="font-label-md text-label-md text-on-surface-variant" for="password">CURRENT PASSWORD</label>
+<input class="w-full bg-surface border-b border-outline-variant text-on-surface font-body-lg py-stack-sm px-0 focus:outline-none focus:border-primary-container focus:ring-0 transition-colors" id="password" placeholder="••••••••" type="password"/>
+</div>
+</div>
+<!-- Action Area -->
+<div class="flex flex-col sm:flex-row items-center justify-end gap-stack-md pt-stack-md border-t border-outline-variant">
+<button class="w-full sm:w-auto px-margin-desktop py-stack-sm rounded-full border border-outline-variant text-on-surface hover:bg-surface-container-high transition-colors font-label-md text-label-md uppercase tracking-wider">
+                    Cancel
+                </button>
+<button class="w-full sm:w-auto px-margin-desktop py-stack-sm rounded-full bg-surface-variant text-error hover:bg-error-container hover:text-on-error-container transition-colors font-label-md text-label-md uppercase tracking-wider flex items-center justify-center gap-unit disabled:opacity-50 disabled:cursor-not-allowed" disabled="" id="deleteBtn">
+                    Request Deletion
+                </button>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="flex justify-between items-center px-margin-desktop py-stack-md w-full bg-background border-t border-outline-variant mt-auto">
+<span class="font-label-sm text-label-sm text-on-surface-variant dark:text-on-surface-variant">© 2024 Fotium Motion AI. Professional Grade.</span>
+<div class="flex gap-gutter">
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Terms of Service</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Privacy Policy</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">API Status</a>
+</div>
+</footer>
+<script>
+        // Simple script to enable button when input has value to demonstrate micro-interaction
+        const passInput = document.getElementById('password');
+        const deleteBtn = document.getElementById('deleteBtn');
+
+        passInput.addEventListener('input', (e) => {
+            if(e.target.value.length > 5) {
+                deleteBtn.removeAttribute('disabled');
+            } else {
+                deleteBtn.setAttribute('disabled', 'true');
+            }
+        });
+    </script>
+</body></html>

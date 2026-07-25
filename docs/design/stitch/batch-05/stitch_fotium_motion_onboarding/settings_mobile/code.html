@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Settings</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700;900&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed-variant": "#8f0041",
+                        "secondary-container": "#7701d0",
+                        "tertiary-container": "#ffccd6",
+                        "on-tertiary": "#66002c",
+                        "surface-variant": "#353534",
+                        "surface-container-low": "#1c1b1b",
+                        "on-secondary-fixed-variant": "#6700b5",
+                        "surface-container-high": "#2a2a2a",
+                        "primary-fixed-dim": "#00dbe9",
+                        "surface-bright": "#393939",
+                        "secondary": "#dcb8ff",
+                        "on-surface-variant": "#b9cacb",
+                        "on-background": "#e5e2e1",
+                        "on-secondary": "#480081",
+                        "primary-container": "#00f0ff",
+                        "tertiary-fixed": "#ffd9e0",
+                        "outline": "#849495",
+                        "on-tertiary-container": "#bb0058",
+                        "surface-container-lowest": "#0e0e0e",
+                        "inverse-primary": "#006970",
+                        "secondary-fixed-dim": "#dcb8ff",
+                        "surface": "#131313",
+                        "primary": "#dbfcff",
+                        "on-primary-fixed-variant": "#004f54",
+                        "on-primary": "#00363a",
+                        "error-container": "#93000a",
+                        "surface-tint": "#00dbe9",
+                        "surface-dim": "#131313",
+                        "surface-container": "#201f1f",
+                        "tertiary-fixed-dim": "#ffb1c3",
+                        "on-secondary-fixed": "#2c0051",
+                        "on-primary-fixed": "#002022",
+                        "secondary-fixed": "#efdbff",
+                        "outline-variant": "#3b494b",
+                        "on-secondary-container": "#dcb7ff",
+                        "surface-container-highest": "#353534",
+                        "tertiary": "#fff3f4",
+                        "inverse-surface": "#e5e2e1",
+                        "error": "#ffb4ab",
+                        "on-error": "#690005",
+                        "on-surface": "#e5e2e1",
+                        "on-primary-container": "#006970",
+                        "on-error-container": "#ffdad6",
+                        "on-tertiary-fixed": "#3f0019",
+                        "inverse-on-surface": "#313030",
+                        "primary-fixed": "#7df4ff",
+                        "background": "#131313"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "stack-sm": "8px",
+                        "stack-lg": "32px",
+                        "margin-desktop": "24px",
+                        "gutter": "16px",
+                        "unit": "4px",
+                        "panel-padding": "12px",
+                        "margin-mobile": "16px",
+                        "stack-md": "16px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["JetBrains Mono"],
+                        "headline-sm": ["Geist"],
+                        "body-lg": ["Inter"],
+                        "display-lg": ["Geist"],
+                        "headline-md": ["Geist"],
+                        "headline-md-mobile": ["Geist"],
+                        "body-md": ["Inter"],
+                        "label-sm": ["JetBrains Mono"]
+                    },
+                    "fontSize": {
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "headline-md-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-sm": ["10px", { "lineHeight": "14px", "fontWeight": "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: theme('colors.background');
+            color: theme('colors.on-surface');
+            -webkit-font-smoothing: antialiased;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface pb-[100px] h-screen overflow-y-auto">
+<!-- Header Section (Compact) -->
+<header class="sticky top-0 z-10 bg-background/90 backdrop-blur-md px-margin-mobile pt-stack-lg pb-stack-sm flex justify-between items-center border-b border-surface-container-low">
+<h1 class="font-headline-md-mobile text-headline-md-mobile font-bold text-on-surface">Settings</h1>
+<button class="p-2 rounded-full hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant">search</span>
+</button>
+</header>
+<!-- Account Profile Banner -->
+<section class="px-margin-mobile py-stack-md mt-stack-sm flex items-center gap-4">
+<div class="relative">
+<img alt="User avatar" class="w-16 h-16 rounded-full object-cover border-2 border-surface-container-high bg-surface-container" data-alt="A highly detailed close-up portrait of a digital avatar for a professional user profile. The style is sleek, modern, and dark-mode oriented with subtle cyan and deep grey highlights. It suggests technical mastery and creativity, illuminated by soft studio lighting against a minimal black background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDmr8TajCd1mW5NCfIpiM8IWPI8GhXgte29Y8KoY81IMZ2yGpugwr8xiCK7SCjfTKW2h3TZtETD404uJc4O6Mc7w72TwRpKam_IRzp3kyunk6hx-47fXB_Tk0xmmKdCbHa1gQryDYITg5P0j6wrKOn0biB8Sqa4XSf88HZUbtXQDd6LDfpBe1Mp1G8s2vYeeR2wEVxnEHImJoI1AoSXmFAKkl4yxIlBUxVP7QmBvylviTJ84JiZSJj8MElKI770mU69_mpUuy_3LbY"/>
+<div class="absolute bottom-0 right-0 w-4 h-4 bg-primary-container rounded-full border-2 border-background"></div>
+</div>
+<div class="flex-1">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Alex Mercer</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Pro Studio Plan</p>
+</div>
+<button class="px-4 py-2 bg-surface-container-high hover:bg-surface-bright text-on-surface rounded-lg transition-colors font-label-md text-label-md">
+            Manage
+        </button>
+</section>
+<!-- Settings List -->
+<main class="px-margin-mobile mt-stack-md flex flex-col gap-unit">
+<!-- Services Section -->
+<div class="bg-surface-container-low rounded-xl overflow-hidden shadow-sm">
+<div class="px-4 py-3 border-b border-outline-variant/30 font-label-md text-label-md text-primary uppercase">Studio &amp; Connect</div>
+<a class="flex items-center justify-between px-4 py-4 hover:bg-surface-container transition-colors group" href="#">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">cloud_sync</span>
+<span class="font-body-lg text-body-lg">Connected Services</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="px-2 py-0.5 bg-surface-container-highest text-on-surface-variant rounded font-label-sm text-label-sm">3 ACTIVE</span>
+<span class="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+</div>
+</a>
+<a class="flex items-center justify-between px-4 py-4 hover:bg-surface-container transition-colors group" href="#">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">memory</span>
+<span class="font-body-lg text-body-lg">AI Compute Credits</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="px-2 py-0.5 bg-primary-container text-on-primary-container rounded font-label-sm text-label-sm shadow-[0_0_8px_rgba(0,240,255,0.2)]">LOW BALANCE</span>
+<span class="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+</div>
+</a>
+<a class="flex items-center justify-between px-4 py-4 hover:bg-surface-container transition-colors group" href="#">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">hard_drive</span>
+<span class="font-body-lg text-body-lg">Workspace Storage</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-body-md text-body-md text-on-surface-variant">82% Full</span>
+<span class="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+</div>
+</a>
+</div>
+<!-- Account & Privacy Section -->
+<div class="bg-surface-container-low rounded-xl overflow-hidden shadow-sm mt-stack-sm">
+<div class="px-4 py-3 border-b border-outline-variant/30 font-label-md text-label-md text-primary uppercase">Security &amp; Preferences</div>
+<a class="flex items-center justify-between px-4 py-4 hover:bg-surface-container transition-colors group" href="#">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">manage_accounts</span>
+<span class="font-body-lg text-body-lg">Account Details</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+</a>
+<a class="flex items-center justify-between px-4 py-4 hover:bg-surface-container transition-colors group" href="#">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">shield_lock</span>
+<span class="font-body-lg text-body-lg">Privacy &amp; Security</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+</a>
+<a class="flex items-center justify-between px-4 py-4 hover:bg-surface-container transition-colors group" href="#">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">accessibility_new</span>
+<span class="font-body-lg text-body-lg">Accessibility</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+</a>
+</div>
+<!-- Legal Section -->
+<div class="bg-surface-container-low rounded-xl overflow-hidden shadow-sm mt-stack-sm mb-stack-lg">
+<a class="flex items-center justify-between px-4 py-4 hover:bg-surface-container transition-colors group" href="#">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">gavel</span>
+<span class="font-body-lg text-body-lg">Legal &amp; About</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+</a>
+</div>
+</main>
+<!-- BottomNavBar -->
+<nav class="md:hidden bg-surface-container dark:bg-surface-container border-t border-outline-variant shadow-lg fixed bottom-0 w-full z-50 flex justify-around items-center px-4 py-2 docked full-width rounded-t-full">
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:bg-surface-bright active:scale-90 transition-transform p-2 rounded-lg" href="#">
+<span class="material-symbols-outlined mb-1">home</span>
+<span class="font-label-sm-mobile text-label-sm-mobile">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:bg-surface-bright active:scale-90 transition-transform p-2 rounded-lg" href="#">
+<span class="material-symbols-outlined mb-1">add_circle</span>
+<span class="font-label-sm-mobile text-label-sm-mobile">Create</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:bg-surface-bright active:scale-90 transition-transform p-2 rounded-lg" href="#">
+<span class="material-symbols-outlined mb-1">drafts</span>
+<span class="font-label-sm-mobile text-label-sm-mobile">Drafts</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-4 py-1 hover:bg-surface-bright active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined mb-1" style="font-variation-settings: 'FILL' 1;">settings</span>
+<span class="font-label-sm-mobile text-label-sm-mobile">Settings</span>
+</a>
+</nav>
+</body></html>

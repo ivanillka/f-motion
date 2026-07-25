@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Media Upload</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400;500&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration -->
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "secondary": "#dcb8ff",
+                    "on-surface": "#e5e2e1",
+                    "surface-container-high": "#2a2a2a",
+                    "outline-variant": "#3b494b",
+                    "on-secondary-fixed-variant": "#6700b5",
+                    "on-primary": "#00363a",
+                    "on-error-container": "#ffdad6",
+                    "primary-container": "#00f0ff",
+                    "on-primary-container": "#006970",
+                    "inverse-primary": "#006970",
+                    "secondary-container": "#7701d0",
+                    "primary-fixed-dim": "#00dbe9",
+                    "surface-container-low": "#1c1b1b",
+                    "on-secondary": "#480081",
+                    "surface": "#131313",
+                    "secondary-fixed-dim": "#dcb8ff",
+                    "secondary-fixed": "#efdbff",
+                    "on-surface-variant": "#b9cacb",
+                    "on-tertiary-fixed-variant": "#8f0041",
+                    "on-primary-fixed-variant": "#004f54",
+                    "surface-container-highest": "#353534",
+                    "tertiary-fixed": "#ffd9e0",
+                    "surface-container-lowest": "#0e0e0e",
+                    "surface-variant": "#353534",
+                    "inverse-surface": "#e5e2e1",
+                    "surface-container": "#201f1f",
+                    "error": "#ffb4ab",
+                    "primary-fixed": "#7df4ff",
+                    "inverse-on-surface": "#313030",
+                    "on-tertiary": "#66002c",
+                    "surface-tint": "#00dbe9",
+                    "outline": "#849495",
+                    "on-secondary-fixed": "#2c0051",
+                    "on-background": "#e5e2e1",
+                    "tertiary-fixed-dim": "#ffb1c3",
+                    "error-container": "#93000a",
+                    "surface-bright": "#393939",
+                    "on-primary-fixed": "#002022",
+                    "surface-dim": "#131313",
+                    "tertiary-container": "#ffccd6",
+                    "on-tertiary-fixed": "#3f0019",
+                    "tertiary": "#fff3f4",
+                    "on-tertiary-container": "#bb0058",
+                    "primary": "#dbfcff",
+                    "on-secondary-container": "#dcb7ff",
+                    "background": "#131313",
+                    "on-error": "#690005"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "panel-padding": "12px",
+                    "gutter": "16px",
+                    "margin-desktop": "24px",
+                    "unit": "4px",
+                    "margin-mobile": "16px",
+                    "stack-sm": "8px",
+                    "stack-md": "16px",
+                    "stack-lg": "32px"
+            },
+            "fontFamily": {
+                    "headline-sm": ["Geist"],
+                    "headline-md": ["Geist"],
+                    "body-lg": ["Inter"],
+                    "label-sm": ["JetBrains Mono"],
+                    "headline-md-mobile": ["Geist"],
+                    "body-md": ["Inter"],
+                    "display-lg": ["Geist"],
+                    "label-md": ["JetBrains Mono"]
+            },
+            "fontSize": {
+                    "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-sm": ["10px", {"lineHeight": "14px", "fontWeight": "500"}],
+                    "headline-md-mobile": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined[data-weight="fill"] {
+            font-variation-settings: 'FILL' 1, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        /* Custom scrollbar for dark mode */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #131313;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #353534;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3b494b;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-lg flex h-screen overflow-hidden antialiased">
+<!-- SideNavBar -->
+<nav class="bg-surface-container-low dark:bg-surface-container-low docked h-full w-[280px] left-0 flex flex-col h-screen fixed left-0 top-0 py-6 px-4 flat no shadows z-50">
+<!-- Header / Brand -->
+<div class="flex items-center gap-3 px-2 mb-8">
+<div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-on-primary-container text-[18px]">movie_filter</span>
+</div>
+<div>
+<h1 class="font-headline-md text-headline-md font-bold text-primary-fixed-dim dark:text-primary-fixed-dim">Fotium Studio</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider mt-1">Pro Plan</p>
+</div>
+</div>
+<!-- CTA -->
+<button class="w-full bg-primary-container text-on-primary-container font-label-md text-label-md py-3 px-4 rounded-lg flex items-center justify-center gap-2 mb-8 hover:bg-primary transition-colors">
+<span class="material-symbols-outlined text-[18px]">add</span>
+            New Project
+        </button>
+<!-- Navigation Tabs -->
+<div class="flex flex-col gap-1 flex-1">
+<!-- Workspace (Active) -->
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-in-out text-primary font-bold border-r-2 border-primary bg-surface-container-high/50" href="#">
+<span class="material-symbols-outlined text-[20px]" data-weight="fill">space_dashboard</span>
+<span class="font-label-md text-label-md">Workspace</span>
+</a>
+<!-- Projects (Inactive) -->
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-in-out text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high hover:text-primary" href="#">
+<span class="material-symbols-outlined text-[20px]">video_library</span>
+<span class="font-label-md text-label-md">Projects</span>
+</a>
+<!-- Assets (Inactive) -->
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-in-out text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high hover:text-primary" href="#">
+<span class="material-symbols-outlined text-[20px]">cloud_upload</span>
+<span class="font-label-md text-label-md">Assets</span>
+</a>
+<!-- Credits (Inactive) -->
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-in-out text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high hover:text-primary" href="#">
+<span class="material-symbols-outlined text-[20px]">account_balance_wallet</span>
+<span class="font-label-md text-label-md">Credits</span>
+</a>
+<!-- Settings (Inactive) -->
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-in-out text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high hover:text-primary mt-auto" href="#">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+<span class="font-label-md text-label-md">Settings</span>
+</a>
+</div>
+<!-- User Profile Footer -->
+<div class="mt-4 pt-4 border-t border-surface-container-highest flex items-center gap-3 px-2 cursor-pointer hover:bg-surface-container-high p-2 rounded-lg transition-colors">
+<img alt="User Profile" class="w-8 h-8 rounded-full object-cover" data-alt="Close-up avatar of a professional user in a sleek, dimly lit studio environment with cool cyan backlighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCEmQ7xsRlRg5RUh3FOoIxk4uQSxtEmKw7S-aYi1yerENp0RNnTSTpRjmbjgiszPgfh8r4tAo5kjIYk5CDzelKvmZg8Qu_3J3n2rQQiZUT6g9_7zBa2fsznOWz1S6uyrAGB4NP5JYeuxIZCbompf6xdoOR12wNDmQk8a5UDqUex6TWszQ_D9pX_fMV15Ov_Y5gcAkOL7dG6QWq4LipN9dwaj_51Lj-Y4B98jAKeCscFrkLS216zmkhJm9fy13ReBSZd1ttuHgYI8v8"/>
+<div class="flex-1 overflow-hidden">
+<p class="font-label-md text-label-md text-on-surface truncate">Creator01</p>
+<p class="font-label-sm text-label-sm text-on-surface-variant truncate">creator@fotium.com</p>
+</div>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<div class="flex-1 ml-[280px] flex flex-col h-full bg-background relative">
+<!-- TopAppBar -->
+<header class="bg-surface dark:bg-surface docked full-width top-0 flat no shadows flex justify-between items-center w-full px-margin-desktop h-16 sticky top-0 z-40">
+<!-- Brand / Product Name -->
+<div class="flex items-center gap-6">
+<span class="font-headline-sm text-headline-sm font-bold text-primary-fixed-dim dark:text-primary-fixed-dim">Fotium Motion</span>
+<!-- Navigation Links -->
+<nav class="hidden md:flex gap-6 h-full items-center pt-1">
+<a class="h-full flex items-center font-label-md text-label-md text-primary font-bold border-b-2 border-primary pb-1" href="#">Studio</a>
+<a class="h-full flex items-center font-label-md text-label-md text-on-surface-variant dark:text-on-surface-variant hover:text-primary-container transition-colors" href="#">Library</a>
+<a class="h-full flex items-center font-label-md text-label-md text-on-surface-variant dark:text-on-surface-variant hover:text-primary-container transition-colors" href="#">History</a>
+</nav>
+</div>
+<!-- Trailing Actions & Status -->
+<div class="flex items-center gap-4">
+<!-- Offline Status Banner -->
+<div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-container border border-error-container/30">
+<div class="w-2 h-2 rounded-full bg-error animate-pulse"></div>
+<span class="font-label-sm text-label-sm text-on-surface-variant tracking-wider uppercase">Offline - waiting to sync</span>
+</div>
+<!-- Search Placeholder (Right aligned per JSON) -->
+<div class="relative group hidden lg:block ml-2">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
+<input class="bg-surface-container-high text-on-surface border-none rounded-full py-1.5 pl-9 pr-4 font-body-md text-body-md w-48 focus:ring-1 focus:ring-primary-container transition-all" placeholder="Search studio..." type="text"/>
+</div>
+<!-- Icon Actions -->
+<button class="text-on-surface-variant hover:text-primary-container transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container-high">
+<span class="material-symbols-outlined text-[22px]">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary-container transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container-high">
+<span class="material-symbols-outlined text-[22px]">help_outline</span>
+</button>
+<!-- Primary Action -->
+<button class="bg-primary-container text-on-primary-container font-label-md text-label-md px-4 py-2 rounded-lg font-semibold hover:bg-primary transition-colors Active:scale-95 duration-150">
+                    Generate
+                </button>
+</div>
+</header>
+<!-- Main Workspace Area (Chat Interface) -->
+<main class="flex-1 overflow-y-auto p-margin-desktop flex flex-col gap-6 w-full max-w-5xl mx-auto">
+<!-- Context Date/Time -->
+<div class="w-full flex justify-center mt-4">
+<span class="font-label-sm text-label-sm text-on-surface-variant bg-surface-container-lowest px-3 py-1 rounded-full border border-surface-container-highest">Today, 14:32</span>
+</div>
+<!-- AI Message (Context) -->
+<div class="flex gap-4 w-full max-w-3xl">
+<div class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center shrink-0 border border-surface-container-highest">
+<span class="material-symbols-outlined text-primary-container text-[18px]">smart_toy</span>
+</div>
+<div class="flex-1">
+<p class="font-label-md text-label-md text-on-surface-variant mb-1">Fotium AI Assistant</p>
+<div class="bg-surface-container rounded-2xl rounded-tl-sm p-4 text-on-surface font-body-md text-body-md border border-surface-container-highest shadow-sm">
+                        Please upload your source assets (video, audio, or reference documents) to begin generating the new scene sequence.
+                    </div>
+</div>
+</div>
+<!-- User Upload Message Block -->
+<div class="flex gap-4 w-full max-w-4xl self-end flex-row-reverse mt-4">
+<div class="w-8 h-8 rounded-full bg-surface-variant flex items-center justify-center shrink-0 overflow-hidden">
+<img alt="User" class="w-full h-full object-cover" data-alt="A small circular avatar portrait of a creative professional in a dark studio setting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQ1p5EP6RWPNOTzsS4Cz0vq48Kr7IuP9yCc_1Vaj9cPBVelRBaGmMHWpPq_Yt5vS_fIoLRU4lHylJhbZAmmSxAfrJ6_zw89dutOI3TPEhuQTy3Jg1f8P0EdPE7ZJRHxOiH1RRFIcoJSay2WbG16nUZnaDf4Lfpo-7v7ZGRFKyGjCDck9mrAVgZmOtKVfyVB-xztt21gUTs8M4TSq31JfWfLu5bKWldRQ16wIHSzZaKE1grV8qSJ2U44y6KHU2KUF9sEgu2sSQNSBs"/>
+</div>
+<div class="flex-1 flex flex-col items-end">
+<p class="font-label-md text-label-md text-on-surface-variant mb-1 mr-1">You</p>
+<!-- Chat Bubble Container -->
+<div class="bg-[#1E1E1E] rounded-2xl rounded-tr-sm p-5 border border-surface-container-highest shadow-md w-full max-w-2xl relative overflow-hidden">
+<!-- Subtle background glow -->
+<div class="absolute top-0 right-0 w-32 h-32 bg-primary-container/5 rounded-full blur-3xl pointer-events-none"></div>
+<p class="font-body-md text-body-md text-on-surface mb-5 relative z-10">
+                            Here are the raw files for the opening sequence. I need the audio synced and the motion stabilized based on the tech specs.
+                        </p>
+<!-- Uploaded Files Bento Grid/Stack -->
+<div class="flex flex-col gap-3 relative z-10">
+<!-- File 1: Tech Specs (Uploaded) -->
+<div class="group flex items-center justify-between p-3 rounded-lg bg-surface-container-low border border-surface-container hover:border-surface-container-highest transition-colors">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-surface-container flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant">description</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface truncate max-w-[200px]">tech_specs.pdf</p>
+<p class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">1.2 MB</p>
+</div>
+</div>
+<div class="flex items-center gap-2 text-primary-container bg-primary-container/10 px-2.5 py-1 rounded-full">
+<span class="material-symbols-outlined text-[16px]">check_circle</span>
+<span class="font-label-sm text-label-sm font-semibold uppercase tracking-wide">Uploaded</span>
+</div>
+</div>
+<!-- File 2: Hero Shot (Uploading) -->
+<div class="p-3 rounded-lg bg-surface-container-low border border-primary-container/20 relative overflow-hidden shadow-[0_0_15px_rgba(0,240,255,0.05)]">
+<!-- Background subtle progress indicator -->
+<div class="absolute top-0 left-0 h-full bg-primary-container/5 transition-all duration-300 ease-out" style="width: 45%;"></div>
+<div class="relative z-10">
+<div class="flex items-center justify-between mb-3">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-surface-container flex items-center justify-center">
+<span class="material-symbols-outlined text-primary-fixed-dim">movie</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface truncate max-w-[200px]">hero_shot.mp4</p>
+<div class="flex items-center gap-2 mt-0.5">
+<p class="font-label-sm text-label-sm text-on-surface-variant">245 MB</p>
+<span class="w-1 h-1 rounded-full bg-surface-variant"></span>
+<p class="font-label-sm text-label-sm text-primary-fixed-dim animate-pulse">Uploading...</p>
+</div>
+</div>
+</div>
+<span class="font-label-md text-label-md text-primary-container">45%</span>
+</div>
+<!-- Progress Bar -->
+<div class="h-1.5 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary-container rounded-full relative" style="width: 45%;">
+<!-- Shine effect -->
+<div class="absolute top-0 left-0 h-full w-full bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- File 3: Audio Track (Failed) -->
+<div class="flex items-center justify-between p-3 rounded-lg bg-[#2A080A] border border-error/40 relative overflow-hidden">
+<!-- Subtle red glow -->
+<div class="absolute inset-0 bg-error/5 mix-blend-overlay"></div>
+<div class="flex items-center gap-3 relative z-10">
+<div class="w-10 h-10 rounded bg-error-container/50 flex items-center justify-center border border-error/20">
+<span class="material-symbols-outlined text-error">audio_file</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-error-container truncate max-w-[200px]">audio_track.wav</p>
+<div class="flex items-center gap-1 mt-0.5 text-error">
+<span class="material-symbols-outlined text-[14px]">error</span>
+<p class="font-label-sm text-label-sm">Save failed - Connection lost</p>
+</div>
+</div>
+</div>
+<button class="relative z-10 flex items-center gap-1.5 bg-error-container text-on-error-container hover:bg-error hover:text-on-error px-3 py-1.5 rounded text-sm font-label-md transition-colors border border-error/30 hover:border-error">
+<span class="material-symbols-outlined text-[16px]">refresh</span>
+                                    Retry
+                                </button>
+</div>
+</div>
+<!-- Required Audio Declaration -->
+<div class="mt-5 pt-4 border-t border-surface-container-highest relative z-10">
+<label class="flex items-start gap-3 cursor-pointer group">
+<div class="relative flex items-center justify-center mt-0.5">
+<input class="peer appearance-none w-4 h-4 rounded border-2 border-outline-variant bg-surface-container checked:bg-primary-container checked:border-primary-container focus:ring-1 focus:ring-primary-container focus:ring-offset-1 focus:ring-offset-surface transition-all cursor-pointer" type="checkbox"/>
+<span class="material-symbols-outlined absolute text-on-primary-container text-[14px] opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity">check</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface group-hover:text-primary-fixed-dim transition-colors">Audio Rights Declaration <span class="text-error">*</span></span>
+<span class="font-body-md text-[12px] text-on-surface-variant leading-tight mt-1">I declare I have the rights to use this audio. Material subject to AI processing must comply with DMCA guidelines.</span>
+</div>
+</label>
+</div>
+</div>
+</div>
+</div>
+<!-- Typing indicator area -->
+<div class="flex gap-4 w-full max-w-3xl mt-2 opacity-50">
+<div class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center shrink-0 border border-surface-container-highest">
+<span class="material-symbols-outlined text-primary-container text-[18px]">smart_toy</span>
+</div>
+<div class="bg-surface-container-low px-4 py-3 rounded-full flex items-center gap-1 border border-surface-container-highest">
+<span class="w-1.5 h-1.5 bg-on-surface-variant rounded-full animate-bounce"></span>
+<span class="w-1.5 h-1.5 bg-on-surface-variant rounded-full animate-bounce" style="animation-delay: 0.15s"></span>
+<span class="w-1.5 h-1.5 bg-on-surface-variant rounded-full animate-bounce" style="animation-delay: 0.3s"></span>
+</div>
+</div>
+<!-- Bottom padding for scroll -->
+<div class="h-24 shrink-0"></div>
+</main>
+<!-- Input Area Footer (Fixed at bottom of main content) -->
+<div class="absolute bottom-0 left-0 w-full bg-surface/90 backdrop-blur-md border-t border-surface-container-highest p-4 px-margin-desktop z-10">
+<div class="max-w-4xl mx-auto relative flex items-center">
+<button class="absolute left-3 text-on-surface-variant hover:text-primary-container transition-colors">
+<span class="material-symbols-outlined">add_circle</span>
+</button>
+<input class="w-full bg-[#121212] border border-surface-container-highest rounded-xl py-3 pl-12 pr-12 font-body-md text-body-md text-on-surface focus:outline-none focus:border-primary-container focus:ring-0 transition-colors shadow-inner" disabled="" placeholder="Type a message or use / to generate..." type="text"/>
+<button class="absolute right-3 text-on-surface-variant opacity-50 cursor-not-allowed">
+<span class="material-symbols-outlined" data-weight="fill">send</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Define Shimmer Animation in CSS -->
+<style>
+        @keyframes shimmer {
+            100% {
+                transform: translateX(100%);
+            }
+        }
+    </style>
+</body></html>

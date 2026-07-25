@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Studio - Three Concept Options</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=Inter:wght@100..900&amp;family=JetBrains+Mono:wght@100..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "secondary": "#dcb8ff",
+                      "on-surface": "#e5e2e1",
+                      "surface-container-high": "#2a2a2a",
+                      "outline-variant": "#3b494b",
+                      "on-secondary-fixed-variant": "#6700b5",
+                      "on-primary": "#00363a",
+                      "on-error-container": "#ffdad6",
+                      "primary-container": "#00f0ff",
+                      "on-primary-container": "#006970",
+                      "inverse-primary": "#006970",
+                      "secondary-container": "#7701d0",
+                      "primary-fixed-dim": "#00dbe9",
+                      "surface-container-low": "#1c1b1b",
+                      "on-secondary": "#480081",
+                      "surface": "#131313",
+                      "secondary-fixed-dim": "#dcb8ff",
+                      "secondary-fixed": "#efdbff",
+                      "on-surface-variant": "#b9cacb",
+                      "on-tertiary-fixed-variant": "#8f0041",
+                      "on-primary-fixed-variant": "#004f54",
+                      "surface-container-highest": "#353534",
+                      "tertiary-fixed": "#ffd9e0",
+                      "surface-container-lowest": "#0e0e0e",
+                      "surface-variant": "#353534",
+                      "inverse-surface": "#e5e2e1",
+                      "surface-container": "#201f1f",
+                      "error": "#ffb4ab",
+                      "primary-fixed": "#7df4ff",
+                      "inverse-on-surface": "#313030",
+                      "on-tertiary": "#66002c",
+                      "surface-tint": "#00dbe9",
+                      "outline": "#849495",
+                      "on-secondary-fixed": "#2c0051",
+                      "on-background": "#e5e2e1",
+                      "tertiary-fixed-dim": "#ffb1c3",
+                      "error-container": "#93000a",
+                      "surface-bright": "#393939",
+                      "on-primary-fixed": "#002022",
+                      "surface-dim": "#131313",
+                      "tertiary-container": "#ffccd6",
+                      "on-tertiary-fixed": "#3f0019",
+                      "tertiary": "#fff3f4",
+                      "on-tertiary-container": "#bb0058",
+                      "primary": "#dbfcff",
+                      "on-secondary-container": "#dcb7ff",
+                      "background": "#131313",
+                      "on-error": "#690005"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "panel-padding": "12px",
+                      "gutter": "16px",
+                      "margin-desktop": "24px",
+                      "unit": "4px",
+                      "margin-mobile": "16px",
+                      "stack-sm": "8px",
+                      "stack-md": "16px",
+                      "stack-lg": "32px"
+              },
+              "fontFamily": {
+                      "headline-sm": [
+                              "Geist"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "label-sm": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-md-mobile": [
+                              "Geist"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "display-lg": [
+                              "Geist"
+                      ],
+                      "label-md": [
+                              "JetBrains Mono"
+                      ]
+              },
+              "fontSize": {
+                      "headline-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-sm": [
+                              "10px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-md-mobile": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "label-md": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+    </script>
+<style>
+        body {
+            background-color: #0A0A0A;
+            color: #e5e2e1;
+        }
+        /* Custom scrollbar for webkit */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #131313;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #2a2a2a;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #393939;
+        }
+        
+        .cyan-glow-hover:hover {
+            box-shadow: 0 0 20px 0 rgba(0, 240, 255, 0.15);
+            border-color: rgba(0, 240, 255, 0.4);
+        }
+        
+        .cyan-glow-active {
+            box-shadow: 0 0 30px 0 rgba(0, 240, 255, 0.2);
+            border-color: #00f0ff;
+        }
+    </style>
+</head>
+<body class="antialiased min-h-screen flex flex-col md:flex-row overflow-hidden font-body-md text-body-md bg-[#0A0A0A]">
+<!-- Desktop SideNav (from JSON) -->
+<nav class="hidden md:flex bg-surface-container-low dark:bg-surface-container-low flex-col h-screen w-[280px] shrink-0 border-r border-surface-variant z-10 sticky top-0">
+<div class="py-6 px-4 flex flex-col h-full">
+<!-- Brand -->
+<div class="mb-stack-lg px-2 flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-primary-container flex items-center justify-center text-on-primary-container">
+<span class="material-symbols-outlined font-bold text-[20px]">movie_filter</span>
+</div>
+<div>
+<h1 class="font-headline-md text-headline-md font-bold text-primary-fixed-dim dark:text-primary-fixed-dim">Fotium Studio</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest mt-1">Pro Plan</p>
+</div>
+</div>
+<!-- CTA -->
+<div class="mb-stack-lg">
+<button class="w-full bg-primary-container text-on-primary-container hover:bg-primary-fixed transition-colors py-2.5 px-4 rounded font-label-md text-label-md flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                    New Project
+                </button>
+</div>
+<!-- Navigation Links -->
+<div class="flex-1 flex flex-col gap-1">
+<a class="text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high hover:text-primary py-2 px-3 rounded flex items-center gap-3 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">space_dashboard</span>
+<span class="font-label-md text-label-md">Workspace</span>
+</a>
+<a class="text-primary font-bold bg-surface-container-high py-2 px-3 rounded flex items-center gap-3 transition-all duration-200 ease-in-out border-l-2 border-primary" href="#">
+<span class="material-symbols-outlined">video_library</span>
+<span class="font-label-md text-label-md">Projects</span>
+</a>
+<a class="text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high hover:text-primary py-2 px-3 rounded flex items-center gap-3 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">cloud_upload</span>
+<span class="font-label-md text-label-md">Assets</span>
+</a>
+</div>
+<!-- Bottom Links -->
+<div class="mt-auto flex flex-col gap-1 border-t border-surface-variant pt-4">
+<a class="text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high hover:text-primary py-2 px-3 rounded flex items-center gap-3 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+<span class="font-label-md text-label-md">Credits</span>
+</a>
+<a class="text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high hover:text-primary py-2 px-3 rounded flex items-center gap-3 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-md text-label-md">Settings</span>
+</a>
+</div>
+<!-- User Profile -->
+<div class="mt-stack-md flex items-center gap-3 px-2">
+<img alt="User Profile" class="w-8 h-8 rounded-full object-cover border border-outline-variant" data-alt="A small circular avatar placeholder image showing an abstract, minimal geometric face composed of fine glowing cyan lines on a deep charcoal background. High-tech, clean studio aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBQpkryfEDo0M8nFw9hz9ujaKsI8I92rUyIuJA4kaz7rTIjUvcknJZqVplwHV62vSLr2bbNJJ_YoIVfmSPw0-Wh6PRBgRgbDGI0bJAXLi1LGu1-wUolPrgEAKqMOETfruAuzYDRoe6mlY6Jpd4p2BRA1gUOsTG-2Ag7jmnM4Zbz8t94nXqM4x2dFjrei7pdgmYUUIKsQzXDY3LedE3WRidqvQZOmBjOytmc6XStVQIOFbtqf3z8ohfaPhMdA6Q3GJiiQ65yJxeJIS0"/>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col h-screen overflow-hidden relative">
+<!-- Top App Bar (Mobile & Contextual Desktop) -->
+<header class="flex justify-between items-center w-full px-margin-desktop h-16 sticky top-0 z-40 bg-surface dark:bg-surface border-b border-surface-variant">
+<div class="flex items-center gap-4">
+<!-- Mobile Menu Button -->
+<button class="md:hidden text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-container text-[20px]">smart_toy</span>
+<span class="font-headline-sm text-headline-sm text-on-surface font-semibold">AI Generation</span>
+<span class="text-on-surface-variant px-2">/</span>
+<span class="font-label-md text-label-md text-on-surface-variant tracking-wider uppercase">Project Alpha</span>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<!-- Status indicator -->
+<div class="hidden sm:flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-primary-fixed-dim animate-pulse"></div>
+<span class="font-label-sm text-label-sm text-on-surface-variant tracking-widest uppercase">Draft saved</span>
+</div>
+<div class="flex items-center gap-3">
+<button class="text-on-surface-variant hover:text-primary-container transition-colors">
+<span class="material-symbols-outlined text-[20px]">help_outline</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary-container transition-colors relative">
+<span class="material-symbols-outlined text-[20px]">notifications</span>
+<span class="absolute top-0 right-0 w-2 h-2 bg-primary-container rounded-full border border-surface"></span>
+</button>
+</div>
+</div>
+</header>
+<!-- Canvas -->
+<main class="flex-1 overflow-y-auto overflow-x-hidden p-margin-mobile md:p-stack-lg relative">
+<!-- Context Header -->
+<div class="max-w-6xl mx-auto mb-stack-lg">
+<h2 class="font-display-lg text-display-lg text-on-surface mb-2">Select a Concept</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
+                    The AI has generated three distinct visual directions based on your prompt. Select one to proceed to the storyboard phase, or refine your instructions.
+                </p>
+</div>
+<!-- Grid Container -->
+<div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+<!-- Card 1: Cyberpunk Pulse (NOT SELECTED) -->
+<div class="bg-surface-container-high rounded-xl border border-surface-variant overflow-hidden flex flex-col group transition-all duration-300 cyan-glow-hover cursor-pointer relative">
+<!-- Image Grid/Moodboard Placeholder -->
+<div class="h-48 relative p-2 grid grid-cols-2 gap-1 bg-[#1A1A1A]">
+<div class="bg-cover bg-center rounded-sm w-full h-full border border-surface-variant/50" data-alt="A moody moodboard tile showing a wet neon-lit street corner in a futuristic cyberpunk city. Heavy rain, deep shadows, vibrant pink and cyan glowing signs reflecting on puddles. Cinematic lighting, gritty dark-mode aesthetic." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuB-4Lq67TXOlt1HCpUxCdpbFX9NHPaPdbE50JF4b8xN8rD5zaEfywcSU3bzBben5kpaeA8a5gCFtXDVPYr2rqRXFZh1JVSu9Q24hyam0kw0JhJhV3Bv07yVFi-GYP9z1AAsNs6v0tQA7U1Ra1V5a8F0wqSbJB06vTdk2P5jNr20DWHWOrO-Bbe1_HF3k52fBIxJTAPhUeIoIPt0AMcEiOjqxzQ7Jy0i9kWiX0NWNtAtwpGG-u4LyH40URuQQsIfm1Yba76J6TgCV8U')"></div>
+<div class="grid grid-rows-2 gap-1">
+<div class="bg-cover bg-center rounded-sm w-full h-full border border-surface-variant/50" data-alt="A moodboard tile showing a close up of a futuristic visor reflecting bright neon cyan data streams. High tech, dark atmospheric lighting, sharp focus on the glowing text." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuA4rX-k1rT4sTMf8Av722hq7bjG4ENToM0g0Ib4jvj1PNsHEt6hMnUNzU-jetDA6SQd2Ta2XeaDvOFIzBDXmXyXD_ohZAFIntNrYrOaHuAtH02AJfXR8ZBeC1i9AKYDrK3BeDmX6uw1KKdtrdfhY4CppgtJPOEZrmkNt990pVtjFAsE3PCauvcI55sZ06Kf1khCC-IepgnW_phPOMU57E1CMPlz_gK68sWXY_CDwsT-lrN81iwg-KskPH2mtvWgfh6Q37aB7Iwz-V8')"></div>
+<div class="bg-cover bg-center rounded-sm w-full h-full border border-surface-variant/50" data-alt="A moodboard tile showing an abstract glowing data matrix. Fast-moving streaks of cyan and magenta light over a pure black background, conveying high speed and digital pulse." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCT39hyH5CjW24Eu6w4dJY9qRIaN3T75dbX5rvy0bYcKUaBqmu9J3Seh8NchRg9tVdUYlKw2C1NqTXzVNEqfpv-bDltE8thDT3PBnYdpaqMsP9F1lY70TgLnlm0EUs8lgK2UCiSjQ5l-nDqrR_Tziyxa14ArC9Wdyf15IzNfSr2m0WnyON6qA2exQJsyErMoJKggJH0W8VZnzKmuv8b9FBZPQUwJkZgu4RhCiulsfDSBN8k0quTRzkBcF6zZGaKySSF5N0IolyZ_08')"></div>
+</div>
+<!-- Overlay gradient for text legibility if needed -->
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-high via-transparent to-transparent z-10 pointer-events-none"></div>
+</div>
+<div class="p-4 flex-1 flex flex-col relative z-20 bg-surface-container-high">
+<div class="flex items-start justify-between mb-2">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Cyberpunk Pulse</h3>
+<div class="bg-surface-container rounded px-2 py-1 border border-outline-variant/30 flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary-fixed"></span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Sci-Fi</span>
+</div>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mb-4 flex-1">
+                            High-contrast neon aesthetics with fast-paced editing and synthetic audio cues. Focus on technological motifs and gritty urban textures.
+                        </p>
+<!-- Metadata Tags -->
+<div class="flex flex-wrap gap-2 mb-stack-md">
+<span class="font-label-sm text-label-sm uppercase bg-surface-container px-2 py-1 rounded text-on-surface-variant border border-surface-variant">High Contrast</span>
+<span class="font-label-sm text-label-sm uppercase bg-surface-container px-2 py-1 rounded text-on-surface-variant border border-surface-variant">Fast Paced</span>
+<span class="font-label-sm text-label-sm uppercase bg-surface-container px-2 py-1 rounded text-on-surface-variant border border-surface-variant">Neon</span>
+</div>
+<button class="w-full py-2.5 rounded font-label-md text-label-md uppercase tracking-wider border border-surface-variant text-on-surface hover:border-primary-container hover:text-primary-container transition-colors flex items-center justify-center gap-2">
+<span>Select this concept</span>
+</button>
+</div>
+</div>
+<!-- Card 2: Studio Clean (SELECTED) -->
+<div class="bg-surface-container-high rounded-xl border-2 cyan-glow-active overflow-hidden flex flex-col group relative transform scale-[1.02] transition-transform duration-300">
+<!-- Selected Badge -->
+<div class="absolute top-3 right-3 z-30 bg-primary-container text-on-primary-container font-label-sm text-label-sm uppercase px-2 py-1 rounded shadow-[0_0_10px_rgba(0,240,255,0.5)] flex items-center gap-1 font-bold">
+<span class="material-symbols-outlined text-[14px]">check_circle</span>
+                        Selected
+                    </div>
+<!-- Image Grid/Moodboard Placeholder -->
+<div class="h-48 relative p-2 grid grid-cols-3 gap-1 bg-[#1A1A1A]">
+<div class="bg-cover bg-center rounded-sm w-full h-full border border-surface-variant/50" data-alt="A moodboard tile showing a pristine, minimalist photography studio setup. Large white cyclorama wall, soft diffused softbox lighting. A sleek, modern product rests on a pedestal. Very clean, high-key lighting but shot against a dark grey backdrop." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBwUiR5AdW1Xx1swU7FYmOpihHkIVAAJtuaI-HH43VYHBs-aCY3wjwTsH7KzF1AyEE4jiSZX7byZaNXggibFKXAXZu4wvs2FifSFXIkSSg5HU8cJWEukP5skrM3kmmJpnwQzcUXIiCG5DgFd6MW5EiNIy632ep4ie8gr6o24h-Smez_rDKE0qWfXrYScrcujbozsba0i5EGBC-88vNEeD-GVDiyiWQjwCSZo-PQCKszHEG-tKK_E76oxRyJot7sCqF8OUpiGgoEdLA')"></div>
+<div class="bg-cover bg-center rounded-sm w-full h-full border border-surface-variant/50" data-alt="A moodboard tile showing a macro shot of a camera lens with perfectly clean glass, reflecting a soft rectangular studio light. Monochromatic, high resolution, clinical precision." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBYBkMwwkRKpN9iESOkigwLK5laBUMX5ZWlRpZQVWis4Y1-j_wYw5bAN9JwNIdLuHeTca3ne_DJq4DFzF_k7oEbXG13Mp7JCCeN-gnnrHD-VAMI-3RLpGOiPvNfboisgnPxGxTHbbO_Ua2Kun22UtI3g6iz9dbd0YIrifQOsAB8rnTG-cgJ4sXOm6JuvMvHGMjDtyEErdbQM9zSaRwaW6ONV0lkSspHvlmlFhGrjfh9a1l-j5iS-c4aSVZXE4sz9errJkZhRm_Xn7s')"></div>
+<div class="bg-cover bg-center rounded-sm w-full h-full border border-surface-variant/50" data-alt="A moodboard tile displaying abstract smooth geometric shapes, spheres and cubes, in a matte dark grey material under perfectly even studio lighting. Represents pure, uncluttered design." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBb5pz7UU79X5lK-SYKZfOG_dX_YBlLFRzrYCNyixiJYfLkskWjbHETVJo3D9eqg9rCihW8x60VU1E36Ckv00PuEL0VTYiu_YmZ0mRqxqjIPqPXjXzfeufgAZTbYfS4G9S1_s_PTxAN94oEuJrzImUXyQP17M1aVbm-12J10nBzM7xA1CzYaZy3CHH8RydvSctsmmxAGPDLmgp0CF53JGy3VAjDX5ZWXs8p2eF6heR-X5PC6Dc4gkf2A8YJhp8gl3VQHqoQLMz2ytQ')"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-high via-transparent to-transparent z-10 pointer-events-none"></div>
+</div>
+<div class="p-4 flex-1 flex flex-col relative z-20 bg-surface-container-high">
+<div class="flex items-start justify-between mb-2">
+<h3 class="font-headline-sm text-headline-sm text-primary">Studio Clean</h3>
+<div class="bg-surface-container rounded px-2 py-1 border border-outline-variant/30 flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary-container"></span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Corporate</span>
+</div>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mb-4 flex-1">
+                            Minimalist layouts with smooth camera movements and perfectly balanced lighting. Emphasizes product clarity and professional polish.
+                        </p>
+<!-- Metadata Tags -->
+<div class="flex flex-wrap gap-2 mb-stack-md">
+<span class="font-label-sm text-label-sm uppercase bg-surface-container px-2 py-1 rounded text-primary-fixed-dim border border-primary-fixed-dim/30">Minimalist</span>
+<span class="font-label-sm text-label-sm uppercase bg-surface-container px-2 py-1 rounded text-primary-fixed-dim border border-primary-fixed-dim/30">Smooth</span>
+<span class="font-label-sm text-label-sm uppercase bg-surface-container px-2 py-1 rounded text-primary-fixed-dim border border-primary-fixed-dim/30">High-Key</span>
+</div>
+<button class="w-full py-2.5 rounded font-label-md text-label-md uppercase tracking-wider bg-primary-container text-on-primary-container font-bold flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,240,255,0.2)]">
+<span>Proceed with concept</span>
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+</div>
+</div>
+<!-- Card 3: Documentary Raw (NOT SELECTED) -->
+<div class="bg-surface-container-high rounded-xl border border-surface-variant overflow-hidden flex flex-col group transition-all duration-300 cyan-glow-hover cursor-pointer relative">
+<!-- Image Grid/Moodboard Placeholder -->
+<div class="h-48 relative p-2 grid grid-rows-2 gap-1 bg-[#1A1A1A]">
+<div class="bg-cover bg-center rounded-sm w-full h-full border border-surface-variant/50" data-alt="A moodboard tile showing a gritty, handheld style documentary shot. A person's hands working on a mechanical part in a dimly lit, dusty workshop. Warm, natural lighting, slightly desaturated colors, cinematic film grain." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAPeXX1D9t8KAEIPWyTH5clv3fpbpnHwTmUh8z-o1dnAmJQV-YPmKLpaq08RF0TRhbAW4lG7ft5iiUC1khStArA7j2vAw2dMOgbSAsQaL1b34_41FRJTrqAgsiuP5ri6ui2OkFvqSYHsl5JZbW9SKM1hoP3Idx2sZnX8sYbpXa1jyjGTcNKgRF0LOBQYqbOsFHmj9t5NG5eS1CeWzjsPpOxrh6bFc46ATqy4p6yK1tNPa5u3BR7gbFZeUxaF_C8-2DumIe-8SRAj_o')"></div>
+<div class="grid grid-cols-2 gap-1">
+<div class="bg-cover bg-center rounded-sm w-full h-full border border-surface-variant/50" data-alt="A moodboard tile showing an extreme close-up of a tired face illuminated by a harsh, practical desk lamp in a dark room. Deep shadows, highly textured, evoking raw emotion and authenticity." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDsmhzsLJ872XfVRYdbU_StRlJbWAKC7AWUazo4NA4S2pKSgOwQdrLcRuhFIFDt23edy53h83MU6otylM-bqJHC11dFrb6FW1HnKyVHDOfgGdi71omzRjAYkY8zV7C7WmNZcyMTFORE2TcUpaQldr7atO7wYGU-tg5jMceqnf1sErZnQXf3DT8g3o1L3z7wMMEd7J8V9AuQ_NMkM5GN5Gwp5ddhcWZP0shhXauNODZk-ISNNHqtStB9XiyIslQ8kJ-BzN0chxVWh2k')"></div>
+<div class="bg-cover bg-center rounded-sm w-full h-full border border-surface-variant/50" data-alt="A moodboard tile featuring abstract film textures. Heavy film grain, light leaks, and a subtle vignette border over a muted dark sepia background. Indicates a raw, analog aesthetic." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuD8SciVS3cIxHUPisU81NTS4delMK48GRWxYt2kWu8g5IugO3ix2dIYmPmNDZ5MT_W1RaxBkrPLev1ftpzLzoeeqWvM2btf3Xyk5Qv41iS2xPIZXnSaVE3Swv90cBJBaFkvZEtw9-yVUt4HRt9ufCu4eKgA72rgxz4xqolM_oz2wrf5XrLV5cMv8HgMAANiqjQj8mqT12u5SwfQD3x-Iahzl8y4lwlw9979m6lQvtYJT2njJoM0EkOgNKloPd3dsVSRh8v27F-16jc')"></div>
+</div>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-high via-transparent to-transparent z-10 pointer-events-none"></div>
+</div>
+<div class="p-4 flex-1 flex flex-col relative z-20 bg-surface-container-high">
+<div class="flex items-start justify-between mb-2">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Documentary Raw</h3>
+<div class="bg-surface-container rounded px-2 py-1 border border-outline-variant/30 flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-error"></span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Verite</span>
+</div>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mb-4 flex-1">
+                            Handheld camera simulation with naturalistic lighting and film grain. Prioritizes authenticity, emotional resonance, and imperfect framing.
+                        </p>
+<!-- Metadata Tags -->
+<div class="flex flex-wrap gap-2 mb-stack-md">
+<span class="font-label-sm text-label-sm uppercase bg-surface-container px-2 py-1 rounded text-on-surface-variant border border-surface-variant">Handheld</span>
+<span class="font-label-sm text-label-sm uppercase bg-surface-container px-2 py-1 rounded text-on-surface-variant border border-surface-variant">Film Grain</span>
+<span class="font-label-sm text-label-sm uppercase bg-surface-container px-2 py-1 rounded text-on-surface-variant border border-surface-variant">Natural Light</span>
+</div>
+<button class="w-full py-2.5 rounded font-label-md text-label-md uppercase tracking-wider border border-surface-variant text-on-surface hover:border-primary-container hover:text-primary-container transition-colors flex items-center justify-center gap-2">
+<span>Select this concept</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Bottom Action Bar (Contextual tools) -->
+<div class="fixed bottom-0 left-0 md:left-[280px] right-0 p-4 bg-surface-container-lowest/80 backdrop-blur-md border-t border-surface-variant flex justify-between items-center z-30">
+<button class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-2 font-label-md text-label-md">
+<span class="material-symbols-outlined text-[18px]">arrow_back</span>
+                    Back to Prompt
+                </button>
+<div class="flex items-center gap-4">
+<span class="font-body-md text-body-md text-on-surface-variant hidden sm:inline">Want something else?</span>
+<button class="bg-surface-container-highest hover:bg-surface-bright border border-surface-variant text-on-surface py-2 px-4 rounded font-label-md text-label-md transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">refresh</span>
+                        Regenerate Options
+                    </button>
+</div>
+</div>
+<!-- Padding for bottom bar -->
+<div class="h-24 w-full"></div>
+</main>
+</div>
+</body></html>

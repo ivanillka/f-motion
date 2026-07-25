@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Insufficient Credits - Fotium Motion</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400;500&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#dcb8ff",
+                        "on-surface": "#e5e2e1",
+                        "surface-container-high": "#2a2a2a",
+                        "outline-variant": "#3b494b",
+                        "on-secondary-fixed-variant": "#6700b5",
+                        "on-primary": "#00363a",
+                        "on-error-container": "#ffdad6",
+                        "primary-container": "#00f0ff",
+                        "on-primary-container": "#006970",
+                        "inverse-primary": "#006970",
+                        "secondary-container": "#7701d0",
+                        "primary-fixed-dim": "#00dbe9",
+                        "surface-container-low": "#1c1b1b",
+                        "on-secondary": "#480081",
+                        "surface": "#131313",
+                        "secondary-fixed-dim": "#dcb8ff",
+                        "secondary-fixed": "#efdbff",
+                        "on-surface-variant": "#b9cacb",
+                        "on-tertiary-fixed-variant": "#8f0041",
+                        "on-primary-fixed-variant": "#004f54",
+                        "surface-container-highest": "#353534",
+                        "tertiary-fixed": "#ffd9e0",
+                        "surface-container-lowest": "#0e0e0e",
+                        "surface-variant": "#353534",
+                        "inverse-surface": "#e5e2e1",
+                        "surface-container": "#201f1f",
+                        "error": "#ffb4ab",
+                        "primary-fixed": "#7df4ff",
+                        "inverse-on-surface": "#313030",
+                        "on-tertiary": "#66002c",
+                        "surface-tint": "#00dbe9",
+                        "outline": "#849495",
+                        "on-secondary-fixed": "#2c0051",
+                        "on-background": "#e5e2e1",
+                        "tertiary-fixed-dim": "#ffb1c3",
+                        "error-container": "#93000a",
+                        "surface-bright": "#393939",
+                        "on-primary-fixed": "#002022",
+                        "surface-dim": "#131313",
+                        "tertiary-container": "#ffccd6",
+                        "on-tertiary-fixed": "#3f0019",
+                        "tertiary": "#fff3f4",
+                        "on-tertiary-container": "#bb0058",
+                        "primary": "#dbfcff",
+                        "on-secondary-container": "#dcb7ff",
+                        "background": "#131313",
+                        "on-error": "#690005"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "panel-padding": "12px",
+                        "gutter": "16px",
+                        "margin-desktop": "24px",
+                        "unit": "4px",
+                        "margin-mobile": "16px",
+                        "stack-sm": "8px",
+                        "stack-md": "16px",
+                        "stack-lg": "32px"
+                    },
+                    "fontFamily": {
+                        "headline-sm": ["Geist"],
+                        "headline-md": ["Geist"],
+                        "body-lg": ["Inter"],
+                        "label-sm": ["JetBrains Mono"],
+                        "headline-md-mobile": ["Geist"],
+                        "body-md": ["Inter"],
+                        "display-lg": ["Geist"],
+                        "label-md": ["JetBrains Mono"]
+                    },
+                    "fontSize": {
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "label-sm": ["10px", { "lineHeight": "14px", "fontWeight": "500" }],
+                        "headline-md-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            background-color: theme('colors.background');
+            color: theme('colors.on-background');
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center relative overflow-hidden bg-background">
+<!-- Blurred Studio Background Simulation -->
+<div class="absolute inset-0 z-0 opacity-20 filter blur-xl" data-alt="A blurred, dark-first professional video editing interface in the background. Deep charcoal grey surfaces with subtle cyan accents indicating active tools. The composition suggests a complex software environment out of focus. Lighting is muted, emitting a faint digital glow. Modern corporate studio aesthetic." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAEqXHLkLuIKjTvMM-4HuAVWq0aCUcerOW4r0MNfX4HFddrEWZOpDWrDnUbOYEX0IpmedesXTGOCURAmsRIpmlLaIAaKvLt0-ijnbvxEJuymfeOcPABU5jqI_XgL0L9bLisMSijEaWL7O_G9KHgSz4e_TaQaYCO5OvkWpftTZC3ps5NSg9X5S8XuhB0-HCnB1JMGSIwDpne2YFkiGWmIx6nb8daOzDoBjTaCql6EFMWemUs026-ZJDN7_rAiBjvDh0RsNt-1S3rpmA')"></div>
+<div class="absolute inset-0 z-0 bg-background/80"></div>
+<!-- Dialog Overlay -->
+<div class="relative z-10 w-full max-w-md px-margin-mobile md:px-0">
+<!-- Dialog Container -->
+<div class="bg-surface-container-high rounded-xl border border-white/10 shadow-2xl flex flex-col overflow-hidden">
+<!-- Header with Caution Icon -->
+<div class="p-stack-lg pb-stack-md flex items-start gap-stack-md relative">
+<div class="absolute top-0 right-0 w-32 h-32 bg-error/10 rounded-full blur-2xl -mt-10 -mr-10"></div>
+<div class="flex-shrink-0 w-12 h-12 rounded-full bg-surface-container flex items-center justify-center border border-error/20">
+<span class="material-symbols-outlined text-error" style="font-variation-settings: 'FILL' 1;">error</span>
+</div>
+<div class="flex flex-col gap-unit">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Insufficient Credits</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">You need 50 more credits to generate this AI visual.</p>
+</div>
+</div>
+<!-- Content Area -->
+<div class="px-stack-lg py-stack-md bg-surface-container-lowest/50 border-y border-white/5">
+<div class="flex items-center justify-between mb-stack-md">
+<span class="font-label-md text-label-md text-on-surface-variant uppercase">Current Balance</span>
+<span class="font-label-md text-label-md text-on-surface">12 Credits</span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden flex">
+<div class="bg-error w-1/5 h-full rounded-r-full"></div>
+</div>
+<div class="flex justify-between mt-stack-sm">
+<span class="font-label-sm text-label-sm text-error">Required: 62</span>
+</div>
+</div>
+<!-- Action Area -->
+<div class="p-stack-lg bg-surface-container-high flex flex-col gap-stack-md">
+<!-- Primary Action -->
+<button class="w-full h-10 bg-primary-container text-on-primary-container font-label-md text-label-md rounded flex items-center justify-center gap-2 hover:bg-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary-container focus:ring-offset-2 focus:ring-offset-surface-container-high">
+<span class="material-symbols-outlined" style="font-size: 18px;">add_circle</span>
+                    Add Credits
+                </button>
+<!-- Secondary Actions -->
+<div class="flex flex-col gap-stack-sm">
+<button class="w-full h-10 bg-transparent border border-white/20 text-on-surface font-label-md text-label-md rounded flex items-center justify-center gap-2 hover:bg-surface-container-highest transition-colors focus:outline-none focus:ring-2 focus:ring-white/20 focus:ring-offset-2 focus:ring-offset-surface-container-high">
+<span class="material-symbols-outlined" style="font-size: 18px;">key</span>
+                        Connect FAL Key
+                    </button>
+<button class="w-full h-10 bg-transparent text-primary-fixed-dim font-label-md text-label-md rounded flex items-center justify-center hover:bg-primary-fixed-dim/10 transition-colors focus:outline-none">
+                        Continue without AI visuals
+                    </button>
+</div>
+</div>
+</div>
+</div>
+</body></html>

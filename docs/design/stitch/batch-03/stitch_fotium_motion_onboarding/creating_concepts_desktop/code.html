@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Creating Concepts - Fotium Motion</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=Inter:wght@100..900&amp;family=JetBrains+Mono:wght@100..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "secondary": "#dcb8ff",
+                      "on-surface": "#e5e2e1",
+                      "surface-container-high": "#2a2a2a",
+                      "outline-variant": "#3b494b",
+                      "on-secondary-fixed-variant": "#6700b5",
+                      "on-primary": "#00363a",
+                      "on-error-container": "#ffdad6",
+                      "primary-container": "#00f0ff",
+                      "on-primary-container": "#006970",
+                      "inverse-primary": "#006970",
+                      "secondary-container": "#7701d0",
+                      "primary-fixed-dim": "#00dbe9",
+                      "surface-container-low": "#1c1b1b",
+                      "on-secondary": "#480081",
+                      "surface": "#131313",
+                      "secondary-fixed-dim": "#dcb8ff",
+                      "secondary-fixed": "#efdbff",
+                      "on-surface-variant": "#b9cacb",
+                      "on-tertiary-fixed-variant": "#8f0041",
+                      "on-primary-fixed-variant": "#004f54",
+                      "surface-container-highest": "#353534",
+                      "tertiary-fixed": "#ffd9e0",
+                      "surface-container-lowest": "#0e0e0e",
+                      "surface-variant": "#353534",
+                      "inverse-surface": "#e5e2e1",
+                      "surface-container": "#201f1f",
+                      "error": "#ffb4ab",
+                      "primary-fixed": "#7df4ff",
+                      "inverse-on-surface": "#313030",
+                      "on-tertiary": "#66002c",
+                      "surface-tint": "#00dbe9",
+                      "outline": "#849495",
+                      "on-secondary-fixed": "#2c0051",
+                      "on-background": "#e5e2e1",
+                      "tertiary-fixed-dim": "#ffb1c3",
+                      "error-container": "#93000a",
+                      "surface-bright": "#393939",
+                      "on-primary-fixed": "#002022",
+                      "surface-dim": "#131313",
+                      "tertiary-container": "#ffccd6",
+                      "on-tertiary-fixed": "#3f0019",
+                      "tertiary": "#fff3f4",
+                      "on-tertiary-container": "#bb0058",
+                      "primary": "#dbfcff",
+                      "on-secondary-container": "#dcb7ff",
+                      "background": "#131313",
+                      "on-error": "#690005"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "panel-padding": "12px",
+                      "gutter": "16px",
+                      "margin-desktop": "24px",
+                      "unit": "4px",
+                      "margin-mobile": "16px",
+                      "stack-sm": "8px",
+                      "stack-md": "16px",
+                      "stack-lg": "32px"
+              },
+              "fontFamily": {
+                      "headline-sm": [
+                              "Geist"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "label-sm": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-md-mobile": [
+                              "Geist"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "display-lg": [
+                              "Geist"
+                      ],
+                      "label-md": [
+                              "JetBrains Mono"
+                      ]
+              },
+              "fontSize": {
+                      "headline-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-sm": [
+                              "10px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-md-mobile": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "label-md": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        .pulse-glow {
+            animation: pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse-glow {
+            0%, 100% {
+                opacity: 0.4;
+                box-shadow: 0 0 15px 0 rgba(0, 240, 255, 0.2);
+            }
+            50% {
+                opacity: 1;
+                box-shadow: 0 0 30px 5px rgba(0, 240, 255, 0.4);
+            }
+        }
+        
+        .loading-step-1, .loading-step-2, .loading-step-3 {
+            opacity: 0.3;
+            transition: opacity 0.5s ease;
+        }
+        .loading-step-active {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface h-screen flex flex-col overflow-hidden">
+<!-- TopAppBar -->
+<header class="bg-surface dark:bg-surface text-primary-fixed-dim dark:text-primary-fixed-dim font-headline-sm text-headline-sm flex justify-between items-center w-full px-margin-desktop h-16 sticky top-0 z-40 transition-all duration-150 shadow-[0_1px_0_0_rgba(255,255,255,0.05)]">
+<div class="flex items-center gap-6 border-b-2 border-transparent hover:text-primary-container transition-colors">
+<span class="font-headline-md text-headline-md font-bold text-primary-fixed-dim dark:text-primary-fixed-dim">Fotium Motion</span>
+<nav class="hidden md:flex gap-6 font-label-md text-label-md">
+<a class="text-primary font-bold border-b-2 border-primary pb-1" href="#">Studio</a>
+<a class="text-on-surface-variant dark:text-on-surface-variant hover:text-primary-container transition-colors border-b-2 border-transparent pb-1" href="#">Library</a>
+<a class="text-on-surface-variant dark:text-on-surface-variant hover:text-primary-container transition-colors border-b-2 border-transparent pb-1" href="#">History</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-on-surface-variant hover:text-primary-container transition-colors">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary-container transition-colors">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">help_outline</span>
+</button>
+<div class="h-8 w-8 rounded-full bg-surface-container-high overflow-hidden border border-outline-variant ml-2">
+<img alt="User Avatar" class="w-full h-full object-cover" data-alt="A small circular avatar placeholder image showing a subtle gradient of deep charcoal to light grey, suitable for a dark-mode user profile icon in a professional software interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCDjfHZxebyyhXm-XVmLeuTy6VITj0DHPEKBQziW0P4VyC_icQy2g_zAnIWU2FPk3GtQ03o-IV1W70hrcTm3h9dgI5s_nb4sdDC13BsDVzRg0drEAXUzkjS9y4hLEiLSYeHuZy3U6lctov5loSBzMekvimisPosZ-hPgo2SsdPnn7zrxPl1laRV0VoT_3KQJdW4S8NTTC6XCeby_Wy5k82pXDIneyWW4_uDDx9w7Hgg2ZnEY4KrNyj6AnhrxD8h3jIk1FgXLfAt0y8"/>
+</div>
+<button class="bg-primary-container text-on-primary-container font-label-md text-label-md px-4 py-2 rounded font-medium hover:bg-primary transition-colors ml-4 hidden md:block">
+                Generate
+            </button>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="flex-1 flex items-center justify-center relative p-margin-desktop md:p-12 overflow-hidden bg-background">
+<!-- Subtle Ambient Background -->
+<div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+<div class="w-96 h-96 rounded-full bg-primary blur-[120px]"></div>
+</div>
+<div class="w-full max-w-2xl bg-surface-container-high border border-[rgba(255,255,255,0.05)] rounded-xl p-8 relative shadow-lg z-10 flex flex-col items-center">
+<!-- Central Processing Indicator -->
+<div class="relative w-24 h-24 mb-10 flex items-center justify-center">
+<!-- Inner solid dot -->
+<div class="w-4 h-4 bg-primary-container rounded-full z-20"></div>
+<!-- Outer glowing rings -->
+<div class="absolute w-12 h-12 border border-primary-container rounded-full pulse-glow z-10"></div>
+<div class="absolute w-20 h-20 border border-[rgba(0,240,255,0.2)] rounded-full animate-[spin_4s_linear_infinite] border-t-primary-container z-10"></div>
+</div>
+<div class="text-center mb-12">
+<h1 class="font-headline-md text-headline-md text-on-surface mb-2 tracking-tight">Creating Concepts</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">The AI is currently processing your request.</p>
+</div>
+<!-- Honest Phases List -->
+<div class="w-full max-w-md space-y-6">
+<!-- Step 1 -->
+<div class="flex items-center gap-4 loading-step-1 loading-step-active" id="step-1">
+<div class="w-6 h-6 rounded-full bg-surface border border-outline flex items-center justify-center shrink-0 step-indicator">
+<span class="material-symbols-outlined text-[14px] text-primary" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+<div class="flex-1">
+<p class="font-label-md text-label-md text-on-surface uppercase tracking-wider">Understanding brief</p>
+</div>
+</div>
+<!-- Step 2 -->
+<div class="flex items-center gap-4 loading-step-2 loading-step-active" id="step-2">
+<div class="w-6 h-6 rounded-full bg-surface border border-primary-container flex items-center justify-center shrink-0 step-indicator pulse-glow">
+<div class="w-2 h-2 bg-primary-container rounded-full"></div>
+</div>
+<div class="flex-1">
+<p class="font-label-md text-label-md text-primary-container uppercase tracking-wider font-bold">Organizing material</p>
+</div>
+</div>
+<!-- Step 3 -->
+<div class="flex items-center gap-4 loading-step-3" id="step-3">
+<div class="w-6 h-6 rounded-full bg-surface border border-outline-variant flex items-center justify-center shrink-0 step-indicator">
+<!-- empty circle for pending -->
+</div>
+<div class="flex-1">
+<p class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Preparing 3 concepts</p>
+</div>
+</div>
+</div>
+<!-- Terminal/Console Output feel -->
+<div class="mt-12 w-full max-w-md bg-surface border border-outline-variant rounded p-4 flex gap-3 items-start">
+<span class="material-symbols-outlined text-outline text-[16px] mt-0.5">terminal</span>
+<p class="font-label-sm text-label-sm text-on-surface-variant font-mono opacity-70">
+                    &gt; Analyzing source footage timelines...<br/>
+                    &gt; Extracting keyframes (34/120)...<br/>
+                    &gt; Matching motion vectors to style profile...
+                 </p>
+</div>
+</div>
+</main>
+<!-- Bottom Navigation Bar for Mobile (Hidden on Desktop) -->
+<nav class="md:hidden bg-surface dark:bg-surface border-t border-[rgba(255,255,255,0.05)] w-full flex justify-around items-center h-[72px] pb-safe z-50 fixed bottom-0">
+<a class="flex flex-col items-center justify-center w-full h-full text-primary gap-1" href="#">
+<span class="material-symbols-outlined bg-secondary-container text-on-primary-container rounded-full px-4 py-1" style="font-variation-settings: 'FILL' 1;">movie</span>
+<span class="font-label-sm text-label-sm font-bold">Studio</span>
+</a>
+<a class="flex flex-col items-center justify-center w-full h-full text-on-surface-variant hover:text-on-surface gap-1" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">video_library</span>
+<span class="font-label-sm text-label-sm">Library</span>
+</a>
+<a class="flex flex-col items-center justify-center w-full h-full text-on-surface-variant hover:text-on-surface gap-1" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">history</span>
+<span class="font-label-sm text-label-sm">History</span>
+</a>
+</nav>
+<script>
+        // Simple script to cycle through steps for demonstration purposes
+        // In a real app, this would be tied to actual backend progress
+        document.addEventListener('DOMContentLoaded', () => {
+            const step1 = document.getElementById('step-1');
+            const step2 = document.getElementById('step-2');
+            const step3 = document.getElementById('step-3');
+            
+            // Wait a few seconds, then move from step 2 to step 3
+            setTimeout(() => {
+                // Update Step 2 to completed
+                step2.querySelector('.step-indicator').classList.remove('border-primary-container', 'pulse-glow');
+                step2.querySelector('.step-indicator').classList.add('border-outline');
+                step2.querySelector('.step-indicator').innerHTML = `<span class="material-symbols-outlined text-[14px] text-primary" style="font-variation-settings: 'FILL' 1;">check</span>`;
+                step2.querySelector('p').classList.remove('text-primary-container', 'font-bold');
+                step2.querySelector('p').classList.add('text-on-surface');
+
+                // Update Step 3 to active
+                step3.classList.add('loading-step-active');
+                step3.querySelector('.step-indicator').classList.remove('border-outline-variant');
+                step3.querySelector('.step-indicator').classList.add('border-primary-container', 'pulse-glow');
+                step3.querySelector('.step-indicator').innerHTML = `<div class="w-2 h-2 bg-primary-container rounded-full"></div>`;
+                step3.querySelector('p').classList.remove('text-on-surface-variant');
+                step3.querySelector('p').classList.add('text-primary-container', 'font-bold');
+                
+                // Update terminal text
+                const terminalText = document.querySelector('.font-mono');
+                terminalText.innerHTML = `> Source footage analysis complete.<br>> Generating layout variations...<br>> Applying stylistic treatments (1/3)...`;
+            }, 4000);
+        });
+    </script>
+</body></html>

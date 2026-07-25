@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Billing</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed-variant": "#8f0041",
+                        "secondary-container": "#7701d0",
+                        "tertiary-container": "#ffccd6",
+                        "on-tertiary": "#66002c",
+                        "surface-variant": "#353534",
+                        "surface-container-low": "#1c1b1b",
+                        "on-secondary-fixed-variant": "#6700b5",
+                        "surface-container-high": "#2a2a2a",
+                        "primary-fixed-dim": "#00dbe9",
+                        "surface-bright": "#393939",
+                        "secondary": "#dcb8ff",
+                        "on-surface-variant": "#b9cacb",
+                        "on-background": "#e5e2e1",
+                        "on-secondary": "#480081",
+                        "primary-container": "#00f0ff",
+                        "tertiary-fixed": "#ffd9e0",
+                        "outline": "#849495",
+                        "on-tertiary-container": "#bb0058",
+                        "surface-container-lowest": "#0e0e0e",
+                        "inverse-primary": "#006970",
+                        "secondary-fixed-dim": "#dcb8ff",
+                        "surface": "#131313",
+                        "primary": "#dbfcff",
+                        "on-primary-fixed-variant": "#004f54",
+                        "on-primary": "#00363a",
+                        "error-container": "#93000a",
+                        "surface-tint": "#00dbe9",
+                        "surface-dim": "#131313",
+                        "surface-container": "#201f1f",
+                        "tertiary-fixed-dim": "#ffb1c3",
+                        "on-secondary-fixed": "#2c0051",
+                        "on-primary-fixed": "#002022",
+                        "secondary-fixed": "#efdbff",
+                        "outline-variant": "#3b494b",
+                        "on-secondary-container": "#dcb7ff",
+                        "surface-container-highest": "#353534",
+                        "tertiary": "#fff3f4",
+                        "inverse-surface": "#e5e2e1",
+                        "error": "#ffb4ab",
+                        "on-error": "#690005",
+                        "on-surface": "#e5e2e1",
+                        "on-primary-container": "#006970",
+                        "on-error-container": "#ffdad6",
+                        "on-tertiary-fixed": "#3f0019",
+                        "inverse-on-surface": "#313030",
+                        "primary-fixed": "#7df4ff",
+                        "background": "#131313"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "stack-sm": "8px",
+                        "stack-lg": "32px",
+                        "margin-desktop": "24px",
+                        "gutter": "16px",
+                        "unit": "4px",
+                        "panel-padding": "12px",
+                        "margin-mobile": "16px",
+                        "stack-md": "16px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["JetBrains Mono"],
+                        "headline-sm": ["Geist"],
+                        "body-lg": ["Inter"],
+                        "display-lg": ["Geist"],
+                        "headline-md": ["Geist"],
+                        "headline-md-mobile": ["Geist"],
+                        "body-md": ["Inter"],
+                        "label-sm": ["JetBrains Mono"]
+                    },
+                    "fontSize": {
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "headline-md-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-sm": ["10px", { "lineHeight": "14px", "fontWeight": "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .squircle { clip-path: polygon(10% 0%, 90% 0%, 100% 10%, 100% 90%, 90% 100%, 10% 100%, 0% 90%, 0% 10%); }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen flex flex-col md:flex-row overflow-x-hidden">
+<!-- Mobile Top App Bar (Hidden on Desktop) -->
+<header class="md:hidden flex justify-between items-center px-margin-mobile w-full h-16 bg-background top-0 sticky z-50">
+<div class="font-display-lg text-headline-md-mobile tracking-tighter text-primary font-bold">Fotium Motion</div>
+<div class="flex gap-gutter">
+<button aria-label="help" class="text-primary hover:text-primary-fixed-dim transition-colors duration-200 scale-95 duration-100">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">help</span>
+</button>
+<button aria-label="account_circle" class="text-primary hover:text-primary-fixed-dim transition-colors duration-200 scale-95 duration-100">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">account_circle</span>
+</button>
+</div>
+</header>
+<!-- SideNavBar (Desktop Only) -->
+<nav class="hidden md:flex flex-col h-screen py-stack-lg px-panel-padding bg-surface-container-low border-r border-outline-variant w-64 docked left-0 sticky top-0 z-40">
+<div class="mb-stack-lg flex flex-col gap-unit">
+<div class="flex items-center gap-stack-sm mb-stack-md">
+<img alt="User profile avatar" class="w-8 h-8 rounded-full object-cover outline outline-1 outline-outline-variant" data-alt="A small, circular profile picture of an AI video editor user, highly stylized with subtle neon blue under-lighting. Modern dark-first studio aesthetic. Very detailed." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB4oY6R8Gqy4Dm0zYMZiO4G8DhdTzmyFVSE8GaxoOuxCys0j2_JWeLCFag5wrKoamEMLf4zRX6aXVvsKskFKkbshQ2Ffj092eDf5hxIhGs_0_1KILBiahJCVVb26RJsv7yWeYima-vb1OYiR_OG2EPdUjDTbWjgJchp9fGzZNUJmyLNeQiSG2DIgYxCN804Grq4S_Ld4LtIxQ8Ml49rIkurDMaU03hIrQzOZ9auwhH799fR5eKNsmScSID5kSDa0BqcD5fynoyhJr4"/>
+<div>
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Creator Workspace</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Pro Plan</p>
+</div>
+</div>
+<button class="w-full bg-primary-container text-on-primary-container font-headline-sm text-headline-sm py-2 rounded-lg hover:brightness-110 transition-all squircle flex items-center justify-center gap-2">
+<span class="material-symbols-outlined">add</span>
+                New Project
+            </button>
+</div>
+<ul class="flex flex-col gap-unit flex-grow">
+<li>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">video_library</span>
+                    Projects
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">folder_open</span>
+                    Assets
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">auto_awesome</span>
+                    AI Studio
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 bg-secondary-container text-on-secondary-container rounded-lg font-semibold font-body-md text-body-md transition-transform scale-98" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">account_balance_wallet</span>
+                    Billing
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">settings</span>
+                    Settings
+                </a>
+</li>
+</ul>
+<div class="mt-auto flex flex-col gap-unit pt-stack-md border-t border-outline-variant">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined">contact_support</span>
+                Help
+            </a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined">logout</span>
+                Logout
+            </a>
+</div>
+</nav>
+<!-- Main Canvas -->
+<main class="flex-grow flex flex-col">
+<!-- TopNavBar (Desktop Only) -->
+<header class="hidden md:flex justify-between items-center px-margin-desktop w-full h-16 bg-background top-0 sticky z-30">
+<div class="font-display-lg text-headline-md tracking-tighter text-primary font-bold">Fotium Motion</div>
+<div class="flex gap-gutter items-center">
+<button aria-label="help" class="text-primary hover:text-primary-fixed-dim transition-colors duration-200 scale-95 duration-100 flex items-center justify-center p-2 rounded-full hover:bg-surface-container-low">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">help</span>
+</button>
+<button aria-label="account_circle" class="text-primary hover:text-primary-fixed-dim transition-colors duration-200 scale-95 duration-100 flex items-center justify-center p-2 rounded-full hover:bg-surface-container-low">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">account_circle</span>
+</button>
+</div>
+</header>
+<div class="p-margin-mobile md:p-margin-desktop flex-grow max-w-[1200px] mx-auto w-full flex flex-col gap-stack-lg">
+<!-- Page Header -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-stack-md">
+<div>
+<h1 class="font-display-lg text-display-lg text-on-surface">Credits &amp; Billing</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant mt-unit">Manage your AI rendering resources.</p>
+</div>
+</div>
+<!-- Dashboard Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+<!-- Main Balance Card -->
+<div class="lg:col-span-2 bg-surface-container-low border border-outline-variant rounded-xl p-stack-lg relative overflow-hidden flex flex-col justify-between">
+<!-- Subtle abstract background graphic for premium feel -->
+<div class="absolute -right-20 -top-20 w-64 h-64 bg-primary-container rounded-full blur-[100px] opacity-10 pointer-events-none"></div>
+<div class="flex justify-between items-start mb-stack-lg z-10 relative">
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-unit">Available Balance</span>
+<div class="flex items-baseline gap-2">
+<span class="font-display-lg text-display-lg text-primary leading-none">120</span>
+<span class="font-headline-sm text-headline-sm text-on-surface-variant">CR</span>
+</div>
+</div>
+<a class="text-primary text-sm hover:underline flex items-center gap-1" href="#">
+                            How credits work <span class="material-symbols-outlined text-[16px]">open_in_new</span>
+</a>
+</div>
+<div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-stack-md z-10 relative mt-auto pt-stack-md border-t border-outline-variant/30">
+<div class="flex flex-col gap-1">
+<span class="font-label-md text-label-md text-on-surface-variant">Reserved for in-progress jobs</span>
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-secondary-fixed-dim animate-pulse"></span>
+<span class="font-headline-md text-headline-md text-secondary-fixed-dim">24</span>
+<span class="font-body-md text-body-md text-on-surface-variant">CR</span>
+</div>
+</div>
+<button class="bg-primary-container text-on-primary-container font-headline-sm text-headline-sm px-6 py-3 rounded-lg hover:brightness-110 transition-all squircle w-full sm:w-auto text-center">
+                            Add Credits
+                        </button>
+</div>
+</div>
+<!-- Quick Stats / Next Billing -->
+<div class="bg-surface-container-low border border-outline-variant rounded-xl p-stack-md flex flex-col gap-stack-md">
+<h3 class="font-headline-sm text-headline-sm text-on-surface border-b border-outline-variant pb-2">Plan Details</h3>
+<div class="flex flex-col gap-unit">
+<span class="font-label-md text-label-md text-on-surface-variant uppercase">Current Plan</span>
+<span class="font-body-lg text-body-lg text-on-surface">Pro Tier</span>
+</div>
+<div class="flex flex-col gap-unit">
+<span class="font-label-md text-label-md text-on-surface-variant uppercase">Renewal Date</span>
+<span class="font-body-lg text-body-lg text-on-surface">Nov 15, 2024</span>
+</div>
+<div class="flex flex-col gap-unit mt-auto pt-stack-md">
+<button class="w-full bg-transparent border border-outline-variant text-on-surface font-body-md text-body-md py-2 rounded-lg hover:bg-surface-container-high transition-all">
+                            Manage Subscription
+                        </button>
+</div>
+</div>
+</div>
+<!-- Ledger Table -->
+<div class="bg-surface-container-low border border-outline-variant rounded-xl overflow-hidden flex flex-col">
+<div class="p-stack-md border-b border-outline-variant flex justify-between items-center bg-surface-container-high/50">
+<h3 class="font-headline-md text-headline-md text-on-surface">Credit Activity</h3>
+<button class="text-primary hover:text-primary-fixed-dim p-2 rounded-full transition-colors">
+<span class="material-symbols-outlined">filter_list</span>
+</button>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left font-body-md text-body-md whitespace-nowrap">
+<thead class="bg-surface-container-high text-on-surface-variant font-label-md text-label-md uppercase tracking-wider">
+<tr>
+<th class="px-gutter py-3">Date</th>
+<th class="px-gutter py-3">Event / Project</th>
+<th class="px-gutter py-3">Type</th>
+<th class="px-gutter py-3 text-right">Amount</th>
+<th class="px-gutter py-3 text-right">Balance</th>
+<th class="px-gutter py-3 text-center">Status</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/50 text-on-surface font-label-md">
+<tr class="hover:bg-surface-container-high/30 transition-colors">
+<td class="px-gutter py-4 text-on-surface-variant font-label-md">Oct 24, 14:32</td>
+<td class="px-gutter py-4">Neon City Flythrough</td>
+<td class="px-gutter py-4"><span class="bg-surface-container-highest px-2 py-1 rounded text-on-surface-variant">Generation</span></td>
+<td class="px-gutter py-4 text-right text-error">-12 CR</td>
+<td class="px-gutter py-4 text-right text-on-surface-variant">120 CR</td>
+<td class="px-gutter py-4 text-center">
+<span class="inline-flex items-center gap-1 text-primary-fixed-dim">
+<span class="material-symbols-outlined text-[14px]">check_circle</span> Completed
+                                    </span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-high/30 transition-colors">
+<td class="px-gutter py-4 text-on-surface-variant font-label-md">Oct 24, 10:15</td>
+<td class="px-gutter py-4">Character Rig Test 02</td>
+<td class="px-gutter py-4"><span class="bg-surface-container-highest px-2 py-1 rounded text-on-surface-variant">Generation</span></td>
+<td class="px-gutter py-4 text-right text-error">-8 CR</td>
+<td class="px-gutter py-4 text-right text-on-surface-variant">132 CR</td>
+<td class="px-gutter py-4 text-center">
+<span class="inline-flex items-center gap-1 text-primary-fixed-dim">
+<span class="material-symbols-outlined text-[14px]">check_circle</span> Completed
+                                    </span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-high/30 transition-colors bg-surface-container-highest/20">
+<td class="px-gutter py-4 text-on-surface-variant font-label-md">Oct 23, 18:45</td>
+<td class="px-gutter py-4">Failed Render - Timeout</td>
+<td class="px-gutter py-4"><span class="bg-surface-container-highest px-2 py-1 rounded text-on-surface-variant">Settlement</span></td>
+<td class="px-gutter py-4 text-right text-secondary-fixed-dim">+15 CR</td>
+<td class="px-gutter py-4 text-right text-on-surface-variant">140 CR</td>
+<td class="px-gutter py-4 text-center">
+<span class="inline-flex items-center gap-1 text-on-surface-variant">
+<span class="material-symbols-outlined text-[14px]">replay</span> Refunded
+                                    </span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-high/30 transition-colors">
+<td class="px-gutter py-4 text-on-surface-variant font-label-md">Oct 20, 09:00</td>
+<td class="px-gutter py-4">Stripe Ref: CH_1N...</td>
+<td class="px-gutter py-4"><span class="bg-surface-container-highest px-2 py-1 rounded text-on-surface-variant">Purchase</span></td>
+<td class="px-gutter py-4 text-right text-primary-container">+100 CR</td>
+<td class="px-gutter py-4 text-right text-on-surface-variant">125 CR</td>
+<td class="px-gutter py-4 text-center">
+<span class="inline-flex items-center gap-1 text-primary-fixed-dim">
+<span class="material-symbols-outlined text-[14px]">check_circle</span> Completed
+                                    </span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-high/30 transition-colors">
+<td class="px-gutter py-4 text-on-surface-variant font-label-md">Oct 01, 00:00</td>
+<td class="px-gutter py-4">Welcome to Fotium</td>
+<td class="px-gutter py-4"><span class="bg-surface-container-highest px-2 py-1 rounded text-on-surface-variant">Trial Grant</span></td>
+<td class="px-gutter py-4 text-right text-primary-container">+25 CR</td>
+<td class="px-gutter py-4 text-right text-on-surface-variant">25 CR</td>
+<td class="px-gutter py-4 text-center">
+<span class="inline-flex items-center gap-1 text-primary-fixed-dim">
+<span class="material-symbols-outlined text-[14px]">check_circle</span> Completed
+                                    </span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination / Load More (mock) -->
+<div class="p-stack-sm border-t border-outline-variant flex justify-center bg-surface-container-low">
+<button class="text-on-surface-variant text-sm hover:text-on-surface transition-colors py-2 px-4">Load Older Activity</button>
+</div>
+</div>
+</div>
+<!-- Footer -->
+<footer class="flex flex-col sm:flex-row justify-between items-center px-margin-desktop py-stack-md w-full bg-background border-t border-outline-variant mt-auto">
+<span class="font-label-sm text-label-sm text-on-surface-variant mb-2 sm:mb-0">© 2024 Fotium Motion AI. Professional Grade.</span>
+<div class="flex gap-gutter">
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Terms of Service</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Privacy Policy</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">API Status</a>
+</div>
+</footer>
+</main>
+<!-- Mobile Bottom Navigation (Hidden on Desktop) -->
+<nav class="md:hidden w-full bottom-0 sticky z-40 bg-surface-container-low border-t border-outline-variant flex justify-around items-center h-16 pb-safe">
+<a class="flex flex-col items-center p-2 text-on-surface-variant hover:text-on-surface" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">video_library</span>
+</a>
+<a class="flex flex-col items-center p-2 text-on-surface-variant hover:text-on-surface" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">folder_open</span>
+</a>
+<a class="flex flex-col items-center p-2 text-on-surface-variant hover:text-on-surface" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">auto_awesome</span>
+</a>
+<a class="flex flex-col items-center p-2 bg-secondary-container text-on-secondary-container rounded-full" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">account_balance_wallet</span>
+</a>
+</nav>
+</body></html>

@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Crop and Focal Point</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#dcb8ff",
+                        "on-primary-fixed-variant": "#004f54",
+                        "surface-container-highest": "#353534",
+                        "surface-container-high": "#2a2a2a",
+                        "on-surface": "#e5e2e1",
+                        "secondary-fixed": "#efdbff",
+                        "on-error-container": "#ffdad6",
+                        "error-container": "#93000a",
+                        "on-surface-variant": "#b9cacb",
+                        "outline-variant": "#3b494b",
+                        "background": "#131313",
+                        "surface-container": "#201f1f",
+                        "outline": "#849495",
+                        "surface-tint": "#00dbe9",
+                        "on-background": "#e5e2e1",
+                        "on-primary-container": "#006970",
+                        "tertiary-fixed-dim": "#ffb1c3",
+                        "surface-variant": "#353534",
+                        "on-secondary-fixed": "#2c0051",
+                        "on-secondary-container": "#dcb7ff",
+                        "on-tertiary-fixed": "#3f0019",
+                        "primary-fixed-dim": "#00dbe9",
+                        "primary-container": "#00f0ff",
+                        "surface-bright": "#393939",
+                        "on-tertiary": "#66002c",
+                        "on-primary-fixed": "#002022",
+                        "surface-dim": "#131313",
+                        "on-tertiary-container": "#bb0058",
+                        "inverse-primary": "#006970",
+                        "on-secondary": "#480081",
+                        "inverse-on-surface": "#313030",
+                        "primary": "#dbfcff",
+                        "tertiary-fixed": "#ffd9e0",
+                        "on-error": "#690005",
+                        "tertiary-container": "#ffccd6",
+                        "surface-container-lowest": "#0e0e0e",
+                        "surface-container-low": "#1c1b1b",
+                        "on-secondary-fixed-variant": "#6700b5",
+                        "tertiary": "#fff3f4",
+                        "surface": "#131313",
+                        "secondary-fixed-dim": "#dcb8ff",
+                        "error": "#ffb4ab",
+                        "secondary-container": "#7701d0",
+                        "primary-fixed": "#7df4ff",
+                        "inverse-surface": "#e5e2e1",
+                        "on-tertiary-fixed-variant": "#8f0041",
+                        "on-primary": "#00363a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "stack-md": "16px",
+                        "unit": "4px",
+                        "panel-padding": "12px",
+                        "stack-lg": "32px",
+                        "margin-mobile": "16px",
+                        "margin-desktop": "24px",
+                        "stack-sm": "8px",
+                        "gutter": "16px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["JetBrains Mono"],
+                        "headline-md-mobile": ["Geist"],
+                        "body-md": ["Inter"],
+                        "headline-md": ["Geist"],
+                        "display-lg": ["Geist"],
+                        "body-lg": ["Inter"],
+                        "label-sm": ["JetBrains Mono"],
+                        "headline-sm": ["Geist"]
+                    },
+                    "fontSize": {
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "headline-md-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "label-sm": ["10px", { "lineHeight": "14px", "fontWeight": "500" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .material-symbols-outlined.fill { font-variation-settings: 'FILL' 1; }
+        
+        .safe-area-overlay {
+            background-image: 
+                linear-gradient(to right, rgba(255, 255, 255, 0.1) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+            background-size: 33.33% 33.33%;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background h-screen overflow-hidden flex flex-col font-body-md text-body-md">
+<!-- TopAppBar -->
+<header class="bg-surface dark:bg-surface text-primary dark:text-primary-fixed-dim docked full-width top-0 flat no shadows hover:opacity-80 transition-opacity flex justify-between items-center h-16 px-margin-desktop w-full ml-[280px] fixed z-50">
+<div class="flex items-center gap-stack-md">
+<span class="font-headline-sm text-headline-sm font-bold text-primary dark:text-primary-fixed-dim">Fotium Motion</span>
+</div>
+<div class="flex items-center gap-stack-md">
+<button class="text-on-surface-variant hover:text-on-surface transition-colors p-unit">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-on-surface transition-colors p-unit">
+<span class="material-symbols-outlined">cloud_done</span>
+</button>
+<button class="bg-primary-container text-on-primary-fixed font-label-md text-label-md px-stack-sm py-unit rounded flex items-center gap-unit hover:bg-primary-fixed transition-colors">
+<span class="material-symbols-outlined text-[16px]">ios_share</span>
+                Export
+            </button>
+<img alt="User Profile" class="w-8 h-8 rounded-full object-cover ml-stack-sm border border-outline-variant" data-alt="A small circular avatar placeholder image for the user profile, dark minimal style, subtle grey background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDPS_BSzes4r_hLNtxaoamuCYAlfzs0wolx6sFToOhg8zMyCpbunVKKvSzKi7nS52WNpvzqdTDyBBCSlG3XfxUjZzCQ9U2uiMTogBdwvJ-IXHDdz7bePfgnLGopfCpMkl-u5KD18E8RX6vp5HnFXkcIzdYmDBECmg2bpxzyz8NC8Uxlp7v0DZfXPWefP_AvhxNxhTU6blP8Y2JjA7b30DTrOlUgR2WPozLuyrueQP_dnwceL02tPeAlAJKWBw1KC4QvLlQ51N5dkpk"/>
+</div>
+</header>
+<div class="flex flex-1 pt-16">
+<!-- SideNavBar -->
+<nav class="bg-surface-container-low dark:bg-surface-container-low text-primary dark:text-primary-fixed-dim h-screen w-[280px] fixed left-0 top-0 flat no shadows flex flex-col h-full py-panel-padding z-40 border-r border-outline-variant">
+<div class="px-panel-padding mb-stack-lg flex items-center gap-stack-sm">
+<div class="w-10 h-10 rounded bg-surface-container flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-[24px]">movie_edit</span>
+</div>
+<div>
+<div class="font-headline-md text-headline-md font-bold text-on-surface dark:text-primary leading-tight">Fotium Motion</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant">Pro Studio</div>
+</div>
+</div>
+<div class="flex flex-col gap-unit px-panel-padding flex-1">
+<a class="text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-highest dark:hover:bg-surface-container-highest transition-colors flex items-center gap-stack-sm px-stack-sm py-2 rounded-DEFAULT font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined text-[20px]">folder_open</span> Projects
+                </a>
+<a class="text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-highest dark:hover:bg-surface-container-highest transition-colors flex items-center gap-stack-sm px-stack-sm py-2 rounded-DEFAULT font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined text-[20px]">animated_images</span> Storyboard
+                </a>
+<a class="text-primary dark:text-primary-fixed-dim font-bold bg-surface-container-highest flex items-center gap-stack-sm px-stack-sm py-2 rounded-DEFAULT font-label-md text-label-md scale-[0.98] transition-transform duration-150" href="#">
+<span class="material-symbols-outlined text-[20px] fill">video_library</span> Assets
+                </a>
+<a class="text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-highest dark:hover:bg-surface-container-highest transition-colors flex items-center gap-stack-sm px-stack-sm py-2 rounded-DEFAULT font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined text-[20px]">auto_fix_high</span> Effects
+                </a>
+<a class="text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-highest dark:hover:bg-surface-container-highest transition-colors flex items-center gap-stack-sm px-stack-sm py-2 rounded-DEFAULT font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined text-[20px]">ios_share</span> Export
+                </a>
+</div>
+<div class="px-panel-padding mt-auto flex flex-col gap-unit">
+<button class="bg-surface-container hover:bg-surface-container-highest text-primary font-label-md text-label-md py-2 rounded-DEFAULT mb-stack-md transition-colors border border-outline-variant flex justify-center items-center gap-stack-sm">
+<span class="material-symbols-outlined text-[18px]">temp_preferences_custom</span> Generate AI
+                </button>
+<a class="text-on-surface-variant hover:text-on-surface flex items-center gap-stack-sm px-stack-sm py-1 font-label-sm text-label-sm transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px]">settings</span> Settings
+                </a>
+<a class="text-on-surface-variant hover:text-on-surface flex items-center gap-stack-sm px-stack-sm py-1 font-label-sm text-label-sm transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px]">help</span> Support
+                </a>
+</div>
+</nav>
+<!-- Main Editor Area -->
+<main class="ml-[280px] flex-1 flex h-full bg-[#0A0A0A]">
+<!-- Canvas / Preview Area -->
+<div class="flex-1 flex flex-col p-panel-padding relative">
+<div class="flex justify-between items-center mb-panel-padding">
+<div class="flex items-center gap-stack-sm">
+<button class="text-on-surface-variant hover:text-on-surface p-unit rounded hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+<span class="font-headline-sm text-headline-sm font-semibold">Crop &amp; Focal Point</span>
+</div>
+<div class="flex items-center gap-stack-sm">
+<span class="font-label-md text-label-md text-on-surface-variant bg-surface-container px-2 py-1 rounded">1920x1080 (16:9)</span>
+</div>
+</div>
+<!-- Preview Container -->
+<div class="flex-1 bg-surface-container-lowest rounded-lg border border-outline-variant relative overflow-hidden flex items-center justify-center">
+<!-- Vertical Source Media (Simulated) -->
+<div class="absolute h-full w-[56.25%] bg-surface-container-highest overflow-hidden blur-sm opacity-50" data-alt="A blurred, vertical format video still showing a cinematic urban night scene with neon reflections, dark moody atmosphere, cyberpunk aesthetic." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDwm9DSOC_BndhxyayS2Fv_GR5jiypht5S1hYG_3P5D2n-_wbJCXI5syZCOCwnuQr5RLG5j4pFTK7JAIoDOEBK1Q7W4nVrCyuMbQk08VDCj6Tfmc38Uu0X3ZrDT1qTMs0drYSaFPYjaZzQ4ZXmHKMAN90D-x6HErC5N1gDHNP7bK_3XBZnNh5DnPd4CWO5tDNW4ehxxSj4nrC9qYeODuDt_o4EKHTezSmiKEgEJUgQNkPEVJZZR0k4eepAf6FUrytVSqckKnO7-qfY'); background-size: cover; background-position: center;">
+</div>
+<!-- Cropped Area / Active Frame -->
+<div class="relative w-full max-w-[800px] aspect-video bg-black overflow-hidden border border-primary/30 shadow-[0_0_15px_rgba(0,240,255,0.1)]">
+<div class="absolute inset-0 w-full h-full" data-alt="A sharp, cinematic horizontal video still showing a high-tech studio environment with cyan glowing accents, dark moody lighting, focused composition." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCn_7vBG5v6KqFIxMqD0jTR_XQazPHvsM4MUBGy523d47bnXy5YyQhk7vyvCGEtuSIst6EWlCDXxdCDPZdrtT8movTD8kiSHKGHm4N1Fnl9ahx7Z31yu_vSxACsXGrEq-lYH7Su99cbkZRisZ0JcWRnUI-PH5sPWjB4Q87WfGpM5AM7Op7QmAPZhD4iNV3Ltq_w8uRxeuML-MM3P6rEynI0tJtmv-udTvuH3CYcX6wogQCi5QHWgG0ZVsXQyMNjyLdDXi09i1EmjSI'); background-size: cover; background-position: center 30%;"></div>
+<!-- Safe Area Overlay -->
+<div class="absolute inset-[10%] safe-area-overlay pointer-events-none"></div>
+<div class="absolute bottom-2 left-2 text-[10px] text-white/50 font-label-sm uppercase tracking-wider">Action Safe</div>
+<div class="absolute inset-[5%] border border-white/10 pointer-events-none"></div>
+<div class="absolute bottom-1 left-2 text-[10px] text-white/30 font-label-sm uppercase tracking-wider">Title Safe</div>
+<!-- Focal Point Reticle -->
+<div class="absolute top-[30%] left-[50%] -translate-x-1/2 -translate-y-1/2 w-8 h-8 cursor-move group z-10">
+<div class="absolute inset-0 border-2 border-primary rounded-full shadow-[0_0_10px_rgba(0,240,255,0.5)] group-hover:scale-110 transition-transform"></div>
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-1 bg-primary rounded-full"></div>
+<div class="absolute top-1/2 left-[-8px] -translate-y-1/2 w-4 h-[2px] bg-primary"></div>
+<div class="absolute top-1/2 right-[-8px] -translate-y-1/2 w-4 h-[2px] bg-primary"></div>
+<div class="absolute left-1/2 top-[-8px] -translate-x-1/2 w-[2px] h-4 bg-primary"></div>
+<div class="absolute left-1/2 bottom-[-8px] -translate-x-1/2 w-[2px] h-4 bg-primary"></div>
+<div class="absolute top-[-24px] left-1/2 -translate-x-1/2 whitespace-nowrap bg-surface-container-high px-2 py-1 rounded text-primary font-label-sm text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">Drag to position</div>
+</div>
+</div>
+</div>
+<!-- Timeline Preview (Minimal) -->
+<div class="h-24 bg-surface-container-low mt-panel-padding rounded-lg border border-outline-variant p-2 flex flex-col gap-1">
+<div class="flex justify-between items-center text-on-surface-variant font-label-sm text-[10px] mb-1">
+<span>00:00:00:00</span>
+<span>00:00:05:00</span>
+</div>
+<div class="h-8 bg-surface-container-highest rounded border border-outline-variant/50 relative overflow-hidden">
+<div class="absolute inset-y-0 left-0 w-1/3 bg-secondary/20 border-r border-secondary/50"></div>
+</div>
+</div>
+</div>
+<!-- Properties Panel (Right) -->
+<aside class="w-[320px] bg-surface-container-low border-l border-outline-variant flex flex-col h-full z-30">
+<div class="p-panel-padding border-b border-outline-variant flex justify-between items-center bg-surface-container/50">
+<span class="font-headline-md-mobile text-headline-md-mobile font-semibold">Transform</span>
+<button class="text-primary hover:text-primary-fixed-dim text-label-md font-label-md uppercase tracking-wider transition-colors">Reset</button>
+</div>
+<div class="p-panel-padding flex-1 overflow-y-auto flex flex-col gap-stack-md">
+<!-- Warning Badge -->
+<div class="bg-error-container/20 border border-error/30 rounded-lg p-3 flex items-start gap-3">
+<span class="material-symbols-outlined text-error text-[20px] mt-0.5">warning</span>
+<div>
+<div class="text-error font-label-md text-label-md font-bold mb-1">Source Incompatibility</div>
+<div class="text-on-surface-variant text-[12px] leading-tight">Vertical media (9:16) mapped to horizontal project (16:9). Cropping is required.</div>
+</div>
+</div>
+<!-- Fit/Fill Toggle -->
+<div class="flex flex-col gap-2">
+<label class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Scaling Mode</label>
+<div class="flex bg-surface-container-highest p-1 rounded-lg border border-outline-variant">
+<button class="flex-1 py-1.5 text-center font-label-md text-label-md rounded text-on-surface-variant hover:text-on-surface transition-colors">Fit</button>
+<button class="flex-1 py-1.5 text-center font-label-md text-label-md rounded bg-surface-container text-primary shadow-sm border border-outline-variant/50">Fill (Crop)</button>
+</div>
+</div>
+<!-- Position Controls -->
+<div class="flex flex-col gap-stack-sm pt-4 border-t border-outline-variant/30">
+<div class="flex justify-between items-center">
+<label class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Focal Point</label>
+<span class="text-[10px] text-primary bg-primary/10 px-1.5 rounded font-label-sm">Auto-Track available</span>
+</div>
+<div class="grid grid-cols-2 gap-stack-sm">
+<div class="flex flex-col gap-1">
+<span class="text-[10px] text-on-surface-variant font-label-sm">X Position</span>
+<div class="bg-surface-container-highest border border-outline-variant rounded flex items-center px-2 py-1.5 focus-within:border-primary/50 transition-colors">
+<input class="bg-transparent border-none w-full text-sm font-label-md text-on-surface focus:ring-0 p-0 text-center" type="text" value="50.0%"/>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-[10px] text-on-surface-variant font-label-sm">Y Position</span>
+<div class="bg-surface-container-highest border border-outline-variant rounded flex items-center px-2 py-1.5 focus-within:border-primary/50 transition-colors">
+<input class="bg-transparent border-none w-full text-sm font-label-md text-primary focus:ring-0 p-0 text-center" type="text" value="30.0%"/>
+</div>
+</div>
+</div>
+</div>
+<!-- AI Framing -->
+<div class="flex flex-col gap-stack-sm pt-4 border-t border-outline-variant/30">
+<label class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-secondary">auto_awesome</span>
+                            Smart Framing
+                        </label>
+<button class="w-full py-2 bg-surface-container border border-outline-variant rounded hover:bg-surface-container-highest transition-colors font-label-md text-label-md flex justify-center items-center gap-2">
+                            Analyze Subject Movement
+                        </button>
+<p class="text-[11px] text-on-surface-variant/70 text-center">AI will attempt to keep the main subject centered throughout the clip.</p>
+</div>
+</div>
+<div class="p-panel-padding border-t border-outline-variant bg-surface-container/50">
+<button class="w-full bg-primary-container text-on-primary-fixed font-headline-sm text-[16px] py-2.5 rounded-lg font-semibold hover:bg-primary-fixed transition-colors shadow-[0_0_10px_rgba(0,240,255,0.2)]">
+                        Apply Crop
+                    </button>
+</div>
+</aside>
+</main>
+</div>
+</body></html>

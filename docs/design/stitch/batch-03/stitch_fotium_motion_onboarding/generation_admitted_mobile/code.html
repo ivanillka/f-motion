@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Generation Admitted</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700;900&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "secondary": "#dcb8ff",
+                      "on-surface": "#e5e2e1",
+                      "surface-container-high": "#2a2a2a",
+                      "outline-variant": "#3b494b",
+                      "on-secondary-fixed-variant": "#6700b5",
+                      "on-primary": "#00363a",
+                      "on-error-container": "#ffdad6",
+                      "primary-container": "#00f0ff",
+                      "on-primary-container": "#006970",
+                      "inverse-primary": "#006970",
+                      "secondary-container": "#7701d0",
+                      "primary-fixed-dim": "#00dbe9",
+                      "surface-container-low": "#1c1b1b",
+                      "on-secondary": "#480081",
+                      "surface": "#131313",
+                      "secondary-fixed-dim": "#dcb8ff",
+                      "secondary-fixed": "#efdbff",
+                      "on-surface-variant": "#b9cacb",
+                      "on-tertiary-fixed-variant": "#8f0041",
+                      "on-primary-fixed-variant": "#004f54",
+                      "surface-container-highest": "#353534",
+                      "tertiary-fixed": "#ffd9e0",
+                      "surface-container-lowest": "#0e0e0e",
+                      "surface-variant": "#353534",
+                      "inverse-surface": "#e5e2e1",
+                      "surface-container": "#201f1f",
+                      "error": "#ffb4ab",
+                      "primary-fixed": "#7df4ff",
+                      "inverse-on-surface": "#313030",
+                      "on-tertiary": "#66002c",
+                      "surface-tint": "#00dbe9",
+                      "outline": "#849495",
+                      "on-secondary-fixed": "#2c0051",
+                      "on-background": "#e5e2e1",
+                      "tertiary-fixed-dim": "#ffb1c3",
+                      "error-container": "#93000a",
+                      "surface-bright": "#393939",
+                      "on-primary-fixed": "#002022",
+                      "surface-dim": "#131313",
+                      "tertiary-container": "#ffccd6",
+                      "on-tertiary-fixed": "#3f0019",
+                      "tertiary": "#fff3f4",
+                      "on-tertiary-container": "#bb0058",
+                      "primary": "#dbfcff",
+                      "on-secondary-container": "#dcb7ff",
+                      "background": "#131313",
+                      "on-error": "#690005"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "panel-padding": "12px",
+                      "gutter": "16px",
+                      "margin-desktop": "24px",
+                      "unit": "4px",
+                      "margin-mobile": "16px",
+                      "stack-sm": "8px",
+                      "stack-md": "16px",
+                      "stack-lg": "32px"
+              },
+              "fontFamily": {
+                      "headline-sm": [
+                              "Geist"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "label-sm": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-md-mobile": [
+                              "Geist"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "display-lg": [
+                              "Geist"
+                      ],
+                      "label-md": [
+                              "JetBrains Mono"
+                      ]
+              },
+              "fontSize": {
+                      "headline-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-sm": [
+                              "10px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-md-mobile": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "label-md": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        .pulse-glow {
+            animation: pulseGlow 2s infinite ease-in-out;
+        }
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 0 0 rgba(0, 240, 255, 0.2); }
+            50% { box-shadow: 0 0 20px 5px rgba(0, 240, 255, 0.4); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 240, 255, 0.2); }
+        }
+        .progress-bar-fill {
+            animation: fillProgress 3s infinite ease-in-out;
+        }
+        @keyframes fillProgress {
+            0% { width: 0%; opacity: 0.8; }
+            50% { width: 70%; opacity: 1; }
+            100% { width: 100%; opacity: 0; }
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface min-h-screen flex flex-col font-body-md text-body-md overflow-hidden relative">
+<!-- Decorative Ambient Background Gradient -->
+<div class="absolute inset-0 z-0 pointer-events-none opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary-container via-background to-background"></div>
+<!-- Main Content Container -->
+<main class="flex-grow flex flex-col items-center justify-center p-margin-mobile relative z-10 w-full h-full">
+<!-- Status Icon/Graphic -->
+<div class="mb-stack-lg relative pulse-glow rounded-full p-4 bg-surface-container-high border border-outline-variant">
+<span class="material-symbols-outlined text-display-lg font-display-lg text-primary-container" style="font-variation-settings: 'FILL' 1;">
+                check_circle
+            </span>
+</div>
+<!-- Typography -->
+<h1 class="font-headline-md-mobile text-headline-md-mobile text-primary mb-stack-sm text-center">
+            Project queued safely
+        </h1>
+<p class="font-body-md text-body-md text-on-surface-variant text-center mb-stack-lg max-w-xs">
+            Your generation has been added to the render queue. You can safely return to the home screen or start a new project.
+        </p>
+<!-- Progress Indicator (Abstract) -->
+<div class="w-full max-w-[240px] bg-surface-container-highest rounded-full h-2 mb-stack-lg overflow-hidden border border-outline-variant">
+<div class="bg-primary-container h-full rounded-full progress-bar-fill"></div>
+</div>
+<!-- Meta Data Snippet (Studio feel) -->
+<div class="bg-surface-container-low border border-outline-variant rounded-lg p-panel-padding w-full max-w-xs mb-stack-lg flex flex-col gap-unit">
+<div class="flex justify-between items-center w-full">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase">Job ID</span>
+<span class="font-label-sm text-label-sm text-primary">#FMT-892A</span>
+</div>
+<div class="flex justify-between items-center w-full">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase">Est. Wait</span>
+<span class="font-label-sm text-label-sm text-primary">~2m 45s</span>
+</div>
+</div>
+</main>
+<!-- Bottom Action Area -->
+<div class="w-full p-margin-mobile pb-stack-lg relative z-10 bg-gradient-to-t from-background to-transparent flex flex-col items-center">
+<button class="w-full max-w-xs bg-primary-container text-on-primary-container font-label-md text-label-md py-3 px-6 rounded-lg uppercase tracking-wider font-bold shadow-[0_0_15px_rgba(0,240,255,0.1)] active:scale-95 transition-transform duration-150 border border-primary-container hover:bg-primary-fixed">
+            Return Home
+        </button>
+<button class="mt-stack-sm w-full max-w-xs bg-transparent text-primary-container font-label-md text-label-md py-3 px-6 rounded-lg uppercase tracking-wider active:scale-95 transition-transform duration-150">
+            View Queue
+        </button>
+</div>
+</body></html>

@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Creative Services</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary-fixed-dim": "#ffb1c3",
+                        "on-primary-container": "#006970",
+                        "on-secondary-fixed": "#2c0051",
+                        "tertiary-fixed": "#ffd9e0",
+                        "inverse-primary": "#006970",
+                        "on-secondary-fixed-variant": "#6700b5",
+                        "outline": "#849495",
+                        "on-primary-fixed": "#002022",
+                        "on-error": "#690005",
+                        "surface-bright": "#393939",
+                        "on-background": "#e5e2e1",
+                        "secondary": "#dcb8ff",
+                        "on-surface": "#e5e2e1",
+                        "tertiary": "#fff3f4",
+                        "on-error-container": "#ffdad6",
+                        "on-surface-variant": "#b9cacb",
+                        "surface-tint": "#00dbe9",
+                        "inverse-surface": "#e5e2e1",
+                        "surface-container-highest": "#353534",
+                        "background": "#131313",
+                        "surface-container-lowest": "#0e0e0e",
+                        "secondary-fixed-dim": "#dcb8ff",
+                        "outline-variant": "#3b494b",
+                        "surface-container": "#201f1f",
+                        "surface-container-low": "#1c1b1b",
+                        "secondary-container": "#7701d0",
+                        "primary": "#dbfcff",
+                        "surface-dim": "#131313",
+                        "on-primary": "#00363a",
+                        "secondary-fixed": "#efdbff",
+                        "on-secondary-container": "#dcb7ff",
+                        "on-tertiary": "#66002c",
+                        "error-container": "#93000a",
+                        "on-tertiary-container": "#bb0058",
+                        "on-tertiary-fixed-variant": "#8f0041",
+                        "on-primary-fixed-variant": "#004f54",
+                        "primary-fixed-dim": "#00dbe9",
+                        "surface": "#131313",
+                        "surface-container-high": "#2a2a2a",
+                        "inverse-on-surface": "#313030",
+                        "primary-container": "#00f0ff",
+                        "on-tertiary-fixed": "#3f0019",
+                        "tertiary-container": "#ffccd6",
+                        "surface-variant": "#353534",
+                        "error": "#ffb4ab",
+                        "primary-fixed": "#7df4ff",
+                        "on-secondary": "#480081"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "stack-sm": "8px",
+                        "unit": "4px",
+                        "margin-desktop": "24px",
+                        "stack-lg": "32px",
+                        "panel-padding": "12px",
+                        "gutter": "16px",
+                        "stack-md": "16px",
+                        "margin-mobile": "16px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "display-lg": ["Geist"],
+                        "headline-sm": ["Geist"],
+                        "headline-md-mobile": ["Geist"],
+                        "label-sm": ["JetBrains Mono"],
+                        "label-md": ["JetBrains Mono"],
+                        "headline-md": ["Geist"],
+                        "body-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "headline-md-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "label-sm": ["10px", { "lineHeight": "14px", "fontWeight": "500" }],
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: theme('colors.background');
+            color: theme('colors.on-background');
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.fill {
+            font-variation-settings: 'FILL' 1;
+        }
+        
+        /* Custom scrollbar for webkit */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: theme('colors.surface-container-low');
+        }
+        ::-webkit-scrollbar-thumb {
+            background: theme('colors.surface-variant');
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: theme('colors.outline-variant');
+        }
+
+        .glow-active {
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="antialiased min-h-screen flex flex-col md:flex-row overflow-hidden">
+<!-- Mobile Nav (TopAppBar - Replaces BottomNavBar for cleaner studio look on mobile) -->
+<header class="md:hidden flex justify-between items-center px-margin-mobile w-full h-16 bg-background border-b border-outline-variant/30 sticky top-0 z-50">
+<div class="font-display-lg text-headline-md-mobile tracking-tighter text-primary">Fotium Motion</div>
+<div class="flex items-center gap-gutter">
+<span class="material-symbols-outlined text-on-surface-variant">account_circle</span>
+</div>
+</header>
+<!-- SideNavBar (Desktop) -->
+<nav class="hidden md:flex flex-col h-screen w-64 docked left-0 bg-surface-container-low border-r border-outline-variant py-stack-lg px-panel-padding shrink-0 z-40">
+<div class="font-display-lg text-headline-sm text-primary mb-stack-lg px-3">Fotium Motion</div>
+<div class="flex flex-col gap-unit flex-1">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container-high transition-all rounded-DEFAULT" href="#">
+<span class="material-symbols-outlined">video_library</span>
+<span class="font-body-md text-body-md">Projects</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container-high transition-all rounded-DEFAULT" href="#">
+<span class="material-symbols-outlined">folder_open</span>
+<span class="font-body-md text-body-md">Assets</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 bg-secondary-container text-on-secondary-container rounded-lg font-semibold Active: scale-98 transition-transform" href="#">
+<span class="material-symbols-outlined fill">auto_awesome</span>
+<span class="font-body-md text-body-md">AI Studio</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container-high transition-all rounded-DEFAULT" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+<span class="font-body-md text-body-md">Billing</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container-high transition-all rounded-DEFAULT" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-body-md text-body-md">Settings</span>
+</a>
+</div>
+<div class="mt-auto flex flex-col gap-unit pt-stack-md border-t border-outline-variant/30">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container-high transition-all rounded-DEFAULT" href="#">
+<span class="material-symbols-outlined">contact_support</span>
+<span class="font-body-md text-body-md">Help</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container-high transition-all rounded-DEFAULT" href="#">
+<span class="material-symbols-outlined">logout</span>
+<span class="font-body-md text-body-md">Logout</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-1 flex flex-col h-[calc(100vh-64px)] md:h-screen overflow-y-auto bg-[#0A0A0A] relative">
+<!-- Header Area within Canvas -->
+<div class="px-margin-mobile md:px-margin-desktop py-stack-lg border-b border-outline-variant/20 bg-[#0A0A0A]/80 backdrop-blur-md sticky top-0 z-30">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-stack-md">
+<div>
+<div class="flex items-center gap-2 mb-2">
+<span class="font-label-md text-label-md text-primary-fixed-dim uppercase tracking-widest bg-primary-fixed-dim/10 px-2 py-1 rounded-DEFAULT">Workflow Config</span>
+</div>
+<h1 class="font-headline-md text-headline-md-mobile md:text-headline-md text-on-background">Creative Services</h1>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1 max-w-2xl">Configure your pipeline integrations for rendering and generation.</p>
+</div>
+<div class="flex items-center gap-4 bg-surface-container p-2 rounded-lg border border-outline-variant/30">
+<div class="flex flex-col text-right">
+<span class="font-label-sm text-label-sm text-on-surface-variant">PIPELINE STATUS</span>
+<span class="font-label-md text-label-md text-primary-container">2/3 CONFIGURED</span>
+</div>
+<div class="w-24 h-2 bg-surface-variant rounded-full overflow-hidden">
+<div class="h-full bg-primary-container w-[66%]"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Scrollable Content -->
+<div class="p-margin-mobile md:p-margin-desktop flex-1 pb-32">
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-gutter">
+<!-- Pexels Card (Ready) -->
+<div class="bg-[#1E1E1E] rounded-xl border border-outline-variant/40 p-stack-md flex flex-col relative overflow-hidden group">
+<div class="absolute top-0 right-0 p-4">
+<div class="flex items-center gap-1.5 bg-[#0A0A0A]/50 backdrop-blur px-2.5 py-1 rounded-full border border-primary-container/30 text-primary-container">
+<span class="material-symbols-outlined text-[16px] fill">check_circle</span>
+<span class="font-label-sm text-label-sm">READY</span>
+</div>
+</div>
+<div class="w-12 h-12 bg-surface-container-high rounded-lg flex items-center justify-center mb-stack-sm border border-outline-variant/20">
+<span class="material-symbols-outlined text-on-surface text-2xl">photo_library</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm mb-2 text-on-surface">Pexels Integration</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-stack-lg flex-1">
+                        High-quality stock asset library. Connected and ready to source B-roll, textures, and reference imagery directly into your timeline.
+                    </p>
+<div class="mt-auto">
+<div class="flex flex-wrap gap-2 mb-stack-md">
+<span class="font-label-sm text-label-sm bg-[#2A2A2A] text-on-surface-variant px-2 py-1 rounded-DEFAULT uppercase">4K Video</span>
+<span class="font-label-sm text-label-sm bg-[#2A2A2A] text-on-surface-variant px-2 py-1 rounded-DEFAULT uppercase">Images</span>
+</div>
+<button class="w-full py-2 bg-transparent border border-outline-variant/50 text-on-surface font-label-md text-label-md rounded-lg hover:bg-surface-container-high transition-colors flex items-center justify-center gap-2">
+<span>Manage Connection</span>
+<span class="material-symbols-outlined text-[18px]">settings</span>
+</button>
+</div>
+</div>
+<!-- FAL AI Card (Choose) -->
+<div class="bg-[#1E1E1E] rounded-xl border border-primary-container/30 p-stack-md flex flex-col relative overflow-hidden glow-active">
+<div class="absolute top-0 right-0 p-4">
+<div class="flex items-center gap-1.5 bg-primary-container/10 px-2.5 py-1 rounded-full border border-primary-container/50 text-primary-container animate-pulse">
+<span class="material-symbols-outlined text-[16px]">pending</span>
+<span class="font-label-sm text-label-sm">ACTION REQ</span>
+</div>
+</div>
+<div class="w-12 h-12 bg-primary-container/10 rounded-lg flex items-center justify-center mb-stack-sm border border-primary-container/20">
+<span class="material-symbols-outlined text-primary-container text-2xl">model_training</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm mb-2 text-on-surface">FAL AI Generation</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-stack-lg flex-1">
+                        Select your preferred inference model for video and image synthesis. Requires model selection to enable AI timeline blocks.
+                    </p>
+<div class="mt-auto">
+<div class="bg-[#121212] rounded-lg p-3 mb-stack-md border border-outline-variant/20 focus-within:border-primary-container/50 transition-colors">
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-2">SELECT MODEL INSTANCE</label>
+<select class="w-full bg-transparent text-on-surface font-label-md text-label-md focus:outline-none appearance-none cursor-pointer">
+<option disabled="" selected="" value="">Choose model endpoint...</option>
+<option value="sdxl">Stable Diffusion XL (Fast)</option>
+<option value="svd">Stable Video Diffusion</option>
+<option value="animate">AnimateDiff (Motion)</option>
+</select>
+</div>
+<button class="w-full py-2 bg-primary-container text-[#000000] font-label-md text-label-md rounded-lg hover:bg-primary-fixed hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+<span>Connect Model</span>
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+</div>
+</div>
+<!-- Export Card (Ready) -->
+<div class="bg-[#1E1E1E] rounded-xl border border-outline-variant/40 p-stack-md flex flex-col relative overflow-hidden">
+<div class="absolute top-0 right-0 p-4">
+<div class="flex items-center gap-1.5 bg-[#0A0A0A]/50 backdrop-blur px-2.5 py-1 rounded-full border border-primary-container/30 text-primary-container">
+<span class="material-symbols-outlined text-[16px] fill">check_circle</span>
+<span class="font-label-sm text-label-sm">READY</span>
+</div>
+</div>
+<div class="w-12 h-12 bg-surface-container-high rounded-lg flex items-center justify-center mb-stack-sm border border-outline-variant/20">
+<span class="material-symbols-outlined text-on-surface text-2xl">output</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm mb-2 text-on-surface">Export Engine</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-stack-lg flex-1">
+                        Cloud rendering pipeline configured. Supports hardware-accelerated encoding up to 8K resolution with ProRes options.
+                    </p>
+<div class="mt-auto">
+<div class="flex flex-wrap gap-2 mb-stack-md">
+<span class="font-label-sm text-label-sm bg-[#2A2A2A] text-on-surface-variant px-2 py-1 rounded-DEFAULT uppercase">MP4</span>
+<span class="font-label-sm text-label-sm bg-[#2A2A2A] text-on-surface-variant px-2 py-1 rounded-DEFAULT uppercase">ProRes</span>
+<span class="font-label-sm text-label-sm bg-[#2A2A2A] text-on-surface-variant px-2 py-1 rounded-DEFAULT uppercase">Cloud GPU</span>
+</div>
+<button class="w-full py-2 bg-transparent border border-outline-variant/50 text-on-surface font-label-md text-label-md rounded-lg hover:bg-surface-container-high transition-colors flex items-center justify-center gap-2">
+<span>Encoder Settings</span>
+<span class="material-symbols-outlined text-[18px]">tune</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Music Note Banner -->
+<div class="mt-stack-lg bg-surface-container-low border border-outline-variant/30 rounded-xl p-stack-md flex items-start md:items-center gap-4 relative overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-r from-transparent via-surface-container-highest/10 to-transparent w-[200%] animate-[shimmer_3s_infinite] -z-10"></div>
+<div class="w-10 h-10 bg-surface-container-highest rounded-full flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-on-surface-variant">music_note</span>
+</div>
+<div class="flex-1">
+<h4 class="font-label-md text-label-md text-on-surface mb-1">Audio Generation (Beta)</h4>
+<p class="font-body-md text-body-md text-on-surface-variant">Native AI music and sound effect generation is currently disabled in your workspace tier. Upgrade to access Suno/Suno API integrations.</p>
+</div>
+<button class="shrink-0 font-label-md text-label-md text-primary-fixed-dim hover:text-primary-container transition-colors py-2 px-4 rounded-lg hover:bg-primary-container/10">
+                    View Plans
+                </button>
+</div>
+</div>
+</main>
+<style>
+        @keyframes shimmer {
+            0% { transform: translateX(-50%); }
+            100% { transform: translateX(0%); }
+        }
+    </style>
+</body></html>

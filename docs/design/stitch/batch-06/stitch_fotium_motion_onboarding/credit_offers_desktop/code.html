@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Buy Credits - Fotium Motion</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&amp;family=Geist:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-variant": "#353534",
+                      "tertiary-container": "#ffccd6",
+                      "surface-container-low": "#1c1b1b",
+                      "error-container": "#93000a",
+                      "on-error-container": "#ffdad6",
+                      "on-tertiary-fixed-variant": "#8f0041",
+                      "outline": "#849495",
+                      "surface": "#131313",
+                      "on-secondary": "#480081",
+                      "surface-dim": "#131313",
+                      "secondary-fixed": "#efdbff",
+                      "surface-container-lowest": "#0e0e0e",
+                      "surface-bright": "#393939",
+                      "on-primary": "#00363a",
+                      "surface-container-highest": "#353534",
+                      "tertiary": "#fff3f4",
+                      "primary-fixed-dim": "#00dbe9",
+                      "on-background": "#e5e2e1",
+                      "error": "#ffb4ab",
+                      "secondary-fixed-dim": "#dcb8ff",
+                      "on-primary-container": "#006970",
+                      "tertiary-fixed": "#ffd9e0",
+                      "on-secondary-fixed": "#2c0051",
+                      "primary": "#dbfcff",
+                      "on-surface": "#e5e2e1",
+                      "background": "#131313",
+                      "surface-container": "#201f1f",
+                      "primary-fixed": "#7df4ff",
+                      "on-tertiary-fixed": "#3f0019",
+                      "on-surface-variant": "#b9cacb",
+                      "inverse-surface": "#e5e2e1",
+                      "on-primary-fixed-variant": "#004f54",
+                      "surface-tint": "#00dbe9",
+                      "primary-container": "#00f0ff",
+                      "inverse-on-surface": "#313030",
+                      "secondary": "#dcb8ff",
+                      "on-secondary-fixed-variant": "#6700b5",
+                      "on-error": "#690005",
+                      "secondary-container": "#7701d0",
+                      "on-tertiary": "#66002c",
+                      "inverse-primary": "#006970",
+                      "on-tertiary-container": "#bb0058",
+                      "on-secondary-container": "#dcb7ff",
+                      "surface-container-high": "#2a2a2a",
+                      "outline-variant": "#3b494b",
+                      "tertiary-fixed-dim": "#ffb1c3",
+                      "on-primary-fixed": "#002022"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "panel-padding": "12px",
+                      "stack-sm": "8px",
+                      "unit": "4px",
+                      "stack-lg": "32px",
+                      "gutter": "16px",
+                      "margin-desktop": "24px",
+                      "margin-mobile": "16px",
+                      "stack-md": "16px"
+              },
+              "fontFamily": {
+                      "label-md": [
+                              "JetBrains Mono"
+                      ],
+                      "display-lg": [
+                              "Geist"
+                      ],
+                      "headline-sm": [
+                              "Geist"
+                      ],
+                      "headline-md-mobile": [
+                              "Geist"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "label-sm": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "label-md": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "headline-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-md-mobile": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-sm": [
+                              "10px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        /* Tonal Layering Helpers */
+        .layer-0 { background-color: #0A0A0A; }
+        .layer-1 { background-color: #1E1E1E; }
+        .layer-2 { background-color: #2A2A2A; border: 1px solid rgba(255, 255, 255, 0.1); }
+        
+        /* Interactive States */
+        .card-selectable {
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+        .card-selectable:hover {
+            border-color: rgba(255, 255, 255, 0.2);
+            background-color: #252525;
+        }
+        .card-selectable.selected {
+            border-color: #00F0FF;
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.1);
+            background-color: #2A2A2A;
+        }
+
+        /* Micro-animations */
+        @keyframes subtlePulse {
+            0% { box-shadow: 0 0 0 0 rgba(0, 240, 255, 0.2); }
+            70% { box-shadow: 0 0 0 10px rgba(0, 240, 255, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 240, 255, 0); }
+        }
+        .btn-pulse:active {
+            animation: subtlePulse 0.4s cubic-bezier(0.66, 0, 0, 1);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen font-body-md antialiased overflow-x-hidden flex">
+<!-- Desktop SideNavBar -->
+<nav class="hidden md:flex flex-col py-panel-padding bg-surface-container-low border-r border-outline-variant docked left-0 h-screen w-[280px] shrink-0">
+<!-- Header -->
+<div class="px-gutter mb-stack-lg flex items-center gap-stack-sm">
+<div class="w-8 h-8 rounded-full bg-surface-variant flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A small, professional user avatar portrait for a digital workspace profile. The avatar features a stylized, minimalist 3D rendering of a generic human head in deep blue and cyan tones against a dark charcoal background. The lighting is soft but precise, typical of modern high-end software interfaces." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCPt3LOdkAGE0DOZUTyuJCOHWXXRr9yeeoDAz_XkdJuaVd7zOR7GzAokS7mDRlRmSSA6mhylN6nd8Kehc_Go5-8-ZSEdCKf8TTYVLqxNUarJgn1OupvyCpBB0H4uWB1rlVS_QadjNZ3HD53_bzx9zwLB-dJKNjEojoincHAzlyvUW7PPsRBKDhUI2F26-5CA4lJRbf6yeTPGbcNpMFs6a5SRjfbBmj94PTq6EsoekS-tTK5Vk2QqtoImgj81lJxER4vwoo8toQ2hLI"/>
+</div>
+<div>
+<h2 class="text-headline-sm font-headline-sm text-primary">Workspace</h2>
+<p class="font-label-md text-label-md text-on-surface-variant">Pro Plan</p>
+</div>
+</div>
+<!-- CTA -->
+<div class="px-gutter mb-stack-lg">
+<button class="w-full bg-primary-container text-on-primary-container font-headline-sm text-headline-sm py-2 px-4 rounded flex items-center justify-center gap-2 hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-[20px]">add</span>
+                New Project
+            </button>
+</div>
+<!-- Nav Links -->
+<div class="flex-1 overflow-y-auto">
+<ul class="space-y-1">
+<li>
+<a class="flex items-center gap-3 px-gutter py-2 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">home</span>
+                        Home
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-gutter py-2 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">add_box</span>
+                        Create
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-gutter py-2 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">description</span>
+                        Drafts
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-gutter py-2 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">settings</span>
+                        Settings
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-gutter py-2 bg-surface-variant text-primary border-r-4 border-primary transition-all duration-200 ease-in-out font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined text-primary">account_balance_wallet</span>
+                        Credits
+                    </a>
+</li>
+</ul>
+</div>
+<!-- Footer Links -->
+<div class="mt-auto border-t border-outline-variant pt-stack-sm">
+<ul class="space-y-1">
+<li>
+<a class="flex items-center gap-3 px-gutter py-2 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">help</span>
+                        Help
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-gutter py-2 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">logout</span>
+                        Logout
+                    </a>
+</li>
+</ul>
+</div>
+</nav>
+<!-- Mobile Top NavBar (Visible only on mobile for structural consistency, though side nav handles main nav on desktop) -->
+<header class="md:hidden fixed top-0 w-full z-40 bg-surface border-b border-outline-variant flex justify-between items-center px-margin-mobile h-16 shadow-sm">
+<div class="text-headline-md-mobile font-headline-md-mobile font-bold text-primary">
+            Fotium Motion
+        </div>
+<div class="flex items-center gap-4 text-on-surface-variant">
+<span class="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">notifications</span>
+<span class="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">account_circle</span>
+</div>
+</header>
+<!-- Main Canvas -->
+<main class="flex-1 flex flex-col min-h-screen relative md:ml-0 layer-0 pt-16 md:pt-0 pb-24 md:pb-0">
+<!-- Canvas Header -->
+<div class="px-margin-desktop py-stack-lg border-b border-outline-variant layer-1 flex justify-between items-end">
+<div>
+<h1 class="font-display-lg text-display-lg text-on-surface mb-unit">Current Credit Offers</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Select a credit pack to top up your workspace balance.</p>
+</div>
+<div class="hidden md:flex flex-col items-end">
+<span class="font-label-md text-label-md text-on-surface-variant mb-unit uppercase">Current Balance</span>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[20px]">account_balance_wallet</span>
+<span class="font-headline-md text-headline-md text-on-surface">1,250</span>
+</div>
+</div>
+</div>
+<!-- Offers Grid -->
+<div class="flex-1 overflow-y-auto px-margin-mobile md:px-margin-desktop py-stack-lg">
+<!-- Mobile Current Balance (Only shows on mobile) -->
+<div class="md:hidden flex justify-between items-center bg-surface-container-low p-gutter rounded-lg mb-stack-lg border border-outline-variant">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase">Current Balance</span>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[16px]">account_balance_wallet</span>
+<span class="font-headline-sm text-headline-sm text-on-surface">1,250</span>
+</div>
+</div>
+<!-- Bento Grid Layout for Offers -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-gutter max-w-6xl mx-auto">
+<!-- Offer Card 1 -->
+<div class="layer-1 rounded-xl p-gutter card-selectable flex flex-col justify-between min-h-[200px]" onclick="selectOffer(this, 500, '$10.00')">
+<div>
+<div class="flex justify-between items-start mb-stack-sm">
+<span class="material-symbols-outlined text-on-surface-variant">database</span>
+<span class="font-label-md text-label-md bg-surface-container-high px-2 py-1 rounded text-on-surface-variant uppercase tracking-wider">Pack 1</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-unit">500 Credits</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Standard top-up.</p>
+</div>
+<div class="mt-stack-lg">
+<span class="font-headline-sm text-headline-sm text-on-surface">$10.00</span>
+<span class="font-label-md text-label-md text-on-surface-variant ml-2">USD</span>
+</div>
+</div>
+<!-- Offer Card 2 -->
+<div class="layer-1 rounded-xl p-gutter card-selectable flex flex-col justify-between min-h-[200px]" onclick="selectOffer(this, 1200, '$20.00')">
+<div>
+<div class="flex justify-between items-start mb-stack-sm">
+<span class="material-symbols-outlined text-on-surface-variant">database</span>
+<span class="font-label-md text-label-md bg-surface-container-high px-2 py-1 rounded text-on-surface-variant uppercase tracking-wider">Pack 2</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-unit">1,200 Credits</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Standard top-up.</p>
+</div>
+<div class="mt-stack-lg">
+<span class="font-headline-sm text-headline-sm text-on-surface">$20.00</span>
+<span class="font-label-md text-label-md text-on-surface-variant ml-2">USD</span>
+</div>
+</div>
+<!-- Offer Card 3 -->
+<div class="layer-1 rounded-xl p-gutter card-selectable flex flex-col justify-between min-h-[200px]" onclick="selectOffer(this, 3000, '$45.00')">
+<div>
+<div class="flex justify-between items-start mb-stack-sm">
+<span class="material-symbols-outlined text-on-surface-variant">database</span>
+<span class="font-label-md text-label-md bg-surface-container-high px-2 py-1 rounded text-on-surface-variant uppercase tracking-wider">Pack 3</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-unit">3,000 Credits</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Standard top-up.</p>
+</div>
+<div class="mt-stack-lg">
+<span class="font-headline-sm text-headline-sm text-on-surface">$45.00</span>
+<span class="font-label-md text-label-md text-on-surface-variant ml-2">USD</span>
+</div>
+</div>
+<!-- Offer Card 4 -->
+<div class="layer-1 rounded-xl p-gutter card-selectable flex flex-col justify-between min-h-[200px]" onclick="selectOffer(this, 8000, '$100.00')">
+<div>
+<div class="flex justify-between items-start mb-stack-sm">
+<span class="material-symbols-outlined text-on-surface-variant">database</span>
+<span class="font-label-md text-label-md bg-surface-container-high px-2 py-1 rounded text-on-surface-variant uppercase tracking-wider">Pack 4</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-unit">8,000 Credits</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Standard top-up.</p>
+</div>
+<div class="mt-stack-lg">
+<span class="font-headline-sm text-headline-sm text-on-surface">$100.00</span>
+<span class="font-label-md text-label-md text-on-surface-variant ml-2">USD</span>
+</div>
+</div>
+<!-- Offer Card 5 -->
+<div class="layer-1 rounded-xl p-gutter card-selectable flex flex-col justify-between min-h-[200px] md:col-span-2" onclick="selectOffer(this, 20000, '$220.00')">
+<div class="flex justify-between w-full h-full">
+<div class="flex flex-col justify-between w-full">
+<div>
+<div class="flex justify-between items-start mb-stack-sm">
+<span class="material-symbols-outlined text-on-surface-variant">database</span>
+<span class="font-label-md text-label-md bg-surface-container-high px-2 py-1 rounded text-on-surface-variant uppercase tracking-wider">Pack 5</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-unit">20,000 Credits</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Standard top-up.</p>
+</div>
+<div class="mt-stack-lg">
+<span class="font-headline-sm text-headline-sm text-on-surface">$220.00</span>
+<span class="font-label-md text-label-md text-on-surface-variant ml-2">USD</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Spacer for bottom selection summary -->
+<div class="h-40"></div>
+</div>
+<!-- Selection Summary Bottom Panel -->
+<div class="fixed bottom-0 md:bottom-0 left-0 md:left-[280px] right-0 layer-2 border-t border-outline-variant p-gutter md:px-margin-desktop flex flex-col md:flex-row justify-between items-center transform translate-y-full transition-transform duration-300 ease-in-out z-30 pb-24 md:pb-gutter" id="selectionSummary">
+<div class="w-full md:w-auto flex flex-col mb-stack-sm md:mb-0">
+<div class="flex items-center gap-3 mb-1">
+<span class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Selected</span>
+<span class="font-headline-sm text-headline-sm text-primary" id="selectedCreditsDisplay">0 Credits</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-body-md text-body-md text-on-surface-variant">Total:</span>
+<span class="font-headline-md text-headline-md text-on-surface" id="selectedPriceDisplay">$0.00</span>
+</div>
+</div>
+<div class="w-full md:w-auto flex flex-col items-end gap-2">
+<button class="w-full md:w-auto bg-primary-container text-[#0A0A0A] font-headline-sm text-headline-sm py-3 px-8 rounded btn-pulse hover:bg-primary-fixed transition-colors flex items-center justify-center gap-2">
+                    Confirm purchase
+                    <span class="material-symbols-outlined text-[20px]">arrow_forward</span>
+</button>
+<div class="text-right flex flex-col items-end">
+<span class="font-label-sm text-label-sm text-on-surface-variant">You will be redirected to a secure payment gateway.</span>
+<a class="font-label-sm text-label-sm text-primary hover:underline mt-1" href="#">Terms &amp; Conditions</a>
+</div>
+</div>
+</div>
+</main>
+<!-- Mobile Bottom NavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex md:hidden justify-around items-center px-margin-mobile py-unit bg-surface-container border-t border-outline-variant docked full-width rounded-t-xl shadow-lg">
+<a class="flex flex-col items-center justify-center text-on-surface-variant scale-95 transition-transform active:bg-surface-variant p-2 rounded-lg" href="#">
+<span class="material-symbols-outlined">home</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant scale-95 transition-transform active:bg-surface-variant p-2 rounded-lg" href="#">
+<span class="material-symbols-outlined">movie_creation</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1">Create</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant scale-95 transition-transform active:bg-surface-variant p-2 rounded-lg" href="#">
+<span class="material-symbols-outlined">folder</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1">Drafts</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-fixed-variant rounded-full px-4 py-1 scale-95 transition-transform active:bg-surface-variant" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1">Account</span>
+</a>
+</nav>
+<script>
+        function selectOffer(cardElement, credits, price) {
+            // Remove selected class from all cards
+            document.querySelectorAll('.card-selectable').forEach(el => {
+                el.classList.remove('selected');
+            });
+            
+            // Add selected class to clicked card
+            cardElement.classList.add('selected');
+
+            // Update summary panel
+            document.getElementById('selectedCreditsDisplay').textContent = credits.toLocaleString() + ' Credits';
+            document.getElementById('selectedPriceDisplay').textContent = price;
+
+            // Show summary panel
+            const summaryPanel = document.getElementById('selectionSummary');
+            summaryPanel.classList.remove('translate-y-full');
+        }
+    </script>
+</body></html>

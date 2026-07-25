@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Concept Selection Confirmation - Fotium Motion</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "secondary": "#dcb8ff",
+                        "on-surface": "#e5e2e1",
+                        "surface-container-high": "#2a2a2a",
+                        "outline-variant": "#3b494b",
+                        "on-secondary-fixed-variant": "#6700b5",
+                        "on-primary": "#00363a",
+                        "on-error-container": "#ffdad6",
+                        "primary-container": "#00f0ff",
+                        "on-primary-container": "#006970",
+                        "inverse-primary": "#006970",
+                        "secondary-container": "#7701d0",
+                        "primary-fixed-dim": "#00dbe9",
+                        "surface-container-low": "#1c1b1b",
+                        "on-secondary": "#480081",
+                        "surface": "#131313",
+                        "secondary-fixed-dim": "#dcb8ff",
+                        "secondary-fixed": "#efdbff",
+                        "on-surface-variant": "#b9cacb",
+                        "on-tertiary-fixed-variant": "#8f0041",
+                        "on-primary-fixed-variant": "#004f54",
+                        "surface-container-highest": "#353534",
+                        "tertiary-fixed": "#ffd9e0",
+                        "surface-container-lowest": "#0e0e0e",
+                        "surface-variant": "#353534",
+                        "inverse-surface": "#e5e2e1",
+                        "surface-container": "#201f1f",
+                        "error": "#ffb4ab",
+                        "primary-fixed": "#7df4ff",
+                        "inverse-on-surface": "#313030",
+                        "on-tertiary": "#66002c",
+                        "surface-tint": "#00dbe9",
+                        "outline": "#849495",
+                        "on-secondary-fixed": "#2c0051",
+                        "on-background": "#e5e2e1",
+                        "tertiary-fixed-dim": "#ffb1c3",
+                        "error-container": "#93000a",
+                        "surface-bright": "#393939",
+                        "on-primary-fixed": "#002022",
+                        "surface-dim": "#131313",
+                        "tertiary-container": "#ffccd6",
+                        "on-tertiary-fixed": "#3f0019",
+                        "tertiary": "#fff3f4",
+                        "on-tertiary-container": "#bb0058",
+                        "primary": "#dbfcff",
+                        "on-secondary-container": "#dcb7ff",
+                        "background": "#131313",
+                        "on-error": "#690005"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    spacing: {
+                        "panel-padding": "12px",
+                        "gutter": "16px",
+                        "margin-desktop": "24px",
+                        "unit": "4px",
+                        "margin-mobile": "16px",
+                        "stack-sm": "8px",
+                        "stack-md": "16px",
+                        "stack-lg": "32px"
+                    },
+                    fontFamily: {
+                        "headline-sm": ["Geist"],
+                        "headline-md": ["Geist"],
+                        "body-lg": ["Inter"],
+                        "label-sm": ["JetBrains Mono"],
+                        "headline-md-mobile": ["Geist"],
+                        "body-md": ["Inter"],
+                        "display-lg": ["Geist"],
+                        "label-md": ["JetBrains Mono"]
+                    },
+                    fontSize: {
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "label-sm": ["10px", { "lineHeight": "14px", "fontWeight": "500" }],
+                        "headline-md-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-surface text-on-surface h-screen w-full flex overflow-hidden">
+<!-- Top Navigation (Mobile Only) / No Side Nav - Transactional Screen -->
+<header class="flex md:hidden justify-between items-center w-full px-margin-mobile h-16 sticky top-0 z-40 bg-surface border-b border-surface-variant">
+<button class="text-on-surface-variant p-2 rounded-full hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">arrow_back</span>
+</button>
+<span class="font-headline-sm text-headline-sm font-bold text-primary-fixed-dim">Fotium Motion</span>
+<div class="w-10"></div> <!-- Placeholder for balance -->
+</header>
+<!-- Main Canvas -->
+<main class="flex-1 h-full overflow-y-auto relative flex items-center justify-center p-gutter md:p-margin-desktop bg-surface-container-lowest">
+<!-- Concept Confirmation Card -->
+<div class="w-full max-w-2xl bg-surface-container-low rounded-xl border border-surface-variant shadow-lg flex flex-col overflow-hidden relative">
+<!-- Subtle Cyan Glow Indicator for Active Priority -->
+<div class="absolute top-0 left-0 w-full h-1 bg-primary-container opacity-20"></div>
+<!-- Header Section -->
+<div class="p-stack-lg border-b border-surface-variant flex flex-col md:flex-row gap-stack-md justify-between items-start md:items-center">
+<div>
+<h2 class="font-headline-md text-headline-md text-on-surface mb-stack-sm">Concept Selected</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Review your chosen aesthetic before generating the preview.</p>
+</div>
+<!-- Selected Concept Tag -->
+<div class="bg-surface-container-highest px-4 py-2 rounded border border-outline-variant flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-fixed-dim text-lg" style="font-variation-settings: 'FILL' 1;">bolt</span>
+<span class="font-label-md text-label-md text-primary-fixed-dim tracking-widest uppercase">Cyberpunk Pulse</span>
+</div>
+</div>
+<!-- Preview / Metadata Section -->
+<div class="p-stack-lg flex flex-col md:flex-row gap-stack-lg bg-surface">
+<!-- Concept Thumbnail Mockup -->
+<div class="w-full md:w-1/2 aspect-video bg-surface-container rounded-lg border border-surface-variant relative overflow-hidden flex items-center justify-center">
+<div class="absolute inset-0 bg-gradient-to-br from-secondary-container/20 to-primary-container/10"></div>
+<img alt="Cyberpunk Concept Preview" class="object-cover w-full h-full opacity-80 mix-blend-screen" data-alt="A neon-drenched futuristic cyberpunk cityscape at night, with towering skyscrapers, holographic advertisements, and a dark rainy atmosphere. High contrast cyan and magenta lighting defining the mood, showcasing a high-end cinematic visual style suitable for a professional AI video generation tool preview." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBx2Kx3-IETWYjGp-mg8mzRwgt-B8rBICq0lasrpz347UQpoy9HwZCnAL8Ax8BF7MDsVjkSif7E7h3eHHBb8lXxbzpmNS14j1Z8-G1tZBpnEcsVO0oXeNVr1y3MsUnUkq4HoxqhVcQa4R2hwJUJQspe1wy_bhlTHfyMzOfD37WNszsWME9OKzvboHwW2Ce6T1BFoByvy7d2A6M5kV9APyn733ytytH7s_StEShNhsTJHHHJiWXkFSZvp90MTND59n6KlhtJcjYdnNI"/>
+</div>
+<!-- Generation Details -->
+<div class="w-full md:w-1/2 flex flex-col justify-center gap-stack-md">
+<div class="bg-surface-container-low p-panel-padding rounded border border-surface-variant">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-on-surface-variant text-sm">speed</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Estimated Cost</span>
+</div>
+<div class="flex items-baseline gap-2">
+<span class="font-headline-sm text-headline-sm text-on-surface">15</span>
+<span class="font-body-md text-body-md text-on-surface-variant">Credits</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1 text-xs opacity-75">Generate preview for approx 15 credits.</p>
+</div>
+<div class="bg-surface-container-highest p-panel-padding rounded border border-surface-variant">
+<div class="flex items-center justify-between mb-1">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary text-sm">account_balance_wallet</span>
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">Available Balance</span>
+</div>
+</div>
+<div class="flex items-baseline gap-2">
+<span class="font-headline-sm text-headline-sm text-secondary">100</span>
+<span class="font-body-md text-body-md text-on-surface-variant">Credits</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Action Footer -->
+<div class="p-stack-lg border-t border-surface-variant bg-surface-container-low flex flex-col md:flex-row justify-end gap-stack-md items-center">
+<button class="w-full md:w-auto px-6 py-3 rounded text-on-surface bg-transparent border border-outline-variant hover:bg-surface-container-highest hover:text-white transition-all font-label-md text-label-md uppercase tracking-wider flex items-center justify-center gap-2 group">
+<span class="material-symbols-outlined text-lg group-hover:-translate-x-1 transition-transform">edit</span>
+                    Edit concept
+                </button>
+<button class="w-full md:w-auto px-6 py-3 rounded text-on-primary-container bg-primary-container hover:bg-primary transition-colors font-label-md text-label-md uppercase tracking-wider font-bold shadow-[0_0_15px_rgba(0,240,255,0.15)] flex items-center justify-center gap-2 group relative overflow-hidden">
+<div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></div>
+<span class="relative z-10 material-symbols-outlined text-lg">play_arrow</span>
+<span class="relative z-10">Generate preview</span>
+</button>
+</div>
+</div>
+</main>
+</body></html>

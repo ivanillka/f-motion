@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Preview Ready - Fotium Motion</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400;500&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "secondary": "#dcb8ff",
+                    "on-primary-fixed-variant": "#004f54",
+                    "surface-container-highest": "#353534",
+                    "surface-container-high": "#2a2a2a",
+                    "on-surface": "#e5e2e1",
+                    "secondary-fixed": "#efdbff",
+                    "on-error-container": "#ffdad6",
+                    "error-container": "#93000a",
+                    "on-surface-variant": "#b9cacb",
+                    "outline-variant": "#3b494b",
+                    "background": "#131313",
+                    "surface-container": "#201f1f",
+                    "outline": "#849495",
+                    "surface-tint": "#00dbe9",
+                    "on-background": "#e5e2e1",
+                    "on-primary-container": "#006970",
+                    "tertiary-fixed-dim": "#ffb1c3",
+                    "surface-variant": "#353534",
+                    "on-secondary-fixed": "#2c0051",
+                    "on-secondary-container": "#dcb7ff",
+                    "on-tertiary-fixed": "#3f0019",
+                    "primary-fixed-dim": "#00dbe9",
+                    "primary-container": "#00f0ff",
+                    "surface-bright": "#393939",
+                    "on-tertiary": "#66002c",
+                    "on-primary-fixed": "#002022",
+                    "surface-dim": "#131313",
+                    "on-tertiary-container": "#bb0058",
+                    "inverse-primary": "#006970",
+                    "on-secondary": "#480081",
+                    "inverse-on-surface": "#313030",
+                    "primary": "#dbfcff",
+                    "tertiary-fixed": "#ffd9e0",
+                    "on-error": "#690005",
+                    "tertiary-container": "#ffccd6",
+                    "surface-container-lowest": "#0e0e0e",
+                    "surface-container-low": "#1c1b1b",
+                    "on-secondary-fixed-variant": "#6700b5",
+                    "tertiary": "#fff3f4",
+                    "surface": "#131313",
+                    "secondary-fixed-dim": "#dcb8ff",
+                    "error": "#ffb4ab",
+                    "secondary-container": "#7701d0",
+                    "primary-fixed": "#7df4ff",
+                    "inverse-surface": "#e5e2e1",
+                    "on-tertiary-fixed-variant": "#8f0041",
+                    "on-primary": "#00363a"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "stack-md": "16px",
+                    "unit": "4px",
+                    "panel-padding": "12px",
+                    "stack-lg": "32px",
+                    "margin-mobile": "16px",
+                    "margin-desktop": "24px",
+                    "stack-sm": "8px",
+                    "gutter": "16px"
+            },
+            "fontFamily": {
+                    "label-md": ["JetBrains Mono"],
+                    "headline-md-mobile": ["Geist"],
+                    "body-md": ["Inter"],
+                    "headline-md": ["Geist"],
+                    "display-lg": ["Geist"],
+                    "body-lg": ["Inter"],
+                    "label-sm": ["JetBrains Mono"],
+                    "headline-sm": ["Geist"]
+            },
+            "fontSize": {
+                    "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                    "headline-md-mobile": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-sm": ["10px", {"lineHeight": "14px", "fontWeight": "500"}],
+                    "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-family: 'Material Symbols Outlined';
+            font-weight: normal;
+            font-style: normal;
+            font-size: 24px;
+            line-height: 1;
+            letter-spacing: normal;
+            text-transform: none;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            -webkit-font-feature-settings: 'liga';
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        /* Custom scrollbar for a cleaner pro look if needed */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #353534;
+            border-radius: 4px;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen flex flex-col antialiased">
+<!-- Focused Navigation Header -->
+<header class="flex justify-between items-center px-margin-mobile py-4 sticky top-0 bg-background/90 backdrop-blur-md z-20 border-b border-surface-container-low">
+<button class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors text-on-surface">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+<div class="flex flex-col items-center">
+<h1 class="font-headline-md-mobile text-headline-md-mobile text-on-surface">Neo Genesis</h1>
+<div class="mt-1 flex items-center gap-2">
+<span class="font-label-sm text-label-sm text-primary-fixed-dim bg-surface-container px-2 py-0.5 rounded-[2px] uppercase">9:16 Reel</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">00:15s</span>
+</div>
+</div>
+<button class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors text-on-surface">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</header>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col px-margin-mobile pt-stack-md pb-[180px]"> <!-- Padding bottom accommodates the fixed action dock -->
+<!-- Video Player (9:16 Aspect Ratio) -->
+<div class="relative w-full max-w-md mx-auto aspect-[9/16] bg-surface-container-lowest rounded-xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] border border-outline-variant/30 group">
+<!-- Video Placeholder Image -->
+<img class="absolute inset-0 w-full h-full object-cover opacity-90 transition-opacity group-hover:opacity-100" data-alt="A highly cinematic vertical video frame showing a sleek, futuristic metropolis at night. Neon cyan lights reflect off wet obsidian streets. Volumetric fog hangs in the air. The aesthetic is dark, professional, and visually stunning, perfectly fitting a high-end AI video creation suite." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBmkDvTDbPyEMVpJMYz02KQOv-kjUhugDX8U0Zi6iXjqwrL42j3RiJU9yanemcgJDvaHYt8oPIA321WSKrRige5aPHoJoYA72ph-xmDD8N0uPHtj1_LL8nfil5t-p4vqFdhZlVT_cGCW6Fb3sPlaZzGcfwGAt-ENdlXTepktP9-gkEsuJaHHhGxbOZHL56m1XIcxFUS_DedPDZrhtI0v5dMzhnyQZkRnhsn-cTXvTKm_cbgBMVa3_lZNZkfpYqr8ggBQeEmKS-TU1A"/>
+<!-- Play Overlay -->
+<div class="absolute inset-0 flex items-center justify-center bg-background/20 backdrop-blur-[2px] transition-opacity duration-300">
+<button class="w-16 h-16 bg-primary-container text-on-primary-container rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(0,240,255,0.2)] hover:scale-105 hover:bg-primary transition-all">
+<span class="material-symbols-outlined text-[32px] ml-1" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</button>
+</div>
+<!-- Simplified Scrub Bar Overlay -->
+<div class="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-background/90 to-transparent flex items-center gap-3">
+<span class="font-label-sm text-label-sm text-white drop-shadow-md">00:00</span>
+<div class="flex-1 h-1.5 bg-surface-container/50 rounded-full overflow-hidden backdrop-blur-sm">
+<div class="w-1/3 h-full bg-primary-container rounded-full relative">
+<div class="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full shadow-sm"></div>
+</div>
+</div>
+<span class="font-label-sm text-label-sm text-white drop-shadow-md">00:15</span>
+</div>
+</div>
+<!-- AI Metadata Tags -->
+<div class="mt-stack-lg max-w-md mx-auto w-full">
+<h2 class="font-label-md text-label-md text-on-surface-variant mb-3 uppercase tracking-widest">Generation Details</h2>
+<div class="flex flex-wrap gap-2">
+<div class="bg-surface-container-high border border-outline-variant/50 rounded-[4px] px-3 py-1.5 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px] text-primary-fixed-dim">auto_awesome</span>
+<span class="font-label-md text-label-md text-on-surface uppercase">Motion-Synced</span>
+</div>
+<div class="bg-surface-container-high border border-outline-variant/50 rounded-[4px] px-3 py-1.5 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px] text-on-surface-variant">high_quality</span>
+<span class="font-label-md text-label-md text-on-surface uppercase">4K Upscaled</span>
+</div>
+<div class="bg-surface-container-high border border-outline-variant/50 rounded-[4px] px-3 py-1.5 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px] text-on-surface-variant">speed</span>
+<span class="font-label-md text-label-md text-on-surface uppercase">60 FPS</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Action Dock -->
+<div class="fixed bottom-0 left-0 w-full bg-surface-container-lowest/95 backdrop-blur-xl border-t border-surface-container p-margin-mobile flex flex-col gap-stack-sm z-50 pb-8 safe-area-pb">
+<!-- Primary Action -->
+<button class="w-full bg-primary-container text-on-primary-container font-headline-sm text-headline-sm py-4 rounded-full flex justify-center items-center gap-2 hover:bg-primary transition-colors shadow-[0_4px_14px_rgba(0,240,255,0.15)]">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">edit</span>
+            Edit video
+        </button>
+<!-- Secondary Actions -->
+<div class="flex gap-stack-md mt-1">
+<button class="flex-1 border border-outline-variant bg-transparent text-on-surface font-label-md text-label-md py-3.5 rounded-full flex flex-col justify-center items-center gap-1 hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-[20px]">download</span>
+                Download preview
+            </button>
+<button class="flex-1 border border-outline-variant bg-surface-container-high text-on-surface font-label-md text-label-md py-3.5 rounded-full flex flex-col justify-center items-center gap-1 hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-[20px]">rocket_launch</span>
+                Create final export
+            </button>
+</div>
+</div>
+</body></html>

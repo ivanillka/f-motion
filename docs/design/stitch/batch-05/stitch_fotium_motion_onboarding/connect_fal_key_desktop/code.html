@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Connect Personal FAL Key</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&amp;family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-tertiary-fixed-variant": "#8f0041",
+                      "secondary-container": "#7701d0",
+                      "tertiary-container": "#ffccd6",
+                      "on-tertiary": "#66002c",
+                      "surface-variant": "#353534",
+                      "surface-container-low": "#1c1b1b",
+                      "on-secondary-fixed-variant": "#6700b5",
+                      "surface-container-high": "#2a2a2a",
+                      "primary-fixed-dim": "#00dbe9",
+                      "surface-bright": "#393939",
+                      "secondary": "#dcb8ff",
+                      "on-surface-variant": "#b9cacb",
+                      "on-background": "#e5e2e1",
+                      "on-secondary": "#480081",
+                      "primary-container": "#00f0ff",
+                      "tertiary-fixed": "#ffd9e0",
+                      "outline": "#849495",
+                      "on-tertiary-container": "#bb0058",
+                      "surface-container-lowest": "#0e0e0e",
+                      "inverse-primary": "#006970",
+                      "secondary-fixed-dim": "#dcb8ff",
+                      "surface": "#131313",
+                      "primary": "#dbfcff",
+                      "on-primary-fixed-variant": "#004f54",
+                      "on-primary": "#00363a",
+                      "error-container": "#93000a",
+                      "surface-tint": "#00dbe9",
+                      "surface-dim": "#131313",
+                      "surface-container": "#201f1f",
+                      "tertiary-fixed-dim": "#ffb1c3",
+                      "on-secondary-fixed": "#2c0051",
+                      "on-primary-fixed": "#002022",
+                      "secondary-fixed": "#efdbff",
+                      "outline-variant": "#3b494b",
+                      "on-secondary-container": "#dcb7ff",
+                      "surface-container-highest": "#353534",
+                      "tertiary": "#fff3f4",
+                      "inverse-surface": "#e5e2e1",
+                      "error": "#ffb4ab",
+                      "on-error": "#690005",
+                      "on-surface": "#e5e2e1",
+                      "on-primary-container": "#006970",
+                      "on-error-container": "#ffdad6",
+                      "on-tertiary-fixed": "#3f0019",
+                      "inverse-on-surface": "#313030",
+                      "primary-fixed": "#7df4ff",
+                      "background": "#131313"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "stack-sm": "8px",
+                      "stack-lg": "32px",
+                      "margin-desktop": "24px",
+                      "gutter": "16px",
+                      "unit": "4px",
+                      "panel-padding": "12px",
+                      "margin-mobile": "16px",
+                      "stack-md": "16px"
+              },
+              "fontFamily": {
+                      "label-md": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-sm": [
+                              "Geist"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "display-lg": [
+                              "Geist"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ],
+                      "headline-md-mobile": [
+                              "Geist"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "label-sm": [
+                              "JetBrains Mono"
+                      ]
+              },
+              "fontSize": {
+                      "label-md": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-md-mobile": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-sm": [
+                              "10px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "500"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+          .dialog-overlay {
+              background-color: rgba(10, 10, 10, 0.85);
+              backdrop-filter: blur(8px);
+          }
+      </style>
+</head>
+<body class="bg-background text-on-surface h-screen w-screen overflow-hidden flex items-center justify-center font-body-md antialiased selection:bg-primary-container selection:text-on-primary-container">
+<!-- Modal Backdrop -->
+<div class="fixed inset-0 dialog-overlay z-50 flex items-center justify-center p-margin-mobile md:p-margin-desktop">
+<!-- Dialog Container -->
+<div class="bg-surface-container-high rounded-xl w-full max-w-md shadow-2xl border border-white/10 flex flex-col overflow-hidden relative">
+<!-- Subtle cyan glow indicator on top edge -->
+<div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary-container/30 to-transparent"></div>
+<!-- Header -->
+<div class="px-margin-desktop pt-margin-desktop pb-stack-md border-b border-surface-variant flex items-center justify-between">
+<div>
+<h2 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-container">key</span>
+                        Connect Personal FAL Key
+                    </h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1">Configure your private API access for local execution.</p>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface transition-colors rounded-full p-1 hover:bg-surface-variant">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<!-- Body -->
+<div class="px-margin-desktop py-margin-desktop flex flex-col gap-stack-lg">
+<!-- Input Group -->
+<div class="flex flex-col gap-stack-sm">
+<label class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider" for="apiKey">FAL API Key</label>
+<div class="relative group">
+<input class="w-full bg-[#121212] border-b-2 border-surface-variant focus:border-primary-container text-on-surface font-label-md text-label-md px-panel-padding py-3 outline-none transition-colors pr-12 rounded-t-DEFAULT" id="apiKey" type="password" value="fal_key_a8b9c0d1e2f3g4h5i6j7k8l9m0n1o2p3"/>
+<button class="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary-container transition-colors" id="toggleVisibility" type="button">
+<span class="material-symbols-outlined" id="visibilityIcon">visibility_off</span>
+</button>
+</div>
+</div>
+<!-- Status & Action Row -->
+<div class="flex items-center justify-between bg-surface-container p-panel-padding rounded-lg border border-surface-variant">
+<div class="flex items-center gap-2">
+<!-- Valid Status Indicator (Simulated active) -->
+<span class="relative flex h-3 w-3">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-container opacity-75"></span>
+<span class="relative inline-flex rounded-full h-3 w-3 bg-primary-container"></span>
+</span>
+<span class="font-label-md text-label-md text-primary-container uppercase">Valid Connection</span>
+</div>
+<button class="font-label-md text-label-md text-primary-container hover:text-primary-fixed transition-colors flex items-center gap-1 border border-primary-container/30 px-3 py-1.5 rounded bg-primary-container/5 hover:bg-primary-container/10">
+<span class="material-symbols-outlined" style="font-size: 16px;">sync</span>
+                        Test
+                    </button>
+</div>
+<!-- Helper Text -->
+<div class="flex items-start gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined" style="font-size: 18px;">info</span>
+<p class="font-body-md text-body-md text-sm">
+                        Keys are stored locally and never transmitted to Fotium servers. 
+                        <a class="text-primary-container hover:underline font-label-md text-label-md ml-1" href="#">Documentation →</a>
+</p>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="px-margin-desktop py-stack-md border-t border-surface-variant bg-surface-container-low flex justify-end gap-stack-md">
+<button class="font-label-md text-label-md text-on-surface px-6 py-2.5 rounded hover:bg-surface-variant transition-colors border border-transparent">
+                    Cancel
+                </button>
+<button class="font-label-md text-label-md bg-primary-container text-[#000000] px-6 py-2.5 rounded hover:bg-primary-fixed-dim transition-colors shadow-[0_0_15px_rgba(0,240,255,0.2)] font-bold">
+                    Save Key
+                </button>
+</div>
+</div>
+</div>
+<script>
+        // Simple toggle script for demonstration
+        document.getElementById('toggleVisibility').addEventListener('click', function() {
+            const input = document.getElementById('apiKey');
+            const icon = document.getElementById('visibilityIcon');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.textContent = 'visibility';
+            } else {
+                input.type = 'password';
+                icon.textContent = 'visibility_off';
+            }
+        });
+    </script>
+</body></html>

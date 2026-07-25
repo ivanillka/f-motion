@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Settings</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-variant": "#353534",
+                      "tertiary-container": "#ffccd6",
+                      "surface-container-low": "#1c1b1b",
+                      "error-container": "#93000a",
+                      "on-error-container": "#ffdad6",
+                      "on-tertiary-fixed-variant": "#8f0041",
+                      "outline": "#849495",
+                      "surface": "#131313",
+                      "on-secondary": "#480081",
+                      "surface-dim": "#131313",
+                      "secondary-fixed": "#efdbff",
+                      "surface-container-lowest": "#0e0e0e",
+                      "surface-bright": "#393939",
+                      "on-primary": "#00363a",
+                      "surface-container-highest": "#353534",
+                      "tertiary": "#fff3f4",
+                      "primary-fixed-dim": "#00dbe9",
+                      "on-background": "#e5e2e1",
+                      "error": "#ffb4ab",
+                      "secondary-fixed-dim": "#dcb8ff",
+                      "on-primary-container": "#006970",
+                      "tertiary-fixed": "#ffd9e0",
+                      "on-secondary-fixed": "#2c0051",
+                      "primary": "#dbfcff",
+                      "on-surface": "#e5e2e1",
+                      "background": "#131313",
+                      "surface-container": "#201f1f",
+                      "primary-fixed": "#7df4ff",
+                      "on-tertiary-fixed": "#3f0019",
+                      "on-surface-variant": "#b9cacb",
+                      "inverse-surface": "#e5e2e1",
+                      "on-primary-fixed-variant": "#004f54",
+                      "surface-tint": "#00dbe9",
+                      "primary-container": "#00f0ff",
+                      "inverse-on-surface": "#313030",
+                      "secondary": "#dcb8ff",
+                      "on-secondary-fixed-variant": "#6700b5",
+                      "on-error": "#690005",
+                      "secondary-container": "#7701d0",
+                      "on-tertiary": "#66002c",
+                      "inverse-primary": "#006970",
+                      "on-tertiary-container": "#bb0058",
+                      "on-secondary-container": "#dcb7ff",
+                      "surface-container-high": "#2a2a2a",
+                      "outline-variant": "#3b494b",
+                      "tertiary-fixed-dim": "#ffb1c3",
+                      "on-primary-fixed": "#002022"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "panel-padding": "12px",
+                      "stack-sm": "8px",
+                      "unit": "4px",
+                      "stack-lg": "32px",
+                      "gutter": "16px",
+                      "margin-desktop": "24px",
+                      "margin-mobile": "16px",
+                      "stack-md": "16px"
+              },
+              "fontFamily": {
+                      "label-md": [
+                              "JetBrains Mono"
+                      ],
+                      "display-lg": [
+                              "Geist"
+                      ],
+                      "headline-sm": [
+                              "Geist"
+                      ],
+                      "headline-md-mobile": [
+                              "Geist"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "label-sm": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "label-md": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "headline-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-md-mobile": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-sm": [
+                              "10px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+    </script>
+<style>
+        body { background-color: theme('colors.background'); color: theme('colors.on-surface'); }
+        /* Setup material symbols style */
+        .material-symbols-outlined {
+          font-variation-settings:
+          'FILL' 0,
+          'wght' 400,
+          'GRAD' 0,
+          'opsz' 24
+        }
+    </style>
+</head>
+<body class="flex flex-col md:flex-row min-h-screen">
+<!-- SideNavBar (Desktop) -->
+<nav class="hidden md:flex flex-col py-panel-padding bg-surface-container-low border-r border-outline-variant docked left-0 h-screen w-[280px]">
+<div class="px-gutter mb-stack-lg">
+<h1 class="text-headline-sm font-headline-sm text-primary">Workspace</h1>
+<p class="text-label-md font-label-md text-on-surface-variant">Pro Plan</p>
+</div>
+<div class="px-gutter mb-stack-md">
+<button class="w-full flex items-center justify-center gap-2 bg-primary-container text-on-primary-container font-label-md text-label-md py-2 rounded transition-colors hover:opacity-90">
+<span class="material-symbols-outlined text-sm">add_box</span>
+                New Project
+            </button>
+</div>
+<div class="flex-1 overflow-y-auto">
+<ul class="space-y-1 px-unit">
+<li>
+<a class="flex items-center gap-3 px-gutter py-2 text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out rounded-lg" href="#">
+<span class="material-symbols-outlined text-[20px]">home</span>
+                        Home
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-gutter py-2 text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out rounded-lg" href="#">
+<span class="material-symbols-outlined text-[20px]">add_box</span>
+                        Create
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-gutter py-2 text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out rounded-lg" href="#">
+<span class="material-symbols-outlined text-[20px]">description</span>
+                        Drafts
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-gutter py-2 bg-surface-variant text-primary border-r-4 border-primary font-label-md text-label-md transition-all duration-200 ease-in-out rounded-l-lg" href="#">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">settings</span>
+                        Settings
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-gutter py-2 text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out rounded-lg" href="#">
+<span class="material-symbols-outlined text-[20px]">account_balance_wallet</span>
+                        Credits
+                    </a>
+</li>
+</ul>
+</div>
+<div class="mt-auto border-t border-outline-variant pt-stack-sm px-unit">
+<ul class="space-y-1">
+<li>
+<a class="flex items-center gap-3 px-gutter py-2 text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out rounded-lg" href="#">
+<span class="material-symbols-outlined text-[20px]">help</span>
+                        Help
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-gutter py-2 text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-highest hover:text-on-surface transition-all duration-200 ease-in-out rounded-lg" href="#">
+<span class="material-symbols-outlined text-[20px]">logout</span>
+                        Logout
+                    </a>
+</li>
+</ul>
+<div class="mt-4 px-gutter flex items-center gap-3">
+<img alt="User Profile" class="w-8 h-8 rounded-full object-cover" data-alt="A small, circular avatar portrait of a digital artist with cool cyberpunk glasses, lit by soft blue neon lights in a modern dark studio setting. The styling is high-quality, corporate minimalism." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDAYSZvwUgasWBzAOH0R_Og_RXnMsS9_6m_LR6sl2cCaWtuucJ3BVcBODikHVw2uWnCONVXhOrmU48YUl8ztt2168TlwgRlsRMBA-q8T0c1KIwlyeztGEubwqN6ELC44XFRuM451iakR8P6_7spVdhr_QlAY1P7E3TG_j12l6y94A6x5zyLaEBwtxwiLFu3aujNCYovqW4vXU23RtIXLEJAotmX-WZDjcw7c66s2t8gCs0gRMel3UxRw6bZ6c3rSxNOankfhssdN5s"/>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface">Editor_01</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Pro</span>
+</div>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col bg-surface-lowest">
+<!-- TopNavBar (Web) -->
+<header class="hidden md:flex justify-between items-center px-margin-desktop w-full h-16 bg-surface-container-lowest border-b border-outline-variant">
+<div class="flex items-center gap-6">
+<div class="text-headline-md font-headline-md font-bold text-primary">Fotium Motion</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+<input class="bg-surface-container-low border border-outline-variant rounded-full py-1.5 pl-9 pr-4 text-body-md font-body-md text-on-surface focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all" placeholder="Search..." type="text"/>
+</div>
+<button class="text-on-surface-variant hover:text-primary transition-colors cursor-pointer active:opacity-80">
+<span class="material-symbols-outlined text-[20px]">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors cursor-pointer active:opacity-80">
+<span class="material-symbols-outlined text-[20px]">account_circle</span>
+</button>
+<div class="h-6 w-px bg-outline-variant mx-2"></div>
+<button class="text-primary font-label-md text-label-md hover:text-primary-fixed transition-colors">
+                    Generate
+                </button>
+<button class="bg-primary-container text-on-primary-container px-4 py-1.5 rounded font-label-md text-label-md hover:opacity-90 transition-opacity">
+                    Export
+                </button>
+</div>
+</header>
+<!-- Page Content -->
+<div class="flex-1 overflow-y-auto p-margin-mobile md:p-margin-desktop bg-surface">
+<div class="max-w-4xl mx-auto space-y-stack-lg">
+<!-- Page Header -->
+<div>
+<h2 class="font-display-lg text-headline-sm md:text-display-lg text-on-surface mb-unit">API Keys &amp; Connections</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Manage external service integrations for AI generation.</p>
+</div>
+<!-- Settings Grid -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-gutter">
+<!-- Settings Sidebar (Internal navigation) -->
+<div class="md:col-span-3 space-y-1">
+<a class="block px-3 py-2 rounded-lg font-label-md text-label-md text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">General</a>
+<a class="block px-3 py-2 rounded-lg font-label-md text-label-md text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">Workspace</a>
+<a class="block px-3 py-2 rounded-lg font-label-md text-label-md bg-surface-container-high text-primary border-l-2 border-primary transition-colors" href="#">API Keys</a>
+<a class="block px-3 py-2 rounded-lg font-label-md text-label-md text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">Billing</a>
+</div>
+<!-- Main Settings Panel -->
+<div class="md:col-span-9 space-y-stack-md">
+<!-- Connection Card -->
+<div class="bg-surface-container-low border border-outline-variant rounded-xl p-gutter relative overflow-hidden">
+<!-- Subtle highlight for active state -->
+<div class="absolute top-0 left-0 w-1 h-full bg-primary-container"></div>
+<div class="flex flex-col md:flex-row md:items-start justify-between gap-stack-md">
+<div class="flex-1 space-y-stack-sm">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-surface-container-highest flex items-center justify-center border border-outline-variant">
+<span class="material-symbols-outlined text-primary">key</span>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface">FAL AI Provider</h3>
+<div class="flex items-center gap-2 mt-1">
+<span class="w-2 h-2 rounded-full bg-[#00f0ff]"></span>
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Connected</span>
+</div>
+</div>
+</div>
+<div class="mt-stack-md grid grid-cols-2 gap-4">
+<div class="space-y-1">
+<span class="font-label-sm text-label-sm text-on-surface-variant">MODE</span>
+<div class="font-label-md text-label-md text-on-surface bg-surface-container p-2 rounded border border-surface-bright">Personal Key</div>
+</div>
+<div class="space-y-1">
+<span class="font-label-sm text-label-sm text-on-surface-variant">FINGERPRINT</span>
+<div class="font-label-md text-label-md text-on-surface bg-surface-container p-2 rounded border border-surface-bright font-mono">
+                                                ****************4x8k
+                                            </div>
+</div>
+<div class="space-y-1 col-span-2">
+<span class="font-label-sm text-label-sm text-on-surface-variant">CONNECTED SINCE</span>
+<div class="font-label-md text-label-md text-on-surface-variant">Oct 24, 2023 at 14:32 UTC</div>
+</div>
+</div>
+</div>
+<!-- Actions -->
+<div class="flex flex-col gap-2 min-w-[200px]">
+<button class="w-full flex items-center justify-center gap-2 bg-surface-container-high border border-outline-variant text-on-surface font-label-md text-label-md py-2 rounded hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-[16px]">network_check</span>
+                                        Test connection
+                                    </button>
+<button class="w-full flex items-center justify-center gap-2 bg-surface-container-high border border-outline-variant text-on-surface font-label-md text-label-md py-2 rounded hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-[16px]">published_with_changes</span>
+                                        Replace key
+                                    </button>
+<button class="w-full flex items-center justify-center gap-2 bg-surface-container-high border border-outline-variant text-primary font-label-md text-label-md py-2 rounded hover:bg-surface-container-highest transition-colors mt-2">
+<span class="material-symbols-outlined text-[16px]">swap_horiz</span>
+                                        Switch to managed credits
+                                    </button>
+<div class="h-px bg-outline-variant my-1"></div>
+<button class="w-full flex items-center justify-center gap-2 text-error font-label-md text-label-md py-2 rounded hover:bg-error-container/20 transition-colors">
+<span class="material-symbols-outlined text-[16px]">link_off</span>
+                                        Disconnect
+                                    </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar (Mobile) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex md:hidden justify-around items-center px-margin-mobile py-unit bg-surface-container border-t border-outline-variant shadow-lg rounded-t-xl docked full-width">
+<a class="flex flex-col items-center justify-center text-on-surface-variant active:bg-surface-variant scale-95 transition-transform p-2 rounded-lg" href="#">
+<span class="material-symbols-outlined text-[24px]">home</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant active:bg-surface-variant scale-95 transition-transform p-2 rounded-lg" href="#">
+<span class="material-symbols-outlined text-[24px]">movie_creation</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1">Create</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant active:bg-surface-variant scale-95 transition-transform p-2 rounded-lg" href="#">
+<span class="material-symbols-outlined text-[24px]">folder</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1">Drafts</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-fixed-variant rounded-full px-4 py-1 active:bg-surface-variant scale-95 transition-transform" href="#">
+<span class="material-symbols-outlined text-[24px]" style="font-variation-settings: 'FILL' 1;">person</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1 font-bold">Account</span>
+</a>
+</nav>
+</body></html>

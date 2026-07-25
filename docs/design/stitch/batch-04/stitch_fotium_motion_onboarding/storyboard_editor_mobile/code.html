@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Guided Storyboard Editor</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Inter:wght@100..900&family=JetBrains+Mono:wght@100..900&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#dcb8ff",
+                        "on-primary-fixed-variant": "#004f54",
+                        "surface-container-highest": "#353534",
+                        "surface-container-high": "#2a2a2a",
+                        "on-surface": "#e5e2e1",
+                        "secondary-fixed": "#efdbff",
+                        "on-error-container": "#ffdad6",
+                        "error-container": "#93000a",
+                        "on-surface-variant": "#b9cacb",
+                        "outline-variant": "#3b494b",
+                        "background": "#131313",
+                        "surface-container": "#201f1f",
+                        "outline": "#849495",
+                        "surface-tint": "#00dbe9",
+                        "on-background": "#e5e2e1",
+                        "on-primary-container": "#006970",
+                        "tertiary-fixed-dim": "#ffb1c3",
+                        "surface-variant": "#353534",
+                        "on-secondary-fixed": "#2c0051",
+                        "on-secondary-container": "#dcb7ff",
+                        "on-tertiary-fixed": "#3f0019",
+                        "primary-fixed-dim": "#00dbe9",
+                        "primary-container": "#00f0ff",
+                        "surface-bright": "#393939",
+                        "on-tertiary": "#66002c",
+                        "on-primary-fixed": "#002022",
+                        "surface-dim": "#131313",
+                        "on-tertiary-container": "#bb0058",
+                        "inverse-primary": "#006970",
+                        "on-secondary": "#480081",
+                        "inverse-on-surface": "#313030",
+                        "primary": "#dbfcff",
+                        "tertiary-fixed": "#ffd9e0",
+                        "on-error": "#690005",
+                        "tertiary-container": "#ffccd6",
+                        "surface-container-lowest": "#0e0e0e",
+                        "surface-container-low": "#1c1b1b",
+                        "on-secondary-fixed-variant": "#6700b5",
+                        "tertiary": "#fff3f4",
+                        "surface": "#131313",
+                        "secondary-fixed-dim": "#dcb8ff",
+                        "error": "#ffb4ab",
+                        "secondary-container": "#7701d0",
+                        "primary-fixed": "#7df4ff",
+                        "inverse-surface": "#e5e2e1",
+                        "on-tertiary-fixed-variant": "#8f0041",
+                        "on-primary": "#00363a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "stack-md": "16px",
+                        "unit": "4px",
+                        "panel-padding": "12px",
+                        "stack-lg": "32px",
+                        "margin-mobile": "16px",
+                        "margin-desktop": "24px",
+                        "stack-sm": "8px",
+                        "gutter": "16px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["JetBrains Mono"],
+                        "headline-md-mobile": ["Geist"],
+                        "body-md": ["Inter"],
+                        "headline-md": ["Geist"],
+                        "display-lg": ["Geist"],
+                        "body-lg": ["Inter"],
+                        "label-sm": ["JetBrains Mono"],
+                        "headline-sm": ["Geist"]
+                    },
+                    "fontSize": {
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "headline-md-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "label-sm": ["10px", { "lineHeight": "14px", "fontWeight": "500" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        /* Custom scrollbar for timeline */
+        ::-webkit-scrollbar { height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #353534; border-radius: 4px; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background h-screen w-full flex flex-col overflow-hidden font-body-md">
+<!-- Top AppBar (Editor Mode - Stripped Down) -->
+<header class="flex items-center justify-between h-16 px-margin-mobile bg-surface z-10 flex-shrink-0 border-b border-surface-container-highest">
+<button class="text-on-surface hover:text-primary transition-colors flex items-center justify-center p-2 -ml-2">
+<span class="material-symbols-outlined text-2xl">arrow_back_ios_new</span>
+</button>
+<div class="flex-1 text-center">
+<h1 class="font-headline-md-mobile text-headline-md-mobile text-on-surface truncate px-4">Cyber City - Scene 1</h1>
+</div>
+<div class="text-primary-fixed-dim flex items-center justify-center p-2 -mr-2">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">cloud_done</span>
+</div>
+</header>
+<!-- Full-screen Scene Preview Canvas -->
+<main class="flex-1 relative bg-surface-container-lowest overflow-hidden flex items-center justify-center">
+<!-- Rendered Video/Image Output -->
+<div class="relative w-full h-full max-w-md mx-auto aspect-[9/16] bg-black">
+<img class="w-full h-full object-cover opacity-90" data-alt="A striking digital installation art piece featuring glowing, generative geometric shapes suspended in a vast, minimalist gallery space. The room is illuminated by high-key, soft white lighting that creates a bright, modern light-mode aesthetic. The artwork relies on a sophisticated palette of deep blacks and pristine whites, punctuated by intense accents of vibrant red. The mood is serene yet technologically advanced." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDRlADeDiJfksiWPAPZZ2gbSy2qxZnCnAd8IErk84iogFHeFyPWX0WPIAjQOXQA5r0KJGNH0tH59m526EdHzN__13H7-36PBTbrVHfOP7WVV3mAYVQMb0nhHiqLzbSYV64KFKaKEnZPMFPqhWVuEOUznugiONjGomhVYp2Ew1vphvoIntv70sDF4Za9RObXN1p0GfO6RtJ0GcaRLcvD8jdimqAtDoAnlOZtprQuZcpY3XvyDwR9SHa2Z9pTE6-BSbbzM7X3NDYgB6E"/>
+<!-- Safe Area Overlay (Subtle) -->
+<div class="absolute inset-4 border border-outline-variant/30 rounded-lg pointer-events-none"></div>
+<!-- Play Control Overlay -->
+<button class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-surface-container-highest/80 backdrop-blur-sm rounded-full flex items-center justify-center text-on-surface hover:scale-105 transition-transform">
+<span class="material-symbols-outlined text-4xl" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</button>
+</div>
+<!-- Floating Action Button: Render Preview -->
+<button class="absolute bottom-margin-mobile right-margin-mobile w-14 h-14 bg-primary text-on-primary rounded-[16px] shadow-[0_0_20px_rgba(0,240,255,0.2)] flex items-center justify-center hover:scale-95 transition-transform z-20">
+<span class="material-symbols-outlined text-2xl">auto_fix_high</span>
+</button>
+</main>
+<!-- Horizontal Scrollable Scene Strip -->
+<section class="h-[120px] bg-surface-container flex-shrink-0 flex items-center px-2 py-4 overflow-x-auto snap-x gap-3 border-t border-surface-container-highest z-10">
+<!-- Scene Thumbnail 1 (Active) -->
+<button class="relative h-full aspect-[9/16] rounded-md overflow-hidden snap-center flex-shrink-0 border-2 border-primary bg-black hover:opacity-80 transition-opacity outline-none" onclick="toggleBottomSheet()">
+<img class="w-full h-full object-cover" data-alt="A dark, moody cinematic shot of a neon-lit alleyway in a cyberpunk metropolis, rendered in an isometric perspective. Deep shadows dominate the foreground, contrasting sharply with intense cyan and magenta light sources reflecting off wet pavement. The overall aesthetic is gritty, highly detailed, and futuristic, perfectly aligning with a dark-first tech environment." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDoF9JnWfoLZehSvdfpGCLwVkKZPXMLQqDqR6t-qZzh1LODzBtDBUDYMBWZzvhaJl-5ukzNUfFX6ba7d6VYA_vjxFIi5Ov1VSx6Cko4JBVX01u91q5guC8nQ-8YfNYYkRxQ27XT_PbliptZoS5z2OaVxumGTY5NgOeGJWkmBSn4kYWm8xZBT0sIH1d6CLmREHkIuaZbVcuzHcu6w4KJFtHBtBojpnv7yovRVELTstiPw3OtWRBO4tDqAf_cUfV7qpWcAPeRe5_4oy4"/>
+<div class="absolute bottom-1 right-1 bg-surface-container-high/90 px-1.5 py-0.5 rounded text-[10px] font-label-sm text-on-surface font-medium backdrop-blur">3.2s</div>
+</button>
+<!-- Scene Thumbnail 2 -->
+<button class="relative h-full aspect-[9/16] rounded-md overflow-hidden snap-center flex-shrink-0 border border-outline-variant bg-surface-container-low hover:border-on-surface-variant transition-colors outline-none" onclick="toggleBottomSheet()">
+<img class="w-full h-full object-cover opacity-60" data-alt="A close-up shot of an advanced robotic hand interacting with a glowing holographic interface floating in mid-air. The scene is bathed in a cool, dark blue and charcoal palette, emphasizing a sleek, professional laboratory setting. Shallow depth of field blurs the background, focusing entirely on the intricate mechanical joints and the crisp cyan light of the interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBSXcAGL_7JqB1dlYD5pLkW46-T3YTipi9CQ05BWg1-gujdf51XjFjux3Z3TwfKF79i2SYS9yqWL5W51hdwRd6UrEx-zJ0GV__VO7cb2kZ6ViLXesVhTXDujccWXC0xXWbnnkC11kBusRUgy23JcNlnfRfG2EO4vdBdfnqYXOD1_p5-FvXcyZ4lj4sC6wAZiWJluJHxZRyGCs6koc_Qf9ERDfJgM46DqKWECp-HWDqaemPawdZm9ayMzZz-F6iPk_XZqJPU_lf-0z4"/>
+<div class="absolute bottom-1 right-1 bg-surface-container-high/90 px-1.5 py-0.5 rounded text-[10px] font-label-sm text-on-surface font-medium backdrop-blur">1.5s</div>
+</button>
+<!-- Scene Thumbnail 3 -->
+<button class="relative h-full aspect-[9/16] rounded-md overflow-hidden snap-center flex-shrink-0 border border-outline-variant bg-surface-container-low hover:border-on-surface-variant transition-colors outline-none" onclick="toggleBottomSheet()">
+<div class="w-full h-full flex flex-col items-center justify-center text-on-surface-variant bg-surface-container-lowest">
+<span class="material-symbols-outlined text-xl mb-1">generating_tokens</span>
+<span class="text-[9px] font-label-sm uppercase tracking-wider">Rendering</span>
+</div>
+<div class="absolute bottom-0 left-0 h-1 bg-primary w-1/3"></div>
+</button>
+<!-- Add Scene -->
+<button class="relative h-full aspect-[9/16] rounded-md snap-center flex-shrink-0 border border-dashed border-outline-variant bg-transparent flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface hover:border-on-surface transition-colors outline-none">
+<span class="material-symbols-outlined text-2xl">add</span>
+</button>
+<!-- Spacer for scrolling past last item safely -->
+<div class="w-4 h-full flex-shrink-0"></div>
+</section>
+<!-- Bottom Sheet Modal (Tools) -->
+<div class="fixed inset-0 z-50 pointer-events-none flex flex-col justify-end" id="tools-sheet">
+<!-- Scrim -->
+<div class="absolute inset-0 bg-black/60 opacity-0 transition-opacity duration-300 pointer-events-none" id="tools-scrim" onclick="toggleBottomSheet()"></div>
+<!-- Sheet Content -->
+<div class="bg-surface-container-high w-full rounded-t-[24px] border-t border-outline-variant/20 transform translate-y-full transition-transform duration-300 ease-out pointer-events-auto shadow-2xl pb-8 pt-4 px-margin-mobile relative" id="tools-panel">
+<!-- Drag Handle -->
+<div class="w-12 h-1.5 bg-outline-variant/50 rounded-full mx-auto mb-6"></div>
+<h3 class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-6 text-center">Edit Selected Scene</h3>
+<div class="grid grid-cols-3 gap-4">
+<!-- Tool: Text -->
+<button class="flex flex-col items-center justify-center gap-3 p-4 rounded-xl bg-surface-container hover:bg-surface-container-highest transition-colors">
+<div class="w-12 h-12 rounded-full bg-secondary-container/20 flex items-center justify-center text-secondary-fixed">
+<span class="material-symbols-outlined">title</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface">Text</span>
+</button>
+<!-- Tool: Crop -->
+<button class="flex flex-col items-center justify-center gap-3 p-4 rounded-xl bg-surface-container hover:bg-surface-container-highest transition-colors">
+<div class="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface">
+<span class="material-symbols-outlined">crop</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface">Crop</span>
+</button>
+<!-- Tool: Motion -->
+<button class="flex flex-col items-center justify-center gap-3 p-4 rounded-xl bg-surface-container hover:bg-surface-container-highest transition-colors">
+<div class="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface">
+<span class="material-symbols-outlined">animation</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface">Motion</span>
+</button>
+</div>
+</div>
+</div>
+<script>
+        let isSheetOpen = false;
+        
+        function toggleBottomSheet() {
+            const sheet = document.getElementById('tools-sheet');
+            const panel = document.getElementById('tools-panel');
+            const scrim = document.getElementById('tools-scrim');
+            
+            isSheetOpen = !isSheetOpen;
+            
+            if (isSheetOpen) {
+                sheet.classList.remove('pointer-events-none');
+                scrim.classList.remove('pointer-events-none');
+                scrim.classList.add('opacity-100');
+                scrim.classList.remove('opacity-0');
+                panel.classList.remove('translate-y-full');
+            } else {
+                scrim.classList.remove('opacity-100');
+                scrim.classList.add('opacity-0');
+                panel.classList.add('translate-y-full');
+                
+                setTimeout(() => {
+                    sheet.classList.add('pointer-events-none');
+                    scrim.classList.add('pointer-events-none');
+                }, 300); // Wait for transition
+            }
+        }
+    </script>
+</body></html>

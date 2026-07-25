@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Generation Admitted</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "secondary": "#dcb8ff",
+                      "on-surface": "#e5e2e1",
+                      "surface-container-high": "#2a2a2a",
+                      "outline-variant": "#3b494b",
+                      "on-secondary-fixed-variant": "#6700b5",
+                      "on-primary": "#00363a",
+                      "on-error-container": "#ffdad6",
+                      "primary-container": "#00f0ff",
+                      "on-primary-container": "#006970",
+                      "inverse-primary": "#006970",
+                      "secondary-container": "#7701d0",
+                      "primary-fixed-dim": "#00dbe9",
+                      "surface-container-low": "#1c1b1b",
+                      "on-secondary": "#480081",
+                      "surface": "#131313",
+                      "secondary-fixed-dim": "#dcb8ff",
+                      "secondary-fixed": "#efdbff",
+                      "on-surface-variant": "#b9cacb",
+                      "on-tertiary-fixed-variant": "#8f0041",
+                      "on-primary-fixed-variant": "#004f54",
+                      "surface-container-highest": "#353534",
+                      "tertiary-fixed": "#ffd9e0",
+                      "surface-container-lowest": "#0e0e0e",
+                      "surface-variant": "#353534",
+                      "inverse-surface": "#e5e2e1",
+                      "surface-container": "#201f1f",
+                      "error": "#ffb4ab",
+                      "primary-fixed": "#7df4ff",
+                      "inverse-on-surface": "#313030",
+                      "on-tertiary": "#66002c",
+                      "surface-tint": "#00dbe9",
+                      "outline": "#849495",
+                      "on-secondary-fixed": "#2c0051",
+                      "on-background": "#e5e2e1",
+                      "tertiary-fixed-dim": "#ffb1c3",
+                      "error-container": "#93000a",
+                      "surface-bright": "#393939",
+                      "on-primary-fixed": "#002022",
+                      "surface-dim": "#131313",
+                      "tertiary-container": "#ffccd6",
+                      "on-tertiary-fixed": "#3f0019",
+                      "tertiary": "#fff3f4",
+                      "on-tertiary-container": "#bb0058",
+                      "primary": "#dbfcff",
+                      "on-secondary-container": "#dcb7ff",
+                      "background": "#131313",
+                      "on-error": "#690005"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "panel-padding": "12px",
+                      "gutter": "16px",
+                      "margin-desktop": "24px",
+                      "unit": "4px",
+                      "margin-mobile": "16px",
+                      "stack-sm": "8px",
+                      "stack-md": "16px",
+                      "stack-lg": "32px"
+              },
+              "fontFamily": {
+                      "headline-sm": ["Geist"],
+                      "headline-md": ["Geist"],
+                      "body-lg": ["Inter"],
+                      "label-sm": ["JetBrains Mono"],
+                      "headline-md-mobile": ["Geist"],
+                      "body-md": ["Inter"],
+                      "display-lg": ["Geist"],
+                      "label-md": ["JetBrains Mono"]
+              },
+              "fontSize": {
+                      "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                      "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                      "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "label-sm": ["10px", {"lineHeight": "14px", "fontWeight": "500"}],
+                      "headline-md-mobile": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                      "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                      "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}]
+              }
+            }
+          }
+        }
+      </script>
+<style>
+        .pulse-cyan {
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
+            animation: pulse-glow 2s infinite alternate;
+        }
+        @keyframes pulse-glow {
+            0% { box-shadow: 0 0 10px rgba(0, 240, 255, 0.1); }
+            100% { box-shadow: 0 0 25px rgba(0, 240, 255, 0.3); }
+        }
+        .progress-bar-stripes {
+            background-image: linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent);
+            background-size: 1rem 1rem;
+            animation: progress-move 1s linear infinite;
+        }
+        @keyframes progress-move {
+            0% { background-position: 1rem 0; }
+            100% { background-position: 0 0; }
+        }
+      </style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen flex flex-col font-body-md overflow-hidden relative selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar (Transactional Variant - No Navigation Shell per logic) -->
+<header class="flex justify-between items-center w-full px-margin-desktop h-16 sticky top-0 z-40 bg-surface dark:bg-surface border-b border-surface-container-high/50">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-fixed-dim" style="font-variation-settings: 'FILL' 1;">motion_photos_on</span>
+<span class="font-headline-md text-headline-md font-bold text-primary-fixed-dim dark:text-primary-fixed-dim tracking-tight">Fotium Motion</span>
+</div>
+<div class="flex items-center gap-2 px-3 py-1 rounded bg-surface-container-high border border-outline-variant/30 text-on-surface-variant font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[14px]">lock</span>
+<span>LOCKED - GENERATING</span>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-1 flex items-center justify-center p-margin-desktop relative z-10">
+<!-- Background Ambient Glow -->
+<div class="absolute inset-0 z-0 pointer-events-none flex items-center justify-center overflow-hidden">
+<div class="w-[600px] h-[600px] bg-primary-container/5 rounded-full blur-[100px] mix-blend-screen"></div>
+</div>
+<!-- Success/Generation Card -->
+<div class="w-full max-w-lg bg-surface-container-low rounded-xl border border-surface-container-high/50 p-8 flex flex-col items-center text-center relative z-10 pulse-cyan">
+<!-- Icon/Status Indicator -->
+<div class="w-20 h-20 rounded-full bg-surface-container-highest flex items-center justify-center mb-6 relative">
+<div class="absolute inset-0 rounded-full border-2 border-primary-container/20 border-t-primary-container animate-spin"></div>
+<span class="material-symbols-outlined text-4xl text-primary-container" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<!-- Headlines -->
+<h1 class="font-headline-sm text-headline-sm text-on-surface mb-2">Project Queued Successfully</h1>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-sm mb-8">
+                Your AI video sequence has been admitted to the rendering pipeline. You can safely leave this page while we process the frames.
+            </p>
+<!-- Status Panel -->
+<div class="w-full bg-surface-container-lowest rounded-lg border border-surface-container-high p-4 mb-8 text-left">
+<div class="flex justify-between items-center mb-3">
+<span class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Current Status</span>
+<span class="font-label-sm text-label-sm text-primary-container bg-primary-container/10 px-2 py-0.5 rounded flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary-container animate-pulse"></span>
+                        Building Preview
+                    </span>
+</div>
+<!-- Progress Bar -->
+<div class="w-full h-2 bg-surface-container-highest rounded-full overflow-hidden mb-2">
+<div class="h-full bg-primary-container progress-bar-stripes transition-all duration-500 w-[15%]"></div>
+</div>
+<div class="flex justify-between items-center mt-2">
+<span class="font-label-sm text-label-sm text-on-surface-variant font-mono">EST: 2-3 MIN</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant font-mono">15%</span>
+</div>
+</div>
+<!-- Actions -->
+<div class="flex flex-col sm:flex-row gap-4 w-full">
+<button class="flex-1 py-3 px-6 rounded bg-primary-container text-on-primary font-label-md text-label-md hover:bg-primary-fixed transition-colors flex justify-center items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">folder_open</span>
+                    View in Drafts
+                </button>
+<button class="flex-1 py-3 px-6 rounded border border-outline-variant/50 text-on-surface font-label-md text-label-md hover:bg-surface-container-highest transition-colors flex justify-center items-center gap-2 group">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary-container transition-colors">add</span>
+                    New Project
+                </button>
+</div>
+</div>
+</main>
+<!-- Subtle Grid Background Overlay -->
+<div class="fixed inset-0 pointer-events-none z-0 opacity-[0.03]" style="background-image: linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px); background-size: 32px 32px;"></div>
+</body></html>

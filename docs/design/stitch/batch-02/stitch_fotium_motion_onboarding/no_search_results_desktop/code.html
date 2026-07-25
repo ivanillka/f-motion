@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fotium Motion - Drafts</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700;900&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-surface": "#e5e2e1",
+                      "on-error": "#690005",
+                      "secondary": "#dcb8ff",
+                      "on-secondary": "#480081",
+                      "tertiary-fixed": "#ffd9e0",
+                      "on-primary-fixed-variant": "#004f54",
+                      "on-primary-container": "#006970",
+                      "on-secondary-fixed": "#2c0051",
+                      "on-primary-fixed": "#002022",
+                      "secondary-fixed-dim": "#dcb8ff",
+                      "on-tertiary-fixed-variant": "#8f0041",
+                      "error": "#ffb4ab",
+                      "tertiary-fixed-dim": "#ffb1c3",
+                      "on-surface-variant": "#b9cacb",
+                      "surface-container-lowest": "#0e0e0e",
+                      "on-tertiary": "#66002c",
+                      "on-tertiary-container": "#bb0058",
+                      "inverse-surface": "#e5e2e1",
+                      "background": "#131313",
+                      "primary-container": "#00f0ff",
+                      "inverse-on-surface": "#313030",
+                      "primary": "#dbfcff",
+                      "error-container": "#93000a",
+                      "surface-container-highest": "#353534",
+                      "surface-container-high": "#2a2a2a",
+                      "outline-variant": "#3b494b",
+                      "on-primary": "#00363a",
+                      "tertiary-container": "#ffccd6",
+                      "surface-container": "#201f1f",
+                      "surface-container-low": "#1c1b1b",
+                      "on-error-container": "#ffdad6",
+                      "on-background": "#e5e2e1",
+                      "primary-fixed-dim": "#00dbe9",
+                      "surface-bright": "#393939",
+                      "on-secondary-container": "#dcb7ff",
+                      "surface-variant": "#353534",
+                      "secondary-fixed": "#efdbff",
+                      "tertiary": "#fff3f4",
+                      "secondary-container": "#7701d0",
+                      "primary-fixed": "#7df4ff",
+                      "surface": "#131313",
+                      "outline": "#849495",
+                      "inverse-primary": "#006970",
+                      "surface-dim": "#131313",
+                      "on-secondary-fixed-variant": "#6700b5",
+                      "surface-tint": "#00dbe9",
+                      "on-tertiary-fixed": "#3f0019"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "unit": "4px",
+                      "gutter": "16px",
+                      "margin-mobile": "16px",
+                      "panel-padding": "12px",
+                      "stack-lg": "32px",
+                      "margin-desktop": "24px",
+                      "stack-md": "16px",
+                      "stack-sm": "8px"
+              },
+              "fontFamily": {
+                      "label-sm": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-md-mobile": [
+                              "Geist"
+                      ],
+                      "display-lg": [
+                              "Geist"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "label-md": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-sm": [
+                              "Geist"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ]
+              },
+              "fontSize": {
+                      "label-sm": [
+                              "10px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-md-mobile": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-md": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.fill {
+            font-variation-settings: 'FILL' 1;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen font-body-md selection:bg-primary-container selection:text-on-primary-container overflow-hidden flex">
+<!-- SideNavBar -->
+<nav class="bg-surface-container-low dark:bg-surface-container-low h-screen w-[280px] fixed left-0 top-0 border-r border-outline-variant dark:border-outline-variant hidden md:flex flex-col py-margin-desktop z-40">
+<div class="px-margin-desktop mb-stack-lg flex items-center gap-stack-sm">
+<div class="w-8 h-8 rounded bg-primary-container flex items-center justify-center text-on-primary-container">
+<span class="material-symbols-outlined" data-icon="motion_photos_auto">motion_photos_auto</span>
+</div>
+<div>
+<h1 class="font-headline-md text-headline-md font-bold text-on-surface dark:text-on-surface">Fotium Motion</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest">Studio</p>
+</div>
+</div>
+<div class="px-margin-desktop mb-stack-lg">
+<button class="w-full bg-primary-container text-on-primary-container hover:bg-primary-fixed transition-colors active:scale-95 duration-150 py-3 rounded-lg font-label-md text-label-md flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                Create New
+            </button>
+</div>
+<ul class="flex flex-col gap-1 w-full flex-grow">
+<li>
+<a class="flex items-center gap-3 px-margin-desktop py-3 text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="home">home</span>
+                    Home
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-margin-desktop py-3 text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="add_circle">add_circle</span>
+                    Create
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-margin-desktop py-3 text-primary dark:text-primary font-bold border-r-2 border-primary bg-surface-container-high/50 font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined text-[20px] fill" data-icon="drafts">drafts</span>
+                    Drafts
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-margin-desktop py-3 text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-high transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="settings">settings</span>
+                    Settings
+                </a>
+</li>
+</ul>
+<div class="px-margin-desktop mt-auto pt-stack-md border-t border-outline-variant/30">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-variant overflow-hidden border border-outline-variant">
+<img alt="User profile avatar" class="w-full h-full object-cover" data-alt="A small circular avatar placeholder image for a user profile in a dark UI studio application." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDEdPRRmJTJVcMK3XFCAECuYOYdnARf8mZ7gFuJR6uswiQ_eJeTJId7PB9V-au27aYqy7GUshaI7VmoSNEhfqCF8cThYYPJmuSkY85uLBFkrV_TEUUp8ZX9DX4qT3cUqWT0dSxOSuKTO2qznhuLRJiBBObEHsWLj1Kti_xZSqtqQFplRgPsFyr9KbA0NOaU2a1yk0_GhHqzSyiBFr_wll3mKDJUQYuCiUZs8Pd351OYn9BgKw7PBI_80i_1Z_LQUUm-QbizAVC-usw"/>
+</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface">Pro Editor</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Free Plan</span>
+</div>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 md:ml-[280px] h-screen flex flex-col relative">
+<!-- TopAppBar (Search/Filter Context) -->
+<header class="bg-background dark:bg-background flex justify-between items-center w-full px-margin-desktop h-16 shrink-0 z-30 sticky top-0 border-b border-outline-variant/20">
+<div class="flex items-center gap-stack-md">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Draft Library</h2>
+<div class="h-4 w-px bg-outline-variant mx-2 hidden md:block"></div>
+<div class="hidden md:flex gap-2 items-center text-on-surface-variant">
+<span class="font-label-sm text-label-sm">34 Total</span>
+</div>
+</div>
+<!-- Search Bar On Right -->
+<div class="flex-1 max-w-md ml-auto mr-stack-md relative hidden md:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
+<input class="w-full bg-surface-container-low border border-outline-variant rounded-lg pl-10 pr-4 py-1.5 text-on-surface font-body-md focus:border-primary-container focus:ring-1 focus:ring-primary-container outline-none transition-all placeholder:text-on-surface-variant/50" placeholder="Search drafts..." type="text" value="motion blur"/>
+</div>
+<div class="flex items-center gap-4 text-on-surface-variant">
+<button class="hover:text-primary transition-all duration-200">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="hover:text-primary transition-all duration-200">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+</button>
+<div class="md:hidden w-8 h-8 rounded-full bg-surface-variant overflow-hidden border border-outline-variant">
+<img alt="User avatar" class="w-full h-full object-cover" data-alt="A small circular avatar placeholder image for a user profile in a dark UI studio application on mobile." src="https://lh3.googleusercontent.com/aida-public/AB6AXuChNaAQFrd72wiZng53NOhFl7DTsub7EGnfJmufmUtw0nMjQPBYJnGtttBHu7HX8NCFbnI4bXIfp-pcalydkSOL56R-bgRATtt9t8twjC3WwOhIp_k6tF-5cht78336cxPyOkEy2ddS2runus-U-BK3iGxvGUTpJuejt8c0cFYBG62BO_NKkBYogxKTyfRknAidlzwDS17ot9VkvywUjQjvnkfguvrLUWUgobD1h09StNyUm9FOo8sYFfB89JTPLqgzxDqybUVR2_o"/>
+</div>
+</div>
+</header>
+<!-- Canvas -->
+<div class="flex-1 overflow-y-auto p-margin-desktop relative flex flex-col">
+<!-- Active Filters Strip -->
+<div class="flex flex-wrap items-center gap-3 mb-stack-lg">
+<span class="font-label-md text-label-md text-on-surface-variant mr-2">Active Filters:</span>
+<div class="flex items-center gap-1 bg-surface-container-high rounded px-2 py-1 border border-outline-variant/50">
+<span class="font-label-sm text-label-sm text-on-surface uppercase tracking-wide">Tag:</span>
+<span class="font-label-sm text-label-sm text-secondary">"Cyberpunk"</span>
+<button class="ml-1 text-on-surface-variant hover:text-error transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px]">close</span>
+</button>
+</div>
+<div class="flex items-center gap-1 bg-surface-container-high rounded px-2 py-1 border border-outline-variant/50">
+<span class="font-label-sm text-label-sm text-on-surface uppercase tracking-wide">AI Model:</span>
+<span class="font-label-sm text-label-sm text-secondary">Gen-3 Alpha</span>
+<button class="ml-1 text-on-surface-variant hover:text-error transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px]">close</span>
+</button>
+</div>
+<div class="flex items-center gap-1 bg-surface-container-high rounded px-2 py-1 border border-outline-variant/50">
+<span class="font-label-sm text-label-sm text-on-surface uppercase tracking-wide">Resolution:</span>
+<span class="font-label-sm text-label-sm text-secondary">4K</span>
+<button class="ml-1 text-on-surface-variant hover:text-error transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px]">close</span>
+</button>
+</div>
+<button class="font-label-sm text-label-sm text-primary hover:text-primary-fixed ml-auto underline decoration-primary/30 underline-offset-4">
+                    Clear all filters
+                </button>
+</div>
+<!-- Empty State Container -->
+<div class="flex-1 flex flex-col items-center justify-center text-center max-w-lg mx-auto w-full">
+<!-- Decorative Graphic -->
+<div class="relative w-48 h-48 mb-8 opacity-60">
+<div class="absolute inset-0 bg-surface-container-highest rounded-full blur-3xl opacity-30"></div>
+<div class="absolute inset-0 flex items-center justify-center">
+<span class="material-symbols-outlined text-[80px] text-on-surface-variant/40" style="font-variation-settings: 'wght' 200;">manage_search</span>
+</div>
+<!-- Abstract geometric elements indicating 'search/filter' -->
+<div class="absolute top-8 right-8 w-16 h-16 border border-outline-variant/30 rounded-lg transform rotate-12"></div>
+<div class="absolute bottom-12 left-12 w-24 h-8 border border-outline-variant/30 rounded transform -rotate-6"></div>
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 border border-dashed border-primary/20 rounded-full animate-[spin_60s_linear_infinite]"></div>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface font-bold mb-stack-sm">No matching drafts</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-stack-lg max-w-md">
+                    We couldn't find any drafts matching your current search terms and applied filters. Try adjusting your criteria or clearing filters to see more results.
+                </p>
+<div class="flex items-center gap-4">
+<button class="px-6 py-2.5 rounded-lg border border-outline-variant text-on-surface hover:bg-surface-container-high transition-colors font-label-md text-label-md">
+                        Clear filters
+                    </button>
+<button class="px-6 py-2.5 rounded-lg bg-primary-container text-on-primary-container hover:bg-primary-fixed transition-colors font-label-md text-label-md flex items-center gap-2 shadow-[0_0_15px_rgba(0,240,255,0.15)]">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                        Start creating
+                    </button>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="bg-surface-container dark:bg-surface-container border-t border-outline-variant shadow-lg fixed bottom-0 w-full z-50 flex justify-around items-center px-4 py-2 docked full-width bottom-0 rounded-t-full md:hidden">
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:bg-surface-bright active:scale-90 transition-transform rounded-lg p-2 min-w-[64px]" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="home">home</span>
+<span class="font-label-sm-mobile text-label-sm-mobile">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:bg-surface-bright active:scale-90 transition-transform rounded-lg p-2 min-w-[64px]" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="add_circle">add_circle</span>
+<span class="font-label-sm-mobile text-label-sm-mobile">Create</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-4 py-1 active:scale-90 transition-transform min-w-[64px]" href="#">
+<span class="material-symbols-outlined mb-1 fill" data-icon="drafts">drafts</span>
+<span class="font-label-sm-mobile text-label-sm-mobile font-bold">Drafts</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:bg-surface-bright active:scale-90 transition-transform rounded-lg p-2 min-w-[64px]" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="settings">settings</span>
+<span class="font-label-sm-mobile text-label-sm-mobile">Settings</span>
+</a>
+</nav>
+</body></html>
