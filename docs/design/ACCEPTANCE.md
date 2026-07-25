@@ -122,4 +122,3 @@ Reject as product truth: Fotium Motion, Fotium Studio, or Reel Studio customer n
 - MISSING — recent reauthentication without assuming a password
 - MISSING — account recovery during the deletion window
 - MISSING — legal, attribution, privacy, and support details
-

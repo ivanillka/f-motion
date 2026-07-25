@@ -13,4 +13,3 @@ Do not add unrequested abstractions, dependencies, boilerplate, or files. Prefer
 Mark intentional shortcuts with a `ponytail:` comment that names the ceiling and upgrade path.
 
 Never shortcut trust-boundary validation, data-loss prevention, error handling, security, accessibility, or real-hardware calibration. Every non-trivial piece of logic must leave behind one small runnable check that fails if it breaks. Trivial one-liners do not need a test.
-

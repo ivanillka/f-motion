@@ -27,5 +27,4 @@ Beatoven and all generated-music functionality are blocked until licensing, subl
 
 ## Gate 1 — platform feasibility
 
-Prove the smallest representative workflow on web and Android before production development: media selection/upload, durable draft save, storyboard playback, one FFmpeg-equivalent render, download, background/resume behavior, and measured device/browser limits.
-
+Prove client media feasibility on web and Android before production development using fixtures and mocks: playback and seeking, scene switching and reordering, crop and focal-point controls, text safe areas, approximate audio, mock signed upload, local cache behavior, responsive layouts, and measured device/browser limits. Production server rendering begins only in the later vertical slice.
