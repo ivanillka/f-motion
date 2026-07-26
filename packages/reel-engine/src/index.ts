@@ -30,7 +30,18 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
   if (command.kind === "select_concept") {
     const conceptId = String(command.payload.concept_id ?? "");
     if (!conceptsFor(snapshot.brief).some(({ id }) => id === conceptId)) throw new Error("unknown concept");
-    return { ...snapshot, selected_concept_id: conceptId, revision: snapshot.revision + 1 };
+    const scenes = snapshot.scenes.length ? snapshot.scenes : [{
+      id: `${snapshot.id}-scene-1`,
+      order: 0,
+      caption: snapshot.brief.purpose.trim().slice(0, 180),
+      duration_ms: 3000,
+      focal_x: 0.5,
+      focal_y: 0.5,
+      motion: "none" as const,
+      audio_level: 1,
+      ducking: false
+    }];
+    return { ...snapshot, selected_concept_id: conceptId, scenes, revision: snapshot.revision + 1 };
   }
   if (command.kind === "update_scene") {
     const scene = boundedScene(command.payload.scene as Scene);

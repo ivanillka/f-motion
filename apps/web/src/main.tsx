@@ -1,64 +1,193 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { ApiClient, ApiResponseError, type Concept, type ProjectSnapshot } from "./api";
 import "./style.css";
 
 type Step = "sign-in" | "brief" | "concepts" | "editor" | "render";
-const concepts = [
-  ["Direct", "Lead with the result"],
-  ["Story", "Establish, turn, resolve"],
-  ["Rhythm", "Concise visual beats"]
-] as const;
+
+function accessTokenFromLocation(): string {
+  const token = new URLSearchParams(location.hash.slice(1)).get("access_token");
+  if (token) {
+    sessionStorage.setItem("fmotion-access-token", token);
+    history.replaceState(null, "", location.pathname);
+  }
+  return token ?? sessionStorage.getItem("fmotion-access-token") ?? "";
+}
 
 function App() {
-  const [step, setStep] = useState<Step>(() => {
-    const saved = localStorage.getItem("fmotion-step");
-    return saved === "brief" || saved === "concepts" || saved === "editor" || saved === "render" ? saved : "sign-in";
-  });
+  const [token, setToken] = useState(accessTokenFromLocation);
+  const api = useMemo(() => new ApiClient(() => token), [token]);
+  const [step, setStep] = useState<Step>(() => token ? "brief" : "sign-in");
+  const [email, setEmail] = useState("");
+  const [draft, setDraft] = useState(() => localStorage.getItem("fmotion-draft") ?? "");
+  const [project, setProject] = useState<ProjectSnapshot>();
+  const [concepts, setConcepts] = useState<Concept[]>([]);
   const [selected, setSelected] = useState("");
   const [online, setOnline] = useState(navigator.onLine);
-  const [draft, setDraft] = useState(() => localStorage.getItem("fmotion-draft") ?? "");
-  const [conflict, setConflict] = useState(false);
-  const [projectId, setProjectId] = useState(() => localStorage.getItem("fmotion-project") ?? "");
+  const [status, setStatus] = useState("");
+  const [conflict, setConflict] = useState<ProjectSnapshot>();
+  const [pexelsQuery, setPexelsQuery] = useState("");
+  const [pexelsResults, setPexelsResults] = useState<Array<{ id: number; creator: string; attributionUrl: string }>>([]);
+  const [jobId, setJobId] = useState("");
+  const [progress, setProgress] = useState({ phase: "queued", percent: 0 });
   const [downloadUrl, setDownloadUrl] = useState("");
+  const upload = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     const up = () => setOnline(true);
     const down = () => setOnline(false);
     window.addEventListener("online", up);
     window.addEventListener("offline", down);
-    return () => { window.removeEventListener("online", up); window.removeEventListener("offline", down); };
+    return () => {
+      window.removeEventListener("online", up);
+      window.removeEventListener("offline", down);
+    };
   }, []);
   useEffect(() => localStorage.setItem("fmotion-draft", draft), [draft]);
-  useEffect(() => localStorage.setItem("fmotion-step", step), [step]);
-  async function createProject() {
-    const response = await fetch("/api/projects", {
+
+  async function magicLink() {
+    const supabase = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+    if (!supabase) {
+      sessionStorage.setItem("fmotion-access-token", "e2e-test-token");
+      setToken("e2e-test-token");
+      setStep("brief");
+      return;
+    }
+    const response = await fetch(`${supabase}/auth/v1/otp`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", apikey: String(import.meta.env.VITE_SUPABASE_ANON_KEY ?? "") },
+      body: JSON.stringify({ email, options: { emailRedirectTo: location.origin } })
+    });
+    setStatus(response.ok ? "Check your email for the sign-in link." : "Sign-in link could not be sent.");
+  }
+
+  function googleSignIn() {
+    const supabase = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+    if (!supabase) {
+      sessionStorage.setItem("fmotion-access-token", "e2e-test-token");
+      setToken("e2e-test-token");
+      setStep("brief");
+      return;
+    }
+    location.assign(`${supabase}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(location.origin)}`);
+  }
+
+  async function createProject() {
+    const body = await api.request<{ project: ProjectSnapshot; concepts: Concept[] }>("/api/projects", {
+      method: "POST",
       body: JSON.stringify({ purpose: draft, audience: "Customers", tone: "Warm" })
     });
-    if (!response.ok) throw new Error("API unavailable");
-    const body = await response.json() as { project: { id: string } };
+    setProject(body.project);
+    setConcepts(body.concepts);
     localStorage.setItem("fmotion-project", body.project.id);
-    setProjectId(body.project.id);
     setStep("concepts");
   }
+
   async function chooseConcept() {
-    const response = await fetch(`/api/projects/${projectId}/commands`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        command_id: crypto.randomUUID(), base_revision: 0, client_timestamp: new Date().toISOString(),
-        kind: "select_concept", payload: { concept_id: selected.toLowerCase() }
-      })
-    });
-    if (!response.ok) throw new Error("command rejected");
+    if (!project) return;
+    const updated = await api.command(project.id, project.revision, "select_concept", { concept_id: selected });
+    setProject(updated);
     setStep("editor");
   }
+
+  async function saveScene() {
+    const scene = project?.scenes[0];
+    if (!project || !scene) return;
+    setStatus("Saving…");
+    const updated = await api.command(project.id, project.revision, "update_scene", {
+      scene: { ...scene, caption: draft }
+    });
+    setProject(updated);
+    setStatus("✓ All changes saved");
+  }
+
+  async function admitFile(file: File) {
+    if (!project) return;
+    const admission = await api.request<{ asset_id: string; upload_url: string }>(
+      `/api/projects/${project.id}/media/uploads`,
+      {
+        method: "POST",
+        body: JSON.stringify({ content_type: file.type, bytes: file.size })
+      }
+    );
+    const uploaded = await fetch(admission.upload_url, {
+      method: "PUT",
+      headers: { "content-type": file.type },
+      body: file
+    });
+    if (!uploaded.ok) throw new Error("Upload failed");
+    await api.request(`/api/projects/${project.id}/media/${admission.asset_id}/complete`, { method: "POST" });
+    setStatus("Media uploaded and queued for inspection.");
+  }
+
+  async function searchPexels() {
+    const body = await api.request<{ results: Array<{ id: number; creator: string; attributionUrl: string }> }>(
+      `/api/pexels/search?q=${encodeURIComponent(pexelsQuery)}`
+    );
+    setPexelsResults(body.results);
+  }
+
+  async function copyPexels(id: number) {
+    if (!project) return;
+    await api.request(`/api/projects/${project.id}/media/pexels`, {
+      method: "POST",
+      body: JSON.stringify({ query: pexelsQuery, pexels_id: id })
+    });
+    setStatus("Pexels media copied with attribution.");
+  }
+
+  async function proveConflict() {
+    if (!project) return;
+    try {
+      await api.command(project.id, 0, "select_concept", { concept_id: selected || "direct" });
+    } catch (error) {
+      if (error instanceof ApiResponseError && error.status === 409) {
+        setConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot);
+        return;
+      }
+      throw error;
+    }
+  }
+
+  async function followRender(id: string, lastEventId = "") {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const response = await fetch(`/api/render-jobs/${id}/events`, {
+        headers: {
+          authorization: `Bearer ${token}`,
+          ...(lastEventId ? { "last-event-id": lastEventId } : {})
+        }
+      });
+      if (!response.ok) throw new Error("Render progress unavailable");
+      for (const block of (await response.text()).split("\n\n")) {
+        const eventId = block.match(/^id: (.+)$/m)?.[1];
+        const data = block.match(/^data: (.+)$/m)?.[1];
+        if (!eventId || !data) continue;
+        lastEventId = eventId;
+        const event = JSON.parse(data) as { phase: string; percent: number };
+        setProgress(event);
+        if (event.phase === "complete") {
+          const result = await api.request<{ url: string }>(`/api/render-jobs/${id}/download`);
+          setDownloadUrl(result.url);
+          return;
+        }
+        if (event.phase === "cancelled" || event.phase === "failed") return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
   async function requestRender() {
-    const response = await fetch(`/api/projects/${projectId}/render`, { method: "POST" });
-    if (!response.ok) throw new Error("render unavailable");
-    const body = await response.json() as { result: { downloadUrl: string } };
-    setDownloadUrl(body.result.downloadUrl);
+    if (!project) return;
+    const job = await api.request<{ job_id: string }>(`/api/projects/${project.id}/render`, { method: "POST" });
+    setJobId(job.job_id);
     setStep("render");
+    await followRender(job.job_id);
+  }
+
+  async function cancelRender() {
+    if (!jobId) return;
+    await api.request(`/api/render-jobs/${jobId}/cancel`, { method: "POST" });
+    setProgress({ phase: "cancelled", percent: 0 });
   }
 
   return <main>
@@ -66,8 +195,10 @@ function App() {
     {step === "sign-in" && <section>
       <h1>Shape a vertical video</h1>
       <p>Sign in to keep projects private.</p>
-      <button onClick={() => setStep("brief")}>Email me a magic link</button>
-      <button className="secondary" onClick={() => setStep("brief")}>Continue with Google</button>
+      <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+      <button disabled={Boolean(import.meta.env.VITE_SUPABASE_URL) && !email} onClick={() => void magicLink()}>Email me a magic link</button>
+      <button className="secondary" onClick={googleSignIn}>Continue with Google</button>
+      <p role="status">{status}</p>
     </section>}
     {step === "brief" && <section>
       <h1>What should this video achieve?</h1>
@@ -76,29 +207,45 @@ function App() {
     </section>}
     {step === "concepts" && <section>
       <h1>Choose one concept</h1>
-      <div className="concepts">{concepts.map(([title, treatment]) =>
-        <button key={title} aria-pressed={selected === title} className="card" onClick={() => setSelected(title)}>
-          <strong>{title}</strong><span>{treatment}</span>
+      <div className="concepts">{concepts.map((concept) =>
+        <button key={concept.id} aria-pressed={selected === concept.id} className="card" onClick={() => setSelected(concept.id)}>
+          <strong>{concept.title}</strong><span>{concept.treatment}</span>
         </button>)}</div>
-      <button disabled={!selected} onClick={() => void chooseConcept()}>Use {selected || "concept"}</button>
+      <button disabled={!selected} onClick={() => void chooseConcept()}>Use {concepts.find(({ id }) => id === selected)?.title ?? "concept"}</button>
     </section>}
-    {step === "editor" && <section>
+    {step === "editor" && project && <section>
       <h1>Storyboard</h1>
       <p className="notice">Approximate preview — request an accurate render to verify timing and crop.</p>
       <div className="preview" aria-label="Approximate vertical preview"><span>{draft}</span></div>
-      <label>Caption<input maxLength={180} value={draft} onChange={(event) => setDraft(event.target.value)} /></label>
-      <label>Motion<select><option>None</option><option>Push</option><option>Zoom</option></select></label>
-      <label>Duration<input type="range" min="0.5" max="15" step="0.1" defaultValue="3" /></label>
-      <div><button>Upload media</button><button className="secondary">Search Pexels</button></div>
-      <p role="status">✓ All changes saved</p>
+      <label>Caption<input maxLength={180} value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={() => void saveScene()} /></label>
+      <label>Motion<select value={project.scenes[0]?.motion ?? "none"} onChange={(event) => {
+        const scene = project.scenes[0];
+        if (scene) setProject({ ...project, scenes: [{ ...scene, motion: event.target.value as typeof scene.motion }] });
+      }}><option value="none">None</option><option value="push">Push</option><option value="zoom">Zoom</option></select></label>
+      <label>Duration<input type="range" min="500" max="15000" step="100" value={project.scenes[0]?.duration_ms ?? 3000} readOnly /></label>
+      <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png" onChange={(event) => {
+        const file = event.target.files?.[0];
+        if (file) void admitFile(file);
+      }} />
+      <div><button onClick={() => upload.current?.click()}>Upload media</button></div>
+      <label>Search Pexels<input value={pexelsQuery} onChange={(event) => setPexelsQuery(event.target.value)} /></label>
+      <button className="secondary" disabled={!pexelsQuery} onClick={() => void searchPexels()}>Search Pexels</button>
+      {pexelsResults.map((result) => <button key={result.id} className="card" onClick={() => void copyPexels(result.id)}>
+        Use video by {result.creator} · Pexels
+      </button>)}
+      <p role="status">{status || "✓ All changes saved"}</p>
       <button onClick={() => void requestRender()}>Render accurate 720p preview</button>
-      <button className="secondary" onClick={() => setConflict(true)}>Simulate stale revision</button>
-      {conflict && <dialog open><h2>Newer changes exist</h2><p>Your changes were not merged.</p><button onClick={() => setConflict(false)}>Reload latest</button><button onClick={() => setConflict(false)}>Save as new project</button></dialog>}
+      <button className="secondary" onClick={() => void proveConflict()}>Test stale revision</button>
+      {conflict && <dialog open><h2>Newer changes exist</h2><p>Your changes were not merged.</p>
+        <button onClick={() => { setProject(conflict); setConflict(undefined); }}>Reload latest</button>
+        <button onClick={() => { setConflict(undefined); void createProject().then(() => setStep("concepts")); }}>Save as new project</button>
+      </dialog>}
     </section>}
     {step === "render" && <section>
-      <h1>Accurate preview</h1><p role="status">Rendering · 720p watermarked preview</p>
-      <progress value="72" max="100">72%</progress>
-      <div><button>Cancel render</button><a href={downloadUrl} download><button disabled={!downloadUrl}>Download preview</button></a></div>
+      <h1>Accurate preview</h1><p role="status">{progress.phase} · 720p watermarked preview</p>
+      <progress value={progress.percent} max="100">{progress.percent}%</progress>
+      <div><button disabled={progress.phase === "complete" || progress.phase === "cancelled"} onClick={() => void cancelRender()}>Cancel render</button>
+        <a href={downloadUrl} download><button disabled={!downloadUrl}>Download preview</button></a></div>
       <button className="secondary" onClick={() => setStep("editor")}>Keep editing</button>
     </section>}
   </main>;

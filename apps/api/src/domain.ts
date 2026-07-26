@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { CommandEnvelope, ProjectSnapshot } from "@f-motion/contracts";
-import type { Pool, PoolClient, QueryResult } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { applyCommand, conceptsFor } from "@f-motion/reel-engine";
 
 export class ConflictError extends Error {
@@ -182,21 +182,31 @@ export class PostgresProjectRepository implements ProjectRepository {
     client: PoolClient,
     command: CommandEnvelope,
     updated: ProjectSnapshot
-  ): Promise<QueryResult | undefined> {
+  ): Promise<void> {
     if (command.kind === "select_concept") {
       await client.query(`UPDATE "Concept" SET selected = FALSE WHERE "projectId" = $1 AND selected = TRUE`, [command.project_id]);
-      return client.query(
+      await client.query(
         `UPDATE "Concept" SET selected = TRUE
          WHERE "projectId" = $1 AND LOWER(title) = $2`,
         [command.project_id, updated.selected_concept_id]
       );
+      for (const scene of updated.scenes) {
+        await client.query(
+          `INSERT INTO "Scene" (id, "projectId", position, payload)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (id) DO UPDATE SET position = EXCLUDED.position, payload = EXCLUDED.payload`,
+          [scene.id, command.project_id, scene.order, scene]
+        );
+      }
+      return;
     }
     if (command.kind === "update_scene") {
       const scene = command.payload.scene as ProjectSnapshot["scenes"][number];
-      return client.query(
+      await client.query(
         `UPDATE "Scene" SET payload = $1 WHERE "projectId" = $2 AND id = $3`,
         [scene, command.project_id, scene.id]
       );
+      return;
     }
     await client.query(`UPDATE "Scene" SET position = -position - 1 WHERE "projectId" = $1`, [command.project_id]);
     for (const scene of updated.scenes) {
@@ -205,7 +215,6 @@ export class PostgresProjectRepository implements ProjectRepository {
         [scene.order, scene, command.project_id, scene.id]
       );
     }
-    return undefined;
   }
 }
 
