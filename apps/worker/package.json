@@ -1,0 +1,14 @@
+{
+  "name": "@f-motion/worker",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node test/run.mjs"
+  },
+  "dependencies": {
+    "@f-motion/reel-engine": "*",
+    "pg-boss": "12.26.3"
+  }
+}

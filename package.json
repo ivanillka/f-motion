@@ -1,0 +1,24 @@
+{
+  "name": "f-motion",
+  "private": true,
+  "version": "0.1.0",
+  "engines": { "node": "24.15.0", "npm": "11.12.1" },
+  "workspaces": [
+    "apps/web",
+    "apps/api",
+    "apps/worker",
+    "packages/contracts",
+    "packages/reel-engine"
+  ],
+  "scripts": {
+    "lint": "tsc -b --pretty false",
+    "test": "npm test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "test:e2e:web": "playwright test -c tests/e2e/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.0",
+    "prisma": "6.12.0",
+    "typescript": "5.8.3"
+  }
+}

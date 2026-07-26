@@ -1,0 +1,17 @@
+openapi: 3.1.0
+info:
+  title: F-Motion API
+  version: 1.0.0
+paths:
+  /v1/projects/{project_id}/commands:
+    post:
+      summary: Apply an idempotent command_id at base_revision
+      responses:
+        "200": { description: Authoritative snapshot }
+        "409": { description: Typed stale revision conflict }
+  /v1/render-jobs/{job_id}/events:
+    get:
+      parameters:
+        - { name: Last-Event-ID, in: header, schema: { type: string } }
+      responses:
+        "200": { description: Reconnectable SSE stream }

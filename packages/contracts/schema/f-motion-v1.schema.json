@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://f-motion.app/contracts/v1",
+  "title": "F-Motion API v1",
+  "type": "object",
+  "required": ["schema_version", "command_id", "project_id", "base_revision"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "command_id": { "type": "string", "minLength": 1 },
+    "project_id": { "type": "string", "minLength": 1 },
+    "base_revision": { "type": "integer", "minimum": 0 },
+    "Last-Event-ID": { "type": "string" }
+  },
+  "additionalProperties": true
+}
