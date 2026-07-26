@@ -47,11 +47,14 @@ Both fixtures are original synthetic output (solid colors, moving boxes, and
 sine tones) generated for this spike and released under CC0 1.0:
 
 ```sh
-ffmpeg -f lavfi -i "color=c=#6546e5:s=360x640:d=3:r=30" \
+ffmpeg -f lavfi -i "color=c=#ef4444:s=360x120:d=3:r=30" \
+  -f lavfi -i "color=c=#6546e5:s=360x560:d=3:r=30" \
+  -f lavfi -i "color=c=#2563eb:s=360x120:d=3:r=30" \
   -f lavfi -i "sine=frequency=440:duration=3" \
-  -vf "drawbox=x=40+40*t:y=160:w=100:h=100:color=white@0.8:t=fill" \
-  -c:v libopenh264 -b:v 300k -pix_fmt yuv420p -c:a aac -movflags +faststart \
-  -shortest scene_one.mp4
+  -filter_complex \
+  "[0:v][1:v][2:v]vstack=inputs=3,drawbox=x=130:y=20+220*t:w=100:h=100:color=white@0.9:t=fill[v]" \
+  -map "[v]" -map 3:a -c:v libopenh264 -b:v 400k -pix_fmt yuv420p \
+  -c:a aac -movflags +faststart -shortest scene_one.mp4
 ffmpeg -f lavfi -i "color=c=#ef4444:s=320x540:d=3:r=30" \
   -f lavfi -i "color=c=#10a37f:s=320x540:d=3:r=30" \
   -f lavfi -i "color=c=#2563eb:s=320x540:d=3:r=30" \
@@ -62,13 +65,20 @@ ffmpeg -f lavfi -i "color=c=#ef4444:s=320x540:d=3:r=30" \
   -c:a aac -movflags +faststart -shortest scene_two.mp4
 ```
 
-`scene_one.mp4` is a 360x640 portrait fixture matching the 9:16 preview, so it
-does not overflow and neither focal axis visibly reframes it. `scene_two.mp4`
-is a 960x540 landscape fixture with red, green, and blue horizontal landmarks.
-`BoxFit.cover` crops it into the 9:16 preview, so moving focal X from -1 through
-0 to 1 visibly selects the left, center, and right region. Focal Y correctly has
-no visible range for that landscape-to-portrait cover crop. This is sufficient
-to prove focal alignment without introducing production crop/zoom behavior.
+`scene_one.mp4` is a 360x800 portrait fixture with red top, purple center, and
+blue bottom landmarks plus a vertically moving white box. `BoxFit.cover` crops
+it into the 9:16 preview, so moving focal Y from -1 through 0 to 1 visibly
+selects the top, center, and bottom region. Focal X correctly has no visible
+range for this narrower-than-9:16 fixture. `scene_two.mp4` is a 960x540
+landscape fixture with red, green, and blue horizontal landmarks. Moving focal
+X from -1 through 0 to 1 visibly selects its left, center, and right region,
+while focal Y correctly has no visible range. Together the fixtures prove both
+focal axes without introducing production crop/zoom behavior.
+
+Fixture SHA-256:
+
+- `scene_one.mp4`: `9d1b157e114c5623f3c06398d6d5a5d593c6b6bc64dac7be7a5f83010d012b1b`
+- `scene_two.mp4`: `b3cd3803415498614b5b820ce3f98bba35935dcb8d3bd835072a95661096f429`
 
 The original VP8/WebM fixtures were replaced after a Samsung SM-F721B physical
 device displayed decoder/texture corruption. The replacement MP4 scenes played
