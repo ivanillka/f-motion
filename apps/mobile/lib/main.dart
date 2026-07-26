@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'api.dart';
 
 void main() => runApp(const FMotionApp());
 
@@ -38,7 +39,10 @@ class ContractFixture {
 }
 
 class FMotionApp extends StatelessWidget {
-  const FMotionApp({super.key});
+  const FMotionApp({super.key, this.api, this.tokenStorage});
+
+  final ApiGateway? api;
+  final TokenStorage? tokenStorage;
 
   @override
   Widget build(BuildContext context) {
@@ -50,13 +54,35 @@ class FMotionApp extends StatelessWidget {
         colorSchemeSeed: const Color(0xffe6ff54),
         useMaterial3: true,
       ),
-      home: const WorkflowPage(),
+      home: WorkflowPage(
+        api:
+            api ??
+            HttpApiGateway(
+              baseUri: Uri.parse(
+                const String.fromEnvironment(
+                  'API_ORIGIN',
+                  defaultValue: 'http://10.0.2.2:3000',
+                ),
+              ),
+              accessToken: (tokenStorage ?? TokenStorage()).read,
+            ),
+        tokenStorage: tokenStorage ?? TokenStorage(),
+        testIdentity: api != null,
+      ),
     );
   }
 }
 
 class WorkflowPage extends StatefulWidget {
-  const WorkflowPage({super.key});
+  const WorkflowPage({
+    required this.api,
+    required this.tokenStorage,
+    required this.testIdentity,
+    super.key,
+  });
+  final ApiGateway api;
+  final TokenStorage tokenStorage;
+  final bool testIdentity;
   @override
   State<WorkflowPage> createState() => _WorkflowPageState();
 }
@@ -66,6 +92,16 @@ class _WorkflowPageState extends State<WorkflowPage> {
   int stage = 0;
   String draft = '';
   String concept = '';
+  String status = '';
+  String? lastEventId;
+  ProjectSnapshot? project;
+  List<JsonMap> concepts = [];
+  RenderJob? renderJob;
+  int renderPercent = 0;
+  String renderPhase = 'queued';
+  Uri? downloadUrl;
+  String pexelsQuery = '';
+  List<JsonMap> pexelsResults = [];
   final cache = DraftCache();
 
   @override
@@ -74,6 +110,142 @@ class _WorkflowPageState extends State<WorkflowPage> {
     cache.read().then((value) {
       if (mounted && value != null) setState(() => draft = value);
     });
+    widget.tokenStorage.read().then((value) {
+      if (mounted && value != null && value.isNotEmpty) {
+        setState(() => stage = 1);
+      }
+    });
+  }
+
+  Future<void> _testSignIn() async {
+    if (!widget.testIdentity) {
+      setState(
+        () => status =
+            'Open the Supabase magic link or Google sign-in callback to continue.',
+      );
+      return;
+    }
+    await widget.tokenStorage.write('test-token');
+    if (mounted) setState(() => stage = 1);
+  }
+
+  Future<void> _createProject() async {
+    final created = await widget.api.createProject(draft);
+    if (!mounted) return;
+    setState(() {
+      project = created.project;
+      concepts = created.concepts;
+      stage = 2;
+      status = '';
+    });
+  }
+
+  Future<void> _selectConcept() async {
+    final current = project;
+    if (current == null) return;
+    final updated = await widget.api.command(
+      current.id,
+      current.revision,
+      'select_concept',
+      {'concept_id': concept},
+    );
+    if (mounted) {
+      setState(() {
+        project = updated;
+        stage = 3;
+      });
+    }
+  }
+
+  Future<void> _saveCaption(String caption) async {
+    final current = project;
+    if (current == null || current.scenes.isEmpty) return;
+    final scene = {...current.scenes.first, 'caption': caption};
+    setState(() => status = 'Saving…');
+    try {
+      final updated = await widget.api.command(
+        current.id,
+        current.revision,
+        'update_scene',
+        {'scene': scene},
+      );
+      if (mounted) {
+        setState(() {
+          project = updated;
+          status = 'All changes saved';
+        });
+      }
+    } on ApiFailure catch (error) {
+      if (mounted) {
+        setState(
+          () => status = error.status == 409
+              ? 'Newer changes exist — reload the authoritative project.'
+              : 'Save failed',
+        );
+      }
+    }
+  }
+
+  Future<void> _requestRender() async {
+    final current = project;
+    if (current == null) return;
+    final job = await widget.api.render(current.id);
+    if (!mounted) return;
+    setState(() {
+      renderJob = job;
+      stage = 4;
+    });
+    for (var attempt = 0; attempt < 30; attempt += 1) {
+      final events = await widget.api.events(job.id, lastEventId);
+      for (final event in events) {
+        lastEventId = event.id;
+        if (!mounted) return;
+        setState(() {
+          renderPhase = event.phase;
+          renderPercent = event.percent;
+        });
+        if (event.phase == 'complete') {
+          final url = await widget.api.download(job.id);
+          if (mounted) setState(() => downloadUrl = url);
+          return;
+        }
+        if (event.phase == 'cancelled' || event.phase == 'failed') return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+  }
+
+  Future<void> _cancelRender() async {
+    final job = renderJob;
+    if (job == null) return;
+    await widget.api.cancel(job.id);
+    if (mounted) {
+      setState(() {
+        renderPhase = 'cancelled';
+        renderPercent = 0;
+      });
+    }
+  }
+
+  String get _sceneCaption {
+    final scenes = project?.scenes;
+    return scenes != null && scenes.isNotEmpty
+        ? scenes.first['caption']! as String
+        : draft;
+  }
+
+  Future<void> _searchPexels() async {
+    final results = await widget.api.searchPexels(pexelsQuery);
+    if (mounted) setState(() => pexelsResults = results);
+  }
+
+  Future<void> _copyPexels(JsonMap result) async {
+    final current = project;
+    if (current == null) return;
+    await widget.api.copyPexels(current.id, pexelsQuery, result['id']! as int);
+    if (mounted) {
+      setState(() => status = 'Pexels media copied with attribution');
+    }
   }
 
   @override
@@ -129,14 +301,16 @@ class _WorkflowPageState extends State<WorkflowPage> {
           ),
           const SizedBox(height: 24),
           FilledButton(
-            onPressed: () => setState(() => stage = 1),
+            onPressed: _testSignIn,
             child: const Text('Email me a magic link'),
           ),
           const SizedBox(height: 12),
           OutlinedButton(
-            onPressed: () => setState(() => stage = 1),
+            onPressed: _testSignIn,
             child: const Text('Continue with Google'),
           ),
+          if (status.isNotEmpty)
+            Semantics(liveRegion: true, child: Text(status)),
         ],
       );
     }
@@ -158,19 +332,18 @@ class _WorkflowPageState extends State<WorkflowPage> {
               border: OutlineInputBorder(),
             ),
             onChanged: (value) {
-              draft = value;
+              setState(() => draft = value);
               cache.write(value);
             },
           ),
           FilledButton(
-            onPressed: () => setState(() => stage = 2),
+            onPressed: draft.trim().isEmpty ? null : _createProject,
             child: const Text('Review brief'),
           ),
         ],
       );
     }
     if (stage == 2) {
-      const concepts = ['Direct', 'Story', 'Rhythm'];
       return ListView(
         children: [
           const Text(
@@ -179,21 +352,23 @@ class _WorkflowPageState extends State<WorkflowPage> {
           ),
           ...concepts.map(
             (item) => Semantics(
-              selected: concept == item,
+              selected: concept == item['id'],
               button: true,
               child: ListTile(
-                selected: concept == item,
-                title: Text(item),
-                subtitle: Text('$item treatment for your brief'),
+                selected: concept == item['id'],
+                title: Text(item['title']! as String),
+                subtitle: Text(item['treatment']! as String),
                 trailing: Icon(
-                  concept == item ? Icons.check_circle : Icons.circle_outlined,
+                  concept == item['id']
+                      ? Icons.check_circle
+                      : Icons.circle_outlined,
                 ),
-                onTap: () => setState(() => concept = item),
+                onTap: () => setState(() => concept = item['id']! as String),
               ),
             ),
           ),
           FilledButton(
-            onPressed: concept.isEmpty ? null : () => setState(() => stage = 3),
+            onPressed: concept.isEmpty ? null : _selectConcept,
             child: const Text('Use concept'),
           ),
         ],
@@ -226,8 +401,32 @@ class _WorkflowPageState extends State<WorkflowPage> {
             subtitle: Text('3.0 seconds · Motion: None'),
             trailing: Icon(Icons.drag_handle),
           ),
+          TextFormField(
+            initialValue: _sceneCaption,
+            maxLength: 180,
+            decoration: const InputDecoration(labelText: 'Caption'),
+            onFieldSubmitted: _saveCaption,
+          ),
+          if (status.isNotEmpty)
+            Semantics(liveRegion: true, child: Text(status)),
+          TextField(
+            decoration: const InputDecoration(labelText: 'Search Pexels'),
+            onChanged: (value) => pexelsQuery = value,
+            onSubmitted: (_) => _searchPexels(),
+          ),
+          OutlinedButton(
+            onPressed: pexelsQuery.trim().isEmpty ? null : _searchPexels,
+            child: const Text('Search Pexels'),
+          ),
+          ...pexelsResults.map(
+            (result) => ListTile(
+              title: Text('Video by ${result['creator']}'),
+              subtitle: const Text('Pexels attribution retained'),
+              onTap: () => _copyPexels(result),
+            ),
+          ),
           FilledButton(
-            onPressed: () => setState(() => stage = 4),
+            onPressed: _requestRender,
             child: const Text('Render accurate 720p preview'),
           ),
         ],
@@ -240,12 +439,23 @@ class _WorkflowPageState extends State<WorkflowPage> {
           style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
         ),
         Semantics(
-          label: 'Rendering 72 percent',
-          child: const LinearProgressIndicator(value: .72),
+          label: '$renderPhase $renderPercent percent',
+          liveRegion: true,
+          child: LinearProgressIndicator(value: renderPercent / 100),
         ),
         const SizedBox(height: 16),
-        FilledButton(onPressed: () {}, child: const Text('Cancel render')),
-        OutlinedButton(onPressed: () {}, child: const Text('Download preview')),
+        FilledButton(
+          onPressed: renderPhase == 'complete' || renderPhase == 'cancelled'
+              ? null
+              : _cancelRender,
+          child: const Text('Cancel render'),
+        ),
+        OutlinedButton(
+          onPressed: downloadUrl == null
+              ? null
+              : () => setState(() => status = 'Download ready: $downloadUrl'),
+          child: const Text('Download preview'),
+        ),
         TextButton(
           onPressed: () => setState(() => stage = 3),
           child: const Text('Keep editing'),
