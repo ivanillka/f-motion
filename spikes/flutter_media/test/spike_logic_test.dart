@@ -66,6 +66,40 @@ void main() {
     expect(recordFirstStartup(393, 207761), 393);
   });
 
+  test(
+    'frame metrics accumulate every frame and classify slow frames exactly',
+    () {
+      final metrics = FrameMetrics();
+      metrics.add([
+        const Duration(milliseconds: 16),
+        const Duration(milliseconds: 17),
+        const Duration(milliseconds: 33),
+      ]);
+      metrics.add([const Duration(milliseconds: 4)]);
+      expect(metrics.frameCount, 4);
+      expect(metrics.slowFrames, 2);
+    },
+  );
+
+  test('frame metrics reset once after initial media startup', () {
+    final metrics = FrameMetrics()..add([const Duration(milliseconds: 40)]);
+    expect(metrics.startSteadyStateOnce(), isTrue);
+    expect(metrics.frameCount, 0);
+    expect(metrics.slowFrames, 0);
+    metrics.add([const Duration(milliseconds: 20)]);
+    expect(metrics.startSteadyStateOnce(), isFalse);
+    expect(metrics.frameCount, 1);
+    expect(metrics.slowFrames, 1);
+  });
+
+  test('frame overlay refresh requests coalesce until completed', () {
+    final metrics = FrameMetrics();
+    expect(metrics.claimRefresh(), isTrue);
+    expect(metrics.claimRefresh(), isFalse);
+    metrics.completeRefresh();
+    expect(metrics.claimRefresh(), isTrue);
+  });
+
   test('latency samples retain only the latest bounded window', () {
     final samples = LatencySamples(limit: 3);
     for (final value in [1, 2, 3, 4]) {

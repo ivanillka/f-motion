@@ -197,3 +197,33 @@ Final-correction verification on 2026-07-26:
 - `flutter test`: pass, 11/11 checks.
 - `flutter build web`: pass, including the Wasm dry run.
 - `flutter build apk --profile`: pass; output APK is 86.8 MB.
+
+Ordinary desktop-browser evidence recorded on 2026-07-26 in a dedicated,
+non-headless Brave profile:
+
+- Startup was 447 ms.
+- Across 20 inputs, median latency was 10.5 ms and p95 was 12.3 ms.
+- Across 20 real pointer seek clicks, median latency was 0.2 ms and p95 was
+  0.3 ms.
+- Draft restoration took 30 ms. Playback, scene switching, focal crop, upload
+  failure/retry, and restoration interactions passed.
+- JavaScript heap was 28,061,616 bytes used out of 42,369,024 bytes total.
+  Main Brave process RSS was 339,768 KB.
+- The run recorded 66 slow frames out of 856 (7.7%), failing the below-5%
+  threshold. Investigation found the measurement callback rebuilt the editor
+  for every frame-timing batch, so its observer overhead could contaminate the
+  result.
+
+The instrumentation now counts every frame without rebuilding on every timing
+callback, coalesces overlay refreshes to at most one per 400 ms, and resets the
+frame counters once after the first successful media initialization. It does
+not reset on later scene switches or discard slow frames. A new five-minute
+ordinary Brave run is pending; desktop feasibility is not yet claimed as PASS.
+
+REVISE verification:
+
+- `flutter analyze`: pass, no issues.
+- `flutter test`: pass, 14/14 checks, including exact frame accumulation,
+  one-time steady-state reset, and refresh coalescing.
+- `flutter build web`: pass, including the Wasm dry run.
+- `flutter build apk --profile`: pass; output APK is 86.8 MB.

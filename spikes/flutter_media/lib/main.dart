@@ -103,6 +103,36 @@ bool allowsAutomaticMotion(bool disableAnimations) => !disableAnimations;
 int recordFirstStartup(int? recordedMilliseconds, int elapsedMilliseconds) =>
     recordedMilliseconds ?? elapsedMilliseconds;
 
+class FrameMetrics {
+  int slowFrames = 0;
+  int frameCount = 0;
+  bool _steadyStateStarted = false;
+  bool _refreshPending = false;
+
+  void add(Iterable<Duration> totalSpans) {
+    for (final span in totalSpans) {
+      frameCount++;
+      if (span.inMilliseconds > 16) slowFrames++;
+    }
+  }
+
+  bool startSteadyStateOnce() {
+    if (_steadyStateStarted) return false;
+    _steadyStateStarted = true;
+    slowFrames = 0;
+    frameCount = 0;
+    return true;
+  }
+
+  bool claimRefresh() {
+    if (_refreshPending) return false;
+    _refreshPending = true;
+    return true;
+  }
+
+  void completeRefresh() => _refreshPending = false;
+}
+
 class LatencySamples {
   LatencySamples({this.limit = 20}) : assert(limit > 0);
 
@@ -171,13 +201,13 @@ class _EditorPageState extends State<EditorPage> {
   int? _startupMs;
   final _inputLatency = LatencySamples();
   final _seekLatency = LatencySamples();
-  int _slowFrames = 0;
-  int _frameCount = 0;
+  final _frameMetrics = FrameMetrics();
   int? _peakRssBytes;
   double _upload = 0;
   bool _uploading = false;
   String _uploadStatus = 'Ready';
   Timer? _uploadTimer;
+  Timer? _frameOverlayTimer;
   bool _automaticMotionAllowed = true;
   final _captionController = TextEditingController();
 
@@ -207,14 +237,15 @@ class _EditorPageState extends State<EditorPage> {
 
   void _recordFrames(List<FrameTiming> timings) {
     if (!mounted) return;
-    final slow = timings
-        .where((timing) => timing.totalSpan.inMilliseconds > 16)
-        .length;
-    setState(() {
-      _frameCount += timings.length;
-      _slowFrames += slow;
-      final rss = currentRssBytes();
-      if (rss != null && (rss > (_peakRssBytes ?? 0))) _peakRssBytes = rss;
+    _frameMetrics.add(timings.map((timing) => timing.totalSpan));
+    final rss = currentRssBytes();
+    if (rss != null && (rss > (_peakRssBytes ?? 0))) _peakRssBytes = rss;
+    if (!_frameMetrics.claimRefresh()) return;
+    // ponytail: repaint the diagnostic overlay at 2.5 Hz; every frame is still
+    // counted above. Use a separate telemetry surface if this grows beyond a spike.
+    _frameOverlayTimer = Timer(const Duration(milliseconds: 400), () {
+      _frameMetrics.completeRefresh();
+      if (mounted) setState(() {});
     });
   }
 
@@ -293,6 +324,9 @@ class _EditorPageState extends State<EditorPage> {
     if (!mounted || !isCurrentSceneRequest(request, _sceneRequest)) {
       await controller.dispose();
       return;
+    }
+    if (_frameMetrics.startSteadyStateOnce()) {
+      _peakRssBytes = currentRssBytes();
     }
     setState(() {
       _video = controller;
@@ -377,6 +411,7 @@ class _EditorPageState extends State<EditorPage> {
   void dispose() {
     _sceneRequest++;
     SchedulerBinding.instance.removeTimingsCallback(_recordFrames);
+    _frameOverlayTimer?.cancel();
     _uploadTimer?.cancel();
     _video?.dispose();
     _captionController.dispose();
@@ -498,7 +533,10 @@ class _EditorPageState extends State<EditorPage> {
               ),
               Text(_latencyLabel('input', _inputLatency)),
               Text(_latencyLabel('seek', _seekLatency)),
-              Text('slow frames $_slowFrames/$_frameCount'),
+              Text(
+                'slow frames ${_frameMetrics.slowFrames}/'
+                '${_frameMetrics.frameCount}',
+              ),
               Text(
                 _peakRssBytes == null
                     ? 'peak RSS external on web'
