@@ -30,4 +30,23 @@ void main() {
     expect(restored.caption, 'hello');
     expect(restored.ducking, isTrue);
   });
+
+  test('mock upload fails at 40 percent then resumes to 100 percent', () {
+    var tick = 0;
+    var failed = false;
+    while (!failed) {
+      final step = nextUploadStep(tick, failAtForty: true);
+      tick = step.tick;
+      failed = step.failed;
+    }
+    expect(tick, 4);
+
+    var complete = false;
+    while (!complete) {
+      final step = nextUploadStep(tick, failAtForty: false);
+      tick = step.tick;
+      complete = step.complete;
+    }
+    expect(tick, 10);
+  });
 }

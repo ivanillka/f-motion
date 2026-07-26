@@ -1,13 +1,14 @@
 # Flutter media feasibility spike
 
-Status: **STOPPED at the physical Android evidence gate**. The disposable spike
-is implemented, but this machine had no `adb`, Android SDK, Chrome/Chromium, or
-connected Android device. No Android or browser performance result is inferred
-from static builds.
+Status: **STOPPED pending repeat physical-device validation and complete
+measurements**. The initial static run had no `adb`, Android SDK,
+Chrome/Chromium, or connected Android device. A later Samsung SM-F721B run
+exposed the fixture issue documented below; no Android or browser feasibility
+result is inferred yet.
 
 ## Scope proven in code
 
-The spike has two locally bundled 9:16 WebM scenes and implements playback,
+The spike has two locally bundled 9:16 H.264 MP4 scenes and implements playback,
 pause, seek, scene switching and reorder, focal-point crop controls, an
 80-character overlay inside visible safe-area bounds, approximate embedded-audio
 volume/ducking, a responsive split/stacked editor, persisted draft restore, and
@@ -36,12 +37,19 @@ sine tones) generated for this spike and released under CC0 1.0:
 ffmpeg -f lavfi -i "color=c=#6546e5:s=360x640:d=3:r=30" \
   -f lavfi -i "sine=frequency=440:duration=3" \
   -vf "drawbox=x=40+40*t:y=160:w=100:h=100:color=white@0.8:t=fill" \
-  -c:v libvpx -b:v 300k -pix_fmt yuv420p -c:a libopus -shortest scene_one.webm
+  -c:v libopenh264 -b:v 300k -pix_fmt yuv420p -c:a aac -movflags +faststart \
+  -shortest scene_one.mp4
 ffmpeg -f lavfi -i "color=c=#10a37f:s=360x640:d=3:r=30" \
   -f lavfi -i "sine=frequency=554:duration=3" \
   -vf "drawbox=x=220-40*t:y=360:w=100:h=100:color=white@0.8:t=fill" \
-  -c:v libvpx -b:v 300k -pix_fmt yuv420p -c:a libopus -shortest scene_two.webm
+  -c:v libopenh264 -b:v 300k -pix_fmt yuv420p -c:a aac -movflags +faststart \
+  -shortest scene_two.mp4
 ```
+
+The original VP8/WebM fixtures were replaced after a Samsung SM-F721B physical
+device displayed decoder/texture corruption. The MP4 replacement still requires
+rebuild and visual confirmation on that device; this document does not infer the
+result.
 
 ## Reproduction
 
@@ -96,3 +104,12 @@ Android feasibility approval.
 
 The smoke images are `spikes/flutter_media/browser-smoke.png` and
 `spikes/flutter_media/browser-mobile-smoke.png`.
+
+Physical evidence recorded on 2026-07-26:
+
+- The Samsung SM-F721B could open the editor and switch between both scenes.
+- VP8/WebM playback showed repeated dashed artifacts and a stale green strip.
+- The fixtures were replaced with H.264/AAC MP4 files and statically verified,
+  but the rebuilt app has not yet been visually checked on the phone.
+- The upload transition regression test now proves failure at 40% and retry
+  completion at 100%; the interactive flow still belongs in the approval run.

@@ -91,6 +91,14 @@ List<T> reorder<T>(List<T> items, int oldIndex, int newIndex) {
 
 double safeFocal(double value) => value.clamp(-1.0, 1.0);
 
+({int tick, bool failed, bool complete}) nextUploadStep(
+  int currentTick, {
+  required bool failAtForty,
+}) {
+  final tick = currentTick + 1;
+  return (tick: tick, failed: failAtForty && tick == 4, complete: tick >= 10);
+}
+
 class EditorPage extends StatefulWidget {
   const EditorPage({super.key, required this.started});
 
@@ -103,8 +111,8 @@ class EditorPage extends StatefulWidget {
 class _EditorPageState extends State<EditorPage> {
   static const _draftKey = 'f-motion-media-spike-draft-v1';
   static const _scenes = [
-    Scene('Purple pulse', 'assets/fixtures/scene_one.webm'),
-    Scene('Green sweep', 'assets/fixtures/scene_two.webm'),
+    Scene('Purple pulse', 'assets/fixtures/scene_one.mp4'),
+    Scene('Green sweep', 'assets/fixtures/scene_two.mp4'),
   ];
 
   List<int> _sceneOrder = [0, 1];
@@ -237,38 +245,39 @@ class _EditorPageState extends State<EditorPage> {
     });
     var ticks = 0;
     _uploadTimer = Timer.periodic(const Duration(milliseconds: 120), (timer) {
-      ticks += 1;
-      if (ticks == 5) {
-        timer.cancel();
-        setState(() {
-          _uploading = false;
-          _uploadStatus = 'Network interrupted — retry is safe';
-        });
-        return;
-      }
+      final step = nextUploadStep(ticks, failAtForty: true);
+      ticks = step.tick;
       setState(() {
         _upload = ticks / 10;
-        _uploadStatus = 'Uploading ${(100 * _upload).round()}%';
+        _uploadStatus = step.failed
+            ? 'Network interrupted — retry is safe'
+            : 'Uploading ${ticks * 10}%';
+        if (step.failed) _uploading = false;
       });
+      if (step.failed) {
+        timer.cancel();
+      }
     });
   }
 
   void _resumeUpload() {
+    _uploadTimer?.cancel();
     var ticks = (_upload * 10).round();
     setState(() {
       _uploading = true;
       _uploadStatus = 'Resuming mock upload…';
     });
     _uploadTimer = Timer.periodic(const Duration(milliseconds: 120), (timer) {
-      ticks += 1;
+      final step = nextUploadStep(ticks, failAtForty: false);
+      ticks = step.tick;
       setState(() {
         _upload = ticks / 10;
-        _uploadStatus = ticks >= 10
+        _uploadStatus = step.complete
             ? 'Mock upload complete'
             : 'Uploading ${ticks * 10}%';
-        if (ticks >= 10) _uploading = false;
+        if (step.complete) _uploading = false;
       });
-      if (ticks >= 10) timer.cancel();
+      if (step.complete) timer.cancel();
     });
   }
 
