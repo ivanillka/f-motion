@@ -1,11 +1,11 @@
 # Flutter media feasibility spike
 
-Status: **STOPPED pending stronger Purple Y-fixture confirmation and an
-interactive desktop-browser approval run**. A Samsung SM-F721B profile run
-passed the recorded Android thresholds with the prior Purple fixture. The
-replacement fixture deliberately increases vertical travel and must still be
-visually confirmed on that phone. Headless browser smoke evidence is not an
-interactive desktop approval.
+Status: **REVISE — Flutter Android accepted, Flutter Web rejected for the
+current editor approach**. The Samsung SM-F721B profile run passed every
+approved Android threshold and interaction check. The ordinary desktop Brave
+runs failed the approved web frame threshold, including after the
+instrumentation observer-effect revision. Plan 135's shared Flutter web/Android
+vertical slice remains gated.
 
 ## Scope proven in code
 
@@ -105,7 +105,7 @@ flutter build apk --debug
 The first three commands are expected to run without an Android SDK. The APK
 command requires an Android SDK and licenses.
 
-## Approval run still required
+## Approval criteria
 
 On one ordinary physical Android phone and one desktop Chrome/Chromium browser:
 
@@ -185,9 +185,10 @@ Physical profile evidence recorded on 2026-07-26 on a Samsung SM-F721B:
   completion, and the saved caption, selected scene, and focal values restored
   after terminating and reopening the app.
 
-This Android evidence does not approve the whole spike. The stronger Purple
-fixture and corrected frozen startup display need a brief repeat device check,
-and the ordinary interactive desktop-browser run remains outstanding.
+The stronger Purple fixture was subsequently confirmed on the Samsung: Focal Y
+visibly selects its top, center, and bottom regions with sufficient travel.
+The corrected startup display also remained frozen across repeated scene
+switches.
 
 Final-correction verification on 2026-07-26:
 
@@ -218,7 +219,7 @@ The instrumentation now counts every frame without rebuilding on every timing
 callback, coalesces overlay refreshes to at most one per 400 ms, and resets the
 frame counters once after the first successful media initialization. It does
 not reset on later scene switches or discard slow frames. A new five-minute
-ordinary Brave run is pending; desktop feasibility is not yet claimed as PASS.
+ordinary Brave run was then performed; its result is recorded below.
 
 REVISE verification:
 
@@ -227,3 +228,38 @@ REVISE verification:
   one-time steady-state reset, and refresh coalescing.
 - `flutter build web`: pass, including the Wasm dry run.
 - `flutter build apk --profile`: pass; output APK is 86.8 MB.
+
+## Final decision evidence
+
+Only foreground, visible-tab profile runs are used in this conclusion. Earlier
+runs that targeted hidden, background, stuck, or duplicate browser tabs were
+discarded and do not influence the decision.
+
+| Gate | Valid evidence | Result |
+| --- | --- | --- |
+| Static checks | `flutter analyze` passed; 14/14 tests passed; web build passed; profile APK build passed; the debug APK had previously passed. Fixture licensing and hashes are documented above. The design-contract drift check was empty. | PASS |
+| Android startup | Samsung SM-F721B profile app initialization 393 ms. Android activity cold launches 558/527/511 ms; median 527 ms. | PASS |
+| Android interaction | Input n=20: median 6.8 ms, p95 11.6 ms. Seek n=20: median 1.7 ms, p95 3.7 ms. | PASS |
+| Android rendering and memory | 53/5991 slow frames (0.88%). Overlay peak RSS 235.3 MB. `dumpsys` total PSS 228263 KB and RSS 315496 KB. | PASS |
+| Android behavior | Clean H.264 playback; Purple Focal Y and Green Focal X visibly proved both crop axes; rapid switching had no red flash after the lifecycle fix; upload failed at 40% and retried to 100%; saved draft values restored; no crash after the fixes. | PASS |
+| Desktop manual run before instrumentation revision | Startup 447 ms. Input n=20: median 10.5 ms, p95 12.3 ms. Seek from a later automated real-pointer series n=20: median 0.2 ms, p95 0.3 ms. Draft restore 30 ms; interactions, playback, and upload retry passed. JavaScript heap 28,061,616 bytes used / 42,369,024 total; main Brave RSS 339,768 KB. Slow frames 66/856 (7.7%). | FAIL: slow frames exceeded the below-5% threshold |
+| Desktop visible-tab run after observer-effect revision | Startup 2432 ms. Input n=20: median 72.6 ms, p95 102.0 ms. Seek n=20: median 1.6 ms, p95 4.0 ms. Slow frames 3696/3924 (94.2%). JavaScript heap 36,630,648 bytes used / 65,966,080 total; main Brave RSS 122,672 KB. | FAIL: input p95 exceeded 100 ms and slow frames exceeded 5% |
+
+The final desktop result establishes threshold failure but does not establish
+its underlying cause. No rendering-architecture change is attempted inside
+this disposable feasibility spike.
+
+## Conclusion
+
+**REVISE — Flutter Android accepted, Flutter Web rejected for the current
+editor approach.**
+
+Flutter is approved for the measured Android interaction model. The current
+Flutter Web editor approach is not approved, so Plan 135 must not begin as a
+shared Flutter web/Android vertical slice.
+
+Before implementation, separately re-plan the web-client boundary. One
+candidate is a React or other web-native UI that shares backend and domain
+contracts with the Flutter Android client; that candidate is not yet approved.
+Alternatively, run a new narrowly scoped web-rendering investigation before
+choosing the implementation.
