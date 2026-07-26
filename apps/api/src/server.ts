@@ -13,7 +13,6 @@ import {
   ConflictError,
   NotFoundError,
   ProjectService,
-  RenderService,
   type ProjectRepository
 } from "./domain.js";
 import {
@@ -23,6 +22,7 @@ import {
   type PostgresMediaRepository,
   type PrivateObjectStore
 } from "./media-storage.js";
+import { PostgresRenderRepository } from "./render-repository.js";
 
 export interface MediaDependencies {
   repository: PostgresMediaRepository;
@@ -34,6 +34,7 @@ export interface MediaDependencies {
 interface AppBaseOptions {
   projects: ProjectRepository;
   media?: MediaDependencies;
+  renders?: PostgresRenderRepository;
   ready?: () => boolean;
   workerOrigin?: string;
 }
@@ -54,9 +55,7 @@ type Identify = (authorization: string | undefined) => Promise<string>;
 function buildApp(options: AppBaseOptions, identify: Identify) {
   const app = express();
   const projects = options.projects;
-  const renders = new RenderService();
   const ready = options.ready ?? (() => true);
-  const workerOrigin = options.workerOrigin ?? process.env.WORKER_ORIGIN;
   app.use(express.json());
   app.use((request, response, next) => {
     const requestId = request.header("x-request-id") || randomUUID();
@@ -196,26 +195,70 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
   app.post("/api/projects/:projectId/render", async (request, response, next) => {
     try {
       const ownerId = String(response.locals.ownerId);
-      const project = await projects.get(ownerId, request.params.projectId);
-      if (!project || !workerOrigin) return response.status(503).json({ type: "unavailable" });
-      const job = renders.create(ownerId, project.id, project.revision);
-      const workerResponse = await fetch(`${workerOrigin}/jobs`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ jobId: job.jobId, projectId: project.id, revision: project.revision })
+      if (!options.renders) return response.status(503).json({ type: "unavailable" });
+      const job = await options.renders.create(ownerId, request.params.projectId);
+      if (!job) return response.status(404).json({ type: "not_found", message: "not found" });
+      response.status(202).json({
+        job_id: job.jobId,
+        project_id: job.projectId,
+        revision: job.revision,
+        state: job.state
       });
-      if (!workerResponse.ok) throw new Error("worker unavailable");
-      const result = await workerResponse.json();
-      response.status(202).json({ ...job, state: "complete", result });
     } catch (error) { next(error); }
+  });
+  app.post("/api/render-jobs/:jobId/cancel", async (request, response, next) => {
+    try {
+      if (!options.renders) return response.status(503).json({ type: "unavailable" });
+      const job = await options.renders.cancel(String(response.locals.ownerId), request.params.jobId);
+      if (!job) return response.status(404).json({ type: "not_found", message: "not found" });
+      response.json({ job_id: job.jobId, state: job.state });
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.get("/api/render-jobs/:jobId/events", async (request, response, next) => {
+    try {
+      if (!options.renders) return response.status(503).json({ type: "unavailable" });
+      const events = await options.renders.events(
+        String(response.locals.ownerId),
+        request.params.jobId,
+        request.header("last-event-id")
+      );
+      if (!events) return response.status(404).json({ type: "not_found", message: "not found" });
+      response.setHeader("content-type", "text/event-stream");
+      response.setHeader("cache-control", "no-cache");
+      for (const event of events) {
+        response.write(`id: ${event.eventId}\nevent: progress\ndata: ${JSON.stringify({
+          job_id: request.params.jobId,
+          event_id: event.eventId,
+          phase: event.phase,
+          percent: event.percent
+        })}\n\n`);
+      }
+      response.end();
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.get("/api/render-jobs/:jobId/download", async (request, response, next) => {
+    try {
+      if (!options.renders || !options.media) return response.status(503).json({ type: "unavailable" });
+      const result = await options.renders.result(String(response.locals.ownerId), request.params.jobId);
+      if (!result) return response.status(404).json({ type: "not_found", message: "not found" });
+      response.json({
+        url: await options.media.store.signedGet(result.objectKey),
+        expires_at: new Date(Date.now() + 300_000).toISOString()
+      });
+    } catch (error) {
+      next(error);
+    }
   });
   app.get("/api/download/:jobId", async (request, response, next) => {
     try {
-      if (!workerOrigin) return response.status(503).end();
-      const workerResponse = await fetch(`${workerOrigin}/downloads/${request.params.jobId}`);
-      if (!workerResponse.ok) return response.status(workerResponse.status).end();
-      response.setHeader("content-type", "video/mp4");
-      response.end(Buffer.from(await workerResponse.arrayBuffer()));
+      if (!options.renders || !options.media) return response.status(503).json({ type: "unavailable" });
+      const result = await options.renders.result(String(response.locals.ownerId), request.params.jobId);
+      if (!result) return response.status(404).json({ type: "not_found", message: "not found" });
+      response.redirect(303, await options.media.store.signedGet(result.objectKey));
     } catch (error) { next(error); }
   });
   return app;

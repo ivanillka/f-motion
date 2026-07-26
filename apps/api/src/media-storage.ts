@@ -1,4 +1,4 @@
-import { HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
@@ -102,6 +102,14 @@ export class PrivateObjectStore {
     return getSignedUrl(
       this.client,
       new PutObjectCommand({ Bucket: this.bucket, Key: objectKey, ContentType: contentType }),
+      { expiresIn: 300 }
+    );
+  }
+
+  signedGet(objectKey: string) {
+    return getSignedUrl(
+      this.client,
+      new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }),
       { expiresIn: 300 }
     );
   }

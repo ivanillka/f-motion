@@ -116,8 +116,20 @@ model RenderJob {
   revision    Int
   state       RenderState @default(queued)
   result      RenderResult?
+  events      RenderEvent[]
 
   @@unique([ownerId, projectId, id])
+}
+
+model RenderEvent {
+  id        BigInt    @id @default(autoincrement())
+  jobId     String
+  job       RenderJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  phase     String
+  percent   Int
+  createdAt DateTime  @default(now())
+
+  @@index([jobId, id])
 }
 
 model RenderResult {

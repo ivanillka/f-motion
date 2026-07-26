@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { PostgresProjectRepository } from "./domain.js";
 import { PexelsClient, PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
+import { PostgresRenderRepository } from "./render-repository.js";
 import { createApp } from "./server.js";
 
 function required(name: string): string {
@@ -23,6 +24,7 @@ const objectStore = new PrivateObjectStore(new S3Client({
 }), required("R2_BUCKET"));
 createApp({
   projects: new PostgresProjectRepository(pool),
+  renders: new PostgresRenderRepository(pool),
   media: {
     repository: new PostgresMediaRepository(pool),
     store: objectStore,

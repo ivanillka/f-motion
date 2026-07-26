@@ -8,7 +8,13 @@
     "test": "npm run build && node test/run.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1095.0",
+    "@f-motion/contracts": "*",
     "@f-motion/reel-engine": "*",
+    "pg": "^8.16.3",
     "pg-boss": "12.26.3"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.5"
   }
 }
