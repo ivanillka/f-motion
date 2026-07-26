@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:f_motion_media_spike/main.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -53,5 +54,47 @@ void main() {
       complete = step.complete;
     }
     expect(tick, 10);
+  });
+
+  test('reduced motion disables automatic scene motion', () {
+    expect(allowsAutomaticMotion(false), isTrue);
+    expect(allowsAutomaticMotion(true), isFalse);
+  });
+
+  testWidgets('caption stays inside its safe area at 320px', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 320,
+            height: 640,
+            child: AspectRatio(
+              aspectRatio: 9 / 16,
+              child: SafeAreaCaption(
+                caption:
+                    'An eighty character caption remains bounded even on the narrow supported viewport.',
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final safeBounds = tester.getRect(
+      find.byKey(const ValueKey('caption-safe-area')),
+    );
+    final textBounds = tester.getRect(
+      find.byKey(const ValueKey('caption-text')),
+    );
+    expect(safeBounds.left, greaterThanOrEqualTo(24));
+    expect(safeBounds.right, lessThanOrEqualTo(296));
+    expect(safeBounds.contains(textBounds.topLeft), isTrue);
+    expect(safeBounds.contains(textBounds.bottomRight), isTrue);
+    expect(tester.takeException(), isNull);
   });
 }

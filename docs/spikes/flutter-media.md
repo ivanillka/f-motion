@@ -14,6 +14,11 @@ controls, an
 80-character overlay inside visible safe-area bounds, approximate embedded-audio
 volume/ducking, a responsive split/stacked editor, persisted draft restore, and
 a mock signed upload that deliberately fails once at 40% and resumes.
+At a 320 px viewport, the caption is deterministically checked to remain inside
+the visible overlay safe area without a layout exception. When the platform
+requests reduced motion, scene looping is disabled and any playing scene is
+paused when the preference changes. Playback remains available through the
+explicit Play control and runs once rather than looping.
 
 Instrumentation shown in the UI records:
 
@@ -82,6 +87,18 @@ command requires an Android SDK and licenses.
 ## Approval run still required
 
 On one ordinary physical Android phone and one desktop Chrome/Chromium browser:
+
+Performance approval must use a profile build. Debug startup, frame, latency,
+and memory readings are diagnostic only and cannot approve feasibility.
+
+Approved feasibility thresholds:
+
+- cold startup median across three launches: at most 3 seconds;
+- input latency p95 across 20 interactions: at most 100 ms;
+- seek completion latency p95 across 20 seeks: at most 250 ms;
+- slow frames during the five-minute editing run: below 5%;
+- peak Android PSS: at most 500 MB;
+- zero crashes, Flutter red screens, lost drafts, or broken upload retries.
 
 1. Record OS/browser/device model, RAM, Flutter revision, and build mode.
 2. Cold-start three times and report median startup-to-initialization.

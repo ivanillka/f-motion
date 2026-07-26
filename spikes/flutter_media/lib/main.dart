@@ -96,6 +96,8 @@ double safeFocal(double value) => value.clamp(-1.0, 1.0);
 bool isCurrentSceneRequest(int request, int latestRequest) =>
     request == latestRequest;
 
+bool allowsAutomaticMotion(bool disableAnimations) => !disableAnimations;
+
 ({int tick, bool failed, bool complete}) nextUploadStep(
   int currentTick, {
   required bool failAtForty,
@@ -141,6 +143,7 @@ class _EditorPageState extends State<EditorPage> {
   bool _uploading = false;
   String _uploadStatus = 'Ready';
   Timer? _uploadTimer;
+  bool _automaticMotionAllowed = true;
   final _captionController = TextEditingController();
 
   @override
@@ -151,6 +154,20 @@ class _EditorPageState extends State<EditorPage> {
     _restore().then((_) {
       if (mounted) _openScene(_selected);
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final allowed = allowsAutomaticMotion(
+      MediaQuery.disableAnimationsOf(context),
+    );
+    if (allowed == _automaticMotionAllowed) return;
+    _automaticMotionAllowed = allowed;
+    final controller = _video;
+    if (controller == null) return;
+    controller.setLooping(allowed);
+    if (!allowed) controller.pause();
   }
 
   void _recordFrames(List<FrameTiming> timings) {
@@ -225,7 +242,7 @@ class _EditorPageState extends State<EditorPage> {
     final controller = VideoPlayerController.asset(asset);
     try {
       await controller.initialize();
-      await controller.setLooping(true);
+      await controller.setLooping(_automaticMotionAllowed);
       await controller.setVolume(_ducking ? _musicVolume * .3 : _musicVolume);
     } catch (error) {
       await controller.dispose();
@@ -386,31 +403,7 @@ class _EditorPageState extends State<EditorPage> {
                           Center(
                             child: Text(_videoError ?? 'Preview unavailable'),
                           ),
-                        IgnorePointer(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 70, 24, 100),
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.white30),
-                              ),
-                              child: Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Text(
-                                    _caption,
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
+                        SafeAreaCaption(caption: _caption),
                       ],
                     ),
                   ),
@@ -550,6 +543,41 @@ class _EditorPageState extends State<EditorPage> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class SafeAreaCaption extends StatelessWidget {
+  const SafeAreaCaption({super.key, required this.caption});
+
+  final String caption;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 70, 24, 100),
+        child: DecoratedBox(
+          key: const ValueKey('caption-safe-area'),
+          decoration: BoxDecoration(border: Border.all(color: Colors.white30)),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                caption,
+                key: const ValueKey('caption-text'),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
