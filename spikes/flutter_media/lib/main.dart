@@ -98,6 +98,36 @@ bool isCurrentSceneRequest(int request, int latestRequest) =>
 
 bool allowsAutomaticMotion(bool disableAnimations) => !disableAnimations;
 
+class LatencySamples {
+  LatencySamples({this.limit = 20}) : assert(limit > 0);
+
+  final int limit;
+  final List<int> _microseconds = [];
+
+  int get count => _microseconds.length;
+  List<int> get values => List.unmodifiable(_microseconds);
+
+  void add(int microseconds) {
+    _microseconds.add(microseconds);
+    if (_microseconds.length > limit) _microseconds.removeAt(0);
+  }
+
+  int? get medianMicroseconds {
+    if (_microseconds.isEmpty) return null;
+    final sorted = [..._microseconds]..sort();
+    final middle = sorted.length ~/ 2;
+    if (sorted.length.isOdd) return sorted[middle];
+    return (sorted[middle - 1] + sorted[middle]) ~/ 2;
+  }
+
+  int? get p95Microseconds {
+    if (_microseconds.isEmpty) return null;
+    final sorted = [..._microseconds]..sort();
+    final rank = (sorted.length * .95).ceil();
+    return sorted[rank - 1];
+  }
+}
+
 ({int tick, bool failed, bool complete}) nextUploadStep(
   int currentTick, {
   required bool failAtForty,
@@ -134,8 +164,8 @@ class _EditorPageState extends State<EditorPage> {
   bool _initializing = true;
   String? _videoError;
   int _startupMs = 0;
-  int _lastInputUs = 0;
-  int _lastSeekMs = 0;
+  final _inputLatency = LatencySamples();
+  final _seekLatency = LatencySamples();
   int _slowFrames = 0;
   int _frameCount = 0;
   int? _peakRssBytes;
@@ -270,14 +300,24 @@ class _EditorPageState extends State<EditorPage> {
     final timer = Stopwatch()..start();
     setState(change);
     SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() => _lastInputUs = timer.elapsedMicroseconds);
+      if (mounted) {
+        setState(() => _inputLatency.add(timer.elapsedMicroseconds));
+      }
     });
   }
 
   Future<void> _seek(double milliseconds) async {
     final timer = Stopwatch()..start();
     await _video?.seekTo(Duration(milliseconds: milliseconds.round()));
-    if (mounted) setState(() => _lastSeekMs = timer.elapsedMilliseconds);
+    if (mounted) setState(() => _seekLatency.add(timer.elapsedMicroseconds));
+  }
+
+  String _latencyLabel(String name, LatencySamples samples) {
+    String milliseconds(int? microseconds) =>
+        microseconds == null ? '—' : (microseconds / 1000).toStringAsFixed(1);
+    return '$name n=${samples.count}/20 '
+        'median ${milliseconds(samples.medianMicroseconds)}ms '
+        'p95 ${milliseconds(samples.p95Microseconds)}ms';
   }
 
   void _startUpload() {
@@ -446,8 +486,8 @@ class _EditorPageState extends State<EditorPage> {
             alignment: WrapAlignment.center,
             children: [
               Text('startup ${_startupMs}ms'),
-              Text('input $_lastInputUsµs'),
-              Text('seek ${_lastSeekMs}ms'),
+              Text(_latencyLabel('input', _inputLatency)),
+              Text(_latencyLabel('seek', _seekLatency)),
               Text('slow frames $_slowFrames/$_frameCount'),
               Text(
                 _peakRssBytes == null

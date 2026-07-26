@@ -23,11 +23,18 @@ explicit Play control and runs once rather than looping.
 Instrumentation shown in the UI records:
 
 - startup-to-first-video-initialization elapsed time;
-- input-to-next-frame latency;
-- seek completion latency;
+- input-to-next-frame latency over the latest 20 measured interactions;
+- seek completion latency over the latest 20 completed seeks;
 - frames over 16 ms versus total reported frames;
 - peak resident memory on Dart IO platforms (`ProcessInfo.currentRss`);
 - upload progress and cache-restore outcome/time.
+
+Input and seek samples are held in memory only and are not persisted. The
+overlay reports the bounded sample count, median, and p95 in milliseconds.
+Median is the middle sorted value for odd counts and the truncated arithmetic
+mean of the two middle values for even counts. P95 uses nearest rank:
+`ceil(0.95 * sample count)`. Each input's next-frame callback and each completed
+seek adds exactly one sample; after 20, the oldest sample is discarded.
 
 Web cannot expose process RSS from Dart, so the UI says external capture is
 required. Browser peak memory must be captured with browser tooling. Android
@@ -146,3 +153,6 @@ Physical evidence recorded on 2026-07-26:
   regression check, but has not yet been visually checked on the phone.
 - The upload transition regression test now proves failure at 40% and retry
   completion at 100%; the interactive flow still belongs in the approval run.
+- The overlay now retains bounded 20-sample input and seek windows and reports
+  deterministic median/p95 values. The updated profile APK builds successfully;
+  installation and the final physical 20-action/20-seek run remain pending.

@@ -61,6 +61,34 @@ void main() {
     expect(allowsAutomaticMotion(true), isFalse);
   });
 
+  test('latency samples retain only the latest bounded window', () {
+    final samples = LatencySamples(limit: 3);
+    for (final value in [1, 2, 3, 4]) {
+      samples.add(value);
+    }
+    expect(samples.values, [2, 3, 4]);
+  });
+
+  test('latency median is deterministic for odd and even samples', () {
+    final samples = LatencySamples();
+    for (final value in [9, 1, 5]) {
+      samples.add(value);
+    }
+    expect(samples.medianMicroseconds, 5);
+    samples.add(7);
+    expect(samples.medianMicroseconds, 6);
+  });
+
+  test('latency p95 uses nearest rank across twenty samples', () {
+    final samples = LatencySamples();
+    for (var value = 20; value >= 1; value--) {
+      samples.add(value);
+    }
+    expect(samples.count, 20);
+    expect(samples.medianMicroseconds, 10);
+    expect(samples.p95Microseconds, 19);
+  });
+
   testWidgets('caption stays inside its safe area at 320px', (tester) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;
