@@ -21,5 +21,12 @@ test("happy path, draft restart, conflict recovery, render reconnect, and downlo
   await page.getByRole("button", { name: /Render accurate/ }).click();
   await expect(page.getByText(/Rendering/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Cancel render" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Download preview" })).toBeVisible();
+  const download = page.getByRole("link");
+  await expect(page.getByRole("button", { name: "Download preview" })).toBeEnabled();
+  const href = await download.getAttribute("href");
+  expect(href).toMatch(/^\/api\/download\//);
+  const rendered = await page.request.get(href!);
+  expect(rendered.ok()).toBeTruthy();
+  expect(rendered.headers()["content-type"]).toContain("video/mp4");
+  expect((await rendered.body()).length).toBeGreaterThan(1000);
 });

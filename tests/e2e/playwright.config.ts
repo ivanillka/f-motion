@@ -8,7 +8,7 @@ export default defineConfig({
     browserName: "chromium"
   },
   webServer: {
-    command: "npm run dev --workspace apps/web -- --host 127.0.0.1 --port 4173",
+    command: "npm run build --workspace apps/api && npm run build --workspace apps/worker && node tests/e2e/run-servers.mjs",
     cwd: "../..",
     url: "http://127.0.0.1:4173",
     reuseExistingServer: false

@@ -2,7 +2,7 @@
   "name": "@f-motion/api",
   "private": true,
   "type": "module",
-  "main": "dist/server.js",
+  "main": "dist/start.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node test/run.mjs"
