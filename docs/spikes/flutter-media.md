@@ -8,8 +8,9 @@ result is inferred yet.
 
 ## Scope proven in code
 
-The spike has two locally bundled 9:16 H.264 MP4 scenes and implements playback,
-pause, seek, scene switching and reorder, focal-point crop controls, an
+The spike has locally bundled portrait and landscape H.264 MP4 scenes and
+implements playback, pause, seek, scene switching and reorder, focal-point crop
+controls, an
 80-character overlay inside visible safe-area bounds, approximate embedded-audio
 volume/ducking, a responsive split/stacked editor, persisted draft restore, and
 a mock signed upload that deliberately fails once at 40% and resumes.
@@ -39,20 +40,30 @@ ffmpeg -f lavfi -i "color=c=#6546e5:s=360x640:d=3:r=30" \
   -vf "drawbox=x=40+40*t:y=160:w=100:h=100:color=white@0.8:t=fill" \
   -c:v libopenh264 -b:v 300k -pix_fmt yuv420p -c:a aac -movflags +faststart \
   -shortest scene_one.mp4
-ffmpeg -f lavfi -i "color=c=#10a37f:s=360x640:d=3:r=30" \
+ffmpeg -f lavfi -i "color=c=#ef4444:s=320x540:d=3:r=30" \
+  -f lavfi -i "color=c=#10a37f:s=320x540:d=3:r=30" \
+  -f lavfi -i "color=c=#2563eb:s=320x540:d=3:r=30" \
   -f lavfi -i "sine=frequency=554:duration=3" \
-  -vf "drawbox=x=220-40*t:y=360:w=100:h=100:color=white@0.8:t=fill" \
-  -c:v libopenh264 -b:v 300k -pix_fmt yuv420p -c:a aac -movflags +faststart \
-  -shortest scene_two.mp4
+  -filter_complex \
+  "[0:v][1:v][2:v]hstack=inputs=3,drawbox=x=80+240*t:y=210:w=120:h=120:color=white@0.9:t=fill[v]" \
+  -map "[v]" -map 3:a -c:v libopenh264 -b:v 900k -pix_fmt yuv420p \
+  -c:a aac -movflags +faststart -shortest scene_two.mp4
 ```
+
+`scene_one.mp4` is a 360x640 portrait fixture matching the 9:16 preview, so it
+does not overflow and neither focal axis visibly reframes it. `scene_two.mp4`
+is a 960x540 landscape fixture with red, green, and blue horizontal landmarks.
+`BoxFit.cover` crops it into the 9:16 preview, so moving focal X from -1 through
+0 to 1 visibly selects the left, center, and right region. Focal Y correctly has
+no visible range for that landscape-to-portrait cover crop. This is sufficient
+to prove focal alignment without introducing production crop/zoom behavior.
 
 The original VP8/WebM fixtures were replaced after a Samsung SM-F721B physical
 device displayed decoder/texture corruption. The replacement MP4 scenes played
 without those artifacts. That follow-up exposed a brief red Flutter error frame
 while switching scenes; the controller transition now detaches the old video
 before disposal, holds a neutral loading state, and rejects stale asynchronous
-initializations. The transition fix still requires visual confirmation on the
-phone.
+initializations. The transition fix was visually confirmed on that phone.
 
 ## Reproduction
 
