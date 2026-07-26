@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { ProjectService } from "../dist/domain.js";
 import { createApp, createTestApp } from "../dist/server.js";
 
 async function listen(server) {
@@ -21,6 +22,7 @@ async function fixture() {
   const jwksOrigin = await listen(jwksServer);
   const states = new Map([["active-owner", "active"], ["suspended-owner", "suspended"]]);
   const app = createApp({
+    projects: new ProjectService(),
     authConfig: {
       issuer: "https://issuer.example",
       audience: "f-motion",

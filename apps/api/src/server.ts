@@ -1,5 +1,6 @@
 import express from "express";
 import { randomUUID } from "node:crypto";
+import { conceptsFor } from "@f-motion/reel-engine";
 import {
   AccountUnavailableError,
   UnauthorizedError,
@@ -8,9 +9,16 @@ import {
   type AccountStateLookup,
   type AuthConfig
 } from "./auth.js";
-import { ProjectService, RenderService } from "./domain.js";
+import {
+  ConflictError,
+  NotFoundError,
+  ProjectService,
+  RenderService,
+  type ProjectRepository
+} from "./domain.js";
 
 interface AppBaseOptions {
+  projects: ProjectRepository;
   ready?: () => boolean;
   workerOrigin?: string;
 }
@@ -20,16 +28,17 @@ export interface AppOptions extends AppBaseOptions {
   accountState: AccountStateLookup;
 }
 
-export interface TestAppOptions extends AppBaseOptions {
+export interface TestAppOptions extends Omit<AppBaseOptions, "projects"> {
   ownerId?: string;
   accountState?: string;
+  projects?: ProjectRepository;
 }
 
 type Identify = (authorization: string | undefined) => Promise<string>;
 
 function buildApp(options: AppBaseOptions, identify: Identify) {
   const app = express();
-  const projects = new ProjectService();
+  const projects = options.projects;
   const renders = new RenderService();
   const ready = options.ready ?? (() => true);
   const workerOrigin = options.workerOrigin ?? process.env.WORKER_ORIGIN;
@@ -51,28 +60,40 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       next(error);
     }
   });
-  app.post("/api/projects", (request, response) => {
-    const ownerId = String(response.locals.ownerId);
-    const brief = {
-      purpose: String(request.body?.purpose || ""),
-      audience: String(request.body?.audience || "Customers"),
-      tone: String(request.body?.tone || "Warm")
-    };
-    const project = projects.create(ownerId, brief);
-    response.status(201).json({ project, concepts: projects.concepts(ownerId, project.id) });
+  app.post("/api/projects", async (request, response, next) => {
+    try {
+      const ownerId = String(response.locals.ownerId);
+      const brief = {
+        purpose: String(request.body?.purpose || ""),
+        audience: String(request.body?.audience || "Customers"),
+        tone: String(request.body?.tone || "Warm")
+      };
+      const project = await projects.create(ownerId, brief);
+      response.status(201).json({ project, concepts: conceptsFor(project.brief) });
+    } catch (error) {
+      next(error);
+    }
   });
-  app.post("/api/projects/:projectId/commands", (request, response) => {
+  app.post("/api/projects/:projectId/commands", async (request, response, next) => {
     const ownerId = String(response.locals.ownerId);
     try {
-      response.json(projects.command(ownerId, { ...request.body, project_id: request.params.projectId }));
+      response.json(await projects.command(ownerId, { ...request.body, project_id: request.params.projectId }));
     } catch (error) {
-      response.status(409).json({ type: "conflict", message: String(error) });
+      if (error instanceof ConflictError) {
+        return response.status(409).json({
+          type: "conflict",
+          message: error.message,
+          authoritative_snapshot: error.authoritativeSnapshot
+        });
+      }
+      if (error instanceof NotFoundError) return response.status(404).json({ type: "not_found", message: error.message });
+      next(error);
     }
   });
   app.post("/api/projects/:projectId/render", async (request, response, next) => {
     try {
       const ownerId = String(response.locals.ownerId);
-      const project = projects.get(ownerId, request.params.projectId);
+      const project = await projects.get(ownerId, request.params.projectId);
       if (!project || !workerOrigin) return response.status(503).json({ type: "unavailable" });
       const job = renders.create(ownerId, project.id, project.revision);
       const workerResponse = await fetch(`${workerOrigin}/jobs`, {
@@ -104,7 +125,7 @@ export function createApp(options: AppOptions) {
 export function createTestApp(options: TestAppOptions = {}) {
   const ownerId = options.ownerId ?? "authenticated-user";
   const accountState = options.accountState ?? "active";
-  return buildApp(options, async () => {
+  return buildApp({ ...options, projects: options.projects ?? new ProjectService() }, async () => {
     assertAccountActive(accountState);
     return ownerId;
   });

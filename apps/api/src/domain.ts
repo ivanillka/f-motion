@@ -1,12 +1,23 @@
 import { randomUUID } from "node:crypto";
 import type { CommandEnvelope, ProjectSnapshot } from "@f-motion/contracts";
+import type { Pool, PoolClient, QueryResult } from "pg";
 import { applyCommand, conceptsFor } from "@f-motion/reel-engine";
 
 export class ConflictError extends Error {
   constructor(readonly authoritativeSnapshot: ProjectSnapshot) { super("stale base revision"); }
 }
 
-export class ProjectService {
+export class NotFoundError extends Error {
+  constructor() { super("not found"); }
+}
+
+export interface ProjectRepository {
+  create(ownerId: string, brief: ProjectSnapshot["brief"]): ProjectSnapshot | Promise<ProjectSnapshot>;
+  get(ownerId: string, projectId: string): ProjectSnapshot | undefined | Promise<ProjectSnapshot | undefined>;
+  command(ownerId: string, command: CommandEnvelope): ProjectSnapshot | Promise<ProjectSnapshot>;
+}
+
+export class ProjectService implements ProjectRepository {
   readonly #projects = new Map<string, ProjectSnapshot>();
   readonly #receipts = new Map<string, ProjectSnapshot>();
 
@@ -38,6 +49,163 @@ export class ProjectService {
     this.#projects.set(`${ownerId}:${project.id}`, updated);
     this.#receipts.set(receiptKey, updated);
     return structuredClone(updated);
+  }
+}
+
+type Queryable = Pick<Pool | PoolClient, "query">;
+
+interface ProjectRow {
+  id: string;
+  ownerId: string;
+  revision: number;
+  brief: ProjectSnapshot["brief"];
+}
+
+async function projectSnapshot(
+  database: Queryable,
+  project: ProjectRow
+): Promise<ProjectSnapshot> {
+  const [selected, scenes] = await Promise.all([
+    database.query<{ conceptId: string }>(
+      `SELECT LOWER(title) AS "conceptId"
+       FROM "Concept" WHERE "projectId" = $1 AND selected = TRUE LIMIT 1`,
+      [project.id]
+    ),
+    database.query<{ position: number; payload: ProjectSnapshot["scenes"][number] }>(
+      `SELECT position, payload FROM "Scene" WHERE "projectId" = $1 ORDER BY position`,
+      [project.id]
+    )
+  ]);
+  const snapshot: ProjectSnapshot = {
+    schema_version: 1,
+    id: project.id,
+    owner_id: project.ownerId,
+    revision: project.revision,
+    brief: project.brief,
+    scenes: scenes.rows.map(({ position, payload }) => ({ ...payload, order: position }))
+  };
+  const selectedConceptId = selected.rows[0]?.conceptId;
+  if (selectedConceptId) snapshot.selected_concept_id = selectedConceptId;
+  return snapshot;
+}
+
+export class PostgresProjectRepository implements ProjectRepository {
+  constructor(readonly pool: Pool) {}
+
+  async create(ownerId: string, brief: ProjectSnapshot["brief"]): Promise<ProjectSnapshot> {
+    const client = await this.pool.connect();
+    const id = randomUUID();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO "Project" (id, "ownerId", revision, brief) VALUES ($1, $2, 0, $3)`,
+        [id, ownerId, brief]
+      );
+      const concepts = conceptsFor(brief);
+      for (const [position, concept] of concepts.entries()) {
+        await client.query(
+          `INSERT INTO "Concept" (id, "projectId", position, title, treatment, selected)
+           VALUES ($1, $2, $3, $4, $5, FALSE)`,
+          [randomUUID(), id, position, concept.title, concept.treatment]
+        );
+      }
+      await client.query("COMMIT");
+      return { schema_version: 1, id, owner_id: ownerId, revision: 0, brief, scenes: [] };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async get(ownerId: string, projectId: string): Promise<ProjectSnapshot | undefined> {
+    const result = await this.pool.query<ProjectRow>(
+      `SELECT id, "ownerId", revision, brief
+       FROM "Project" WHERE "ownerId" = $1 AND id = $2`,
+      [ownerId, projectId]
+    );
+    const project = result.rows[0];
+    return project && projectSnapshot(this.pool, project);
+  }
+
+  async command(ownerId: string, command: CommandEnvelope): Promise<ProjectSnapshot> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const projects = await client.query<ProjectRow>(
+        `SELECT id, "ownerId", revision, brief
+         FROM "Project" WHERE "ownerId" = $1 AND id = $2 FOR UPDATE`,
+        [ownerId, command.project_id]
+      );
+      const project = projects.rows[0];
+      if (!project) throw new NotFoundError();
+
+      const receipt = await client.query<{ result: ProjectSnapshot }>(
+        `SELECT result FROM "CommandReceipt"
+         WHERE "ownerId" = $1 AND "projectId" = $2 AND "commandId" = $3`,
+        [ownerId, command.project_id, command.command_id]
+      );
+      const prior = receipt.rows[0]?.result;
+      if (prior) {
+        await client.query("COMMIT");
+        return prior;
+      }
+
+      const authoritative = await projectSnapshot(client, project);
+      if (authoritative.revision !== command.base_revision) throw new ConflictError(authoritative);
+      const updated = applyCommand(authoritative, command);
+      await this.persistCommand(client, command, updated);
+      const revision = await client.query<{ revision: number }>(
+        `UPDATE "Project" SET revision = revision + 1
+         WHERE "ownerId" = $1 AND id = $2 RETURNING revision`,
+        [ownerId, command.project_id]
+      );
+      if (revision.rows[0]?.revision !== updated.revision) throw new Error("revision update failed");
+      await client.query(
+        `INSERT INTO "CommandReceipt"
+           (id, "ownerId", "projectId", "commandId", "baseRevision", result)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [randomUUID(), ownerId, command.project_id, command.command_id, command.base_revision, updated]
+      );
+      await client.query("COMMIT");
+      return updated;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async persistCommand(
+    client: PoolClient,
+    command: CommandEnvelope,
+    updated: ProjectSnapshot
+  ): Promise<QueryResult | undefined> {
+    if (command.kind === "select_concept") {
+      await client.query(`UPDATE "Concept" SET selected = FALSE WHERE "projectId" = $1 AND selected = TRUE`, [command.project_id]);
+      return client.query(
+        `UPDATE "Concept" SET selected = TRUE
+         WHERE "projectId" = $1 AND LOWER(title) = $2`,
+        [command.project_id, updated.selected_concept_id]
+      );
+    }
+    if (command.kind === "update_scene") {
+      const scene = command.payload.scene as ProjectSnapshot["scenes"][number];
+      return client.query(
+        `UPDATE "Scene" SET payload = $1 WHERE "projectId" = $2 AND id = $3`,
+        [scene, command.project_id, scene.id]
+      );
+    }
+    await client.query(`UPDATE "Scene" SET position = -position - 1 WHERE "projectId" = $1`, [command.project_id]);
+    for (const scene of updated.scenes) {
+      await client.query(
+        `UPDATE "Scene" SET position = $1, payload = $2 WHERE "projectId" = $3 AND id = $4`,
+        [scene.order, scene, command.project_id, scene.id]
+      );
+    }
+    return undefined;
   }
 }
 

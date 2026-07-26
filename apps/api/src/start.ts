@@ -1,4 +1,5 @@
 import pg from "pg";
+import { PostgresProjectRepository } from "./domain.js";
 import { createApp } from "./server.js";
 
 function required(name: string): string {
@@ -9,6 +10,7 @@ function required(name: string): string {
 
 const pool = new pg.Pool({ connectionString: required("DATABASE_URL") });
 createApp({
+  projects: new PostgresProjectRepository(pool),
   authConfig: {
     issuer: required("AUTH_ISSUER"),
     audience: required("AUTH_AUDIENCE"),
