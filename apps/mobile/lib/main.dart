@@ -152,12 +152,22 @@ class _WorkflowPageState extends State<WorkflowPage> {
   final cache = DraftCache();
   final briefController = TextEditingController();
   StreamSubscription<AuthSessionState>? authSubscription;
+  Timer? connectivityTimer;
+  bool? apiReachable;
+  bool connectivityProbeInFlight = false;
 
   @override
   void initState() {
     super.initState();
     stage = widget.auth.isSignedIn ? 1 : 0;
     status = widget.configurationError ?? '';
+    unawaited(_probeApi());
+    // ponytail: five-second API polling is enough for this slice; replace it with
+    // lifecycle-aware monitoring if background traffic becomes material.
+    connectivityTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => unawaited(_probeApi()),
+    );
     cache.read().then((value) {
       if (mounted && value != null) {
         setState(() {
@@ -183,6 +193,17 @@ class _WorkflowPageState extends State<WorkflowPage> {
       status = state.isSignedIn ? 'Signed in' : 'Signed out';
       sendingAuth = false;
     });
+  }
+
+  Future<void> _probeApi() async {
+    if (connectivityProbeInFlight) return;
+    connectivityProbeInFlight = true;
+    try {
+      final reachable = await widget.api.isReachable();
+      if (mounted) setState(() => apiReachable = reachable);
+    } finally {
+      connectivityProbeInFlight = false;
+    }
   }
 
   bool get _emailIsValid =>
@@ -244,6 +265,7 @@ class _WorkflowPageState extends State<WorkflowPage> {
 
   @override
   void dispose() {
+    connectivityTimer?.cancel();
     authSubscription?.cancel();
     briefController.dispose();
     super.dispose();
@@ -354,6 +376,12 @@ class _WorkflowPageState extends State<WorkflowPage> {
         : draft;
   }
 
+  String get _connectionLabel => switch (apiReachable) {
+    null => 'Checking connection',
+    true => '● Connected',
+    false => '○ Reconnecting — draft kept locally',
+  };
+
   Future<void> _searchPexels() async {
     final results = await widget.api.searchPexels(pexelsQuery);
     if (mounted) setState(() => pexelsResults = results);
@@ -377,7 +405,11 @@ class _WorkflowPageState extends State<WorkflowPage> {
         actions: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Semantics(label: 'Connected', child: Text('● Connected')),
+            child: Semantics(
+              label: _connectionLabel,
+              excludeSemantics: true,
+              child: Text(_connectionLabel),
+            ),
           ),
           if (stage > 0)
             TextButton(onPressed: _signOut, child: const Text('Sign out')),

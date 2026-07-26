@@ -52,6 +52,7 @@ class RenderEvent {
 }
 
 abstract interface class ApiGateway {
+  Future<bool> isReachable();
   Future<CreatedProject> createProject(String brief);
   Future<ProjectSnapshot> command(
     String projectId,
@@ -77,6 +78,25 @@ class HttpApiGateway implements ApiGateway {
   final Uri baseUri;
   final Future<String?> Function() accessToken;
   final HttpClient _client;
+
+  @override
+  Future<bool> isReachable() async {
+    HttpClientRequest? request;
+    try {
+      request = await _client
+          .getUrl(baseUri.resolve('/readyz'))
+          .timeout(const Duration(seconds: 2));
+      final response = await request.close().timeout(
+        const Duration(seconds: 2),
+      );
+      final status = response.statusCode;
+      await response.drain<void>().timeout(const Duration(seconds: 2));
+      return status == HttpStatus.ok;
+    } catch (_) {
+      request?.abort();
+      return false;
+    }
+  }
 
   Future<(int, String, String?)> _raw(
     String method,

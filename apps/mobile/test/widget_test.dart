@@ -8,6 +8,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeApi implements ApiGateway {
+  FakeApi({this.reachable = true});
+
+  bool reachable;
+  int reachabilityChecks = 0;
+
+  @override
+  Future<bool> isReachable() async {
+    reachabilityChecks += 1;
+    return reachable;
+  }
+
   ProjectSnapshot project([int revision = 0]) => ProjectSnapshot(
     id: 'project',
     revision: revision,
@@ -237,5 +248,23 @@ void main() {
     await tester.pumpAndSettle();
     final brief = tester.widget<TextFormField>(find.byType(TextFormField));
     expect(brief.controller?.text, 'Saved smoke draft');
+  });
+
+  testWidgets('reports API recovery without losing the local draft', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final api = FakeApi(reachable: false);
+    await tester.pumpWidget(FMotionApp(api: api, auth: FakeAuth('test-token')));
+    await tester.pump();
+    expect(find.text('○ Reconnecting — draft kept locally'), findsOneWidget);
+    await tester.enterText(find.byType(TextFormField), 'Keep this draft');
+    api.reachable = true;
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(find.text('● Connected'), findsOneWidget);
+    final brief = tester.widget<TextFormField>(find.byType(TextFormField));
+    expect(brief.controller?.text, 'Keep this draft');
+    expect(api.reachabilityChecks, 2);
   });
 }
