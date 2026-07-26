@@ -86,6 +86,8 @@ model MediaAsset {
   project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   objectKey   String
   state       MediaState @default(admitted)
+  declaredType String
+  maxBytes     Int
   detected    Json?
   attribution Json?
 
@@ -125,4 +127,13 @@ model RenderResult {
   objectKey   String    @unique
   metadata    Json
   createdAt   DateTime  @default(now())
+}
+
+model WorkOutbox {
+  id           String    @id @default(uuid())
+  kind         String
+  dedupeKey    String    @unique
+  payload      Json
+  createdAt    DateTime  @default(now())
+  dispatchedAt DateTime?
 }

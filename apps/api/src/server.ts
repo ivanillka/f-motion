@@ -16,9 +16,24 @@ import {
   RenderService,
   type ProjectRepository
 } from "./domain.js";
+import {
+  allowedMediaTypes,
+  maximumMediaBytes,
+  type PexelsClient,
+  type PostgresMediaRepository,
+  type PrivateObjectStore
+} from "./media-storage.js";
+
+export interface MediaDependencies {
+  repository: PostgresMediaRepository;
+  store: PrivateObjectStore;
+  pexels: PexelsClient;
+  enqueueInspection(assetId: string, ownerId: string, projectId: string): Promise<void>;
+}
 
 interface AppBaseOptions {
   projects: ProjectRepository;
+  media?: MediaDependencies;
   ready?: () => boolean;
   workerOrigin?: string;
 }
@@ -87,6 +102,94 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         });
       }
       if (error instanceof NotFoundError) return response.status(404).json({ type: "not_found", message: error.message });
+      next(error);
+    }
+  });
+  app.post("/api/projects/:projectId/media/uploads", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      if (!await projects.get(ownerId, request.params.projectId)) {
+        return response.status(404).json({ type: "not_found", message: "not found" });
+      }
+      const declaredType = String(request.body?.content_type ?? "");
+      const maxBytes = Number(request.body?.bytes);
+      if (!allowedMediaTypes.has(declaredType)
+        || !Number.isInteger(maxBytes)
+        || maxBytes <= 0
+        || maxBytes > maximumMediaBytes) {
+        return response.status(422).json({ type: "validation", message: "upload declaration rejected" });
+      }
+      const id = randomUUID();
+      const objectKey = `projects/${request.params.projectId}/media/${id}`;
+      await options.media.repository.insert({
+        id,
+        ownerId,
+        projectId: request.params.projectId,
+        objectKey,
+        state: "admitted",
+        declaredType,
+        maxBytes
+      });
+      response.status(201).json({
+        asset_id: id,
+        method: "PUT",
+        upload_url: await options.media.store.signedPut(objectKey, declaredType),
+        expires_in_seconds: 300
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.post("/api/projects/:projectId/media/:assetId/complete", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      const asset = await options.media.repository.get(ownerId, request.params.projectId, request.params.assetId);
+      if (!asset) return response.status(404).json({ type: "not_found", message: "not found" });
+      await options.media.store.exists(asset.objectKey);
+      if (!await options.media.repository.markInspecting(ownerId, request.params.projectId, asset.id)) {
+        return response.status(409).json({ type: "conflict", message: "media is not admissible" });
+      }
+      await options.media.enqueueInspection(asset.id, ownerId, request.params.projectId);
+      response.status(202).json({ asset_id: asset.id, state: "inspecting" });
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.get("/api/pexels/search", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const query = String(request.query.q ?? "").trim();
+      if (!query) return response.status(422).json({ type: "validation", message: "query required" });
+      const results = await options.media.pexels.search(query);
+      response.json({
+        results: results.map(({ sourceUrl: _sourceUrl, contentType: _contentType, ...result }) => result)
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.post("/api/projects/:projectId/media/pexels", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      if (!await projects.get(ownerId, request.params.projectId)) {
+        return response.status(404).json({ type: "not_found", message: "not found" });
+      }
+      const query = String(request.body?.query ?? "").trim();
+      const pexelsId = Number(request.body?.pexels_id);
+      const selected = (await options.media.pexels.search(query)).find(({ id }) => id === pexelsId);
+      if (!selected) return response.status(404).json({ type: "not_found", message: "Pexels result unavailable" });
+      const asset = await options.media.pexels.copy(
+        ownerId,
+        request.params.projectId,
+        selected,
+        options.media.repository,
+        options.media.store
+      );
+      response.status(201).json({ asset });
+    } catch (error) {
       next(error);
     }
   });
