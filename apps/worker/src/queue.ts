@@ -55,8 +55,11 @@ export async function dispatchOutbox(pool: pg.Pool, boss: PgBoss): Promise<numbe
   return dispatched;
 }
 
-export async function startQueueRuntime(connectionString: string, handlers: QueueHandlers) {
-  const pool = new pg.Pool({ connectionString });
+export async function startQueueRuntime(
+  connectionString: string,
+  handlers: QueueHandlers,
+  pool = new pg.Pool({ connectionString })
+) {
   const boss = await new PgBoss({
     connectionString,
     maintenanceIntervalSeconds: 1,

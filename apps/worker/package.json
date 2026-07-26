@@ -2,10 +2,11 @@
   "name": "@f-motion/worker",
   "private": true,
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/start.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node test/run.mjs"
+    "test": "npm run build && node test/run.mjs",
+    "start": "node dist/start.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1095.0",
