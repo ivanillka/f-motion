@@ -150,6 +150,7 @@ class _WorkflowPageState extends State<WorkflowPage> {
   String pexelsQuery = '';
   List<JsonMap> pexelsResults = [];
   final cache = DraftCache();
+  final briefController = TextEditingController();
   StreamSubscription<AuthSessionState>? authSubscription;
 
   @override
@@ -158,7 +159,12 @@ class _WorkflowPageState extends State<WorkflowPage> {
     stage = widget.auth.isSignedIn ? 1 : 0;
     status = widget.configurationError ?? '';
     cache.read().then((value) {
-      if (mounted && value != null) setState(() => draft = value);
+      if (mounted && value != null) {
+        setState(() {
+          draft = value;
+          briefController.text = value;
+        });
+      }
     });
     authSubscription = widget.auth.authStateChanges.listen(
       _handleAuthState,
@@ -239,6 +245,7 @@ class _WorkflowPageState extends State<WorkflowPage> {
   @override
   void dispose() {
     authSubscription?.cancel();
+    briefController.dispose();
     super.dispose();
   }
 
@@ -458,7 +465,7 @@ class _WorkflowPageState extends State<WorkflowPage> {
           if (status.isNotEmpty)
             Semantics(liveRegion: true, child: Text(status)),
           TextFormField(
-            initialValue: draft,
+            controller: briefController,
             maxLength: 500,
             minLines: 4,
             maxLines: 8,

@@ -5,6 +5,7 @@ import 'package:f_motion/auth.dart';
 import 'package:f_motion/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeApi implements ApiGateway {
   ProjectSnapshot project([int revision = 0]) => ProjectSnapshot(
@@ -224,5 +225,17 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('access_token'), findsNothing);
+  });
+
+  testWidgets('restores a persisted brief into the visible editor', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({'draft': 'Saved smoke draft'});
+    await tester.pumpWidget(
+      FMotionApp(api: FakeApi(), auth: FakeAuth('test-token')),
+    );
+    await tester.pumpAndSettle();
+    final brief = tester.widget<TextFormField>(find.byType(TextFormField));
+    expect(brief.controller?.text, 'Saved smoke draft');
   });
 }
