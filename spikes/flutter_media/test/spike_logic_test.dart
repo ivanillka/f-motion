@@ -13,6 +13,11 @@ void main() {
     expect(safeFocal(-4), -1);
   });
 
+  test('stale scene initialization cannot replace the latest request', () {
+    expect(isCurrentSceneRequest(2, 3), isFalse);
+    expect(isCurrentSceneRequest(3, 3), isTrue);
+  });
+
   test('draft snapshot round trips', () {
     const draft = DraftSnapshot(
       sceneOrder: [1, 0],

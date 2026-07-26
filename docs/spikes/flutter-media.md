@@ -47,9 +47,12 @@ ffmpeg -f lavfi -i "color=c=#10a37f:s=360x640:d=3:r=30" \
 ```
 
 The original VP8/WebM fixtures were replaced after a Samsung SM-F721B physical
-device displayed decoder/texture corruption. The MP4 replacement still requires
-rebuild and visual confirmation on that device; this document does not infer the
-result.
+device displayed decoder/texture corruption. The replacement MP4 scenes played
+without those artifacts. That follow-up exposed a brief red Flutter error frame
+while switching scenes; the controller transition now detaches the old video
+before disposal, holds a neutral loading state, and rejects stale asynchronous
+initializations. The transition fix still requires visual confirmation on the
+phone.
 
 ## Reproduction
 
@@ -109,7 +112,9 @@ Physical evidence recorded on 2026-07-26:
 
 - The Samsung SM-F721B could open the editor and switch between both scenes.
 - VP8/WebM playback showed repeated dashed artifacts and a stale green strip.
-- The fixtures were replaced with H.264/AAC MP4 files and statically verified,
-  but the rebuilt app has not yet been visually checked on the phone.
+- The H.264/AAC MP4 replacements played without the WebM artifacts.
+- Switching between the corrected scenes briefly showed Flutter's red error UI.
+  The controller lifecycle fix passes static analysis and a stale-request
+  regression check, but has not yet been visually checked on the phone.
 - The upload transition regression test now proves failure at 40% and retry
   completion at 100%; the interactive flow still belongs in the approval run.

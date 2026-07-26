@@ -91,6 +91,11 @@ List<T> reorder<T>(List<T> items, int oldIndex, int newIndex) {
 
 double safeFocal(double value) => value.clamp(-1.0, 1.0);
 
+// ponytail: token comparison is the tested seam; upgrade to a widget test if
+// transition rendering gains animation or more controller states.
+bool isCurrentSceneRequest(int request, int latestRequest) =>
+    request == latestRequest;
+
 ({int tick, bool failed, bool complete}) nextUploadStep(
   int currentTick, {
   required bool failAtForty,
@@ -123,6 +128,7 @@ class _EditorPageState extends State<EditorPage> {
   bool _ducking = true;
   String _caption = 'Make motion feel effortless';
   VideoPlayerController? _video;
+  int _sceneRequest = 0;
   bool _initializing = true;
   String? _videoError;
   int _startupMs = 0;
@@ -142,7 +148,9 @@ class _EditorPageState extends State<EditorPage> {
     super.initState();
     _captionController.text = _caption;
     SchedulerBinding.instance.addTimingsCallback(_recordFrames);
-    _restore().then((_) => _openScene(_selected));
+    _restore().then((_) {
+      if (mounted) _openScene(_selected);
+    });
   }
 
   void _recordFrames(List<FrameTiming> timings) {
@@ -201,25 +209,44 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   Future<void> _openScene(int orderIndex) async {
+    if (!mounted) return;
+    final request = ++_sceneRequest;
+    final asset = _scenes[_sceneOrder[orderIndex]].asset;
+    final previous = _video;
     setState(() {
       _selected = orderIndex;
+      _video = null;
       _initializing = true;
       _videoError = null;
     });
-    await _video?.dispose();
-    final controller = VideoPlayerController.asset(
-      _scenes[_sceneOrder[orderIndex]].asset,
-    );
-    _video = controller;
+    await previous?.dispose();
+    if (!mounted || !isCurrentSceneRequest(request, _sceneRequest)) return;
+
+    final controller = VideoPlayerController.asset(asset);
     try {
       await controller.initialize();
       await controller.setLooping(true);
       await controller.setVolume(_ducking ? _musicVolume * .3 : _musicVolume);
-      _startupMs = widget.started.elapsedMilliseconds;
     } catch (error) {
-      _videoError = '$error';
+      await controller.dispose();
+      if (mounted && isCurrentSceneRequest(request, _sceneRequest)) {
+        setState(() {
+          _initializing = false;
+          _videoError = '$error';
+        });
+      }
+      return;
     }
-    if (mounted) setState(() => _initializing = false);
+
+    if (!mounted || !isCurrentSceneRequest(request, _sceneRequest)) {
+      await controller.dispose();
+      return;
+    }
+    setState(() {
+      _video = controller;
+      _initializing = false;
+      _startupMs = widget.started.elapsedMilliseconds;
+    });
   }
 
   void _timedInput(VoidCallback change) {
@@ -283,6 +310,7 @@ class _EditorPageState extends State<EditorPage> {
 
   @override
   void dispose() {
+    _sceneRequest++;
     SchedulerBinding.instance.removeTimingsCallback(_recordFrames);
     _uploadTimer?.cancel();
     _video?.dispose();
