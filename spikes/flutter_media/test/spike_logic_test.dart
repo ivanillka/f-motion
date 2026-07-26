@@ -61,6 +61,11 @@ void main() {
     expect(allowsAutomaticMotion(true), isFalse);
   });
 
+  test('startup measurement keeps the first successful initialization', () {
+    expect(recordFirstStartup(null, 393), 393);
+    expect(recordFirstStartup(393, 207761), 393);
+  });
+
   test('latency samples retain only the latest bounded window', () {
     final samples = LatencySamples(limit: 3);
     for (final value in [1, 2, 3, 4]) {

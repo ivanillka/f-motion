@@ -98,6 +98,11 @@ bool isCurrentSceneRequest(int request, int latestRequest) =>
 
 bool allowsAutomaticMotion(bool disableAnimations) => !disableAnimations;
 
+// ponytail: startup is one scalar for this spike; use a telemetry event if
+// production needs per-scene initialization timing.
+int recordFirstStartup(int? recordedMilliseconds, int elapsedMilliseconds) =>
+    recordedMilliseconds ?? elapsedMilliseconds;
+
 class LatencySamples {
   LatencySamples({this.limit = 20}) : assert(limit > 0);
 
@@ -163,7 +168,7 @@ class _EditorPageState extends State<EditorPage> {
   int _sceneRequest = 0;
   bool _initializing = true;
   String? _videoError;
-  int _startupMs = 0;
+  int? _startupMs;
   final _inputLatency = LatencySamples();
   final _seekLatency = LatencySamples();
   int _slowFrames = 0;
@@ -292,7 +297,10 @@ class _EditorPageState extends State<EditorPage> {
     setState(() {
       _video = controller;
       _initializing = false;
-      _startupMs = widget.started.elapsedMilliseconds;
+      _startupMs = recordFirstStartup(
+        _startupMs,
+        widget.started.elapsedMilliseconds,
+      );
     });
   }
 
@@ -485,7 +493,9 @@ class _EditorPageState extends State<EditorPage> {
             runSpacing: 4,
             alignment: WrapAlignment.center,
             children: [
-              Text('startup ${_startupMs}ms'),
+              Text(
+                _startupMs == null ? 'startup —' : 'startup ${_startupMs}ms',
+              ),
               Text(_latencyLabel('input', _inputLatency)),
               Text(_latencyLabel('seek', _seekLatency)),
               Text('slow frames $_slowFrames/$_frameCount'),

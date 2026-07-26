@@ -1,10 +1,11 @@
 # Flutter media feasibility spike
 
-Status: **STOPPED pending repeat physical-device validation and complete
-measurements**. The initial static run had no `adb`, Android SDK,
-Chrome/Chromium, or connected Android device. A later Samsung SM-F721B run
-exposed the fixture issue documented below; no Android or browser feasibility
-result is inferred yet.
+Status: **STOPPED pending stronger Purple Y-fixture confirmation and an
+interactive desktop-browser approval run**. A Samsung SM-F721B profile run
+passed the recorded Android thresholds with the prior Purple fixture. The
+replacement fixture deliberately increases vertical travel and must still be
+visually confirmed on that phone. Headless browser smoke evidence is not an
+interactive desktop approval.
 
 ## Scope proven in code
 
@@ -22,7 +23,8 @@ explicit Play control and runs once rather than looping.
 
 Instrumentation shown in the UI records:
 
-- startup-to-first-video-initialization elapsed time;
+- startup-to-first-successful-video-initialization elapsed time, recorded once
+  and retained across later scene switches;
 - input-to-next-frame latency over the latest 20 measured interactions;
 - seek completion latency over the latest 20 completed seeks;
 - frames over 16 ms versus total reported frames;
@@ -47,13 +49,13 @@ Both fixtures are original synthetic output (solid colors, moving boxes, and
 sine tones) generated for this spike and released under CC0 1.0:
 
 ```sh
-ffmpeg -f lavfi -i "color=c=#ef4444:s=360x120:d=3:r=30" \
+ffmpeg -f lavfi -i "color=c=#ef4444:s=360x360:d=3:r=30" \
   -f lavfi -i "color=c=#6546e5:s=360x560:d=3:r=30" \
-  -f lavfi -i "color=c=#2563eb:s=360x120:d=3:r=30" \
+  -f lavfi -i "color=c=#2563eb:s=360x360:d=3:r=30" \
   -f lavfi -i "sine=frequency=440:duration=3" \
   -filter_complex \
-  "[0:v][1:v][2:v]vstack=inputs=3,drawbox=x=130:y=20+220*t:w=100:h=100:color=white@0.9:t=fill[v]" \
-  -map "[v]" -map 3:a -c:v libopenh264 -b:v 400k -pix_fmt yuv420p \
+  "[0:v][1:v][2:v]vstack=inputs=3,drawbox=x=120:y=40+360*t:w=120:h=120:color=white@0.9:t=fill[v]" \
+  -map "[v]" -map 3:a -c:v libopenh264 -b:v 600k -pix_fmt yuv420p \
   -c:a aac -movflags +faststart -shortest scene_one.mp4
 ffmpeg -f lavfi -i "color=c=#ef4444:s=320x540:d=3:r=30" \
   -f lavfi -i "color=c=#10a37f:s=320x540:d=3:r=30" \
@@ -65,11 +67,13 @@ ffmpeg -f lavfi -i "color=c=#ef4444:s=320x540:d=3:r=30" \
   -c:a aac -movflags +faststart -shortest scene_two.mp4
 ```
 
-`scene_one.mp4` is a 360x800 portrait fixture with red top, purple center, and
-blue bottom landmarks plus a vertically moving white box. `BoxFit.cover` crops
-it into the 9:16 preview, so moving focal Y from -1 through 0 to 1 visibly
-selects the top, center, and bottom region. Focal X correctly has no visible
-range for this narrower-than-9:16 fixture. `scene_two.mp4` is a 960x540
+`scene_one.mp4` is a 360x1280 portrait fixture with unmistakable red top,
+purple center, and blue bottom landmarks plus a vertically moving white box.
+Its even dimensions and YUV 4:2:0 pixel format are codec-safe. `BoxFit.cover`
+crops it into the 9:16 preview, so moving focal Y from -1 through 0 to 1
+materially selects the top, center, and bottom region. This taller replacement
+increases travel without adding editor zoom behavior. Focal X correctly has no
+visible range for this narrower-than-9:16 fixture. `scene_two.mp4` is a 960x540
 landscape fixture with red, green, and blue horizontal landmarks. Moving focal
 X from -1 through 0 to 1 visibly selects its left, center, and right region,
 while focal Y correctly has no visible range. Together the fixtures prove both
@@ -77,7 +81,7 @@ focal axes without introducing production crop/zoom behavior.
 
 Fixture SHA-256:
 
-- `scene_one.mp4`: `9d1b157e114c5623f3c06398d6d5a5d593c6b6bc64dac7be7a5f83010d012b1b`
+- `scene_one.mp4`: `efd8861dd0b91c156db8e407901ae282b752b289fd1fa17882828647873c09ff`
 - `scene_two.mp4`: `b3cd3803415498614b5b820ce3f98bba35935dcb8d3bd835072a95661096f429`
 
 The original VP8/WebM fixtures were replaced after a Samsung SM-F721B physical
@@ -153,16 +157,43 @@ Android feasibility approval.
 The smoke images are `spikes/flutter_media/browser-smoke.png` and
 `spikes/flutter_media/browser-mobile-smoke.png`.
 
-Physical evidence recorded on 2026-07-26:
+Physical profile evidence recorded on 2026-07-26 on a Samsung SM-F721B:
 
-- The Samsung SM-F721B could open the editor and switch between both scenes.
-- VP8/WebM playback showed repeated dashed artifacts and a stale green strip.
-- The H.264/AAC MP4 replacements played without the WebM artifacts.
-- Switching between the corrected scenes briefly showed Flutter's red error UI.
-  The controller lifecycle fix passes static analysis and a stale-request
-  regression check, but has not yet been visually checked on the phone.
-- The upload transition regression test now proves failure at 40% and retry
-  completion at 100%; the interactive flow still belongs in the approval run.
-- The overlay now retains bounded 20-sample input and seek windows and reports
-  deterministic median/p95 values. The updated profile APK builds successfully;
-  installation and the final physical 20-action/20-seek run remain pending.
+- Android activity cold launches were 558 ms, 527 ms, and 511 ms; median
+  527 ms, passing the 3-second threshold.
+- The initial app overlay reported 393 ms from process start to the first
+  successful video initialization. A later scene switch incorrectly replaced
+  that value with 207761 ms. The instrumentation now retains the first value,
+  and a focused regression check covers that rule; the corrected display still
+  requires confirmation on the next phone run.
+- Across 20 measured interactions, input latency median was 6.8 ms and p95 was
+  11.6 ms, passing the 100 ms p95 threshold.
+- Across 20 completed seeks, seek latency median was 1.7 ms and p95 was 3.7 ms,
+  passing the 250 ms p95 threshold.
+- The five-minute editing run recorded 53 slow frames out of 5991 (0.88%),
+  passing the 5% threshold.
+- Peak overlay RSS was 235.3 MB. `dumpsys meminfo` recorded PSS 228263 KB and
+  RSS 315496 KB, passing the 500 MB PSS threshold.
+- The H.264/AAC scenes played cleanly after VP8/WebM had produced decoder
+  artifacts. Rapid switching was visually clean after the controller lifecycle
+  fix, with no later red screens or crashes.
+- Green Focal X and the prior 360x800 Purple Focal Y fixture both worked on the
+  device. The user found Purple Y travel too gentle. The new 360x1280 Purple
+  fixture is codec-verified and intentionally stronger, but its visual behavior
+  remains pending Samsung confirmation.
+- The user confirmed the mock upload visibly failed at 40%, retried to
+  completion, and the saved caption, selected scene, and focal values restored
+  after terminating and reopening the app.
+
+This Android evidence does not approve the whole spike. The stronger Purple
+fixture and corrected frozen startup display need a brief repeat device check,
+and the ordinary interactive desktop-browser run remains outstanding.
+
+Final-correction verification on 2026-07-26:
+
+- `ffprobe`: Purple video is H.264 Baseline, 360x1280, YUV420P, 3.000 seconds;
+  audio is AAC-LC, 44.1 kHz mono, 3.000 seconds.
+- `flutter analyze`: pass, no issues.
+- `flutter test`: pass, 11/11 checks.
+- `flutter build web`: pass, including the Wasm dry run.
+- `flutter build apk --profile`: pass; output APK is 86.8 MB.
