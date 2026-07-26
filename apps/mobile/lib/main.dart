@@ -1,9 +1,28 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
+import 'auth.dart';
 
-void main() => runApp(const FMotionApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    final auth = await SupabaseAuthGateway.initialize();
+    runApp(FMotionApp(auth: auth));
+  } on AuthConfigurationException {
+    runApp(
+      const FMotionApp(configurationError: 'Authentication is not configured.'),
+    );
+  } catch (_) {
+    runApp(
+      const FMotionApp(
+        configurationError: 'Authentication could not start. Try again.',
+      ),
+    );
+  }
+}
 
 class TokenStorage {
   TokenStorage({
@@ -13,10 +32,12 @@ class TokenStorage {
   }) : _write = writeToken ?? _secureWrite,
        _read = readToken ?? _secureRead,
        _clear = clearToken ?? _secureClear;
+
   static const _storage = FlutterSecureStorage();
   final Future<void> Function(String) _write;
   final Future<String?> Function() _read;
   final Future<void> Function() _clear;
+
   static Future<void> _secureWrite(String token) =>
       _storage.write(key: 'access_token', value: token);
   static Future<String?> _secureRead() => _storage.read(key: 'access_token');
@@ -39,13 +60,15 @@ class ContractFixture {
 }
 
 class FMotionApp extends StatelessWidget {
-  const FMotionApp({super.key, this.api, this.tokenStorage});
+  const FMotionApp({super.key, this.api, this.auth, this.configurationError});
 
   final ApiGateway? api;
-  final TokenStorage? tokenStorage;
+  final AuthGateway? auth;
+  final String? configurationError;
 
   @override
   Widget build(BuildContext context) {
+    final effectiveAuth = auth ?? const _UnavailableAuthGateway();
     return MaterialApp(
       title: 'F-Motion',
       debugShowCheckedModeBanner: false,
@@ -60,29 +83,51 @@ class FMotionApp extends StatelessWidget {
             HttpApiGateway(
               baseUri: Uri.parse(
                 const String.fromEnvironment(
-                  'API_ORIGIN',
+                  'FMOTION_API_ORIGIN',
                   defaultValue: 'http://10.0.2.2:3000',
                 ),
               ),
-              accessToken: (tokenStorage ?? TokenStorage()).read,
+              accessToken: () async => effectiveAuth.accessToken,
             ),
-        tokenStorage: tokenStorage ?? TokenStorage(),
-        testIdentity: api != null,
+        auth: effectiveAuth,
+        configurationError: configurationError,
       ),
     );
   }
 }
 
+class _UnavailableAuthGateway implements AuthGateway {
+  const _UnavailableAuthGateway();
+
+  @override
+  String? get accessToken => null;
+
+  @override
+  Stream<AuthSessionState> get authStateChanges => const Stream.empty();
+
+  @override
+  bool get isSignedIn => false;
+
+  @override
+  Future<void> sendMagicLink(String email) async {}
+
+  @override
+  Future<void> signInWithGoogle() async {}
+
+  @override
+  Future<void> signOut() async {}
+}
+
 class WorkflowPage extends StatefulWidget {
   const WorkflowPage({
     required this.api,
-    required this.tokenStorage,
-    required this.testIdentity,
+    required this.auth,
+    this.configurationError,
     super.key,
   });
   final ApiGateway api;
-  final TokenStorage tokenStorage;
-  final bool testIdentity;
+  final AuthGateway auth;
+  final String? configurationError;
   @override
   State<WorkflowPage> createState() => _WorkflowPageState();
 }
@@ -93,6 +138,8 @@ class _WorkflowPageState extends State<WorkflowPage> {
   String draft = '';
   String concept = '';
   String status = '';
+  String email = '';
+  bool sendingAuth = false;
   String? lastEventId;
   ProjectSnapshot? project;
   List<JsonMap> concepts = [];
@@ -103,30 +150,96 @@ class _WorkflowPageState extends State<WorkflowPage> {
   String pexelsQuery = '';
   List<JsonMap> pexelsResults = [];
   final cache = DraftCache();
+  StreamSubscription<AuthSessionState>? authSubscription;
 
   @override
   void initState() {
     super.initState();
+    stage = widget.auth.isSignedIn ? 1 : 0;
+    status = widget.configurationError ?? '';
     cache.read().then((value) {
       if (mounted && value != null) setState(() => draft = value);
     });
-    widget.tokenStorage.read().then((value) {
-      if (mounted && value != null && value.isNotEmpty) {
-        setState(() => stage = 1);
-      }
+    authSubscription = widget.auth.authStateChanges.listen(
+      _handleAuthState,
+      onError: (_) {
+        if (mounted) {
+          setState(() => status = 'Authentication callback failed. Try again.');
+        }
+      },
+    );
+  }
+
+  void _handleAuthState(AuthSessionState state) {
+    if (!mounted) return;
+    setState(() {
+      stage = state.isSignedIn ? 1 : 0;
+      status = state.isSignedIn ? 'Signed in' : 'Signed out';
+      sendingAuth = false;
     });
   }
 
-  Future<void> _testSignIn() async {
-    if (!widget.testIdentity) {
-      setState(
-        () => status =
-            'Open the Supabase magic link or Google sign-in callback to continue.',
-      );
+  bool get _emailIsValid =>
+      RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email.trim());
+
+  Future<void> _sendMagicLink() async {
+    if (widget.configurationError != null) return;
+    if (!_emailIsValid) {
+      setState(() => status = 'Enter a valid email address.');
       return;
     }
-    await widget.tokenStorage.write('test-token');
-    if (mounted) setState(() => stage = 1);
+    setState(() {
+      sendingAuth = true;
+      status = 'Sending magic link…';
+    });
+    try {
+      await widget.auth.sendMagicLink(email.trim());
+      if (mounted) {
+        setState(() {
+          sendingAuth = false;
+          status = 'Check your inbox to continue.';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          sendingAuth = false;
+          status = 'Could not send the magic link. Try again.';
+        });
+      }
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() {
+      sendingAuth = true;
+      status = 'Opening Google sign-in…';
+    });
+    try {
+      await widget.auth.signInWithGoogle();
+      if (mounted) setState(() => sendingAuth = false);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          sendingAuth = false;
+          status = 'Google sign-in failed. Try again.';
+        });
+      }
+    }
+  }
+
+  Future<void> _signOut() async {
+    try {
+      await widget.auth.signOut();
+    } catch (_) {
+      if (mounted) setState(() => status = 'Sign-out failed. Try again.');
+    }
+  }
+
+  @override
+  void dispose() {
+    authSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _createProject() async {
@@ -259,6 +372,8 @@ class _WorkflowPageState extends State<WorkflowPage> {
             padding: const EdgeInsets.all(16),
             child: Semantics(label: 'Connected', child: Text('● Connected')),
           ),
+          if (stage > 0)
+            TextButton(onPressed: _signOut, child: const Text('Sign out')),
         ],
       ),
       body: SafeArea(
@@ -300,13 +415,31 @@ class _WorkflowPageState extends State<WorkflowPage> {
             style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 24),
+          TextFormField(
+            key: const Key('auth-email'),
+            autofillHints: const [AutofillHints.email],
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.done,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              labelText: 'Email',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (value) => email = value,
+            onFieldSubmitted: (_) => _sendMagicLink(),
+          ),
+          const SizedBox(height: 12),
           FilledButton(
-            onPressed: _testSignIn,
+            onPressed: widget.configurationError != null || sendingAuth
+                ? null
+                : _sendMagicLink,
             child: const Text('Email me a magic link'),
           ),
           const SizedBox(height: 12),
           OutlinedButton(
-            onPressed: _testSignIn,
+            onPressed: widget.configurationError != null || sendingAuth
+                ? null
+                : _signInWithGoogle,
             child: const Text('Continue with Google'),
           ),
           if (status.isNotEmpty)
@@ -322,6 +455,8 @@ class _WorkflowPageState extends State<WorkflowPage> {
             style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 20),
+          if (status.isNotEmpty)
+            Semantics(liveRegion: true, child: Text(status)),
           TextFormField(
             initialValue: draft,
             maxLength: 500,

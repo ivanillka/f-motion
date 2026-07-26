@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:f_motion/api.dart';
+import 'package:f_motion/auth.dart';
 import 'package:f_motion/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -58,30 +61,66 @@ class FakeApi implements ApiGateway {
   Future<List<JsonMap>> searchPexels(String query) async => [];
 }
 
-TokenStorage memoryTokenStorage() {
-  String? token;
-  return TokenStorage(
-    writeToken: (value) async => token = value,
-    readToken: () async => token,
-    clearToken: () async => token = null,
-  );
+class FakeAuth implements AuthGateway {
+  FakeAuth([this._accessToken]);
+
+  final changes = StreamController<AuthSessionState>.broadcast(sync: true);
+  String? _accessToken;
+  int magicLinkRequests = 0;
+  String? submittedEmail;
+
+  @override
+  String? get accessToken => _accessToken;
+
+  @override
+  Stream<AuthSessionState> get authStateChanges => changes.stream;
+
+  @override
+  bool get isSignedIn => _accessToken != null;
+
+  @override
+  Future<void> sendMagicLink(String email) async {
+    magicLinkRequests += 1;
+    submittedEmail = email;
+  }
+
+  @override
+  Future<void> signInWithGoogle() async {}
+
+  @override
+  Future<void> signOut() async {
+    _accessToken = null;
+    changes.add(const AuthSessionState(isSignedIn: false));
+  }
+
+  void signIn(String token) {
+    _accessToken = token;
+    changes.add(const AuthSessionState(isSignedIn: true));
+  }
+
+  void callbackError(Object error) => changes.addError(error);
 }
 
 void main() {
   testWidgets('sign-in and progressive brief are reachable', (tester) async {
-    await tester.pumpWidget(
-      FMotionApp(api: FakeApi(), tokenStorage: memoryTokenStorage()),
-    );
+    final auth = FakeAuth();
+    await tester.pumpWidget(FMotionApp(api: FakeApi(), auth: auth));
     expect(find.text('Email me a magic link'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('auth-email')),
+      'person@example.com',
+    );
     await tester.tap(find.text('Email me a magic link'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    expect(find.text('Check your inbox to continue.'), findsOneWidget);
+    expect(auth.submittedEmail, 'person@example.com');
+    auth.signIn('fresh-token');
+    await tester.pump();
     expect(find.text('What should this video achieve?'), findsOneWidget);
   });
 
   testWidgets('uses safe area and bottom navigation', (tester) async {
-    await tester.pumpWidget(
-      FMotionApp(api: FakeApi(), tokenStorage: memoryTokenStorage()),
-    );
+    await tester.pumpWidget(FMotionApp(api: FakeApi(), auth: FakeAuth()));
     expect(find.byKey(const Key('workflow-safe-area')), findsOneWidget);
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.text('Project'), findsOneWidget);
@@ -96,10 +135,8 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      FMotionApp(api: FakeApi(), tokenStorage: memoryTokenStorage()),
+      FMotionApp(api: FakeApi(), auth: FakeAuth('test-token')),
     );
-    await tester.tap(find.text('Email me a magic link'));
-    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField), 'Launch a product');
     await tester.pump();
     final reviewBrief = find.widgetWithText(FilledButton, 'Review brief');
@@ -119,5 +156,73 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('invalid email cannot send', (tester) async {
+    final auth = FakeAuth();
+    await tester.pumpWidget(FMotionApp(api: FakeApi(), auth: auth));
+    await tester.enterText(find.byKey(const Key('auth-email')), 'not-an-email');
+    await tester.tap(find.text('Email me a magic link'));
+    await tester.pump();
+    expect(auth.magicLinkRequests, 0);
+    expect(find.text('Enter a valid email address.'), findsOneWidget);
+  });
+
+  testWidgets('missing configuration is visible and fails closed', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const FMotionApp(configurationError: 'Authentication is not configured.'),
+    );
+    expect(find.text('Authentication is not configured.'), findsOneWidget);
+    final magicLink = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Email me a magic link'),
+    );
+    expect(magicLink.onPressed, isNull);
+    await tester.enterText(
+      find.byKey(const Key('auth-email')),
+      'person@example.com',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(find.text('Authentication is not configured.'), findsOneWidget);
+  });
+
+  testWidgets(
+    'session arrival advances and supplies the current bearer token',
+    (tester) async {
+      final auth = FakeAuth();
+      await tester.pumpWidget(FMotionApp(auth: auth));
+      auth.signIn('refreshed-token');
+      await tester.pump();
+      expect(find.text('What should this video achieve?'), findsOneWidget);
+      final workflow = tester.widget<WorkflowPage>(find.byType(WorkflowPage));
+      final api = workflow.api as HttpApiGateway;
+      expect(await api.accessToken(), 'refreshed-token');
+    },
+  );
+
+  testWidgets('sign-out returns to auth', (tester) async {
+    await tester.pumpWidget(
+      FMotionApp(api: FakeApi(), auth: FakeAuth('test-token')),
+    );
+    await tester.tap(find.text('Sign out'));
+    await tester.pump();
+    expect(find.byKey(const Key('auth-email')), findsOneWidget);
+    expect(find.text('Signed out'), findsOneWidget);
+  });
+
+  testWidgets('callback errors remain visible without leaking details', (
+    tester,
+  ) async {
+    final auth = FakeAuth();
+    await tester.pumpWidget(FMotionApp(api: FakeApi(), auth: auth));
+    auth.callbackError(StateError('callback#access_token=private'));
+    await tester.pump();
+    expect(
+      find.text('Authentication callback failed. Try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('access_token'), findsNothing);
   });
 }
