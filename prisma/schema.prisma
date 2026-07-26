@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountState {
+  active
+  suspended
+  deletion_pending
+}
+
+enum MediaState {
+  admitted
+  inspecting
+  ready
+  quarantined
+  rejected
+}
+
+enum RenderState {
+  queued
+  running
+  cancelled
+  complete
+  failed
+}
+
+model User {
+  id                    String       @id
+  state                 AccountState @default(active)
+  acceptedPolicyVersion String?
+  projects              Project[]
+  media                  MediaAsset[]
+  jobs                   RenderJob[]
+}
+
+model Project {
+  id                String           @id @default(uuid())
+  ownerId           String
+  owner             User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  revision          Int              @default(0)
+  brief             Json
+  concepts          Concept[]
+  scenes            Scene[]
+  media             MediaAsset[]
+  commands          CommandReceipt[]
+  jobs              RenderJob[]
+
+  @@unique([ownerId, id])
+  @@index([ownerId])
+}
+
+model Concept {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  position  Int
+  title     String
+  treatment String
+  selected  Boolean @default(false)
+
+  @@unique([projectId, position])
+}
+
+model Scene {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  position  Int
+  payload   Json
+
+  @@unique([projectId, position])
+}
+
+model MediaAsset {
+  id          String     @id @default(uuid())
+  ownerId     String
+  owner       User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  objectKey   String
+  state       MediaState @default(admitted)
+  detected    Json?
+  attribution Json?
+
+  @@unique([ownerId, projectId, id])
+  @@unique([objectKey])
+}
+
+model CommandReceipt {
+  id          String   @id @default(uuid())
+  ownerId     String
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  commandId   String
+  baseRevision Int
+  result      Json
+
+  @@unique([ownerId, projectId, commandId])
+}
+
+model RenderJob {
+  id          String      @id @default(uuid())
+  ownerId     String
+  owner       User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  revision    Int
+  state       RenderState @default(queued)
+  result      RenderResult?
+
+  @@unique([ownerId, projectId, id])
+}
+
+model RenderResult {
+  id          String    @id @default(uuid())
+  jobId       String    @unique
+  job         RenderJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  objectKey   String    @unique
+  metadata    Json
+  createdAt   DateTime  @default(now())
+}
