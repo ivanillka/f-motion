@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
-import { unlink } from "node:fs/promises";
-import type { ProjectSnapshot } from "@f-motion/contracts";
+import { unlink, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import type { ProjectSnapshot, Scene } from "@f-motion/contracts";
 import { coverCropFilter, renderPlan } from "@f-motion/reel-engine";
 
 export const renderPhases = ["queued", "preparing", "rendering", "uploading", "complete"] as const;
@@ -113,56 +114,120 @@ function escapedText(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll(":", "\\:").replaceAll("'", "\\'");
 }
 
-function overlayFilters(plan: ReturnType<typeof renderPlan>): string[] {
-  const caption = plan.scenes[0]?.caption.trim();
-  const filters = [
-    "drawbox=x=24:y=ih-100:w=iw-48:h=64:color=black@0.65:t=fill",
-    `drawtext=text='${escapedText(plan.watermark)}':x=(w-text_w)/2:y=h-78:fontcolor=white:fontsize=28`
-  ];
-  if (caption) {
-    filters.unshift(`drawtext=text='${escapedText(caption)}':x=(w-text_w)/2:y=h-180:fontcolor=white:fontsize=36`);
-  }
-  return filters;
+function vfArgs(filters: string[]): string[] {
+  return filters.length ? ["-vf", filters.join(",")] : [];
 }
 
-export function ffmpegArguments(
-  snapshot: ProjectSnapshot,
-  outputPath: string,
-  mediaInputs: Record<string, MediaInput> = {}
-): string[] {
-  const plan = renderPlan(snapshot);
-  const scene = plan.scenes[0];
-  const duration = Math.max(0.2, plan.scenes.reduce((sum, item) => sum + item.duration_ms, 0) / 1000);
-  const media = scene?.media_id ? mediaInputs[scene.media_id] : undefined;
-  const encode = [
-    "-metadata", `comment=F-Motion project ${snapshot.id} revision ${snapshot.revision}`,
-    "-c:v", "mpeg4",
-    "-pix_fmt", "yuv420p",
-    "-movflags", "+faststart",
-    "-an",
-    outputPath
-  ];
+function captionFilter(scene: Scene): string[] {
+  const caption = scene.caption.trim();
+  return caption
+    ? [`drawtext=text='${escapedText(caption)}':x=(w-text_w)/2:y=h-180:fontcolor=white:fontsize=36`]
+    : [];
+}
 
-  // ponytail: first scene with media only. Ceiling: single input. Upgrade: multi-scene concat.
+function watermarkFilters(watermark: string): string[] {
+  return [
+    "drawbox=x=24:y=ih-100:w=iw-48:h=64:color=black@0.65:t=fill",
+    `drawtext=text='${escapedText(watermark)}':x=(w-text_w)/2:y=h-78:fontcolor=white:fontsize=28`
+  ];
+}
+
+const clipEncode = ["-c:v", "mpeg4", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an"];
+
+// Fallback for renderPreview() called without a snapshot (local demo fixture only).
+const emptyScene: Scene = {
+  id: "empty",
+  order: 0,
+  caption: "",
+  duration_ms: 200,
+  focal_x: 0.5,
+  focal_y: 0.5,
+  motion: "none",
+  audio_level: 1,
+  ducking: false
+};
+
+export function sceneClipArguments(
+  plan: ReturnType<typeof renderPlan>,
+  scene: Scene,
+  media: MediaInput | undefined,
+  clipPath: string
+): string[] {
+  const duration = Math.max(0.2, scene.duration_ms / 1000);
   if (media) {
     const cover = [
-      ...coverCropFilter(plan.width, plan.height, scene!.focal_x, scene!.focal_y),
-      ...overlayFilters(plan)
+      ...coverCropFilter(plan.width, plan.height, scene.focal_x, scene.focal_y),
+      ...captionFilter(scene)
     ];
     const still = media.type === "image/jpeg" || media.type === "image/png";
     const input = still
       ? ["-loop", "1", "-framerate", "30", "-t", String(duration), "-i", media.path]
       : ["-t", String(duration), "-i", media.path];
-    return ["-y", ...input, "-vf", cover.join(","), ...encode];
+    return ["-y", ...input, ...vfArgs(cover), ...clipEncode, clipPath];
   }
-
   return [
     "-y",
     "-f", "lavfi",
     "-i", `color=c=#202027:s=${plan.width}x${plan.height}:d=${duration}:r=30`,
-    "-vf", overlayFilters(plan).join(","),
-    ...encode
+    ...vfArgs(captionFilter(scene)),
+    ...clipEncode,
+    clipPath
   ];
+}
+
+export function concatArguments(
+  listPath: string,
+  plan: ReturnType<typeof renderPlan>,
+  snapshot: ProjectSnapshot,
+  outputPath: string
+): string[] {
+  return [
+    "-y",
+    "-f", "concat",
+    "-safe", "0",
+    "-i", listPath,
+    ...vfArgs(watermarkFilters(plan.watermark)),
+    "-metadata", `comment=F-Motion project ${snapshot.id} revision ${snapshot.revision}`,
+    ...clipEncode,
+    outputPath
+  ];
+}
+
+export interface SceneClip {
+  scene: Scene;
+  path: string;
+  args: string[];
+}
+
+export interface RenderJob {
+  clips: SceneClip[];
+  listPath: string;
+  listContents: string;
+  concatArgs: string[];
+}
+
+function concatListLine(clipPath: string): string {
+  return `file '${clipPath.replaceAll("'", "'\\''")}'\n`;
+}
+
+export function buildRenderJob(
+  snapshot: ProjectSnapshot,
+  outputPath: string,
+  mediaInputs: Record<string, MediaInput>,
+  tempDir: string
+): RenderJob {
+  const plan = renderPlan(snapshot);
+  const scenes = plan.scenes.length
+    ? [...plan.scenes].sort((a, b) => a.order - b.order)
+    : [emptyScene];
+  const clips = scenes.map((scene, index) => {
+    const media = scene.media_id ? mediaInputs[scene.media_id] : undefined;
+    const path = join(tempDir, `scene-${index}.mp4`);
+    return { scene, path, args: sceneClipArguments(plan, scene, media, path) };
+  });
+  const listPath = join(tempDir, "concat-list.txt");
+  const listContents = clips.map((clip) => concatListLine(clip.path)).join("");
+  return { clips, listPath, listContents, concatArgs: concatArguments(listPath, plan, snapshot, outputPath) };
 }
 
 export async function renderPreview(
@@ -179,11 +244,21 @@ export async function renderPreview(
     brief: { purpose: "Fixture", audience: "Fixture", tone: "Neutral" },
     scenes: []
   };
+  const job = buildRenderJob(snapshot ?? fallback, outputPath, mediaInputs, dirname(outputPath));
   try {
-    await runFfmpeg(ffmpegArguments(snapshot ?? fallback, outputPath, mediaInputs), signal);
+    for (const clip of job.clips) {
+      await runFfmpeg(clip.args, signal);
+    }
+    await writeFile(job.listPath, job.listContents);
+    await runFfmpeg(job.concatArgs, signal);
   } catch (error) {
     await unlink(outputPath).catch(() => undefined);
     throw error;
+  } finally {
+    await Promise.all([
+      ...job.clips.map((clip) => unlink(clip.path).catch(() => undefined)),
+      unlink(job.listPath).catch(() => undefined)
+    ]);
   }
 }
 
