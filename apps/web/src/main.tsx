@@ -106,8 +106,10 @@ function App() {
     const scene = project?.scenes[0];
     if (!project || !scene) return;
     setStatus("Saving…");
+    // Clear caption_cues on caption edits so the server re-derives the timed
+    // schedule from the new caption instead of burning a stale one.
     const updated = await api.command(project.id, project.revision, "update_scene", {
-      scene: { ...scene, caption: draft }
+      scene: { ...scene, caption: draft, caption_cues: undefined }
     });
     setProject(updated);
     setStatus("✓ All changes saved");

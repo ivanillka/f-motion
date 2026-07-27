@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { conceptsFor, applyCommand, renderPlan } from "../dist/index.js";
+import { conceptsFor, applyCommand, renderPlan, cuesForScene, validateCues } from "../dist/index.js";
 
 const snapshot = {
   schema_version: 1, id: "p1", owner_id: "u1", revision: 0,
@@ -35,3 +35,57 @@ test("update_scene rejects captions over 180 characters", () => assert.throws(
   /caption exceeds/
 ));
 test("render plan is 720p and watermarked", () => assert.deepEqual(renderPlan(snapshot).width, 720));
+
+test("a short single-sentence caption derives one cue spanning the full duration", () => {
+  const cues = cuesForScene(snapshot.scenes[0]);
+  assert.deepEqual(cues, [{ text: "Hello", start_ms: 0, end_ms: 1000 }]);
+});
+test("cue derivation is deterministic for the same caption and duration", () => {
+  const scene = { ...snapshot.scenes[0], caption: "First part. Second part continues here." };
+  assert.deepEqual(cuesForScene(scene), cuesForScene(scene));
+});
+test("a multi-sentence caption derives contiguous, non-overlapping cues within the duration", () => {
+  const scene = { ...snapshot.scenes[0], caption: "First part. Second part continues here.", duration_ms: 4000 };
+  const cues = cuesForScene(scene);
+  assert.ok(cues.length >= 2);
+  assert.equal(cues[0].start_ms, 0);
+  assert.equal(cues[cues.length - 1].end_ms, 4000);
+  for (let i = 0; i < cues.length; i++) {
+    assert.ok(cues[i].start_ms < cues[i].end_ms, "cue start precedes its end");
+    assert.ok(cues[i].start_ms >= 0 && cues[i].end_ms <= 4000, "cue stays within scene duration");
+    if (i > 0) assert.equal(cues[i].start_ms, cues[i - 1].end_ms, "cues are contiguous");
+  }
+});
+test("explicit caption_cues are validated and returned unchanged", () => {
+  const explicit = [{ text: "Custom one", start_ms: 0, end_ms: 400 }, { text: "Custom two", start_ms: 400, end_ms: 1000 }];
+  const scene = { ...snapshot.scenes[0], caption_cues: explicit };
+  assert.deepEqual(cuesForScene(scene), explicit);
+});
+test("overlapping explicit cues are rejected", () => assert.throws(
+  () => validateCues([{ text: "a", start_ms: 0, end_ms: 600 }, { text: "b", start_ms: 400, end_ms: 900 }], 1000),
+  /overlapping/
+));
+test("out-of-range explicit cues are rejected", () => assert.throws(
+  () => validateCues([{ text: "a", start_ms: -1, end_ms: 600 }], 1000),
+  /invalid caption cue range/
+));
+test("cues beyond scene duration are rejected", () => assert.throws(
+  () => validateCues([{ text: "a", start_ms: 0, end_ms: 1200 }], 1000),
+  /invalid caption cue range/
+));
+test("inverted cue ranges (start >= end) are rejected", () => assert.throws(
+  () => validateCues([{ text: "a", start_ms: 500, end_ms: 500 }], 1000),
+  /invalid caption cue range/
+));
+test("update_scene rejects overlapping caption_cues", () => assert.throws(
+  () => applyCommand(snapshot, {
+    command_id: "c7", project_id: "p1", base_revision: 0, client_timestamp: "", kind: "update_scene",
+    payload: { scene: { ...snapshot.scenes[0], caption_cues: [{ text: "a", start_ms: 0, end_ms: 600 }, { text: "b", start_ms: 400, end_ms: 900 }] } }
+  }),
+  /overlapping/
+));
+test("render plan resolves each scene's cue list (derived or explicit)", () => {
+  const plan = renderPlan(snapshot);
+  assert.ok(Array.isArray(plan.scenes[0].caption_cues));
+  assert.ok(plan.scenes[0].caption_cues.length > 0);
+});

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { unlink, writeFile } from "node:fs/promises";
-import type { ProjectSnapshot } from "@f-motion/contracts";
+import type { CaptionCue, ProjectSnapshot } from "@f-motion/contracts";
 import { renderPlan } from "@f-motion/reel-engine";
 
 export const renderPhases = ["queued", "preparing", "rendering", "uploading", "complete"] as const;
@@ -139,14 +139,30 @@ function escapeAssText(value: string): string {
 const CAPTION_ASS_STYLE =
   "Style: Caption,DejaVu Sans,36,&H00FFFFFF,&H000000FF,&H00000000,&H40000000,0,0,0,0,100,100,0,0,3,2,0,2,40,40,140,1";
 
+/** Formats milliseconds as an ASS timestamp: `h:mm:ss.cc` (centiseconds). */
+function assTimestamp(ms: number): string {
+  const centiseconds = Math.round(ms / 10);
+  const hundredths = centiseconds % 100;
+  const totalSeconds = Math.floor(centiseconds / 100);
+  const seconds = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const minutes = totalMinutes % 60;
+  const hours = Math.floor(totalMinutes / 60);
+  return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(hundredths).padStart(2, "0")}`;
+}
+
 /**
- * Deterministic ASS subtitle document for the single static caption. Safe
- * area: PlayRes 720x1280, 40px side margins (640px max text width), text
- * bottom-anchored 140px above the frame bottom so it clears the watermark
- * band (which occupies the bottom ~100px) with a 40px gap. BorderStyle=3
- * renders BackColour as an opaque panel behind the text (~75% opacity).
+ * Deterministic ASS subtitle document with one `Dialogue` line per timed
+ * cue (plan 015). Safe area: PlayRes 720x1280, 40px side margins (640px max
+ * text width), text bottom-anchored 140px above the frame bottom so it
+ * clears the watermark band (which occupies the bottom ~100px) with a 40px
+ * gap. BorderStyle=3 renders BackColour as an opaque panel behind the text
+ * (~75% opacity).
  */
-export function buildCaptionAss(caption: string): string {
+export function buildCaptionAss(cues: CaptionCue[]): string {
+  const dialogues = cues.map((cue) =>
+    `Dialogue: 0,${assTimestamp(cue.start_ms)},${assTimestamp(cue.end_ms)},Caption,,0,0,0,,${escapeAssText(cue.text)}`
+  );
   return [
     "[Script Info]",
     "ScriptType: v4.00+",
@@ -161,7 +177,7 @@ export function buildCaptionAss(caption: string): string {
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
-    `Dialogue: 0,0:00:00.00,9:59:59.00,Caption,,0,0,0,,${escapeAssText(caption)}`,
+    ...dialogues,
     ""
   ].join("\n");
 }
@@ -234,10 +250,11 @@ export async function renderPreview(
     scenes: []
   };
   const plan = renderPlan(snapshot ?? fallback);
-  const caption = plan.scenes[0]?.caption.trim() ?? "";
-  const captionAssPath = caption ? `${outputPath}.caption.ass` : undefined;
+  // ponytail: scene-0 only, matching ffmpegArguments' first-scene semantics until plan 016.
+  const cues = plan.scenes[0]?.caption_cues ?? [];
+  const captionAssPath = cues.length ? `${outputPath}.caption.ass` : undefined;
   try {
-    if (captionAssPath) await writeFile(captionAssPath, buildCaptionAss(caption), "utf8");
+    if (captionAssPath) await writeFile(captionAssPath, buildCaptionAss(cues), "utf8");
     await runFfmpeg(ffmpegArguments(snapshot ?? fallback, outputPath, mediaInputs, captionAssPath), signal);
   } catch (error) {
     await unlink(outputPath).catch(() => undefined);

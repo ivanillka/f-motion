@@ -3,6 +3,12 @@ export const contractVersion = 1 as const;
 export type AccountState = "active" | "suspended" | "deletion_pending";
 export type MotionPreset = "none" | "push" | "zoom";
 
+export interface CaptionCue {
+  text: string;
+  start_ms: number;
+  end_ms: number;
+}
+
 export interface Scene {
   id: string;
   order: number;
@@ -14,6 +20,8 @@ export interface Scene {
   audio_level: number;
   ducking: boolean;
   media_id?: string;
+  /** Optional timed schedule over `caption`; absent/empty means "derive it". */
+  caption_cues?: CaptionCue[];
 }
 
 export interface ProjectSnapshot {

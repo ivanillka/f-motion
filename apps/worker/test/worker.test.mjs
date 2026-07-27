@@ -4,6 +4,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { renderPlan } from "@f-motion/reel-engine";
 import {
   IdempotentResults,
   buildCaptionAss,
@@ -101,15 +102,25 @@ test("ffmpegArguments never injects a subtitles filter without an explicit capti
   assert.match(args, /F-Motion preview/, "watermark-only path unchanged");
 });
 test("caption ass builder freezes the safe-area layout", () => {
-  const ass = buildCaptionAss("Project caption");
+  const ass = buildCaptionAss([{ text: "Project caption", start_ms: 0, end_ms: 500 }]);
   assert.match(ass, /PlayResX: 720/);
   assert.match(ass, /PlayResY: 1280/);
   assert.match(ass, /,40,40,140,1$/m, "40px side inset, 140px bottom margin clears the watermark band");
   assert.match(ass, /&H40000000/, "panel BackColour alpha 0x40 is ~75% opaque, above the 0.55 floor");
-  assert.match(ass, /^Dialogue: 0,0:00:00\.00,.*,Caption,,0,0,0,,Project caption$/m);
+  assert.match(ass, /^Dialogue: 0,0:00:00\.00,0:00:00\.50,Caption,,0,0,0,,Project caption$/m);
+});
+test("caption ass builder emits one Dialogue line per timed cue", () => {
+  const ass = buildCaptionAss([
+    { text: "First phrase", start_ms: 0, end_ms: 1500 },
+    { text: "Second phrase", start_ms: 1500, end_ms: 4000 }
+  ]);
+  const dialogues = ass.split("\n").filter((line) => line.startsWith("Dialogue:"));
+  assert.equal(dialogues.length, 2);
+  assert.match(dialogues[0], /^Dialogue: 0,0:00:00\.00,0:00:01\.50,Caption,,0,0,0,,First phrase$/);
+  assert.match(dialogues[1], /^Dialogue: 0,0:00:01\.50,0:00:04\.00,Caption,,0,0,0,,Second phrase$/);
 });
 test("caption ass builder neutralizes characters that would corrupt the ASS document", () => {
-  const ass = buildCaptionAss("100% {ok} [x], don't");
+  const ass = buildCaptionAss([{ text: "100% {ok} [x], don't", start_ms: 0, end_ms: 500 }]);
   const dialogue = ass.split("\n").find((line) => line.startsWith("Dialogue:"));
   assert.ok(dialogue, "dialogue line present");
   assert.match(dialogue, /100% /);
@@ -120,7 +131,7 @@ test("caption ass builder neutralizes characters that would corrupt the ASS docu
   assert.match(dialogue, /\(ok\)/, "braces are swapped for parens in the same font, avoiding a panel seam");
 });
 test("caption ass builder neutralizes backslashes and hard newlines", () => {
-  const ass = buildCaptionAss("back\\slash\nline two");
+  const ass = buildCaptionAss([{ text: "back\\slash\nline two", start_ms: 0, end_ms: 500 }]);
   const dialogue = ass.split("\n").find((line) => line.startsWith("Dialogue:"));
   assert.doesNotMatch(dialogue, /back\\slash/, "raw backslash could start a \\N/\\n/\\h override code");
   assert.match(dialogue, /back\/slash/);
@@ -128,7 +139,7 @@ test("caption ass builder neutralizes backslashes and hard newlines", () => {
 });
 test("caption near the 180-char limit still produces a non-empty dialogue line", () => {
   const long = "x".repeat(179);
-  const ass = buildCaptionAss(long);
+  const ass = buildCaptionAss([{ text: long, start_ms: 0, end_ms: 500 }]);
   const dialogue = ass.split("\n").find((line) => line.startsWith("Dialogue:"));
   assert.match(dialogue, new RegExp(`${long}$`));
 });
@@ -168,6 +179,34 @@ test("renderPreview does not throw for captions with filtergraph-hostile charact
     scenes: [{ ...snapshot.scenes[0], caption: "100% {ok} [x], don't" }]
   };
   await renderPreview(output, special);
+  const bytes = await readFile(output);
+  assert.ok(bytes.length > 1000);
+  assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
+});
+test("renderPlan cues feed multiple timed Dialogue lines with distinct, contiguous time ranges", () => {
+  const multiSentence = {
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], caption: "First part happens now. Second part happens later.", duration_ms: 4000 }]
+  };
+  const plan = renderPlan(multiSentence);
+  const cues = plan.scenes[0].caption_cues;
+  assert.ok(cues.length >= 2, "multi-sentence caption yields multiple cues");
+  const ass = buildCaptionAss(cues);
+  const dialogues = ass.split("\n").filter((line) => line.startsWith("Dialogue:"));
+  assert.equal(dialogues.length, cues.length);
+  const timeRanges = new Set(dialogues.map((line) => line.split(",").slice(1, 3).join(",")));
+  assert.equal(timeRanges.size, cues.length, "each Dialogue line has a distinct time range");
+  assert.match(ass, /First part happens now\./);
+  assert.match(ass, /Second part happens later\./);
+});
+test("worker renders a preview with multiple timed caption cues burned in", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fmotion-multi-cue-"));
+  const output = join(directory, "preview.mp4");
+  const multiSentence = {
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], caption: "First part happens now. Second part happens later.", duration_ms: 1500 }]
+  };
+  await renderPreview(output, multiSentence);
   const bytes = await readFile(output);
   assert.ok(bytes.length > 1000);
   assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
