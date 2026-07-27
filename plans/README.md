@@ -22,7 +22,7 @@ your row when done.
 | 008 | Ship a private hosted deploy surface (API + worker + web) | P1 | L | 006, 007 | DONE (branch `advisor/147-hosted-deploy` @ `12dee30`) |
 | 009 | Persist render failures and atomic media-inspect outbox | P1 | M | — | DONE (branch `advisor/148-render-fail-outbox` @ `9be6136`) |
 | 010 | Bind upload size in signed PUTs and inspect Pexels like uploads | P1 | M | 009 | DONE (branch `advisor/149-media-trust-hosted` @ `9466371`) |
-| 011 | Point Prisma datasource at DATABASE_URL | P1 | S | 008 | DONE (branch `advisor/150-prisma-database-url`) |
+| 011 | Point Prisma datasource at DATABASE_URL | P1 | S | 008 | DONE (branch `advisor/150-prisma-database-url` @ `ae58872`) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (reason)
 
