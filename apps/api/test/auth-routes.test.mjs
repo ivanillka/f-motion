@@ -115,3 +115,31 @@ test("explicit test app adapter injects only its configured identity", async () 
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+test("test app rejects invalid command kinds with validation errors", async () => {
+  const server = createServer(createTestApp());
+  const origin = await listen(server);
+  try {
+    const created = await fetch(`${origin}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "Test" })
+    });
+    const { project } = await created.json();
+    const response = await fetch(`${origin}/api/projects/${project.id}/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command_id: "invalid",
+        base_revision: 0,
+        client_timestamp: "",
+        kind: "delete_scene",
+        payload: {}
+      })
+    });
+    assert.equal(response.status, 422);
+    assert.deepEqual(await response.json(), { type: "validation", message: "invalid command" });
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
