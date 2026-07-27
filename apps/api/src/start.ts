@@ -1,6 +1,7 @@
 import { S3Client } from "@aws-sdk/client-s3";
 import pg from "pg";
 import { PostgresProjectRepository } from "./domain.js";
+import { assertLocalAuthAllowed } from "./local-auth.js";
 import { PexelsClient, PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
 import { PostgresRenderRepository } from "./render-repository.js";
 import { createApp, createTestApp } from "./server.js";
@@ -11,7 +12,15 @@ function required(name: string): string {
   return value;
 }
 
+assertLocalAuthAllowed(process.env);
+
 const pool = new pg.Pool({ connectionString: required("DATABASE_URL") });
+// pg.Pool emits "error" for idle-client connection drops (DB restart, network
+// blip); without a listener that is an unhandled exception that kills the
+// whole process. Log it and let the next /readyz check report 503 instead.
+pool.on("error", (error) => {
+  console.error("postgres pool idle client error", error);
+});
 const objectStore = new PrivateObjectStore(new S3Client({
   region: process.env.R2_REGION ?? "auto",
   endpoint: required("R2_ENDPOINT"),
@@ -32,6 +41,11 @@ const media = {
 
 const port = Number(process.env.PORT ?? 3000);
 
+const ready = async () => {
+  await pool.query("SELECT 1");
+  return true;
+};
+
 if (process.env.FMOTION_LOCAL_AUTH === "1") {
   // ponytail: local-only identity inject. Ceiling: single fixed owner. Upgrade: real Supabase JWT.
   const ownerId = "local-dev";
@@ -40,12 +54,13 @@ if (process.env.FMOTION_LOCAL_AUTH === "1") {
      ON CONFLICT (id) DO UPDATE SET state = 'active'`,
     [ownerId]
   );
-  createTestApp({ ownerId, projects, renders, media }).listen(port);
+  createTestApp({ ownerId, projects, renders, media, ready }).listen(port);
 } else {
   createApp({
     projects,
     renders,
     media,
+    ready,
     authConfig: {
       issuer: required("SUPABASE_ISSUER"),
       audience: required("SUPABASE_AUDIENCE"),
@@ -57,6 +72,12 @@ if (process.env.FMOTION_LOCAL_AUTH === "1") {
         [ownerId]
       );
       return result.rows[0]?.state;
+    },
+    ensureUser: async (ownerId) => {
+      await pool.query(
+        `INSERT INTO "User" (id, state) VALUES ($1, 'active') ON CONFLICT (id) DO NOTHING`,
+        [ownerId]
+      );
     }
   }).listen(port);
 }

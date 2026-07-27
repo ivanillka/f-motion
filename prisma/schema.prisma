@@ -4,9 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  // ponytail: validation uses a non-routable local placeholder; deployed clients
-  // override the datasource URL from validated DATABASE_URL configuration.
-  url      = "postgresql://validation:validation@127.0.0.1:5432/fmotion"
+  url      = env("DATABASE_URL")
 }
 
 enum AccountState {

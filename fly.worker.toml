@@ -1,0 +1,22 @@
+# Fly.io app config for the F-Motion render worker. No public HTTP service —
+# the worker only polls Postgres (pg-boss) and calls R2/Pexels outbound.
+# Deploy with:
+#   fly launch --config fly.worker.toml --no-deploy   # first time, creates the app
+#   fly deploy  --config fly.worker.toml
+#
+# Build context is the repo root (this file's directory). Secrets (never set
+# here — use `fly secrets set`): QUEUE_DATABASE_URL, R2_ENDPOINT, R2_REGION,
+# R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY. See
+# docs/runbooks/hosted-deploy.md.
+
+app = "f-motion-worker"         # pick a real, unique Fly app name
+primary_region = "iad"          # change to your preferred Fly region
+
+[build]
+  dockerfile = "apps/worker/Dockerfile"
+
+# No [http_service] / [[services]] block: the worker is not reachable from
+# the public internet. Fly still runs and restarts the process/Machine.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1024mb"

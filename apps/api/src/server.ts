@@ -8,7 +8,8 @@ import {
   assertAccountActive,
   authenticateBearer,
   type AccountStateLookup,
-  type AuthConfig
+  type AuthConfig,
+  type EnsureUser
 } from "./auth.js";
 import {
   ConflictError,
@@ -36,13 +37,14 @@ interface AppBaseOptions {
   projects: ProjectRepository;
   media?: MediaDependencies;
   renders?: PostgresRenderRepository;
-  ready?: () => boolean;
+  ready?: () => boolean | Promise<boolean>;
   workerOrigin?: string;
 }
 
 export interface AppOptions extends AppBaseOptions {
   authConfig: AuthConfig;
   accountState: AccountStateLookup;
+  ensureUser?: EnsureUser;
 }
 
 export interface TestAppOptions extends Omit<AppBaseOptions, "projects"> {
@@ -105,7 +107,11 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     next();
   });
   app.get("/healthz", (_request, response) => response.json({ status: "ok" }));
-  app.get("/readyz", (_request, response) => ready() ? response.json({ status: "ready" }) : response.status(503).json({ status: "unavailable" }));
+  app.get("/readyz", async (_request, response) => {
+    const isReady = await Promise.resolve(ready()).catch(() => false);
+    if (isReady) return response.json({ status: "ready" });
+    response.status(503).json({ status: "unavailable" });
+  });
   app.use("/api", async (request, response, next) => {
     try {
       response.locals.ownerId = await identify(request.header("authorization"));
@@ -351,7 +357,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
 }
 
 export function createApp(options: AppOptions) {
-  return buildApp(options, (authorization) => authenticateBearer(authorization, options.authConfig, options.accountState));
+  return buildApp(options, (authorization) =>
+    authenticateBearer(authorization, options.authConfig, options.accountState, options.ensureUser));
 }
 
 export function createTestApp(options: TestAppOptions = {}) {

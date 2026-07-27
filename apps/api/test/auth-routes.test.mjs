@@ -12,7 +12,7 @@ async function listen(server) {
   return `http://127.0.0.1:${address.port}`;
 }
 
-async function fixture() {
+async function fixture({ provision = false } = {}) {
   const { privateKey, publicKey } = await generateKeyPair("RS256");
   const jwk = { ...await exportJWK(publicKey), kid: "test-key", alg: "RS256", use: "sig" };
   const jwksServer = createServer((_request, response) => {
@@ -21,6 +21,13 @@ async function fixture() {
   });
   const jwksOrigin = await listen(jwksServer);
   const states = new Map([["active-owner", "active"], ["suspended-owner", "suspended"]]);
+  let insertCalls = 0;
+  const ensureUser = provision
+    ? async (ownerId) => {
+      insertCalls += 1;
+      if (!states.has(ownerId)) states.set(ownerId, "active");
+    }
+    : undefined;
   const app = createApp({
     projects: new ProjectService(),
     authConfig: {
@@ -28,7 +35,8 @@ async function fixture() {
       audience: "f-motion",
       jwksUrl: new URL("/jwks", jwksOrigin)
     },
-    accountState: async (ownerId) => states.get(ownerId)
+    accountState: async (ownerId) => states.get(ownerId),
+    ensureUser
   });
   const apiServer = createServer(app);
   const apiOrigin = await listen(apiServer);
@@ -42,6 +50,8 @@ async function fixture() {
   return {
     apiOrigin,
     token,
+    states,
+    insertCalls: () => insertCalls,
     close: async () => {
       await Promise.all([
         new Promise((resolve, reject) => apiServer.close((error) => error ? reject(error) : resolve())),
@@ -101,6 +111,91 @@ test("inactive and missing accounts are forbidden after token verification", asy
     }
   } finally {
     await context.close();
+  }
+});
+
+test("first verified JWT for an unknown subject provisions an active User row", async () => {
+  const context = await fixture({ provision: true });
+  try {
+    const response = await fetch(`${context.apiOrigin}/api/projects`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${await context.token("new-owner")}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ purpose: "Test" })
+    });
+    assert.equal(response.status, 201);
+    assert.equal((await response.json()).project.owner_id, "new-owner");
+    assert.equal(context.states.get("new-owner"), "active");
+    assert.equal(context.insertCalls(), 1);
+
+    const second = await fetch(`${context.apiOrigin}/api/projects`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${await context.token("new-owner")}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ purpose: "Test" })
+    });
+    assert.equal(second.status, 201);
+    assert.equal(context.insertCalls(), 1, "ensureUser must not run again once the User row exists");
+  } finally {
+    await context.close();
+  }
+});
+
+test("provisioning never reactivates a suspended or deletion-pending account", async () => {
+  const context = await fixture({ provision: true });
+  try {
+    const response = await fetch(`${context.apiOrigin}/api/projects`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${await context.token("suspended-owner")}` }
+    });
+    assert.equal(response.status, 403);
+    assert.equal(context.insertCalls(), 0, "ensureUser must not run for an already-known account");
+    assert.equal(context.states.get("suspended-owner"), "suspended");
+  } finally {
+    await context.close();
+  }
+});
+
+test("an invalid JWT is rejected without provisioning a User row", async () => {
+  const context = await fixture({ provision: true });
+  try {
+    const response = await fetch(`${context.apiOrigin}/api/projects`, {
+      method: "POST",
+      headers: { authorization: "Bearer not-a-real-token" }
+    });
+    assert.equal(response.status, 401);
+    assert.equal(context.insertCalls(), 0);
+  } finally {
+    await context.close();
+  }
+});
+
+test("/readyz reflects an async ready check and /healthz stays process-alive only", async () => {
+  let dbUp = true;
+  const server = createServer(createTestApp({
+    ready: async () => {
+      if (!dbUp) throw new Error("connection refused");
+      return true;
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const ready = await fetch(`${origin}/readyz`);
+    assert.equal(ready.status, 200);
+    assert.deepEqual(await ready.json(), { status: "ready" });
+
+    dbUp = false;
+    const unavailable = await fetch(`${origin}/readyz`);
+    assert.equal(unavailable.status, 503);
+    assert.deepEqual(await unavailable.json(), { status: "unavailable" });
+
+    assert.equal((await fetch(`${origin}/healthz`)).status, 200);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
 

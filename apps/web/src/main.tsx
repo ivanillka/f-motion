@@ -5,6 +5,10 @@ import "./style.css";
 
 type Step = "sign-in" | "brief" | "concepts" | "editor" | "render";
 
+function demoAuthAllowed(): boolean {
+  return Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1";
+}
+
 function accessTokenFromLocation(): string {
   const token = new URLSearchParams(location.hash.slice(1)).get("access_token");
   if (token) {
@@ -48,6 +52,10 @@ function App() {
   async function magicLink() {
     const supabase = import.meta.env.VITE_SUPABASE_URL as string | undefined;
     if (!supabase) {
+      if (!demoAuthAllowed()) {
+        setStatus("Sign-in is not configured for this deployment.");
+        return;
+      }
       sessionStorage.setItem("fmotion-access-token", "e2e-test-token");
       setToken("e2e-test-token");
       setStep("brief");
@@ -64,6 +72,10 @@ function App() {
   function googleSignIn() {
     const supabase = import.meta.env.VITE_SUPABASE_URL as string | undefined;
     if (!supabase) {
+      if (!demoAuthAllowed()) {
+        setStatus("Sign-in is not configured for this deployment.");
+        return;
+      }
       sessionStorage.setItem("fmotion-access-token", "e2e-test-token");
       setToken("e2e-test-token");
       setStep("brief");
