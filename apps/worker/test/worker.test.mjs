@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -17,6 +18,24 @@ import {
 } from "../dist/index.js";
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
+
+async function probeAudioStream(path) {
+  const raw = await new Promise((resolve, reject) => {
+    const child = spawn("ffprobe", [
+      "-v", "error",
+      "-show_entries", "stream=codec_type,codec_name",
+      "-of", "json",
+      path
+    ], { stdio: ["ignore", "pipe", "ignore"] });
+    let stdout = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.once("error", reject);
+    child.once("exit", (code) => code === 0 ? resolve(stdout) : reject(new Error(`ffprobe exited ${code}`)));
+  });
+  const parsed = JSON.parse(raw);
+  return (parsed.streams ?? []).find((stream) => stream.codec_type === "audio");
+}
 
 const snapshot = {
   schema_version: 1,
@@ -93,6 +112,23 @@ test("render job builds one deterministic-plan clip per scene", () => {
   const concat = job.concatArgs.join(" ");
   assert.match(concat, /F-Motion preview/);
   assert.match(concat, /project project revision 3/);
+  assert.match(args, /-c:a aac/);
+  assert.match(concat, /-c:a aac/);
+  assert.doesNotMatch(args, /-an/);
+  assert.doesNotMatch(concat, /-an/);
+});
+test("render job applies volume filter for non-1.0 audio_level", () => {
+  const half = { ...snapshot, scenes: [{ ...snapshot.scenes[0], audio_level: 0.5 }] };
+  const job = buildRenderJob(half, "preview.mp4", {}, "/tmp/job");
+  assert.match(job.clips[0].args.join(" "), /volume=0\.5/);
+});
+test("render job keeps a zero audio_level as a muted stream, not stripped", () => {
+  const muted = { ...snapshot, scenes: [{ ...snapshot.scenes[0], audio_level: 0 }] };
+  const job = buildRenderJob(muted, "preview.mp4", {}, "/tmp/job");
+  const args = job.clips[0].args.join(" ");
+  assert.match(args, /volume=0[^.\d]|volume=0$/);
+  assert.match(args, /anullsrc=/);
+  assert.match(args, /-c:a aac/);
 });
 test("render job omits subtitles when caption is empty", () => {
   const noCaption = { ...snapshot, scenes: [{ ...snapshot.scenes[0], caption: "" }] };
@@ -233,6 +269,9 @@ test("worker renders the 720p accurate preview outside the API", async () => {
   const bytes = await readFile(output);
   assert.ok(bytes.length > 1000);
   assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
+  const audio = await probeAudioStream(output);
+  assert.ok(audio, "expected an audio stream on the preview");
+  assert.equal(audio.codec_name, "aac");
   assert.deepEqual(await readdir(directory), ["preview.mp4"]);
 });
 test("renderPreview does not throw for captions with filtergraph-hostile characters", async () => {
@@ -311,7 +350,27 @@ test("worker concatenates every scene's media with an honest total duration", as
     Math.abs(probed.duration_ms - 1200) < 200,
     `expected ~1200ms (500+700), got ${probed.duration_ms}`
   );
+  const audio = await probeAudioStream(output);
+  assert.ok(audio, "expected an audio stream on the concatenated preview");
+  assert.equal(audio.codec_name, "aac");
   assert.deepEqual(await readdir(directory), ["preview.mp4"]);
+});
+test("worker renders image-only scene with a silent audio pad", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fmotion-still-render-"));
+  const output = join(directory, "preview.mp4");
+  const withStill = {
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], media_id: "asset-1", duration_ms: 500, caption: "" }]
+  };
+  await renderPreview(output, withStill, undefined, {
+    "asset-1": { path: join(fixtures, "still.jpg"), type: "image/jpeg" }
+  });
+  const bytes = await readFile(output);
+  assert.ok(bytes.length > 1000);
+  assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
+  const audio = await probeAudioStream(output);
+  assert.ok(audio, "expected a silent audio pad on still-only scenes");
+  assert.equal(audio.codec_name, "aac");
 });
 test("worker renders zoompan motion (zoom and push) without ffmpeg errors", async () => {
   for (const motion of ["zoom", "push"]) {
