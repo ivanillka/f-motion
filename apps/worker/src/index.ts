@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { unlink } from "node:fs/promises";
+import { unlink, writeFile } from "node:fs/promises";
 import type { ProjectSnapshot } from "@f-motion/contracts";
 import { renderPlan } from "@f-motion/reel-engine";
 
@@ -109,18 +109,70 @@ export async function runFfmpeg(args: string[], signal?: AbortSignal): Promise<v
   });
 }
 
-function escapedText(value: string): string {
+function escapeDrawtext(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll(":", "\\:").replaceAll("'", "\\'");
 }
 
-function overlayFilters(plan: ReturnType<typeof renderPlan>): string[] {
-  const caption = plan.scenes[0]?.caption.trim();
+// ponytail: subtitles=PATH is a filter option, so ":" and "'" need the same
+// escaping drawtext values do. Temp ASS paths come from our own outputPath
+// (derived from mkdtemp callers), so this is defense in depth, not the
+// primary guard.
+function escapeFilterPath(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll(":", "\\:").replaceAll("'", "\\'");
+}
+
+// ponytail: ASS Dialogue text has no native escape for a literal "{"/"}"
+// (they open override tags) or "\" (it can start \N/\n/\h codes). Swapping
+// them for glyphs outside the base Latin font (e.g. fullwidth punctuation)
+// makes libass select a fallback font mid-line, which visibly splits the
+// BorderStyle=3 panel per font run — so the replacements below stay in the
+// same font as the rest of the caption. Upgrade path: plan 015's timed-cue
+// ASS builder should reuse this helper rather than re-deriving escaping rules.
+function escapeAssText(value: string): string {
+  return value
+    .replaceAll("\\", "/")
+    .replaceAll("{", "(")
+    .replaceAll("}", ")")
+    .replace(/\r\n|\r|\n/g, "\\N");
+}
+
+const CAPTION_ASS_STYLE =
+  "Style: Caption,DejaVu Sans,36,&H00FFFFFF,&H000000FF,&H00000000,&H40000000,0,0,0,0,100,100,0,0,3,2,0,2,40,40,140,1";
+
+/**
+ * Deterministic ASS subtitle document for the single static caption. Safe
+ * area: PlayRes 720x1280, 40px side margins (640px max text width), text
+ * bottom-anchored 140px above the frame bottom so it clears the watermark
+ * band (which occupies the bottom ~100px) with a 40px gap. BorderStyle=3
+ * renders BackColour as an opaque panel behind the text (~75% opacity).
+ */
+export function buildCaptionAss(caption: string): string {
+  return [
+    "[Script Info]",
+    "ScriptType: v4.00+",
+    "PlayResX: 720",
+    "PlayResY: 1280",
+    "WrapStyle: 0",
+    "ScaledBorderAndShadow: yes",
+    "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    CAPTION_ASS_STYLE,
+    "",
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    `Dialogue: 0,0:00:00.00,9:59:59.00,Caption,,0,0,0,,${escapeAssText(caption)}`,
+    ""
+  ].join("\n");
+}
+
+function overlayFilters(plan: ReturnType<typeof renderPlan>, captionAssPath?: string): string[] {
   const filters = [
     "drawbox=x=24:y=ih-100:w=iw-48:h=64:color=black@0.65:t=fill",
-    `drawtext=text='${escapedText(plan.watermark)}':x=(w-text_w)/2:y=h-78:fontcolor=white:fontsize=28`
+    `drawtext=text='${escapeDrawtext(plan.watermark)}':x=(w-text_w)/2:y=h-78:fontcolor=white:fontsize=28`
   ];
-  if (caption) {
-    filters.unshift(`drawtext=text='${escapedText(caption)}':x=(w-text_w)/2:y=h-180:fontcolor=white:fontsize=36`);
+  if (captionAssPath) {
+    filters.unshift(`subtitles=${escapeFilterPath(captionAssPath)}`);
   }
   return filters;
 }
@@ -128,7 +180,8 @@ function overlayFilters(plan: ReturnType<typeof renderPlan>): string[] {
 export function ffmpegArguments(
   snapshot: ProjectSnapshot,
   outputPath: string,
-  mediaInputs: Record<string, MediaInput> = {}
+  mediaInputs: Record<string, MediaInput> = {},
+  captionAssPath?: string
 ): string[] {
   const plan = renderPlan(snapshot);
   const scene = plan.scenes[0];
@@ -148,7 +201,7 @@ export function ffmpegArguments(
     const cover = [
       `scale=${plan.width}:${plan.height}:force_original_aspect_ratio=increase`,
       `crop=${plan.width}:${plan.height}`,
-      ...overlayFilters(plan)
+      ...overlayFilters(plan, captionAssPath)
     ];
     const still = media.type === "image/jpeg" || media.type === "image/png";
     const input = still
@@ -161,7 +214,7 @@ export function ffmpegArguments(
     "-y",
     "-f", "lavfi",
     "-i", `color=c=#202027:s=${plan.width}x${plan.height}:d=${duration}:r=30`,
-    "-vf", overlayFilters(plan).join(","),
+    "-vf", overlayFilters(plan, captionAssPath).join(","),
     ...encode
   ];
 }
@@ -180,11 +233,17 @@ export async function renderPreview(
     brief: { purpose: "Fixture", audience: "Fixture", tone: "Neutral" },
     scenes: []
   };
+  const plan = renderPlan(snapshot ?? fallback);
+  const caption = plan.scenes[0]?.caption.trim() ?? "";
+  const captionAssPath = caption ? `${outputPath}.caption.ass` : undefined;
   try {
-    await runFfmpeg(ffmpegArguments(snapshot ?? fallback, outputPath, mediaInputs), signal);
+    if (captionAssPath) await writeFile(captionAssPath, buildCaptionAss(caption), "utf8");
+    await runFfmpeg(ffmpegArguments(snapshot ?? fallback, outputPath, mediaInputs, captionAssPath), signal);
   } catch (error) {
     await unlink(outputPath).catch(() => undefined);
     throw error;
+  } finally {
+    if (captionAssPath) await unlink(captionAssPath).catch(() => undefined);
   }
 }
 

@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   IdempotentResults,
+  buildCaptionAss,
   ffmpegArguments,
   inspectMedia,
   probeMediaFile,
@@ -83,10 +84,53 @@ test("queue recovery contract uses idempotent result key", () => {
 test("render arguments come from the deterministic project plan", () => {
   const args = ffmpegArguments(snapshot, "preview.mp4").join(" ");
   assert.match(args, /720x1280/);
-  assert.match(args, /Project caption/);
   assert.match(args, /F-Motion preview/);
   assert.match(args, /project project revision 3/);
   assert.match(args, /color=c=#202027/);
+  assert.doesNotMatch(args, /subtitles=/, "no caption path given, no subtitles filter injected");
+});
+test("render arguments reference the caption subtitles file when a path is supplied", () => {
+  const args = ffmpegArguments(snapshot, "preview.mp4", {}, "/tmp/fmotion-caption.ass").join(" ");
+  assert.match(args, /subtitles=\/tmp\/fmotion-caption\.ass/);
+  assert.match(args, /F-Motion preview/, "watermark drawtext stays alongside the caption subtitles filter");
+});
+test("ffmpegArguments never injects a subtitles filter without an explicit caption path", () => {
+  const noCaption = { ...snapshot, scenes: [{ ...snapshot.scenes[0], caption: "" }] };
+  const args = ffmpegArguments(noCaption, "preview.mp4").join(" ");
+  assert.doesNotMatch(args, /subtitles=/);
+  assert.match(args, /F-Motion preview/, "watermark-only path unchanged");
+});
+test("caption ass builder freezes the safe-area layout", () => {
+  const ass = buildCaptionAss("Project caption");
+  assert.match(ass, /PlayResX: 720/);
+  assert.match(ass, /PlayResY: 1280/);
+  assert.match(ass, /,40,40,140,1$/m, "40px side inset, 140px bottom margin clears the watermark band");
+  assert.match(ass, /&H40000000/, "panel BackColour alpha 0x40 is ~75% opaque, above the 0.55 floor");
+  assert.match(ass, /^Dialogue: 0,0:00:00\.00,.*,Caption,,0,0,0,,Project caption$/m);
+});
+test("caption ass builder neutralizes characters that would corrupt the ASS document", () => {
+  const ass = buildCaptionAss("100% {ok} [x], don't");
+  const dialogue = ass.split("\n").find((line) => line.startsWith("Dialogue:"));
+  assert.ok(dialogue, "dialogue line present");
+  assert.match(dialogue, /100% /);
+  assert.match(dialogue, /\[x\]/);
+  assert.match(dialogue, /,/);
+  assert.match(dialogue, /don't/);
+  assert.doesNotMatch(dialogue, /\{ok\}/, "literal braces would open an ASS override tag");
+  assert.match(dialogue, /\(ok\)/, "braces are swapped for parens in the same font, avoiding a panel seam");
+});
+test("caption ass builder neutralizes backslashes and hard newlines", () => {
+  const ass = buildCaptionAss("back\\slash\nline two");
+  const dialogue = ass.split("\n").find((line) => line.startsWith("Dialogue:"));
+  assert.doesNotMatch(dialogue, /back\\slash/, "raw backslash could start a \\N/\\n/\\h override code");
+  assert.match(dialogue, /back\/slash/);
+  assert.match(dialogue, /\\Nline two/, "real newlines become the ASS forced-break code");
+});
+test("caption near the 180-char limit still produces a non-empty dialogue line", () => {
+  const long = "x".repeat(179);
+  const ass = buildCaptionAss(long);
+  const dialogue = ass.split("\n").find((line) => line.startsWith("Dialogue:"));
+  assert.match(dialogue, new RegExp(`${long}$`));
 });
 test("render arguments use attached media input when provided", () => {
   const withMedia = {
@@ -112,6 +156,18 @@ test("worker renders the 720p accurate preview outside the API", async () => {
   const directory = await mkdtemp(join(tmpdir(), "fmotion-render-"));
   const output = join(directory, "preview.mp4");
   await renderPreview(output, snapshot);
+  const bytes = await readFile(output);
+  assert.ok(bytes.length > 1000);
+  assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
+});
+test("renderPreview does not throw for captions with filtergraph-hostile characters", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fmotion-caption-special-"));
+  const output = join(directory, "preview.mp4");
+  const special = {
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], caption: "100% {ok} [x], don't" }]
+  };
+  await renderPreview(output, special);
   const bytes = await readFile(output);
   assert.ok(bytes.length > 1000);
   assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
