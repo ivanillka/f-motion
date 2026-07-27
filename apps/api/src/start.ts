@@ -2,6 +2,7 @@ import { S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { PostgresProjectRepository } from "./domain.js";
+import { assertLocalAuthAllowed } from "./local-auth.js";
 import { PexelsClient, PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
 import { PostgresRenderRepository } from "./render-repository.js";
 import { createApp, createTestApp } from "./server.js";
@@ -11,6 +12,8 @@ function required(name: string): string {
   if (!value) throw new Error(`missing ${name}`);
   return value;
 }
+
+assertLocalAuthAllowed(process.env);
 
 const pool = new pg.Pool({ connectionString: required("DATABASE_URL") });
 const objectStore = new PrivateObjectStore(new S3Client({
