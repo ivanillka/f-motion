@@ -122,6 +122,26 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       next(error);
     }
   });
+  app.get("/api/projects", async (_request, response, next) => {
+    try {
+      const ownerId = String(response.locals.ownerId);
+      response.json({ projects: await projects.list(ownerId) });
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.get("/api/projects/:projectId", async (request, response, next) => {
+    try {
+      const ownerId = String(response.locals.ownerId);
+      const project = await projects.get(ownerId, request.params.projectId);
+      if (!project) return response.status(404).json({ type: "not_found", message: "not found" });
+      const body: { project: typeof project; concepts?: ReturnType<typeof conceptsFor> } = { project };
+      if (project.scenes.length === 0) body.concepts = conceptsFor(project.brief);
+      response.json(body);
+    } catch (error) {
+      next(error);
+    }
+  });
   app.post("/api/projects", async (request, response, next) => {
     try {
       const ownerId = String(response.locals.ownerId);

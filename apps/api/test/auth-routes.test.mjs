@@ -65,7 +65,9 @@ test("all API routes reject requests without a Bearer token", async () => {
   const context = await fixture();
   try {
     const requests = [
+      [`${context.apiOrigin}/api/projects`, { method: "GET" }],
       [`${context.apiOrigin}/api/projects`, { method: "POST" }],
+      [`${context.apiOrigin}/api/projects/project`, { method: "GET" }],
       [`${context.apiOrigin}/api/projects/project/commands`, { method: "POST" }],
       [`${context.apiOrigin}/api/projects/project/render`, { method: "POST" }],
       [`${context.apiOrigin}/api/download/job`, undefined]

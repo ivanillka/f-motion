@@ -19,6 +19,12 @@ export interface ProjectSnapshot {
   scenes: Scene[];
 }
 
+export interface ProjectSummary {
+  id: string;
+  revision: number;
+  brief: ProjectSnapshot["brief"];
+}
+
 export interface Concept {
   id: string;
   title: string;
@@ -57,5 +63,13 @@ export class ApiClient {
         payload
       })
     });
+  }
+
+  listProjects() {
+    return this.request<{ projects: ProjectSummary[] }>("/api/projects");
+  }
+
+  getProject(projectId: string) {
+    return this.request<{ project: ProjectSnapshot; concepts?: Concept[] }>(`/api/projects/${projectId}`);
   }
 }

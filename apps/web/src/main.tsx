@@ -1,9 +1,9 @@
 import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ApiClient, ApiResponseError, type Concept, type ProjectSnapshot, type Scene } from "./api";
+import { ApiClient, ApiResponseError, type Concept, type ProjectSnapshot, type ProjectSummary, type Scene } from "./api";
 import "./style.css";
 
-type Step = "sign-in" | "brief" | "concepts" | "editor" | "render";
+type Step = "sign-in" | "drafts" | "brief" | "concepts" | "editor" | "render";
 
 function demoAuthAllowed(): boolean {
   return Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1";
@@ -21,10 +21,12 @@ function accessTokenFromLocation(): string {
 function App() {
   const [token, setToken] = useState(accessTokenFromLocation);
   const api = useMemo(() => new ApiClient(() => token), [token]);
-  const [step, setStep] = useState<Step>(() => token ? "brief" : "sign-in");
+  const [step, setStep] = useState<Step>(() => token ? "drafts" : "sign-in");
   const [email, setEmail] = useState("");
   const [draft, setDraft] = useState(() => localStorage.getItem("fmotion-draft") ?? "");
   const [project, setProject] = useState<ProjectSnapshot>();
+  const [drafts, setDrafts] = useState<ProjectSummary[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
   const [concepts, setConcepts] = useState<Concept[]>([]);
   const [selected, setSelected] = useState("");
   const [online, setOnline] = useState(navigator.onLine);
@@ -49,6 +51,25 @@ function App() {
   }, []);
   useEffect(() => localStorage.setItem("fmotion-draft", draft), [draft]);
 
+  useEffect(() => {
+    if (step !== "drafts" || !token) return;
+    let cancelled = false;
+    setDraftsLoading(true);
+    void api.listProjects()
+      .then(({ projects }) => {
+        if (!cancelled) setDrafts(projects);
+      })
+      .catch(() => {
+        if (!cancelled) setStatus("Drafts could not be loaded.");
+      })
+      .finally(() => {
+        if (!cancelled) setDraftsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, step, token]);
+
   async function magicLink() {
     const supabase = import.meta.env.VITE_SUPABASE_URL as string | undefined;
     if (!supabase) {
@@ -58,7 +79,7 @@ function App() {
       }
       sessionStorage.setItem("fmotion-access-token", "e2e-test-token");
       setToken("e2e-test-token");
-      setStep("brief");
+      setStep("drafts");
       return;
     }
     const response = await fetch(`${supabase}/auth/v1/otp`, {
@@ -78,7 +99,7 @@ function App() {
       }
       sessionStorage.setItem("fmotion-access-token", "e2e-test-token");
       setToken("e2e-test-token");
-      setStep("brief");
+      setStep("drafts");
       return;
     }
     location.assign(`${supabase}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(location.origin)}`);
@@ -93,6 +114,30 @@ function App() {
     setConcepts(body.concepts);
     localStorage.setItem("fmotion-project", body.project.id);
     setStep("concepts");
+  }
+
+  async function openDraft(projectId: string) {
+    setStatus("Opening draft…");
+    const { project: opened, concepts: draftConcepts } = await api.getProject(projectId);
+    setProject(opened);
+    localStorage.setItem("fmotion-project", opened.id);
+    setDraft(opened.scenes[0]?.caption ?? opened.brief.purpose);
+    setSelected(opened.selected_concept_id ?? "");
+    if (opened.scenes.length > 0) {
+      setStep("editor");
+    } else {
+      setConcepts(draftConcepts ?? []);
+      setStep("concepts");
+    }
+    setStatus("");
+  }
+
+  function startCreate() {
+    setProject(undefined);
+    setConcepts([]);
+    setSelected("");
+    setDraft(localStorage.getItem("fmotion-draft") ?? "");
+    setStep("brief");
   }
 
   async function chooseConcept() {
@@ -271,10 +316,24 @@ function App() {
       <button className="secondary" onClick={googleSignIn}>Continue with Google</button>
       <p role="status">{status}</p>
     </section>}
+    {step === "drafts" && <section>
+      <h1>Drafts</h1>
+      <p>Pick up where you left off or start a new video.</p>
+      <button onClick={startCreate}>Create new video</button>
+      {draftsLoading && <p role="status">Loading drafts…</p>}
+      {!draftsLoading && drafts.length === 0 && <p role="status">No drafts yet.</p>}
+      <div className="concepts">{drafts.map((item) =>
+        <button key={item.id} className="card" onClick={() => void openDraft(item.id)}>
+          <strong>{item.brief.purpose || "Untitled draft"}</strong>
+          <span>Revision {item.revision}</span>
+        </button>)}</div>
+      <p role="status">{status}</p>
+    </section>}
     {step === "brief" && <section>
       <h1>What should this video achieve?</h1>
       <label>Brief<textarea value={draft} maxLength={500} onChange={(event) => setDraft(event.target.value)} placeholder="Launch a product for small teams…" /></label>
       <button disabled={!draft.trim()} onClick={() => void createProject()}>Review brief</button>
+      <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
     </section>}
     {step === "concepts" && <section>
       <h1>Choose one concept</h1>
@@ -304,6 +363,7 @@ function App() {
       </button>)}
       <p role="status">{status || "✓ All changes saved"}</p>
       <button onClick={() => void requestRender()}>Render accurate 720p preview</button>
+      <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
       <button className="secondary" onClick={() => void proveConflict()}>Test stale revision</button>
       {conflict && <dialog open><h2>Newer changes exist</h2><p>Your changes were not merged.</p>
         <button onClick={() => { setProject(conflict); setConflict(undefined); }}>Reload latest</button>

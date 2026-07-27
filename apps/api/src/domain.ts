@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { CommandEnvelope, ProjectSnapshot } from "@f-motion/contracts";
+import type { CommandEnvelope, ProjectSnapshot, ProjectSummary } from "@f-motion/contracts";
 import type { Pool, PoolClient } from "pg";
 import { applyCommand, conceptsFor } from "@f-motion/reel-engine";
 
@@ -15,6 +15,7 @@ export class ValidationError extends Error {}
 
 export interface ProjectRepository {
   create(ownerId: string, brief: ProjectSnapshot["brief"]): ProjectSnapshot | Promise<ProjectSnapshot>;
+  list(ownerId: string): ProjectSummary[] | Promise<ProjectSummary[]>;
   get(ownerId: string, projectId: string): ProjectSnapshot | undefined | Promise<ProjectSnapshot | undefined>;
   command(ownerId: string, command: CommandEnvelope): ProjectSnapshot | Promise<ProjectSnapshot>;
 }
@@ -27,6 +28,15 @@ export class ProjectService implements ProjectRepository {
     const project: ProjectSnapshot = { schema_version: 1, id: randomUUID(), owner_id: ownerId, revision: 0, brief, scenes: [] };
     this.#projects.set(`${ownerId}:${project.id}`, project);
     return structuredClone(project);
+  }
+
+  list(ownerId: string): ProjectSummary[] {
+    const summaries: ProjectSummary[] = [];
+    for (const [key, project] of this.#projects) {
+      if (!key.startsWith(`${ownerId}:`)) continue;
+      summaries.push({ id: project.id, revision: project.revision, brief: structuredClone(project.brief) });
+    }
+    return summaries.sort((left, right) => left.id.localeCompare(right.id));
   }
 
   get(ownerId: string, projectId: string): ProjectSnapshot | undefined {
@@ -124,6 +134,14 @@ export class PostgresProjectRepository implements ProjectRepository {
     } finally {
       client.release();
     }
+  }
+
+  async list(ownerId: string): Promise<ProjectSummary[]> {
+    const result = await this.pool.query<Pick<ProjectRow, "id" | "revision" | "brief">>(
+      `SELECT id, revision, brief FROM "Project" WHERE "ownerId" = $1 ORDER BY id`,
+      [ownerId]
+    );
+    return result.rows.map(({ id, revision, brief }) => ({ id, revision, brief }));
   }
 
   async get(ownerId: string, projectId: string): Promise<ProjectSnapshot | undefined> {

@@ -34,6 +34,12 @@ export interface ProjectSnapshot {
   scenes: Scene[];
 }
 
+export interface ProjectSummary {
+  id: string;
+  revision: number;
+  brief: ProjectSnapshot["brief"];
+}
+
 export interface CommandEnvelope {
   command_id: string;
   project_id: string;
