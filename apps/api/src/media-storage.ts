@@ -129,10 +129,15 @@ export class PostgresMediaRepository {
 export class PrivateObjectStore {
   constructor(readonly client: S3Client, readonly bucket: string) {}
 
-  signedPut(objectKey: string, contentType: string) {
+  signedPut(objectKey: string, contentType: string, contentLength: number) {
     return getSignedUrl(
       this.client,
-      new PutObjectCommand({ Bucket: this.bucket, Key: objectKey, ContentType: contentType }),
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: objectKey,
+        ContentType: contentType,
+        ContentLength: contentLength
+      }),
       { expiresIn: 300 }
     );
   }

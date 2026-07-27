@@ -178,7 +178,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       response.status(201).json({
         asset_id: id,
         method: "PUT",
-        upload_url: await options.media.store.signedPut(objectKey, declaredType),
+        upload_url: await options.media.store.signedPut(objectKey, declaredType, maxBytes),
         expires_in_seconds: 300
       });
     } catch (error) {

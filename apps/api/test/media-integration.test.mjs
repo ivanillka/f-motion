@@ -87,6 +87,7 @@ integration("authenticated media routes use real PostgreSQL and private S3 stora
     const admission = await admissionResponse.json();
     assert.equal(admission.method, "PUT");
     assert.match(admission.upload_url, /X-Amz-Signature=/i);
+    assert.match(admission.upload_url, /X-Amz-SignedHeaders=[^&]*content-length/i);
     assert.equal((await fetch(admission.upload_url, {
       method: "PUT",
       headers: { "content-type": "video/mp4" },

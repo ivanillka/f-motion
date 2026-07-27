@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PostgresMediaRepository } from "../dist/media-storage.js";
+import { S3Client } from "@aws-sdk/client-s3";
+import { PostgresMediaRepository, PrivateObjectStore } from "../dist/media-storage.js";
 
 /** Fake pool that answers only the queries `completeAdmission` issues. */
 function createFakePool(initialState) {
@@ -49,4 +50,16 @@ test("completeAdmission rejects assets that are not admissible and enqueues noth
   assert.equal(await repository.completeAdmission("owner", "project", "asset"), false);
   assert.equal(pool.getState(), "ready");
   assert.equal(pool.getOutbox().length, 0);
+});
+
+test("signedPut binds the admitted byte ceiling into the presigned PUT request", async () => {
+  const client = new S3Client({
+    region: "us-east-1",
+    endpoint: "http://127.0.0.1:1",
+    forcePathStyle: true,
+    credentials: { accessKeyId: "fmotion", secretAccessKey: "fmotion-secret" }
+  });
+  const store = new PrivateObjectStore(client, "bucket");
+  const url = new URL(await store.signedPut("projects/p/media/a", "video/mp4", 4096));
+  assert.match(String(url.searchParams.get("X-Amz-SignedHeaders")), /content-length/);
 });
