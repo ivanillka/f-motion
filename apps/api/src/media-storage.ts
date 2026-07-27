@@ -219,15 +219,17 @@ export class PexelsClient {
       ownerId,
       projectId,
       objectKey: `projects/${projectId}/media/${id}`,
-      state: "ready",
+      state: "admitted",
       declaredType: selected.contentType,
       maxBytes: bytes.length,
-      detected: { type: selected.contentType, bytes: bytes.length },
       attribution: { source: "Pexels", creator: selected.creator, url: selected.attributionUrl }
     };
     await store.put(asset.objectKey, bytes, selected.contentType);
     await repository.insert(asset);
-    return asset;
+    if (!await repository.completeAdmission(ownerId, projectId, id)) {
+      throw new Error("Pexels media admission failed");
+    }
+    return { ...asset, state: "inspecting" };
   }
 }
 

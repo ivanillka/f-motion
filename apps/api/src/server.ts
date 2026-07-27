@@ -200,6 +200,17 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       next(error);
     }
   });
+  app.get("/api/projects/:projectId/media/:assetId", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      const asset = await options.media.repository.get(ownerId, request.params.projectId, request.params.assetId);
+      if (!asset) return response.status(404).json({ type: "not_found", message: "not found" });
+      response.json({ id: asset.id, state: asset.state });
+    } catch (error) {
+      next(error);
+    }
+  });
   app.get("/api/pexels/search", async (request, response, next) => {
     try {
       if (!options.media) return response.status(503).json({ type: "unavailable" });

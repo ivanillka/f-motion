@@ -101,9 +101,28 @@ function App() {
     setStatus("✓ All changes saved");
   }
 
+  /** Polls the asset briefly and attaches it to scene 0 once the worker marks it ready. */
+  async function attachMediaWhenReady(assetId: string): Promise<boolean> {
+    if (!project) return false;
+    const scene = project.scenes[0];
+    if (!scene) return false;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const media = await api.request<{ id: string; state: string }>(`/api/projects/${project.id}/media/${assetId}`);
+      if (media.state === "ready") {
+        const updated = await api.command(project.id, project.revision, "update_scene", {
+          scene: { ...scene, caption: draft, media_id: assetId }
+        });
+        setProject(updated);
+        return true;
+      }
+      if (media.state !== "admitted" && media.state !== "inspecting") return false;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    return false;
+  }
+
   async function admitFile(file: File) {
     if (!project) return;
-    const scene = project.scenes[0];
     const admission = await api.request<{ asset_id: string; upload_url: string }>(
       `/api/projects/${project.id}/media/uploads`,
       {
@@ -118,20 +137,8 @@ function App() {
     });
     if (!uploaded.ok) throw new Error("Upload failed");
     await api.request(`/api/projects/${project.id}/media/${admission.asset_id}/complete`, { method: "POST" });
-    // Upload stays inspecting until the worker probes it; attach only works once ready.
-    if (scene) {
-      try {
-        const updated = await api.command(project.id, project.revision, "update_scene", {
-          scene: { ...scene, caption: draft, media_id: admission.asset_id }
-        });
-        setProject(updated);
-        setStatus("Media attached.");
-        return;
-      } catch {
-        /* not ready yet */
-      }
-    }
     setStatus("Media uploaded and queued for inspection.");
+    if (await attachMediaWhenReady(admission.asset_id)) setStatus("Media attached.");
   }
 
   async function searchPexels() {
@@ -143,20 +150,12 @@ function App() {
 
   async function copyPexels(id: number) {
     if (!project) return;
-    const scene = project.scenes[0];
     const body = await api.request<{ asset: { id: string } }>(`/api/projects/${project.id}/media/pexels`, {
       method: "POST",
       body: JSON.stringify({ query: pexelsQuery, pexels_id: id })
     });
-    if (scene) {
-      const updated = await api.command(project.id, project.revision, "update_scene", {
-        scene: { ...scene, caption: draft, media_id: body.asset.id }
-      });
-      setProject(updated);
-      setStatus("Pexels media attached with attribution.");
-      return;
-    }
-    setStatus("Pexels media copied with attribution.");
+    setStatus("Pexels media queued for inspection.");
+    if (await attachMediaWhenReady(body.asset.id)) setStatus("Pexels media attached with attribution.");
   }
 
   async function proveConflict() {

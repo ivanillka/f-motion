@@ -131,6 +131,18 @@ integration("authenticated media routes use real PostgreSQL and private S3 stora
     const copiedAsset = (await copied.json()).asset;
     assert.equal(copiedAsset.attribution.source, "Pexels");
     assert.equal(copiedAsset.attribution.creator, "Fixture Creator");
+    assert.notEqual(copiedAsset.state, "ready");
+    assert.equal(copiedAsset.state, "inspecting");
+    assert.equal((await repository.get("owner", project.id, copiedAsset.id))?.state, "inspecting");
+    const pexelsOutbox = await pool.query(
+      `SELECT "dedupeKey" FROM "WorkOutbox" WHERE "dedupeKey" = $1`,
+      [`inspect-media:${copiedAsset.id}`]
+    );
+    assert.equal(pexelsOutbox.rows.length, 1);
+    const fetched = await fetch(`${origin}/api/projects/${project.id}/media/${copiedAsset.id}`);
+    assert.equal(fetched.status, 200);
+    assert.deepEqual(await fetched.json(), { id: copiedAsset.id, state: "inspecting" });
+    assert.equal(await repository.get("other", project.id, copiedAsset.id), undefined);
   } finally {
     if (server.listening) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     const listed = await client.send(new ListObjectsV2Command({ Bucket: bucket }));
