@@ -1,31 +1,66 @@
 import {
+  GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client
 } from "@aws-sdk/client-s3";
 import type { ProjectSnapshot, Scene } from "@f-motion/contracts";
-import { randomUUID } from "node:crypto";
+import { createWriteStream } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
+import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { inspectMedia, renderObjectKey, renderPreview } from "./index.js";
+import {
+  inspectMedia,
+  probeMediaFile,
+  renderObjectKey,
+  renderPreview,
+  type DetectedMedia,
+  type MediaInput
+} from "./index.js";
 import type { InspectionJob, PreviewJob, QueueHandlers } from "./queue.js";
 
 interface WorkerObjectStore {
-  inspect(objectKey: string): Promise<{ type: string; bytes: number }>;
+  inspect(objectKey: string, maxBytes: number): Promise<DetectedMedia>;
+  download(objectKey: string, destination: string): Promise<void>;
   put(objectKey: string, body: Uint8Array, contentType: string): Promise<void>;
 }
 
 export class S3WorkerObjectStore implements WorkerObjectStore {
   constructor(readonly client: S3Client, readonly bucket: string) {}
 
-  async inspect(objectKey: string) {
-    const result = await this.client.send(new HeadObjectCommand({
+  async inspect(objectKey: string, maxBytes: number): Promise<DetectedMedia> {
+    const head = await this.client.send(new HeadObjectCommand({
       Bucket: this.bucket,
       Key: objectKey
     }));
-    return { type: result.ContentType ?? "application/octet-stream", bytes: Number(result.ContentLength ?? 0) };
+    const bytes = Number(head.ContentLength ?? 0);
+    if (bytes <= 0) return { type: "application/octet-stream", bytes: 0 };
+    if (bytes > maxBytes) return { type: "application/octet-stream", bytes };
+
+    const directory = await mkdtemp(join(tmpdir(), "fmotion-inspect-"));
+    const path = join(directory, "object");
+    try {
+      await this.download(objectKey, path);
+      const probed = await probeMediaFile(path);
+      return { ...probed, bytes };
+    } catch {
+      return { type: "application/octet-stream", bytes };
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+
+  async download(objectKey: string, destination: string): Promise<void> {
+    const result = await this.client.send(new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: objectKey
+    }));
+    if (!result.Body) throw new Error("object body missing");
+    await pipeline(result.Body as Readable, createWriteStream(destination));
   }
 
   async put(objectKey: string, body: Uint8Array, contentType: string): Promise<void> {
@@ -86,6 +121,36 @@ async function projectSnapshot(pool: pg.Pool, job: PreviewJob): Promise<ProjectS
   };
 }
 
+async function mediaInputsFor(
+  pool: pg.Pool,
+  store: WorkerObjectStore,
+  snapshot: ProjectSnapshot,
+  directory: string
+): Promise<Record<string, MediaInput>> {
+  const inputs: Record<string, MediaInput> = {};
+  for (const scene of snapshot.scenes) {
+    if (!scene.media_id || inputs[scene.media_id]) continue;
+    const result = await pool.query<{
+      objectKey: string;
+      declaredType: string;
+      detected: DetectedMedia | null;
+    }>(
+      `SELECT "objectKey", "declaredType", detected FROM "MediaAsset"
+        WHERE id = $1 AND "ownerId" = $2 AND "projectId" = $3 AND state = 'ready'`,
+      [scene.media_id, snapshot.owner_id, snapshot.id]
+    );
+    const asset = result.rows[0];
+    if (!asset) continue;
+    const path = join(directory, scene.media_id);
+    await store.download(asset.objectKey, path);
+    inputs[scene.media_id] = {
+      path,
+      type: asset.detected?.type ?? asset.declaredType
+    };
+  }
+  return inputs;
+}
+
 export function createQueueHandlers(pool: pg.Pool, store: WorkerObjectStore): QueueHandlers {
   return {
     async inspect(job: InspectionJob) {
@@ -100,8 +165,8 @@ export function createQueueHandlers(pool: pg.Pool, store: WorkerObjectStore): Qu
       );
       const asset = result.rows[0];
       if (!asset) return { state: "ignored" };
-      const detected = await store.inspect(asset.objectKey);
-      const accepted = inspectMedia(asset.declaredType, detected.type, detected.bytes, asset.maxBytes).accepted;
+      const detected = await store.inspect(asset.objectKey, asset.maxBytes);
+      const accepted = inspectMedia(asset.declaredType, detected, asset.maxBytes).accepted;
       const state = accepted ? "ready" : "quarantined";
       await pool.query(
         `UPDATE "MediaAsset" SET state = $1, detected = $2
@@ -116,8 +181,9 @@ export function createQueueHandlers(pool: pg.Pool, store: WorkerObjectStore): Qu
       const directory = await mkdtemp(join(tmpdir(), `fmotion-${job.jobId}-`));
       const output = join(directory, "preview.mp4");
       try {
+        const mediaInputs = await mediaInputsFor(pool, store, snapshot, directory);
         if (!await event(pool, job.jobId, "rendering", 35)) return { state: "cancelled" };
-        await renderPreview(output, snapshot, signal);
+        await renderPreview(output, snapshot, signal, mediaInputs);
         if (!await event(pool, job.jobId, "uploading", 85)) return { state: "cancelled" };
         const objectKey = renderObjectKey(job.projectId, job.revision);
         await store.put(objectKey, await readFile(output), "video/mp4");

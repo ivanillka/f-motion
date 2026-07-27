@@ -103,6 +103,7 @@ function App() {
 
   async function admitFile(file: File) {
     if (!project) return;
+    const scene = project.scenes[0];
     const admission = await api.request<{ asset_id: string; upload_url: string }>(
       `/api/projects/${project.id}/media/uploads`,
       {
@@ -117,6 +118,19 @@ function App() {
     });
     if (!uploaded.ok) throw new Error("Upload failed");
     await api.request(`/api/projects/${project.id}/media/${admission.asset_id}/complete`, { method: "POST" });
+    // Upload stays inspecting until the worker probes it; attach only works once ready.
+    if (scene) {
+      try {
+        const updated = await api.command(project.id, project.revision, "update_scene", {
+          scene: { ...scene, caption: draft, media_id: admission.asset_id }
+        });
+        setProject(updated);
+        setStatus("Media attached.");
+        return;
+      } catch {
+        /* not ready yet */
+      }
+    }
     setStatus("Media uploaded and queued for inspection.");
   }
 
@@ -129,10 +143,19 @@ function App() {
 
   async function copyPexels(id: number) {
     if (!project) return;
-    await api.request(`/api/projects/${project.id}/media/pexels`, {
+    const scene = project.scenes[0];
+    const body = await api.request<{ asset: { id: string } }>(`/api/projects/${project.id}/media/pexels`, {
       method: "POST",
       body: JSON.stringify({ query: pexelsQuery, pexels_id: id })
     });
+    if (scene) {
+      const updated = await api.command(project.id, project.revision, "update_scene", {
+        scene: { ...scene, caption: draft, media_id: body.asset.id }
+      });
+      setProject(updated);
+      setStatus("Pexels media attached with attribution.");
+      return;
+    }
     setStatus("Pexels media copied with attribution.");
   }
 
@@ -150,7 +173,8 @@ function App() {
   }
 
   async function followRender(id: string, lastEventId = "") {
-    for (let attempt = 0; attempt < 30; attempt += 1) {
+    const deadline = Date.now() + 15 * 60_000;
+    while (Date.now() < deadline) {
       const response = await fetch(`/api/render-jobs/${id}/events`, {
         headers: {
           authorization: `Bearer ${token}`,
@@ -158,21 +182,36 @@ function App() {
         }
       });
       if (!response.ok) throw new Error("Render progress unavailable");
-      for (const block of (await response.text()).split("\n\n")) {
-        const eventId = block.match(/^id: (.+)$/m)?.[1];
-        const data = block.match(/^data: (.+)$/m)?.[1];
-        if (!eventId || !data) continue;
-        lastEventId = eventId;
-        const event = JSON.parse(data) as { phase: string; percent: number };
-        setProgress(event);
-        if (event.phase === "complete") {
-          const result = await api.request<{ url: string }>(`/api/render-jobs/${id}/download`);
-          setDownloadUrl(result.url);
-          return;
+      if (!response.body) throw new Error("Render progress stream unavailable");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let terminal = false;
+
+      while (!terminal) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split("\n\n");
+        buffer = blocks.pop() ?? "";
+        for (const block of blocks) {
+          const eventId = block.match(/^id: (.+)$/m)?.[1];
+          const data = block.match(/^data: (.+)$/m)?.[1];
+          if (!eventId || !data) continue;
+          lastEventId = eventId;
+          const event = JSON.parse(data) as { phase: string; percent: number };
+          setProgress(event);
+          if (event.phase === "complete") {
+            const result = await api.request<{ url: string }>(`/api/render-jobs/${id}/download`);
+            setDownloadUrl(result.url);
+            return;
+          }
+          if (event.phase === "cancelled" || event.phase === "failed") return;
         }
-        if (event.phase === "cancelled" || event.phase === "failed") return;
       }
-      await new Promise((resolve) => setTimeout(resolve, 250));
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
 

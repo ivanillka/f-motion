@@ -337,8 +337,12 @@ class _WorkflowPageState extends State<WorkflowPage> {
       renderJob = job;
       stage = 4;
     });
-    for (var attempt = 0; attempt < 30; attempt += 1) {
-      final events = await widget.api.events(job.id, lastEventId);
+    final deadline = DateTime.now().add(const Duration(minutes: 15));
+    while (DateTime.now().isBefore(deadline)) {
+      final events = await widget.api.events(
+        job.id,
+        (lastEventId == null || lastEventId!.isEmpty) ? null : lastEventId,
+      );
       for (final event in events) {
         lastEventId = event.id;
         if (!mounted) return;
@@ -353,7 +357,7 @@ class _WorkflowPageState extends State<WorkflowPage> {
         }
         if (event.phase == 'cancelled' || event.phase == 'failed') return;
       }
-      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await Future<void>.delayed(const Duration(milliseconds: 500));
     }
   }
 

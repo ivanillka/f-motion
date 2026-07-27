@@ -18,3 +18,4 @@ apps/mobile/android/.gradle/
 !.env.example
 *.db
 uploads/
+.worktrees/

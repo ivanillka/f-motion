@@ -143,3 +143,94 @@ test("test app rejects invalid command kinds with validation errors", async () =
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+test("update_scene media_id must be owner-scoped and ready", async () => {
+  const assets = new Map();
+  const server = createServer(createTestApp({
+    media: {
+      repository: {
+        async get(ownerId, projectId, id) {
+          return assets.get(`${ownerId}:${projectId}:${id}`);
+        }
+      },
+      store: {},
+      pexels: {},
+      async enqueueInspection() {}
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const created = await fetch(`${origin}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "Media" })
+    });
+    const { project } = await created.json();
+    const selected = await fetch(`${origin}/api/projects/${project.id}/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command_id: "select",
+        base_revision: 0,
+        client_timestamp: "",
+        kind: "select_concept",
+        payload: { concept_id: "direct" }
+      })
+    });
+    const afterSelect = await selected.json();
+    const scene = afterSelect.scenes[0];
+    const missing = await fetch(`${origin}/api/projects/${project.id}/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command_id: "attach-missing",
+        base_revision: afterSelect.revision,
+        client_timestamp: "",
+        kind: "update_scene",
+        payload: { scene: { ...scene, media_id: "missing" } }
+      })
+    });
+    assert.equal(missing.status, 422);
+
+    assets.set(`authenticated-user:${project.id}:quarantined`, {
+      id: "quarantined",
+      ownerId: "authenticated-user",
+      projectId: project.id,
+      state: "quarantined"
+    });
+    const quarantined = await fetch(`${origin}/api/projects/${project.id}/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command_id: "attach-quarantined",
+        base_revision: afterSelect.revision,
+        client_timestamp: "",
+        kind: "update_scene",
+        payload: { scene: { ...scene, media_id: "quarantined" } }
+      })
+    });
+    assert.equal(quarantined.status, 422);
+
+    assets.set(`authenticated-user:${project.id}:ready-asset`, {
+      id: "ready-asset",
+      ownerId: "authenticated-user",
+      projectId: project.id,
+      state: "ready"
+    });
+    const ready = await fetch(`${origin}/api/projects/${project.id}/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command_id: "attach-ready",
+        base_revision: afterSelect.revision,
+        client_timestamp: "",
+        kind: "update_scene",
+        payload: { scene: { ...scene, media_id: "ready-asset" } }
+      })
+    });
+    assert.equal(ready.status, 200);
+    assert.equal((await ready.json()).scenes[0].media_id, "ready-asset");
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});

@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   CreateBucketCommand,
   DeleteBucketCommand,
@@ -13,11 +15,12 @@ import {
 import pg from "pg";
 import { createQueueHandlers, S3WorkerObjectStore } from "../dist/runtime.js";
 
+const fixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const endpoint = process.env.TEST_S3_ENDPOINT;
 if (!databaseUrl || !endpoint) throw new Error("worker integration configuration is required");
 
-test("worker trusts stored media facts and renders an immutable project result", async () => {
+test("worker probes stored media and renders an immutable project result", async () => {
   const schema = `worker_test_${randomUUID().replaceAll("-", "_")}`;
   const bucket = `fmotion-${randomUUID()}`;
   const admin = new pg.Pool({ connectionString: databaseUrl });
@@ -52,20 +55,31 @@ test("worker trusts stored media facts and renders an immutable project result",
       focal_y: 0.5,
       motion: "none",
       audio_level: 1,
-      ducking: false
+      ducking: false,
+      media_id: "asset"
     };
     await pool.query(
       `INSERT INTO "Scene" (id, "projectId", position, payload) VALUES ('scene', 'project', 0, $1)`,
       [scene]
     );
+    const mp4 = await readFile(join(fixtures, "scene_one.mp4"));
     await pool.query(
       `INSERT INTO "MediaAsset"
         (id, "ownerId", "projectId", "objectKey", state, "declaredType", "maxBytes")
-       VALUES ('asset', 'owner', 'project', 'projects/project/media/asset', 'inspecting', 'video/mp4', 100)`
+       VALUES ('asset', 'owner', 'project', 'projects/project/media/asset', 'inspecting', 'video/mp4', $1),
+              ('fake', 'owner', 'project', 'projects/project/media/fake', 'inspecting', 'video/mp4', 100)`
+      ,
+      [mp4.length]
     );
     await s3.send(new PutObjectCommand({
       Bucket: bucket,
       Key: "projects/project/media/asset",
+      Body: mp4,
+      ContentType: "video/mp4"
+    }));
+    await s3.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: "projects/project/media/fake",
       Body: "fixture",
       ContentType: "video/mp4"
     }));
@@ -81,6 +95,11 @@ test("worker trusts stored media facts and renders an immutable project result",
       projectId: "project"
     }, new AbortController().signal), { state: "ready" });
     assert.equal((await pool.query(`SELECT state FROM "MediaAsset" WHERE id = 'asset'`)).rows[0].state, "ready");
+    assert.deepEqual(await handlers.inspect({
+      assetId: "fake",
+      ownerId: "owner",
+      projectId: "project"
+    }, new AbortController().signal), { state: "quarantined" });
 
     const rendered = await handlers.render({
       jobId: "job",

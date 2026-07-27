@@ -14,7 +14,13 @@ export interface StoredMedia {
   state: "admitted" | "inspecting" | "ready" | "quarantined" | "rejected";
   declaredType: string;
   maxBytes: number;
-  detected?: { type: string; bytes: number };
+  detected?: {
+    type: string;
+    bytes: number;
+    width?: number;
+    height?: number;
+    duration_ms?: number;
+  };
   attribution?: { source: "Pexels"; creator: string; url: string };
 }
 
@@ -176,8 +182,7 @@ export class PexelsClient {
   ): Promise<StoredMedia> {
     const response = await this.request(selected.sourceUrl);
     if (!response.ok) throw new Error("Pexels media unavailable");
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (!bytes.length || bytes.length > maximumMediaBytes) throw new Error("Pexels media rejected");
+    const bytes = await readBoundedBody(response, maximumMediaBytes);
     const id = randomUUID();
     const asset: StoredMedia = {
       id,
@@ -194,4 +199,32 @@ export class PexelsClient {
     await repository.insert(asset);
     return asset;
   }
+}
+
+/** Stream a response body while enforcing a hard byte ceiling. */
+export async function readBoundedBody(response: Response, maxBytes: number): Promise<Uint8Array> {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) throw new Error("Pexels media rejected");
+  if (!response.body) throw new Error("Pexels media unavailable");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new Error("Pexels media rejected");
+    }
+    chunks.push(value);
+  }
+  if (!total) throw new Error("Pexels media rejected");
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }

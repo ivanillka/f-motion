@@ -5,6 +5,7 @@
   "main": "dist/start.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "start": "node dist/start.js",
     "test": "npm run build && node test/run.mjs"
   },
   "dependencies": {

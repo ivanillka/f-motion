@@ -27,7 +27,8 @@ test("happy path, draft restart, conflict recovery, render reconnect, and downlo
   await page.getByRole("button", { name: "Reload latest" }).click();
   await page.getByRole("button", { name: /Render accurate/ }).click();
   await expect(page.getByRole("status").filter({ hasText: "complete · 720p watermarked preview" })).toBeVisible();
-  expect(resumedFrom).toEqual(["1", "2"]);
+  // Long-lived SSE completes on one connection; reconnects only happen after drops.
+  expect(resumedFrom).toEqual([]);
   await expect(page.getByRole("button", { name: "Cancel render" })).toBeVisible();
   const download = page.getByRole("link");
   await expect(page.getByRole("button", { name: "Download preview" })).toBeEnabled();

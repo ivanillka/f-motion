@@ -54,6 +54,22 @@ export interface TestAppOptions extends Omit<AppBaseOptions, "projects"> {
 
 type Identify = (authorization: string | undefined) => Promise<string>;
 
+async function assertReadySceneMedia(
+  ownerId: string,
+  command: CommandEnvelope,
+  media: MediaDependencies | undefined
+): Promise<void> {
+  if (command.kind !== "update_scene") return;
+  const scene = command.payload.scene;
+  if (!scene || typeof scene !== "object" || Array.isArray(scene)) return;
+  const mediaId = (scene as { media_id?: unknown }).media_id;
+  if (mediaId === undefined || mediaId === null) return;
+  if (typeof mediaId !== "string" || !mediaId) throw new ValidationError("media_id invalid");
+  if (!media?.repository) throw new ValidationError("media_id not ready");
+  const asset = await media.repository.get(ownerId, command.project_id, mediaId);
+  if (!asset || asset.state !== "ready") throw new ValidationError("media_id not ready");
+}
+
 function commandEnvelope(value: unknown, projectId: string): CommandEnvelope {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new ValidationError("invalid command");
   const command = value as Record<string, unknown>;
@@ -118,7 +134,9 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
   app.post("/api/projects/:projectId/commands", async (request, response, next) => {
     const ownerId = String(response.locals.ownerId);
     try {
-      response.json(await projects.command(ownerId, commandEnvelope(request.body, request.params.projectId)));
+      const command = commandEnvelope(request.body, request.params.projectId);
+      await assertReadySceneMedia(ownerId, command, options.media);
+      response.json(await projects.command(ownerId, command));
     } catch (error) {
       if (error instanceof ConflictError) {
         return response.status(409).json({
@@ -247,21 +265,52 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
   app.get("/api/render-jobs/:jobId/events", async (request, response, next) => {
     try {
       if (!options.renders) return response.status(503).json({ type: "unavailable" });
-      const events = await options.renders.events(
-        String(response.locals.ownerId),
-        request.params.jobId,
-        request.header("last-event-id")
-      );
-      if (!events) return response.status(404).json({ type: "not_found", message: "not found" });
+      const ownerId = String(response.locals.ownerId);
+      const jobId = request.params.jobId;
+      let lastEventId = request.header("last-event-id") ?? "";
+      const first = await options.renders.events(ownerId, jobId, lastEventId || undefined);
+      if (!first) return response.status(404).json({ type: "not_found", message: "not found" });
+
+      // ponytail: DB poll every 500ms while SSE open; ceiling 15m. Upgrade: LISTEN/NOTIFY.
+      const terminal = new Set(["complete", "cancelled", "failed"]);
       response.setHeader("content-type", "text/event-stream");
       response.setHeader("cache-control", "no-cache");
-      for (const event of events) {
-        response.write(`id: ${event.eventId}\nevent: progress\ndata: ${JSON.stringify({
-          job_id: request.params.jobId,
-          event_id: event.eventId,
-          phase: event.phase,
-          percent: event.percent
-        })}\n\n`);
+      response.setHeader("connection", "keep-alive");
+
+      let closed = false;
+      request.on("close", () => {
+        closed = true;
+      });
+
+      const writeEvents = (events: Array<{ eventId: string; phase: string; percent: number }>) => {
+        for (const event of events) {
+          response.write(`id: ${event.eventId}\nevent: progress\ndata: ${JSON.stringify({
+            job_id: jobId,
+            event_id: event.eventId,
+            phase: event.phase,
+            percent: event.percent
+          })}\n\n`);
+          lastEventId = event.eventId;
+          if (terminal.has(event.phase)) return true;
+        }
+        return false;
+      };
+
+      if (writeEvents(first)) {
+        response.end();
+        return;
+      }
+
+      const deadline = Date.now() + 15 * 60_000;
+      while (!closed && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        if (closed) break;
+        const events = await options.renders.events(ownerId, jobId, lastEventId || undefined);
+        if (!events) break;
+        if (writeEvents(events)) {
+          response.end();
+          return;
+        }
       }
       response.end();
     } catch (error) {

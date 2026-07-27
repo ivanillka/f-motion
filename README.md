@@ -1,8 +1,12 @@
 # F-Motion
 
-F-Motion is a standalone, private video-creation product for **f-motion.com**. It reuses Fotium's visual language but has separate customer accounts, database, deployment, and operational boundaries.
+F-Motion is a split-client vertical-video editor for **f-motion.com**: React on
+the web, Flutter on Android, and one authoritative Express/worker API. It reuses
+Fotium's visual language with separate accounts, database, and deployment.
 
-This repository currently contains only the architecture and frozen design contract. No application scaffold or production code may be added until Gate 0 and the web/Android Gate 1 feasibility proof are accepted. iOS and Linux remain later platform decisions.
+**Status:** Gate 1 feasibility is accepted (Flutter Android + React web). Gate 2
+vertical slice is in progress on this branch. Gate 0 launch-policy evidence is
+still open before public/paid launch. iOS and Linux remain later decisions.
 
 ## Source-of-truth order
 
@@ -23,16 +27,9 @@ This repository currently contains only the architecture and frozen design contr
 - [ ] `f-motion.com` trademark, product-name, and brand clearance
 - [ ] Security review for encrypted provider credentials, uploads, sessions, and export URLs
 
-Beatoven and all generated-music functionality are blocked until licensing, sublicensing, attribution, output-ownership, and data-use terms are verified in writing.
-
-## Gate 1 — platform feasibility
-
-Prove client media feasibility on web and Android before production development using fixtures and mocks: playback and seeking, scene switching and reordering, crop and focal-point controls, text safe areas, approximate audio, mock signed upload, local cache behavior, responsive layouts, and measured device/browser limits. Production server rendering begins only in the later vertical slice.
-# F-Motion
-
-F-Motion is a split-client vertical-video editor: React on the web, Flutter on
-Android, and one authoritative Express/worker API boundary. The storyboard is
-approximate; the FFmpeg worker produces the only accurate preview.
+Beatoven and all generated-music functionality are blocked until licensing,
+sublicensing, attribution, output-ownership, and data-use terms are verified in
+writing.
 
 ## Demo today
 
@@ -44,7 +41,7 @@ npm run demo
 Then open `http://127.0.0.1:4173` and click **Email me a magic link** (local
 test identity when Supabase env vars are unset). Flow: brief → three concepts →
 storyboard → accurate 720p preview → download. See
-`docs/runbooks/local-development.md`.
+`docs/runbooks/local-development.md` for the durable Postgres/MinIO stack.
 
 ## Supported toolchain
 

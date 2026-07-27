@@ -48,20 +48,22 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
     assert.equal(queued.length, 1);
 
     assert.equal(await renders.progress(created.job_id, "preparing", 10), true);
-    const reconnect = await fetch(`${origin}/api/render-jobs/${created.job_id}/events`, {
+    const reconnectPromise = fetch(`${origin}/api/render-jobs/${created.job_id}/events`, {
       headers: { "last-event-id": queued[0].eventId }
     });
-    assert.equal(reconnect.status, 200);
-    const stream = await reconnect.text();
-    assert.match(stream, /event: progress/);
-    assert.match(stream, /"phase":"preparing"/);
-    assert.doesNotMatch(stream, /"phase":"queued"/);
-
+    await new Promise((resolve) => setTimeout(resolve, 200));
     assert.equal(await renders.complete(created.job_id, `projects/${project.id}/renders/0.mp4`, {
       width: 720,
       height: 1280,
       immutable: true
     }), true);
+    const reconnect = await reconnectPromise;
+    assert.equal(reconnect.status, 200);
+    const stream = await reconnect.text();
+    assert.match(stream, /event: progress/);
+    assert.match(stream, /"phase":"preparing"/);
+    assert.match(stream, /"phase":"complete"/);
+    assert.doesNotMatch(stream, /"phase":"queued"/);
     assert.equal((await renders.result("owner", created.job_id)).stale, false);
     assert.equal(await renders.result("other", created.job_id), undefined);
     assert.equal(await renders.complete(created.job_id, "wrong.mp4", {}), false);

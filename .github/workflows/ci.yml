@@ -24,6 +24,9 @@ jobs:
       TEST_S3_ENDPOINT: http://127.0.0.1:9000
       RUN_MEDIA_INTEGRATION: "1"
       RUN_QUEUE_INTEGRATION: "1"
+      RUN_PROJECT_INTEGRATION: "1"
+      RUN_RENDER_INTEGRATION: "1"
+      RUN_WORKER_INTEGRATION: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,7 +41,12 @@ jobs:
       - uses: android-actions/setup-android@v3
       - run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
       - run: docker run -d --name minio -e MINIO_ROOT_USER=fmotion -e MINIO_ROOT_PASSWORD=fmotion-local-secret -p 9000:9000 minio/minio:latest server /data
+      - run: |
+          until curl --fail --silent http://127.0.0.1:9000/minio/health/live; do sleep 1; done
+          docker run --rm --network container:minio minio/mc alias set local http://127.0.0.1:9000 fmotion fmotion-local-secret
+          docker run --rm --network container:minio minio/mc mb --ignore-existing local/fmotion-local
       - run: npm ci
+      - run: npx prisma migrate deploy
       - run: npm run lint
       - run: npm test
       - run: npm run build
