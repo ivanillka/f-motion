@@ -59,16 +59,8 @@ private — the API only ever hands out short-lived signed URLs.
 DATABASE_URL=<your-session-mode-url> npx prisma migrate deploy
 ```
 
-**Known limitation:** `prisma/schema.prisma` currently hardcodes its
-`datasource.url` to a local placeholder
-(`postgresql://validation:validation@127.0.0.1:5432/fmotion`) instead of
-reading `env("DATABASE_URL")`. Prisma CLI ignores environment variables for a
-hardcoded literal, so `prisma migrate deploy` will fail authentication
-against any real database (local or hosted) until that one line changes.
-This file is out of scope for this plan (`plans/008-hosted-deploy-surface.md`
-only covers Dockerfiles/`fly.toml`/`start.ts`/docs) — file a follow-up to
-change the datasource `url` to `env("DATABASE_URL")` before relying on this
-step.
+`prisma/schema.prisma` reads `env("DATABASE_URL")`. CI and local stack must
+export the same variable (see `.env.example` and `.github/workflows/ci.yml`).
 
 ## 5. Deploy the API and worker images
 
