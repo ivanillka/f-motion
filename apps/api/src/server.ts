@@ -8,7 +8,8 @@ import {
   assertAccountActive,
   authenticateBearer,
   type AccountStateLookup,
-  type AuthConfig
+  type AuthConfig,
+  type EnsureUser
 } from "./auth.js";
 import {
   ConflictError,
@@ -44,6 +45,7 @@ interface AppBaseOptions {
 export interface AppOptions extends AppBaseOptions {
   authConfig: AuthConfig;
   accountState: AccountStateLookup;
+  ensureUser?: EnsureUser;
 }
 
 export interface TestAppOptions extends Omit<AppBaseOptions, "projects"> {
@@ -342,7 +344,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
 }
 
 export function createApp(options: AppOptions) {
-  return buildApp(options, (authorization) => authenticateBearer(authorization, options.authConfig, options.accountState));
+  return buildApp(options, (authorization) =>
+    authenticateBearer(authorization, options.authConfig, options.accountState, options.ensureUser));
 }
 
 export function createTestApp(options: TestAppOptions = {}) {

@@ -2,6 +2,7 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 
 export interface AuthConfig { issuer: string; audience: string; jwksUrl: URL }
 export type AccountStateLookup = (ownerId: string) => Promise<string | undefined>;
+export type EnsureUser = (ownerId: string) => Promise<void>;
 
 export class UnauthorizedError extends Error {
   constructor() { super("authentication required"); }
@@ -27,7 +28,8 @@ export function assertAccountActive(state: string): void {
 export async function authenticateBearer(
   authorization: string | undefined,
   config: AuthConfig,
-  accountState: AccountStateLookup
+  accountState: AccountStateLookup,
+  ensureUser?: EnsureUser
 ): Promise<string> {
   const match = authorization?.match(/^Bearer ([^\s]+)$/i);
   if (!match?.[1]) throw new UnauthorizedError();
@@ -41,6 +43,11 @@ export async function authenticateBearer(
 
   const ownerId = payload.sub;
   if (!ownerId) throw new UnauthorizedError();
-  assertAccountActive((await accountState(ownerId)) ?? "missing");
+  let state = await accountState(ownerId);
+  if (state === undefined && ensureUser) {
+    await ensureUser(ownerId);
+    state = await accountState(ownerId);
+  }
+  assertAccountActive(state ?? "missing");
   return ownerId;
 }

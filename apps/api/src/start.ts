@@ -69,6 +69,12 @@ if (process.env.FMOTION_LOCAL_AUTH === "1") {
         [ownerId]
       );
       return result.rows[0]?.state;
+    },
+    ensureUser: async (ownerId) => {
+      await pool.query(
+        `INSERT INTO "User" (id, state) VALUES ($1, 'active') ON CONFLICT (id) DO NOTHING`,
+        [ownerId]
+      );
     }
   }).listen(port);
 }
