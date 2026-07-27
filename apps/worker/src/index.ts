@@ -133,6 +133,22 @@ function escapeAssText(value: string): string {
     .replace(/\r\n|\r|\n/g, "\\N");
 }
 
+const MOTION_FPS = 30;
+const MOTION_MAX_ZOOM = 1.08;
+
+function motionFilter(motion: "none" | "push" | "zoom", durationSeconds: number, width: number, height: number): string | undefined {
+  if (motion === "none") return undefined;
+  const frames = Math.max(2, Math.round(durationSeconds * MOTION_FPS));
+  if (motion === "zoom") {
+    const step = (MOTION_MAX_ZOOM - 1) / (frames - 1);
+    return `zoompan=z='min(zoom+${step.toFixed(6)},${MOTION_MAX_ZOOM})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+  }
+  // ponytail: "push" is approximated as a small fixed-zoom horizontal pan rather than a
+  // true directional push transition. Ceiling: this pan. Upgrade: a real motion-graph
+  // per scene once multi-scene transitions land.
+  return `zoompan=z=${MOTION_MAX_ZOOM}:x='(iw-iw/zoom)*on/${frames - 1}':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+}
+
 const CAPTION_ASS_STYLE =
   "Style: Caption,DejaVu Sans,36,&H00FFFFFF,&H000000FF,&H00000000,&H40000000,0,0,0,0,100,100,0,0,3,2,0,2,40,40,140,1";
 
@@ -215,9 +231,11 @@ export function sceneClipArguments(
 ): string[] {
   const duration = Math.max(0.2, scene.duration_ms / 1000);
   const captions = captionFilters(captionAssPath);
+  const motion = motionFilter(scene.motion, duration, plan.width, plan.height);
   if (media) {
     const cover = [
       ...coverCropFilter(plan.width, plan.height, scene.focal_x, scene.focal_y),
+      ...(motion ? [motion] : []),
       ...captions
     ];
     const still = media.type === "image/jpeg" || media.type === "image/png";
@@ -230,7 +248,7 @@ export function sceneClipArguments(
     "-y",
     "-f", "lavfi",
     "-i", `color=c=#202027:s=${plan.width}x${plan.height}:d=${duration}:r=30`,
-    ...vfArgs(captions),
+    ...vfArgs([...(motion ? [motion] : []), ...captions]),
     ...clipEncode,
     clipPath
   ];

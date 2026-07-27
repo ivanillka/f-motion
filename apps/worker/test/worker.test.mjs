@@ -166,6 +166,23 @@ test("render job clip crops around the scene's focal point", () => {
   }, "/tmp/job");
   assert.match(job.clips[0].args.join(" "), /crop=720:1280:\(iw-ow\)\*0\.8:\(ih-oh\)\*0\.2/);
 });
+test("zoom motion adds a bounded zoompan filter; none omits it", () => {
+  const zoomJob = buildRenderJob({
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], motion: "zoom" }]
+  }, "preview.mp4", {}, "/tmp/job");
+  assert.match(zoomJob.clips[0].args.join(" "), /zoompan/);
+
+  const noneJob = buildRenderJob(snapshot, "preview.mp4", {}, "/tmp/job");
+  assert.doesNotMatch(noneJob.clips[0].args.join(" "), /zoompan/);
+});
+test("push motion pans within the frame instead of a no-op", () => {
+  const pushJob = buildRenderJob({
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], motion: "push" }]
+  }, "preview.mp4", {}, "/tmp/job");
+  assert.match(pushJob.clips[0].args.join(" "), /zoompan/);
+});
 test("render job sorts scenes by order and gives each its own clip", () => {
   const twoScenes = {
     ...snapshot,
@@ -295,4 +312,20 @@ test("worker concatenates every scene's media with an honest total duration", as
     `expected ~1200ms (500+700), got ${probed.duration_ms}`
   );
   assert.deepEqual(await readdir(directory), ["preview.mp4"]);
+});
+test("worker renders zoompan motion (zoom and push) without ffmpeg errors", async () => {
+  for (const motion of ["zoom", "push"]) {
+    const directory = await mkdtemp(join(tmpdir(), `fmotion-motion-${motion}-`));
+    const output = join(directory, "preview.mp4");
+    const withMotion = {
+      ...snapshot,
+      scenes: [{ ...snapshot.scenes[0], media_id: "asset-1", duration_ms: 500, motion }]
+    };
+    await renderPreview(output, withMotion, undefined, {
+      "asset-1": { path: join(fixtures, "scene_one.mp4"), type: "video/mp4" }
+    });
+    const bytes = await readFile(output);
+    assert.ok(bytes.length > 1000, `${motion} render produced output`);
+    assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
+  }
 });

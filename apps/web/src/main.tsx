@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ApiClient, ApiResponseError, type Concept, type ProjectSnapshot } from "./api";
+import { ApiClient, ApiResponseError, type Concept, type ProjectSnapshot, type Scene } from "./api";
 import "./style.css";
 
 type Step = "sign-in" | "brief" | "concepts" | "editor" | "render";
@@ -113,6 +113,25 @@ function App() {
     });
     setProject(updated);
     setStatus("✓ All changes saved");
+  }
+
+  async function saveMotion(motion: Scene["motion"]) {
+    const scene = project?.scenes[0];
+    if (!project || !scene) return;
+    setStatus("Saving…");
+    try {
+      const updated = await api.command(project.id, project.revision, "update_scene", {
+        scene: { ...scene, motion }
+      });
+      setProject(updated);
+      setStatus("✓ All changes saved");
+    } catch (error) {
+      if (error instanceof ApiResponseError && error.status === 409) {
+        setConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot);
+        return;
+      }
+      setStatus("Motion change could not be saved.");
+    }
   }
 
   async function admitFile(file: File) {
@@ -271,10 +290,8 @@ function App() {
       <p className="notice">Approximate preview — request an accurate render to verify timing and crop.</p>
       <div className="preview" aria-label="Approximate vertical preview"><span>{draft}</span></div>
       <label>Caption<input maxLength={180} value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={() => void saveScene()} /></label>
-      <label>Motion<select value={project.scenes[0]?.motion ?? "none"} onChange={(event) => {
-        const scene = project.scenes[0];
-        if (scene) setProject({ ...project, scenes: [{ ...scene, motion: event.target.value as typeof scene.motion }] });
-      }}><option value="none">None</option><option value="push">Push</option><option value="zoom">Zoom</option></select></label>
+      <label>Motion<select value={project.scenes[0]?.motion ?? "none"} onChange={(event) => void saveMotion(event.target.value as Scene["motion"])}>
+        <option value="none">None</option><option value="push">Push</option><option value="zoom">Zoom</option></select></label>
       <label>Duration<input type="range" min="500" max="15000" step="100" value={project.scenes[0]?.duration_ms ?? 3000} readOnly /></label>
       <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png" onChange={(event) => {
         const file = event.target.files?.[0];
