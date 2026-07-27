@@ -67,15 +67,13 @@ integration("authenticated media routes use real PostgreSQL and private S3 stora
       }
       return new Response(new Uint8Array([0, 1, 2, 3]), { status: 200 });
     };
-    const enqueued = [];
     server.on("request", createTestApp({
       ownerId: "owner",
       projects,
       media: {
         repository,
         store,
-        pexels: new PexelsClient("server-only-key", pexelsRequest),
-        enqueueInspection: async (assetId) => { enqueued.push(assetId); }
+        pexels: new PexelsClient("server-only-key", pexelsRequest)
       }
     }));
     const origin = await listen(server);
@@ -89,6 +87,7 @@ integration("authenticated media routes use real PostgreSQL and private S3 stora
     const admission = await admissionResponse.json();
     assert.equal(admission.method, "PUT");
     assert.match(admission.upload_url, /X-Amz-Signature=/i);
+    assert.match(admission.upload_url, /X-Amz-SignedHeaders=[^&]*content-length/i);
     assert.equal((await fetch(admission.upload_url, {
       method: "PUT",
       headers: { "content-type": "video/mp4" },
@@ -100,7 +99,21 @@ integration("authenticated media routes use real PostgreSQL and private S3 stora
       method: "POST"
     });
     assert.equal(complete.status, 202);
-    assert.deepEqual(enqueued, [admission.asset_id]);
+    const outbox = await pool.query(
+      `SELECT "dedupeKey", "dispatchedAt" FROM "WorkOutbox" WHERE kind = 'inspect-media'`
+    );
+    assert.equal(outbox.rows.length, 1);
+    assert.equal(outbox.rows[0].dedupeKey, `inspect-media:${admission.asset_id}`);
+    assert.equal(outbox.rows[0].dispatchedAt, null);
+    assert.equal((await repository.get("owner", project.id, admission.asset_id))?.state, "inspecting");
+    const repeatComplete = await fetch(`${origin}/api/projects/${project.id}/media/${admission.asset_id}/complete`, {
+      method: "POST"
+    });
+    assert.equal(repeatComplete.status, 202);
+    assert.equal(
+      Number((await pool.query(`SELECT COUNT(*) AS count FROM "WorkOutbox" WHERE kind = 'inspect-media'`)).rows[0].count),
+      1
+    );
     assert.equal((await repository.recordInspection("owner", project.id, admission.asset_id, {
       type: "image/png",
       bytes: 7
@@ -118,6 +131,18 @@ integration("authenticated media routes use real PostgreSQL and private S3 stora
     const copiedAsset = (await copied.json()).asset;
     assert.equal(copiedAsset.attribution.source, "Pexels");
     assert.equal(copiedAsset.attribution.creator, "Fixture Creator");
+    assert.notEqual(copiedAsset.state, "ready");
+    assert.equal(copiedAsset.state, "inspecting");
+    assert.equal((await repository.get("owner", project.id, copiedAsset.id))?.state, "inspecting");
+    const pexelsOutbox = await pool.query(
+      `SELECT "dedupeKey" FROM "WorkOutbox" WHERE "dedupeKey" = $1`,
+      [`inspect-media:${copiedAsset.id}`]
+    );
+    assert.equal(pexelsOutbox.rows.length, 1);
+    const fetched = await fetch(`${origin}/api/projects/${project.id}/media/${copiedAsset.id}`);
+    assert.equal(fetched.status, 200);
+    assert.deepEqual(await fetched.json(), { id: copiedAsset.id, state: "inspecting" });
+    assert.equal(await repository.get("other", project.id, copiedAsset.id), undefined);
   } finally {
     if (server.listening) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     const listed = await client.send(new ListObjectsV2Command({ Bucket: bucket }));

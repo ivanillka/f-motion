@@ -92,6 +92,31 @@ async function event(
   return true;
 }
 
+/** Persists a terminal `failed` state once rendering has started. Never overwrites `cancelled`/`complete`. */
+async function markFailed(pool: pg.Pool, jobId: string): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const updated = await client.query(
+      `UPDATE "RenderJob" SET state = 'failed'
+        WHERE id = $1 AND state IN ('queued', 'running') RETURNING id`,
+      [jobId]
+    );
+    if (updated.rowCount) {
+      await client.query(
+        `INSERT INTO "RenderEvent" ("jobId", phase, percent) VALUES ($1, 'failed', 0)`,
+        [jobId]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function projectSnapshot(pool: pg.Pool, job: PreviewJob): Promise<ProjectSnapshot | undefined> {
   const project = await pool.query<{
     id: string;
@@ -181,46 +206,53 @@ export function createQueueHandlers(pool: pg.Pool, store: WorkerObjectStore): Qu
       const directory = await mkdtemp(join(tmpdir(), `fmotion-${job.jobId}-`));
       const output = join(directory, "preview.mp4");
       try {
-        const mediaInputs = await mediaInputsFor(pool, store, snapshot, directory);
-        if (!await event(pool, job.jobId, "rendering", 35)) return { state: "cancelled" };
-        await renderPreview(output, snapshot, signal, mediaInputs);
-        if (!await event(pool, job.jobId, "uploading", 85)) return { state: "cancelled" };
-        const objectKey = renderObjectKey(job.projectId, job.revision);
-        await store.put(objectKey, await readFile(output), "video/mp4");
-        const client = await pool.connect();
         try {
-          await client.query("BEGIN");
-          const active = await client.query(
-            `SELECT 1 FROM "RenderJob" WHERE id = $1 AND state = 'running' FOR UPDATE`,
-            [job.jobId]
-          );
-          if (!active.rowCount) {
+          const mediaInputs = await mediaInputsFor(pool, store, snapshot, directory);
+          if (!await event(pool, job.jobId, "rendering", 35)) return { state: "cancelled" };
+          await renderPreview(output, snapshot, signal, mediaInputs);
+          if (!await event(pool, job.jobId, "uploading", 85)) return { state: "cancelled" };
+          const objectKey = renderObjectKey(job.projectId, job.revision);
+          await store.put(objectKey, await readFile(output), "video/mp4");
+          const client = await pool.connect();
+          try {
+            await client.query("BEGIN");
+            const active = await client.query(
+              `SELECT 1 FROM "RenderJob" WHERE id = $1 AND state = 'running' FOR UPDATE`,
+              [job.jobId]
+            );
+            if (!active.rowCount) {
+              await client.query("ROLLBACK");
+              return { state: "cancelled" };
+            }
+            await client.query(
+              `INSERT INTO "RenderResult" (id, "jobId", "objectKey", metadata)
+               VALUES ($1, $2, $3, $4) ON CONFLICT ("jobId") DO NOTHING`,
+              [randomUUID(), job.jobId, objectKey, {
+                width: 720,
+                height: 1280,
+                watermark: "F-Motion preview",
+                revision: job.revision,
+                immutable: true
+              }]
+            );
+            await client.query(`UPDATE "RenderJob" SET state = 'complete' WHERE id = $1`, [job.jobId]);
+            await client.query(
+              `INSERT INTO "RenderEvent" ("jobId", phase, percent) VALUES ($1, 'complete', 100)`,
+              [job.jobId]
+            );
+            await client.query("COMMIT");
+            return { state: "complete", objectKey };
+          } catch (error) {
             await client.query("ROLLBACK");
-            return { state: "cancelled" };
+            throw error;
+          } finally {
+            client.release();
           }
-          await client.query(
-            `INSERT INTO "RenderResult" (id, "jobId", "objectKey", metadata)
-             VALUES ($1, $2, $3, $4) ON CONFLICT ("jobId") DO NOTHING`,
-            [randomUUID(), job.jobId, objectKey, {
-              width: 720,
-              height: 1280,
-              watermark: "F-Motion preview",
-              revision: job.revision,
-              immutable: true
-            }]
-          );
-          await client.query(`UPDATE "RenderJob" SET state = 'complete' WHERE id = $1`, [job.jobId]);
-          await client.query(
-            `INSERT INTO "RenderEvent" ("jobId", phase, percent) VALUES ($1, 'complete', 100)`,
-            [job.jobId]
-          );
-          await client.query("COMMIT");
-          return { state: "complete", objectKey };
-        } catch (error) {
-          await client.query("ROLLBACK");
-          throw error;
-        } finally {
-          client.release();
+        } catch {
+          // Rendering had already started (past `preparing`): treat every failure here as
+          // terminal so the client SSE stops waiting instead of polling to the 15m ceiling.
+          await markFailed(pool, job.jobId);
+          return { state: "failed" };
         }
       } finally {
         await rm(directory, { recursive: true, force: true });
