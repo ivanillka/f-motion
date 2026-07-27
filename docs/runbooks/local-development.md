@@ -44,6 +44,11 @@ commands.
 `FMOTION_LOCAL_AUTH=1` injects a fixed local owner and skips Supabase JWKS. Leave
 it unset for real JWT verification.
 
+**Never set `FMOTION_LOCAL_AUTH=1` or `VITE_ALLOW_DEMO_AUTH=1` on a public host.**
+The API refuses to boot with local auth when `NODE_ENV=production` or
+`FMOTION_ENV=hosted`; the web client only falls back to the demo token in
+`vite dev` or with `VITE_ALLOW_DEMO_AUTH=1` set, which hosted builds must not set.
+
 Use PostgreSQL session-mode connections for pg-boss. Never expose the Pexels,
 R2, media-signing, database, or queue credentials to either client. The web PWA
 does not provide offline editing or rendering.
