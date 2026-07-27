@@ -100,6 +100,23 @@ test("render arguments use attached media input when provided", () => {
   assert.doesNotMatch(args, /color=c=#202027/);
   assert.match(args, /force_original_aspect_ratio=increase/);
 });
+test("zoom motion adds a bounded zoompan filter; none omits it", () => {
+  const zoomArgs = ffmpegArguments({
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], motion: "zoom" }]
+  }, "preview.mp4").join(" ");
+  assert.match(zoomArgs, /zoompan/);
+
+  const noneArgs = ffmpegArguments(snapshot, "preview.mp4").join(" ");
+  assert.doesNotMatch(noneArgs, /zoompan/);
+});
+test("push motion pans within the frame instead of a no-op", () => {
+  const pushArgs = ffmpegArguments({
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], motion: "push" }]
+  }, "preview.mp4").join(" ");
+  assert.match(pushArgs, /zoompan/);
+});
 test("cancellation removes partial output and rejects", async () => {
   const directory = await mkdtemp(join(tmpdir(), "fmotion-cancel-"));
   const output = join(directory, "preview.mp4");
@@ -129,4 +146,20 @@ test("worker renders attached fixture media into the preview", async () => {
   const bytes = await readFile(output);
   assert.ok(bytes.length > 1000);
   assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
+});
+test("worker renders zoompan motion (zoom and push) without ffmpeg errors", async () => {
+  for (const motion of ["zoom", "push"]) {
+    const directory = await mkdtemp(join(tmpdir(), `fmotion-motion-${motion}-`));
+    const output = join(directory, "preview.mp4");
+    const withMotion = {
+      ...snapshot,
+      scenes: [{ ...snapshot.scenes[0], media_id: "asset-1", duration_ms: 500, motion }]
+    };
+    await renderPreview(output, withMotion, undefined, {
+      "asset-1": { path: join(fixtures, "scene_one.mp4"), type: "video/mp4" }
+    });
+    const bytes = await readFile(output);
+    assert.ok(bytes.length > 1000, `${motion} render produced output`);
+    assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
+  }
 });

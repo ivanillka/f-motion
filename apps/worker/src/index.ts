@@ -113,6 +113,22 @@ function escapedText(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll(":", "\\:").replaceAll("'", "\\'");
 }
 
+const MOTION_FPS = 30;
+const MOTION_MAX_ZOOM = 1.08;
+
+function motionFilter(motion: "none" | "push" | "zoom", durationSeconds: number, width: number, height: number): string | undefined {
+  if (motion === "none") return undefined;
+  const frames = Math.max(2, Math.round(durationSeconds * MOTION_FPS));
+  if (motion === "zoom") {
+    const step = (MOTION_MAX_ZOOM - 1) / (frames - 1);
+    return `zoompan=z='min(zoom+${step.toFixed(6)},${MOTION_MAX_ZOOM})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+  }
+  // ponytail: "push" is approximated as a small fixed-zoom horizontal pan rather than a
+  // true directional push transition. Ceiling: this pan. Upgrade: a real motion-graph
+  // per scene once multi-scene transitions (plan 016) land.
+  return `zoompan=z=${MOTION_MAX_ZOOM}:x='(iw-iw/zoom)*on/${frames - 1}':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+}
+
 function overlayFilters(plan: ReturnType<typeof renderPlan>): string[] {
   const caption = plan.scenes[0]?.caption.trim();
   const filters = [
@@ -134,6 +150,7 @@ export function ffmpegArguments(
   const scene = plan.scenes[0];
   const duration = Math.max(0.2, plan.scenes.reduce((sum, item) => sum + item.duration_ms, 0) / 1000);
   const media = scene?.media_id ? mediaInputs[scene.media_id] : undefined;
+  const motion = scene ? motionFilter(scene.motion, duration, plan.width, plan.height) : undefined;
   const encode = [
     "-metadata", `comment=F-Motion project ${snapshot.id} revision ${snapshot.revision}`,
     "-c:v", "mpeg4",
@@ -148,6 +165,7 @@ export function ffmpegArguments(
     const cover = [
       `scale=${plan.width}:${plan.height}:force_original_aspect_ratio=increase`,
       `crop=${plan.width}:${plan.height}`,
+      ...(motion ? [motion] : []),
       ...overlayFilters(plan)
     ];
     const still = media.type === "image/jpeg" || media.type === "image/png";
@@ -161,7 +179,7 @@ export function ffmpegArguments(
     "-y",
     "-f", "lavfi",
     "-i", `color=c=#202027:s=${plan.width}x${plan.height}:d=${duration}:r=30`,
-    "-vf", overlayFilters(plan).join(","),
+    "-vf", [...(motion ? [motion] : []), ...overlayFilters(plan)].join(","),
     ...encode
   ];
 }
