@@ -17,4 +17,21 @@ test("command increments revision exactly once", () => {
   assert.equal(result.revision, 1);
 });
 test("stale revision is rejected", () => assert.throws(() => applyCommand(snapshot, { command_id: "c2", project_id: "p1", base_revision: 2, client_timestamp: "", kind: "select_concept", payload: { concept_id: "direct" } }), /stale/));
+test("unknown commands are rejected", () => assert.throws(
+  () => applyCommand(snapshot, { command_id: "c3", project_id: "p1", base_revision: 0, client_timestamp: "", kind: "delete_scene", payload: {} }),
+  /unknown command/
+));
+test("reorder_scene moves a scene", () => {
+  const twoScenes = { ...snapshot, scenes: [...snapshot.scenes, { ...snapshot.scenes[0], id: "s2", order: 1 }] };
+  const result = applyCommand(twoScenes, { command_id: "c4", project_id: "p1", base_revision: 0, client_timestamp: "", kind: "reorder_scene", payload: { scene_id: "s2", to: 0 } });
+  assert.deepEqual(result.scenes.map(({ id }) => id), ["s2", "s1"]);
+});
+test("update_scene rejects a non-object scene", () => assert.throws(
+  () => applyCommand(snapshot, { command_id: "c5", project_id: "p1", base_revision: 0, client_timestamp: "", kind: "update_scene", payload: { scene: "s1" } }),
+  /invalid scene/
+));
+test("update_scene rejects captions over 180 characters", () => assert.throws(
+  () => applyCommand(snapshot, { command_id: "c6", project_id: "p1", base_revision: 0, client_timestamp: "", kind: "update_scene", payload: { scene: { ...snapshot.scenes[0], caption: "x".repeat(181) } } }),
+  /caption exceeds/
+));
 test("render plan is 720p and watermarked", () => assert.deepEqual(renderPlan(snapshot).width, 720));

@@ -17,11 +17,31 @@ export function conceptsFor(brief: ProjectSnapshot["brief"]): [Concept, Concept,
 
 function boundedScene(scene: Scene): Scene {
   if (scene.caption.length > 180) throw new Error("caption exceeds 180 characters");
-  if (scene.duration_ms < 500 || scene.duration_ms > 15_000) throw new Error("duration out of bounds");
-  if (![scene.focal_x, scene.focal_y, scene.audio_level].every((value) => value >= 0 && value <= 1)) {
+  if (!Number.isFinite(scene.duration_ms) || scene.duration_ms < 500 || scene.duration_ms > 15_000) {
+    throw new Error("duration out of bounds");
+  }
+  if (![scene.focal_x, scene.focal_y, scene.audio_level].every((value) => Number.isFinite(value) && value >= 0 && value <= 1)) {
     throw new Error("normalized value out of bounds");
   }
   return scene;
+}
+
+function validatedScene(value: unknown): Scene {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid scene");
+  const scene = value as Record<string, unknown>;
+  if (typeof scene.id !== "string"
+    || !Number.isInteger(scene.order)
+    || typeof scene.caption !== "string"
+    || typeof scene.duration_ms !== "number"
+    || typeof scene.focal_x !== "number"
+    || typeof scene.focal_y !== "number"
+    || !["none", "push", "zoom"].includes(String(scene.motion))
+    || typeof scene.audio_level !== "number"
+    || typeof scene.ducking !== "boolean"
+    || ("media_id" in scene && typeof scene.media_id !== "string")) {
+    throw new Error("invalid scene");
+  }
+  return boundedScene(scene as unknown as Scene);
 }
 
 export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope): ProjectSnapshot {
@@ -44,18 +64,21 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
     return { ...snapshot, selected_concept_id: conceptId, scenes, revision: snapshot.revision + 1 };
   }
   if (command.kind === "update_scene") {
-    const scene = boundedScene(command.payload.scene as Scene);
+    const scene = validatedScene(command.payload.scene);
     if (!snapshot.scenes.some(({ id }) => id === scene.id)) throw new Error("unknown scene");
     return { ...snapshot, scenes: snapshot.scenes.map((item) => item.id === scene.id ? scene : item), revision: snapshot.revision + 1 };
   }
-  const sceneId = String(command.payload.scene_id ?? "");
-  const to = Number(command.payload.to);
-  if (!Number.isInteger(to) || to < 0 || to >= snapshot.scenes.length) throw new Error("invalid order");
-  const scenes = snapshot.scenes.filter(({ id }) => id !== sceneId);
-  const moved = snapshot.scenes.find(({ id }) => id === sceneId);
-  if (!moved) throw new Error("unknown scene");
-  scenes.splice(to, 0, moved);
-  return { ...snapshot, scenes: scenes.map((scene, order) => ({ ...scene, order })), revision: snapshot.revision + 1 };
+  if (command.kind === "reorder_scene") {
+    const sceneId = String(command.payload.scene_id ?? "");
+    const to = Number(command.payload.to);
+    if (!Number.isInteger(to) || to < 0 || to >= snapshot.scenes.length) throw new Error("invalid order");
+    const scenes = snapshot.scenes.filter(({ id }) => id !== sceneId);
+    const moved = snapshot.scenes.find(({ id }) => id === sceneId);
+    if (!moved) throw new Error("unknown scene");
+    scenes.splice(to, 0, moved);
+    return { ...snapshot, scenes: scenes.map((scene, order) => ({ ...scene, order })), revision: snapshot.revision + 1 };
+  }
+  throw new Error("unknown command");
 }
 
 export function renderPlan(snapshot: ProjectSnapshot) {

@@ -1,6 +1,7 @@
 import express from "express";
 import { randomUUID } from "node:crypto";
 import { conceptsFor } from "@f-motion/reel-engine";
+import type { CommandEnvelope } from "@f-motion/contracts";
 import {
   AccountUnavailableError,
   UnauthorizedError,
@@ -13,6 +14,7 @@ import {
   ConflictError,
   NotFoundError,
   ProjectService,
+  ValidationError,
   type ProjectRepository
 } from "./domain.js";
 import {
@@ -51,6 +53,31 @@ export interface TestAppOptions extends Omit<AppBaseOptions, "projects"> {
 }
 
 type Identify = (authorization: string | undefined) => Promise<string>;
+
+function commandEnvelope(value: unknown, projectId: string): CommandEnvelope {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new ValidationError("invalid command");
+  const command = value as Record<string, unknown>;
+  if (typeof command.command_id !== "string"
+    || !command.command_id
+    || !Number.isInteger(command.base_revision)
+    || typeof command.client_timestamp !== "string"
+    || !["select_concept", "update_scene", "reorder_scene"].includes(String(command.kind))
+    || !command.payload
+    || typeof command.payload !== "object"
+    || Array.isArray(command.payload)) {
+    throw new ValidationError("invalid command");
+  }
+  const base_revision = command.base_revision as number;
+  if (base_revision < 0) throw new ValidationError("invalid command");
+  return {
+    command_id: command.command_id,
+    project_id: projectId,
+    base_revision,
+    client_timestamp: command.client_timestamp,
+    kind: command.kind as CommandEnvelope["kind"],
+    payload: command.payload as Record<string, unknown>
+  };
+}
 
 function buildApp(options: AppBaseOptions, identify: Identify) {
   const app = express();
@@ -91,7 +118,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
   app.post("/api/projects/:projectId/commands", async (request, response, next) => {
     const ownerId = String(response.locals.ownerId);
     try {
-      response.json(await projects.command(ownerId, { ...request.body, project_id: request.params.projectId }));
+      response.json(await projects.command(ownerId, commandEnvelope(request.body, request.params.projectId)));
     } catch (error) {
       if (error instanceof ConflictError) {
         return response.status(409).json({
@@ -101,6 +128,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         });
       }
       if (error instanceof NotFoundError) return response.status(404).json({ type: "not_found", message: error.message });
+      if (error instanceof ValidationError) return response.status(422).json({ type: "validation", message: error.message });
       next(error);
     }
   });

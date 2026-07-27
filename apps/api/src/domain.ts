@@ -11,6 +11,8 @@ export class NotFoundError extends Error {
   constructor() { super("not found"); }
 }
 
+export class ValidationError extends Error {}
+
 export interface ProjectRepository {
   create(ownerId: string, brief: ProjectSnapshot["brief"]): ProjectSnapshot | Promise<ProjectSnapshot>;
   get(ownerId: string, projectId: string): ProjectSnapshot | undefined | Promise<ProjectSnapshot | undefined>;
@@ -45,7 +47,12 @@ export class ProjectService implements ProjectRepository {
     const prior = this.#receipts.get(receiptKey);
     if (prior) return structuredClone(prior);
     if (project.revision !== command.base_revision) throw new ConflictError(project);
-    const updated = applyCommand(project, command);
+    let updated: ProjectSnapshot;
+    try {
+      updated = applyCommand(project, command);
+    } catch (error) {
+      throw new ValidationError(error instanceof Error ? error.message : "invalid command");
+    }
     this.#projects.set(`${ownerId}:${project.id}`, updated);
     this.#receipts.set(receiptKey, updated);
     return structuredClone(updated);
@@ -154,7 +161,12 @@ export class PostgresProjectRepository implements ProjectRepository {
 
       const authoritative = await projectSnapshot(client, project);
       if (authoritative.revision !== command.base_revision) throw new ConflictError(authoritative);
-      const updated = applyCommand(authoritative, command);
+      let updated: ProjectSnapshot;
+      try {
+        updated = applyCommand(authoritative, command);
+      } catch (error) {
+        throw new ValidationError(error instanceof Error ? error.message : "invalid command");
+      }
       await this.persistCommand(client, command, updated);
       const revision = await client.query<{ revision: number }>(
         `UPDATE "Project" SET revision = revision + 1
