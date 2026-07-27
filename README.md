@@ -41,7 +41,9 @@ npm run demo
 Then open `http://127.0.0.1:4173` and click **Email me a magic link** (local
 test identity when Supabase env vars are unset). Flow: brief → three concepts →
 storyboard → accurate 720p preview → download. See
-`docs/runbooks/local-development.md` for the durable Postgres/MinIO stack.
+`docs/runbooks/local-development.md` for the durable Postgres/MinIO stack, or
+`docs/runbooks/hosted-deploy.md` for a private hosted deploy (API + worker
+containers, Fly.io config, Supabase auth).
 
 ## Supported toolchain
 
