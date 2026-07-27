@@ -30,7 +30,6 @@ export interface MediaDependencies {
   repository: PostgresMediaRepository;
   store: PrivateObjectStore;
   pexels: PexelsClient;
-  enqueueInspection(assetId: string, ownerId: string, projectId: string): Promise<void>;
 }
 
 interface AppBaseOptions {
@@ -193,10 +192,9 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const asset = await options.media.repository.get(ownerId, request.params.projectId, request.params.assetId);
       if (!asset) return response.status(404).json({ type: "not_found", message: "not found" });
       await options.media.store.exists(asset.objectKey);
-      if (!await options.media.repository.markInspecting(ownerId, request.params.projectId, asset.id)) {
+      if (!await options.media.repository.completeAdmission(ownerId, request.params.projectId, asset.id)) {
         return response.status(409).json({ type: "conflict", message: "media is not admissible" });
       }
-      await options.media.enqueueInspection(asset.id, ownerId, request.params.projectId);
       response.status(202).json({ asset_id: asset.id, state: "inspecting" });
     } catch (error) {
       next(error);

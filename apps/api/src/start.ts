@@ -1,5 +1,4 @@
 import { S3Client } from "@aws-sdk/client-s3";
-import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { PostgresProjectRepository } from "./domain.js";
 import { PexelsClient, PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
@@ -28,15 +27,7 @@ const renders = new PostgresRenderRepository(pool);
 const media = {
   repository: new PostgresMediaRepository(pool),
   store: objectStore,
-  pexels: new PexelsClient(required("PEXELS_API_KEY")),
-  enqueueInspection: async (assetId: string, ownerId: string, projectId: string) => {
-    await pool.query(
-      `INSERT INTO "WorkOutbox" (id, kind, "dedupeKey", payload)
-       VALUES ($1, 'inspect-media', $2, $3)
-       ON CONFLICT ("dedupeKey") DO NOTHING`,
-      [randomUUID(), `inspect-media:${assetId}`, { assetId, ownerId, projectId }]
-    );
-  }
+  pexels: new PexelsClient(required("PEXELS_API_KEY"))
 };
 
 const port = Number(process.env.PORT ?? 3000);

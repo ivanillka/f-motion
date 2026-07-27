@@ -69,14 +69,39 @@ export class PostgresMediaRepository {
     return result.rows[0];
   }
 
-  async markInspecting(ownerId: string, projectId: string, id: string): Promise<boolean> {
-    const result = await this.pool.query(
-      `UPDATE "MediaAsset" SET state = 'inspecting'
-        WHERE "ownerId" = $1 AND "projectId" = $2 AND id = $3
-          AND state IN ('admitted', 'inspecting')`,
-      [ownerId, projectId, id]
-    );
-    return result.rowCount === 1;
+  /**
+   * Marks the asset `inspecting` and enqueues the inspection work item in one
+   * transaction, mirroring `PostgresRenderRepository.create`: a crash between
+   * the two writes must not be possible per docs/decisions/queue.md.
+   */
+  async completeAdmission(ownerId: string, projectId: string, id: string): Promise<boolean> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        `UPDATE "MediaAsset" SET state = 'inspecting'
+          WHERE "ownerId" = $1 AND "projectId" = $2 AND id = $3
+            AND state IN ('admitted', 'inspecting')`,
+        [ownerId, projectId, id]
+      );
+      if (result.rowCount !== 1) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+      await client.query(
+        `INSERT INTO "WorkOutbox" (id, kind, "dedupeKey", payload)
+         VALUES ($1, 'inspect-media', $2, $3)
+         ON CONFLICT ("dedupeKey") DO NOTHING`,
+        [randomUUID(), `inspect-media:${id}`, { assetId: id, ownerId, projectId }]
+      );
+      await client.query("COMMIT");
+      return true;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async recordInspection(
