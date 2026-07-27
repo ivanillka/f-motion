@@ -14,6 +14,7 @@
     "lint": "tsc -b --pretty false",
     "test": "npm test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
+    "demo": "npm run build --workspace apps/api && npm run build --workspace apps/worker && node tests/e2e/run-servers.mjs",
     "test:e2e:web": "playwright test -c tests/e2e/playwright.config.ts"
   },
   "devDependencies": {

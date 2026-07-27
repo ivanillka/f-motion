@@ -34,6 +34,18 @@ F-Motion is a split-client vertical-video editor: React on the web, Flutter on
 Android, and one authoritative Express/worker API boundary. The storyboard is
 approximate; the FFmpeg worker produces the only accurate preview.
 
+## Demo today
+
+```sh
+npm ci
+npm run demo
+```
+
+Then open `http://127.0.0.1:4173` and click **Email me a magic link** (local
+test identity when Supabase env vars are unset). Flow: brief → three concepts →
+storyboard → accurate 720p preview → download. See
+`docs/runbooks/local-development.md`.
+
 ## Supported toolchain
 
 - Node 24.15.0 and npm 11.12.1
