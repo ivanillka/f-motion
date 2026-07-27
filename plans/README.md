@@ -9,11 +9,11 @@ your row when done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001 | Make the durable Gate 2 stack runnable and documented | P1 | M | — | BLOCKED (Docker: user not in docker group; prior collision) |
-| 002 | Validate command envelopes at the API/domain boundary | P1 | M | — | IN PROGRESS |
+| 001 | Make the durable Gate 2 stack runnable and documented | P1 | M | — | BLOCKED (Docker: user not in `docker` group) |
+| 002 | Validate command envelopes at the API/domain boundary | P1 | M | — | DONE (branch `advisor/142-command-validation` @ `7da350e`; not merged) |
 | 003 | Inspect real media bytes before marking assets ready | P1 | M | 001 | TODO |
 | 004 | Connect admitted media into the FFmpeg preview render | P1 | L | 002, 003 | TODO |
-| 005 | Keep render progress alive until a terminal phase | P1 | M | — | TODO (retry after 002; prior collision) |
+| 005 | Keep render progress alive until a terminal phase | P1 | M | — | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (reason)
 
