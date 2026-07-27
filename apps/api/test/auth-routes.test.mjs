@@ -174,6 +174,31 @@ test("an invalid JWT is rejected without provisioning a User row", async () => {
   }
 });
 
+test("/readyz reflects an async ready check and /healthz stays process-alive only", async () => {
+  let dbUp = true;
+  const server = createServer(createTestApp({
+    ready: async () => {
+      if (!dbUp) throw new Error("connection refused");
+      return true;
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const ready = await fetch(`${origin}/readyz`);
+    assert.equal(ready.status, 200);
+    assert.deepEqual(await ready.json(), { status: "ready" });
+
+    dbUp = false;
+    const unavailable = await fetch(`${origin}/readyz`);
+    assert.equal(unavailable.status, 503);
+    assert.deepEqual(await unavailable.json(), { status: "unavailable" });
+
+    assert.equal((await fetch(`${origin}/healthz`)).status, 200);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("explicit test app adapter injects only its configured identity", async () => {
   const server = createServer(createTestApp({ ownerId: "test-owner" }));
   const origin = await listen(server);

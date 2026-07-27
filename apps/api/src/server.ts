@@ -38,7 +38,7 @@ interface AppBaseOptions {
   projects: ProjectRepository;
   media?: MediaDependencies;
   renders?: PostgresRenderRepository;
-  ready?: () => boolean;
+  ready?: () => boolean | Promise<boolean>;
   workerOrigin?: string;
 }
 
@@ -108,7 +108,11 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     next();
   });
   app.get("/healthz", (_request, response) => response.json({ status: "ok" }));
-  app.get("/readyz", (_request, response) => ready() ? response.json({ status: "ready" }) : response.status(503).json({ status: "unavailable" }));
+  app.get("/readyz", async (_request, response) => {
+    const isReady = await Promise.resolve(ready()).catch(() => false);
+    if (isReady) return response.json({ status: "ready" });
+    response.status(503).json({ status: "unavailable" });
+  });
   app.use("/api", async (request, response, next) => {
     try {
       response.locals.ownerId = await identify(request.header("authorization"));
