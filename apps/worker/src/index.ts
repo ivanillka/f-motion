@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
-import { unlink } from "node:fs/promises";
-import type { ProjectSnapshot } from "@f-motion/contracts";
-import { renderPlan } from "@f-motion/reel-engine";
+import { unlink, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import type { CaptionCue, ProjectSnapshot, Scene } from "@f-motion/contracts";
+import { coverCropFilter, renderPlan } from "@f-motion/reel-engine";
 
 export const renderPhases = ["queued", "preparing", "rendering", "uploading", "complete"] as const;
 
@@ -109,61 +110,214 @@ export async function runFfmpeg(args: string[], signal?: AbortSignal): Promise<v
   });
 }
 
-function escapedText(value: string): string {
+function escapeDrawtext(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll(":", "\\:").replaceAll("'", "\\'");
 }
 
-function overlayFilters(plan: ReturnType<typeof renderPlan>): string[] {
-  const caption = plan.scenes[0]?.caption.trim();
-  const filters = [
-    "drawbox=x=24:y=ih-100:w=iw-48:h=64:color=black@0.65:t=fill",
-    `drawtext=text='${escapedText(plan.watermark)}':x=(w-text_w)/2:y=h-78:fontcolor=white:fontsize=28`
-  ];
-  if (caption) {
-    filters.unshift(`drawtext=text='${escapedText(caption)}':x=(w-text_w)/2:y=h-180:fontcolor=white:fontsize=36`);
-  }
-  return filters;
+// ponytail: subtitles=PATH is a filter option, so ":" and "'" need the same
+// escaping drawtext values do. Temp ASS paths come from our own outputPath
+// (derived from mkdtemp callers), so this is defense in depth, not the
+// primary guard.
+function escapeFilterPath(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll(":", "\\:").replaceAll("'", "\\'");
 }
 
-export function ffmpegArguments(
-  snapshot: ProjectSnapshot,
-  outputPath: string,
-  mediaInputs: Record<string, MediaInput> = {}
-): string[] {
-  const plan = renderPlan(snapshot);
-  const scene = plan.scenes[0];
-  const duration = Math.max(0.2, plan.scenes.reduce((sum, item) => sum + item.duration_ms, 0) / 1000);
-  const media = scene?.media_id ? mediaInputs[scene.media_id] : undefined;
-  const encode = [
-    "-metadata", `comment=F-Motion project ${snapshot.id} revision ${snapshot.revision}`,
-    "-c:v", "mpeg4",
-    "-pix_fmt", "yuv420p",
-    "-movflags", "+faststart",
-    "-an",
-    outputPath
-  ];
+// ponytail: ASS Dialogue text has no native escape for a literal "{"/"}"
+// (they open override tags) or "\" (it can start \N/\n/\h codes). Swapping
+// them for same-font ASCII look-alikes avoids libass font-fallback panel seams.
+function escapeAssText(value: string): string {
+  return value
+    .replaceAll("\\", "/")
+    .replaceAll("{", "(")
+    .replaceAll("}", ")")
+    .replace(/\r\n|\r|\n/g, "\\N");
+}
 
-  // ponytail: first scene with media only. Ceiling: single input. Upgrade: multi-scene concat.
+const MOTION_FPS = 30;
+const MOTION_MAX_ZOOM = 1.08;
+
+function motionFilter(motion: "none" | "push" | "zoom", durationSeconds: number, width: number, height: number): string | undefined {
+  if (motion === "none") return undefined;
+  const frames = Math.max(2, Math.round(durationSeconds * MOTION_FPS));
+  if (motion === "zoom") {
+    const step = (MOTION_MAX_ZOOM - 1) / (frames - 1);
+    return `zoompan=z='min(zoom+${step.toFixed(6)},${MOTION_MAX_ZOOM})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+  }
+  // ponytail: "push" is approximated as a small fixed-zoom horizontal pan rather than a
+  // true directional push transition. Ceiling: this pan. Upgrade: a real motion-graph
+  // per scene once multi-scene transitions land.
+  return `zoompan=z=${MOTION_MAX_ZOOM}:x='(iw-iw/zoom)*on/${frames - 1}':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+}
+
+const CAPTION_ASS_STYLE =
+  "Style: Caption,DejaVu Sans,36,&H00FFFFFF,&H000000FF,&H00000000,&H40000000,0,0,0,0,100,100,0,0,3,2,0,2,40,40,140,1";
+
+/** Formats milliseconds as an ASS timestamp: `h:mm:ss.cc` (centiseconds). */
+function assTimestamp(ms: number): string {
+  const centiseconds = Math.round(ms / 10);
+  const hundredths = centiseconds % 100;
+  const totalSeconds = Math.floor(centiseconds / 100);
+  const seconds = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const minutes = totalMinutes % 60;
+  const hours = Math.floor(totalMinutes / 60);
+  return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(hundredths).padStart(2, "0")}`;
+}
+
+/**
+ * Deterministic ASS subtitle document with one `Dialogue` line per timed
+ * cue. Safe area: PlayRes 720x1280, 40px side margins, text bottom-anchored
+ * 140px above the frame bottom so it clears the watermark band.
+ */
+export function buildCaptionAss(cues: CaptionCue[]): string {
+  const dialogues = cues.map((cue) =>
+    `Dialogue: 0,${assTimestamp(cue.start_ms)},${assTimestamp(cue.end_ms)},Caption,,0,0,0,,${escapeAssText(cue.text)}`
+  );
+  return [
+    "[Script Info]",
+    "ScriptType: v4.00+",
+    "PlayResX: 720",
+    "PlayResY: 1280",
+    "WrapStyle: 0",
+    "ScaledBorderAndShadow: yes",
+    "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    CAPTION_ASS_STYLE,
+    "",
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    ...dialogues,
+    ""
+  ].join("\n");
+}
+
+function vfArgs(filters: string[]): string[] {
+  return filters.length ? ["-vf", filters.join(",")] : [];
+}
+
+function captionFilters(captionAssPath?: string): string[] {
+  return captionAssPath ? [`subtitles=${escapeFilterPath(captionAssPath)}`] : [];
+}
+
+function watermarkFilters(watermark: string): string[] {
+  return [
+    "drawbox=x=24:y=ih-100:w=iw-48:h=64:color=black@0.65:t=fill",
+    `drawtext=text='${escapeDrawtext(watermark)}':x=(w-text_w)/2:y=h-78:fontcolor=white:fontsize=28`
+  ];
+}
+
+const clipEncode = ["-c:v", "mpeg4", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an"];
+
+// Fallback for renderPreview() called without a snapshot (local demo fixture only).
+const emptyScene: Scene = {
+  id: "empty",
+  order: 0,
+  caption: "",
+  duration_ms: 200,
+  focal_x: 0.5,
+  focal_y: 0.5,
+  motion: "none",
+  audio_level: 1,
+  ducking: false
+};
+
+export function sceneClipArguments(
+  plan: ReturnType<typeof renderPlan>,
+  scene: Scene,
+  media: MediaInput | undefined,
+  clipPath: string,
+  captionAssPath?: string
+): string[] {
+  const duration = Math.max(0.2, scene.duration_ms / 1000);
+  const captions = captionFilters(captionAssPath);
+  const motion = motionFilter(scene.motion, duration, plan.width, plan.height);
   if (media) {
     const cover = [
-      `scale=${plan.width}:${plan.height}:force_original_aspect_ratio=increase`,
-      `crop=${plan.width}:${plan.height}`,
-      ...overlayFilters(plan)
+      ...coverCropFilter(plan.width, plan.height, scene.focal_x, scene.focal_y),
+      ...(motion ? [motion] : []),
+      ...captions
     ];
     const still = media.type === "image/jpeg" || media.type === "image/png";
     const input = still
       ? ["-loop", "1", "-framerate", "30", "-t", String(duration), "-i", media.path]
       : ["-t", String(duration), "-i", media.path];
-    return ["-y", ...input, "-vf", cover.join(","), ...encode];
+    return ["-y", ...input, ...vfArgs(cover), ...clipEncode, clipPath];
   }
-
   return [
     "-y",
     "-f", "lavfi",
     "-i", `color=c=#202027:s=${plan.width}x${plan.height}:d=${duration}:r=30`,
-    "-vf", overlayFilters(plan).join(","),
-    ...encode
+    ...vfArgs([...(motion ? [motion] : []), ...captions]),
+    ...clipEncode,
+    clipPath
   ];
+}
+
+export function concatArguments(
+  listPath: string,
+  plan: ReturnType<typeof renderPlan>,
+  snapshot: ProjectSnapshot,
+  outputPath: string
+): string[] {
+  return [
+    "-y",
+    "-f", "concat",
+    "-safe", "0",
+    "-i", listPath,
+    ...vfArgs(watermarkFilters(plan.watermark)),
+    "-metadata", `comment=F-Motion project ${snapshot.id} revision ${snapshot.revision}`,
+    ...clipEncode,
+    outputPath
+  ];
+}
+
+export interface SceneClip {
+  scene: Scene;
+  path: string;
+  args: string[];
+  assPath?: string;
+  assContents?: string;
+}
+
+export interface RenderJob {
+  clips: SceneClip[];
+  listPath: string;
+  listContents: string;
+  concatArgs: string[];
+}
+
+function concatListLine(clipPath: string): string {
+  return `file '${clipPath.replaceAll("'", "'\\''")}'\n`;
+}
+
+export function buildRenderJob(
+  snapshot: ProjectSnapshot,
+  outputPath: string,
+  mediaInputs: Record<string, MediaInput>,
+  tempDir: string
+): RenderJob {
+  const plan = renderPlan(snapshot);
+  const scenes = plan.scenes.length
+    ? [...plan.scenes].sort((a, b) => a.order - b.order)
+    : [emptyScene];
+  const clips = scenes.map((scene, index) => {
+    const media = scene.media_id ? mediaInputs[scene.media_id] : undefined;
+    const path = join(tempDir, `scene-${index}.mp4`);
+    const cues = scene.caption_cues ?? [];
+    const assPath = cues.length ? join(tempDir, `scene-${index}.ass`) : undefined;
+    const assContents = cues.length ? buildCaptionAss(cues) : undefined;
+    return {
+      scene,
+      path,
+      assPath,
+      assContents,
+      args: sceneClipArguments(plan, scene, media, path, assPath)
+    };
+  });
+  const listPath = join(tempDir, "concat-list.txt");
+  const listContents = clips.map((clip) => concatListLine(clip.path)).join("");
+  return { clips, listPath, listContents, concatArgs: concatArguments(listPath, plan, snapshot, outputPath) };
 }
 
 export async function renderPreview(
@@ -180,11 +334,23 @@ export async function renderPreview(
     brief: { purpose: "Fixture", audience: "Fixture", tone: "Neutral" },
     scenes: []
   };
+  const job = buildRenderJob(snapshot ?? fallback, outputPath, mediaInputs, dirname(outputPath));
   try {
-    await runFfmpeg(ffmpegArguments(snapshot ?? fallback, outputPath, mediaInputs), signal);
+    for (const clip of job.clips) {
+      if (clip.assPath && clip.assContents) await writeFile(clip.assPath, clip.assContents, "utf8");
+      await runFfmpeg(clip.args, signal);
+    }
+    await writeFile(job.listPath, job.listContents);
+    await runFfmpeg(job.concatArgs, signal);
   } catch (error) {
     await unlink(outputPath).catch(() => undefined);
     throw error;
+  } finally {
+    await Promise.all([
+      ...job.clips.map((clip) => unlink(clip.path).catch(() => undefined)),
+      ...job.clips.map((clip) => clip.assPath ? unlink(clip.assPath).catch(() => undefined) : Promise.resolve()),
+      unlink(job.listPath).catch(() => undefined)
+    ]);
   }
 }
 
