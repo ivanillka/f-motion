@@ -207,7 +207,23 @@ function watermarkFilters(watermark: string): string[] {
   ];
 }
 
-const clipEncode = ["-c:v", "mpeg4", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an"];
+const clipVideoEncode = ["-c:v", "mpeg4", "-pix_fmt", "yuv420p", "-movflags", "+faststart"];
+const clipAudioEncode = ["-c:a", "aac", "-ar", "44100", "-ac", "2"];
+const concatEncode = [...clipVideoEncode, ...clipAudioEncode];
+
+// ponytail: ducking waits for a licensed music bed (Gate 0). scene.ducking is persisted but unused.
+function audioFilterArgs(audioLevel: number): string[] {
+  const level = Math.min(1, Math.max(0, audioLevel));
+  return level === 1 ? [] : ["-af", `volume=${level}`];
+}
+
+function silentAudioInput(duration: number): string[] {
+  return ["-f", "lavfi", "-t", String(duration), "-i", "anullsrc=r=44100:cl=stereo"];
+}
+
+function clipOutputArgs(videoMap: string, audioMap: string): string[] {
+  return ["-map", videoMap, "-map", audioMap, ...clipVideoEncode, ...clipAudioEncode];
+}
 
 // Fallback for renderPreview() called without a snapshot (local demo fixture only).
 const emptyScene: Scene = {
@@ -242,14 +258,26 @@ export function sceneClipArguments(
     const input = still
       ? ["-loop", "1", "-framerate", "30", "-t", String(duration), "-i", media.path]
       : ["-t", String(duration), "-i", media.path];
-    return ["-y", ...input, ...vfArgs(cover), ...clipEncode, clipPath];
+    const audioInput = still ? silentAudioInput(duration) : [];
+    const audioMap = still ? "1:a" : "0:a";
+    return [
+      "-y",
+      ...input,
+      ...audioInput,
+      ...vfArgs(cover),
+      ...audioFilterArgs(scene.audio_level),
+      ...clipOutputArgs("0:v", audioMap),
+      clipPath
+    ];
   }
   return [
     "-y",
     "-f", "lavfi",
     "-i", `color=c=#202027:s=${plan.width}x${plan.height}:d=${duration}:r=30`,
+    ...silentAudioInput(duration),
     ...vfArgs([...(motion ? [motion] : []), ...captions]),
-    ...clipEncode,
+    ...audioFilterArgs(scene.audio_level),
+    ...clipOutputArgs("0:v", "1:a"),
     clipPath
   ];
 }
@@ -267,7 +295,7 @@ export function concatArguments(
     "-i", listPath,
     ...vfArgs(watermarkFilters(plan.watermark)),
     "-metadata", `comment=F-Motion project ${snapshot.id} revision ${snapshot.revision}`,
-    ...clipEncode,
+    ...concatEncode,
     outputPath
   ];
 }
