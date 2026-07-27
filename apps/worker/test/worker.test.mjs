@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +8,7 @@ import { renderPlan } from "@f-motion/reel-engine";
 import {
   IdempotentResults,
   buildCaptionAss,
-  ffmpegArguments,
+  buildRenderJob,
   inspectMedia,
   probeMediaFile,
   renderObjectKey,
@@ -82,24 +82,24 @@ test("queue recovery contract uses idempotent result key", () => {
   results.complete("leased-job", { worker: "killed" });
   assert.equal(results.complete("leased-job", { worker: "replacement" }).worker, "killed");
 });
-test("render arguments come from the deterministic project plan", () => {
-  const args = ffmpegArguments(snapshot, "preview.mp4").join(" ");
+test("render job builds one deterministic-plan clip per scene", () => {
+  const job = buildRenderJob(snapshot, "preview.mp4", {}, "/tmp/job");
+  assert.equal(job.clips.length, 1);
+  const args = job.clips[0].args.join(" ");
   assert.match(args, /720x1280/);
-  assert.match(args, /F-Motion preview/);
-  assert.match(args, /project project revision 3/);
   assert.match(args, /color=c=#202027/);
-  assert.doesNotMatch(args, /subtitles=/, "no caption path given, no subtitles filter injected");
+  assert.match(args, /subtitles=/);
+  assert.match(job.clips[0].assContents ?? "", /Project caption/);
+  const concat = job.concatArgs.join(" ");
+  assert.match(concat, /F-Motion preview/);
+  assert.match(concat, /project project revision 3/);
 });
-test("render arguments reference the caption subtitles file when a path is supplied", () => {
-  const args = ffmpegArguments(snapshot, "preview.mp4", {}, "/tmp/fmotion-caption.ass").join(" ");
-  assert.match(args, /subtitles=\/tmp\/fmotion-caption\.ass/);
-  assert.match(args, /F-Motion preview/, "watermark drawtext stays alongside the caption subtitles filter");
-});
-test("ffmpegArguments never injects a subtitles filter without an explicit caption path", () => {
+test("render job omits subtitles when caption is empty", () => {
   const noCaption = { ...snapshot, scenes: [{ ...snapshot.scenes[0], caption: "" }] };
-  const args = ffmpegArguments(noCaption, "preview.mp4").join(" ");
-  assert.doesNotMatch(args, /subtitles=/);
-  assert.match(args, /F-Motion preview/, "watermark-only path unchanged");
+  const job = buildRenderJob(noCaption, "preview.mp4", {}, "/tmp/job");
+  assert.doesNotMatch(job.clips[0].args.join(" "), /subtitles=/);
+  assert.equal(job.clips[0].assPath, undefined);
+  assert.match(job.concatArgs.join(" "), /F-Motion preview/, "watermark-only path unchanged");
 });
 test("caption ass builder freezes the safe-area layout", () => {
   const ass = buildCaptionAss([{ text: "Project caption", start_ms: 0, end_ms: 500 }]);
@@ -143,25 +143,71 @@ test("caption near the 180-char limit still produces a non-empty dialogue line",
   const dialogue = ass.split("\n").find((line) => line.startsWith("Dialogue:"));
   assert.match(dialogue, new RegExp(`${long}$`));
 });
-test("render arguments use attached media input when provided", () => {
+test("render job clip uses attached media input when provided", () => {
   const withMedia = {
     ...snapshot,
     scenes: [{ ...snapshot.scenes[0], media_id: "asset-1" }]
   };
-  const args = ffmpegArguments(withMedia, "preview.mp4", {
+  const job = buildRenderJob(withMedia, "preview.mp4", {
     "asset-1": { path: "/tmp/media.mp4", type: "video/mp4" }
-  }).join(" ");
+  }, "/tmp/job");
+  const args = job.clips[0].args.join(" ");
   assert.match(args, /\/tmp\/media\.mp4/);
   assert.doesNotMatch(args, /color=c=#202027/);
   assert.match(args, /force_original_aspect_ratio=increase/);
 });
-test("cancellation removes partial output and rejects", async () => {
+test("render job clip crops around the scene's focal point", () => {
+  const withFocal = {
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], media_id: "asset-1", focal_x: 0.8, focal_y: 0.2 }]
+  };
+  const job = buildRenderJob(withFocal, "preview.mp4", {
+    "asset-1": { path: "/tmp/media.mp4", type: "video/mp4" }
+  }, "/tmp/job");
+  assert.match(job.clips[0].args.join(" "), /crop=720:1280:\(iw-ow\)\*0\.8:\(ih-oh\)\*0\.2/);
+});
+test("render job sorts scenes by order and gives each its own clip", () => {
+  const twoScenes = {
+    ...snapshot,
+    scenes: [
+      { ...snapshot.scenes[0], id: "scene-b", order: 1, media_id: "asset-2", caption: "Second" },
+      { ...snapshot.scenes[0], id: "scene-a", order: 0, media_id: "asset-1", caption: "First" }
+    ]
+  };
+  const job = buildRenderJob(twoScenes, "preview.mp4", {
+    "asset-1": { path: "/tmp/first.mp4", type: "video/mp4" },
+    "asset-2": { path: "/tmp/second.mp4", type: "video/mp4" }
+  }, "/tmp/job");
+  assert.equal(job.clips.length, 2);
+  assert.match(job.clips[0].args.join(" "), /\/tmp\/first\.mp4/);
+  assert.match(job.clips[0].assContents ?? "", /First/);
+  assert.match(job.clips[1].args.join(" "), /\/tmp\/second\.mp4/);
+  assert.match(job.clips[1].assContents ?? "", /Second/);
+  assert.match(job.listContents, new RegExp(job.clips[0].path.replaceAll(".", "\\.")));
+  assert.match(job.listContents, new RegExp(job.clips[1].path.replaceAll(".", "\\.")));
+});
+test("render job duration is the honest per-scene sum, not first-scene-only", () => {
+  const twoScenes = {
+    ...snapshot,
+    scenes: [
+      { ...snapshot.scenes[0], id: "scene-a", order: 0, duration_ms: 700, media_id: "asset-1" },
+      { ...snapshot.scenes[0], id: "scene-b", order: 1, duration_ms: 900 }
+    ]
+  };
+  const job = buildRenderJob(twoScenes, "preview.mp4", {
+    "asset-1": { path: "/tmp/first.mp4", type: "video/mp4" }
+  }, "/tmp/job");
+  assert.match(job.clips[0].args.join(" "), /-t 0\.7 -i \/tmp\/first\.mp4/);
+  assert.match(job.clips[1].args.join(" "), /d=0\.9/);
+});
+test("cancellation removes partial output, rejects, and leaves no temp clips", async () => {
   const directory = await mkdtemp(join(tmpdir(), "fmotion-cancel-"));
   const output = join(directory, "preview.mp4");
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(renderPreview(output, snapshot, controller.signal));
   await assert.rejects(readFile(output), { code: "ENOENT" });
+  assert.deepEqual(await readdir(directory), []);
 });
 test("worker renders the 720p accurate preview outside the API", async () => {
   const directory = await mkdtemp(join(tmpdir(), "fmotion-render-"));
@@ -170,6 +216,7 @@ test("worker renders the 720p accurate preview outside the API", async () => {
   const bytes = await readFile(output);
   assert.ok(bytes.length > 1000);
   assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
+  assert.deepEqual(await readdir(directory), ["preview.mp4"]);
 });
 test("renderPreview does not throw for captions with filtergraph-hostile characters", async () => {
   const directory = await mkdtemp(join(tmpdir(), "fmotion-caption-special-"));
@@ -224,4 +271,28 @@ test("worker renders attached fixture media into the preview", async () => {
   const bytes = await readFile(output);
   assert.ok(bytes.length > 1000);
   assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
+});
+test("worker concatenates every scene's media with an honest total duration", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fmotion-multi-render-"));
+  const output = join(directory, "preview.mp4");
+  const multiScene = {
+    ...snapshot,
+    scenes: [
+      { ...snapshot.scenes[0], id: "scene-a", order: 0, duration_ms: 500, media_id: "asset-1", caption: "First" },
+      { ...snapshot.scenes[0], id: "scene-b", order: 1, duration_ms: 700, caption: "Second" }
+    ]
+  };
+  await renderPreview(output, multiScene, undefined, {
+    "asset-1": { path: join(fixtures, "scene_one.mp4"), type: "video/mp4" }
+  });
+  const bytes = await readFile(output);
+  assert.ok(bytes.length > 1000);
+  assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
+  const probed = await probeMediaFile(output);
+  assert.ok(probed.duration_ms, "expected a probeable duration");
+  assert.ok(
+    Math.abs(probed.duration_ms - 1200) < 200,
+    `expected ~1200ms (500+700), got ${probed.duration_ms}`
+  );
+  assert.deepEqual(await readdir(directory), ["preview.mp4"]);
 });

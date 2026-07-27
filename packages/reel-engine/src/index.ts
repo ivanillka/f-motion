@@ -194,6 +194,13 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
   throw new Error("unknown command");
 }
 
+export function coverCropFilter(width: number, height: number, focal_x: number, focal_y: number): string[] {
+  return [
+    `scale=${width}:${height}:force_original_aspect_ratio=increase`,
+    `crop=${width}:${height}:(iw-ow)*${focal_x}:(ih-oh)*${focal_y}`
+  ];
+}
+
 export function renderPlan(snapshot: ProjectSnapshot) {
   return {
     revision: snapshot.revision,
