@@ -100,6 +100,16 @@ test("render arguments use attached media input when provided", () => {
   assert.doesNotMatch(args, /color=c=#202027/);
   assert.match(args, /force_original_aspect_ratio=increase/);
 });
+test("render arguments crop around the scene's focal point", () => {
+  const withFocal = {
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], media_id: "asset-1", focal_x: 0.8, focal_y: 0.2 }]
+  };
+  const args = ffmpegArguments(withFocal, "preview.mp4", {
+    "asset-1": { path: "/tmp/media.mp4", type: "video/mp4" }
+  }).join(" ");
+  assert.match(args, /crop=720:1280:\(iw-ow\)\*0\.8:\(ih-oh\)\*0\.2/);
+});
 test("cancellation removes partial output and rejects", async () => {
   const directory = await mkdtemp(join(tmpdir(), "fmotion-cancel-"));
   const output = join(directory, "preview.mp4");

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { conceptsFor, applyCommand, renderPlan } from "../dist/index.js";
+import { conceptsFor, applyCommand, renderPlan, coverCropFilter } from "../dist/index.js";
 
 const snapshot = {
   schema_version: 1, id: "p1", owner_id: "u1", revision: 0,
@@ -35,3 +35,15 @@ test("update_scene rejects captions over 180 characters", () => assert.throws(
   /caption exceeds/
 ));
 test("render plan is 720p and watermarked", () => assert.deepEqual(renderPlan(snapshot).width, 720));
+test("coverCropFilter offsets the crop by the focal point", () => {
+  const offCenter = coverCropFilter(720, 1280, 0.75, 0.25);
+  assert.deepEqual(offCenter, [
+    "scale=720:1280:force_original_aspect_ratio=increase",
+    "crop=720:1280:(iw-ow)*0.75:(ih-oh)*0.25"
+  ]);
+  const centered = coverCropFilter(720, 1280, 0.5, 0.5);
+  assert.deepEqual(centered, [
+    "scale=720:1280:force_original_aspect_ratio=increase",
+    "crop=720:1280:(iw-ow)*0.5:(ih-oh)*0.5"
+  ]);
+});

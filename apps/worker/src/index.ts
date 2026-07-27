@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { unlink } from "node:fs/promises";
 import type { ProjectSnapshot } from "@f-motion/contracts";
-import { renderPlan } from "@f-motion/reel-engine";
+import { coverCropFilter, renderPlan } from "@f-motion/reel-engine";
 
 export const renderPhases = ["queued", "preparing", "rendering", "uploading", "complete"] as const;
 
@@ -146,8 +146,7 @@ export function ffmpegArguments(
   // ponytail: first scene with media only. Ceiling: single input. Upgrade: multi-scene concat.
   if (media) {
     const cover = [
-      `scale=${plan.width}:${plan.height}:force_original_aspect_ratio=increase`,
-      `crop=${plan.width}:${plan.height}`,
+      ...coverCropFilter(plan.width, plan.height, scene!.focal_x, scene!.focal_y),
       ...overlayFilters(plan)
     ];
     const still = media.type === "image/jpeg" || media.type === "image/png";
