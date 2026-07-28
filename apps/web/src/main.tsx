@@ -249,6 +249,40 @@ function App() {
     }
   }
 
+  async function saveAsNewProject() {
+    const source = conflict ?? project;
+    if (!source) return;
+    const brief = source.brief;
+    const conceptId = selected || source.selected_concept_id;
+    const pendingMotion = project?.scenes[0]?.motion;
+    setStatus("Saving as new project…");
+    const body = await api.request<{ project: ProjectSnapshot; concepts: Concept[] }>("/api/projects", {
+      method: "POST",
+      body: JSON.stringify(brief)
+    });
+    let updated = body.project;
+    if (conceptId) {
+      updated = await api.command(updated.id, updated.revision, "select_concept", { concept_id: conceptId });
+    }
+    const scene = updated.scenes[0];
+    if (scene) {
+      const { media_id, ...sceneWithoutMedia } = scene;
+      updated = await api.command(updated.id, updated.revision, "update_scene", {
+        scene: {
+          ...sceneWithoutMedia,
+          caption: draft,
+          ...(pendingMotion !== undefined ? { motion: pendingMotion } : {}),
+          caption_cues: undefined
+        }
+      });
+    }
+    setProject(updated);
+    localStorage.setItem("fmotion-project", updated.id);
+    setConflict(undefined);
+    setStep("editor");
+    setStatus("Saved as a new project (media not copied).");
+  }
+
   async function followRender(id: string, lastEventId = "") {
     const deadline = Date.now() + 15 * 60_000;
     while (Date.now() < deadline) {
@@ -373,7 +407,7 @@ function App() {
       <button className="secondary" onClick={() => void proveConflict()}>Test stale revision</button>
       {conflict && <dialog open><h2>Newer changes exist</h2><p>Your changes were not merged.</p>
         <button onClick={() => { setProject(conflict); setConflict(undefined); }}>Reload latest</button>
-        <button onClick={() => { setConflict(undefined); void createProject().then(() => setStep("concepts")); }}>Save as new project</button>
+        <button onClick={() => void saveAsNewProject()}>Save as new project</button>
       </dialog>}
     </section>}
     {step === "render" && <section>
