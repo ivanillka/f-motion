@@ -18,7 +18,7 @@ Requires Docker access (your user must be in the `docker` group).
 
 ```sh
 cp .env.example .env
-# Fill PEXELS_API_KEY and MEDIA_SIGNING_SECRET; keep FMOTION_LOCAL_AUTH=1 for local.
+# Fill PEXELS_API_KEY; keep FMOTION_LOCAL_AUTH=1 for local.
 
 bash scripts/local-deps.sh
 npx prisma migrate deploy
@@ -50,8 +50,13 @@ The API refuses to boot with local auth when `NODE_ENV=production` or
 `vite dev` or with `VITE_ALLOW_DEMO_AUTH=1` set, which hosted builds must not set.
 
 Use PostgreSQL session-mode connections for pg-boss. Never expose the Pexels,
-R2, media-signing, database, or queue credentials to either client. The web PWA
-does not provide offline editing or rendering.
+R2, database, or queue credentials to either client. The web PWA does not
+provide offline editing or rendering.
+
+If you test browser uploads against MinIO from an origin other than the API
+(e.g. Vite on `:4173` PUTs to `:9000`), configure MinIO bucket CORS for that
+origin with `PUT`, `GET`, `HEAD`, and `Content-Type` — same rules as hosted
+deploy (see `docs/runbooks/hosted-deploy.md` §2).
 
 ### Integration tests
 

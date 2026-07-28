@@ -5,7 +5,7 @@
 # Build context is the repo root (this file's directory) so the Dockerfile can
 # reach the npm workspace tree. Secrets (never set here — use `fly secrets
 # set`): DATABASE_URL, R2_ENDPOINT, R2_REGION, R2_BUCKET, R2_ACCESS_KEY_ID,
-# R2_SECRET_ACCESS_KEY, PEXELS_API_KEY, MEDIA_SIGNING_SECRET,
+# R2_SECRET_ACCESS_KEY, PEXELS_API_KEY,
 # SUPABASE_ISSUER, SUPABASE_AUDIENCE, SUPABASE_JWKS_URL. FMOTION_LOCAL_AUTH
 # must stay unset. See docs/runbooks/hosted-deploy.md.
 
@@ -17,6 +17,7 @@ primary_region = "iad"          # change to your preferred Fly region
 
 [env]
   PORT = "3000"
+  FMOTION_ENV = "hosted"
 
 [http_service]
   internal_port = 3000
