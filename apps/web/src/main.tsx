@@ -300,6 +300,12 @@ function App() {
     await followRender(job.job_id);
   }
 
+  async function retryRender() {
+    setDownloadUrl("");
+    setProgress({ phase: "queued", percent: 0 });
+    await requestRender();
+  }
+
   async function cancelRender() {
     if (!jobId) return;
     await api.request(`/api/render-jobs/${jobId}/cancel`, { method: "POST" });
@@ -371,10 +377,14 @@ function App() {
       </dialog>}
     </section>}
     {step === "render" && <section>
-      <h1>Accurate preview</h1><p role="status">{progress.phase} · 720p watermarked preview</p>
+      <h1>Accurate preview</h1>
+      <p role="status">{progress.phase === "failed" ? "Accurate preview failed — try again or keep editing." : `${progress.phase} · 720p watermarked preview`}</p>
       <progress value={progress.percent} max="100">{progress.percent}%</progress>
-      <div><button disabled={progress.phase === "complete" || progress.phase === "cancelled"} onClick={() => void cancelRender()}>Cancel render</button>
-        <a href={downloadUrl} download><button disabled={!downloadUrl}>Download preview</button></a></div>
+      <div>
+        <button disabled={progress.phase === "complete" || progress.phase === "cancelled" || progress.phase === "failed"} onClick={() => void cancelRender()}>Cancel render</button>
+        {(progress.phase === "failed" || progress.phase === "cancelled") && <button onClick={() => void retryRender()}>Retry</button>}
+        <a href={downloadUrl} download><button disabled={!downloadUrl || progress.phase === "failed"}>Download preview</button></a>
+      </div>
       <button className="secondary" onClick={() => setStep("editor")}>Keep editing</button>
     </section>}
   </main>;
