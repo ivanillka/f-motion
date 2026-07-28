@@ -168,9 +168,11 @@ async function mediaInputsFor(
     if (!asset) continue;
     const path = join(directory, scene.media_id);
     await store.download(asset.objectKey, path);
+    const probed = await probeMediaFile(path);
     inputs[scene.media_id] = {
       path,
-      type: asset.detected?.type ?? asset.declaredType
+      type: probed.type ?? asset.detected?.type ?? asset.declaredType,
+      hasAudio: probed.has_audio === true
     };
   }
   return inputs;

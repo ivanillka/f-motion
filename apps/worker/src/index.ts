@@ -14,11 +14,14 @@ export interface DetectedMedia {
   width?: number;
   height?: number;
   duration_ms?: number;
+  has_audio?: boolean;
 }
 
 export interface MediaInput {
   path: string;
   type: string;
+  // undefined hasAudio assumes audio present (backward-compatible unit fixtures).
+  hasAudio?: boolean;
 }
 
 export function inspectMedia(
@@ -95,6 +98,7 @@ export async function probeMediaFile(path: string): Promise<Omit<DetectedMedia, 
   if (Number.isFinite(durationSeconds) && durationSeconds > 0) {
     detected.duration_ms = Math.round(durationSeconds * 1000);
   }
+  detected.has_audio = streams.some((stream) => stream.codec_type === "audio");
   return detected;
 }
 
@@ -255,11 +259,12 @@ export function sceneClipArguments(
       ...captions
     ];
     const still = media.type === "image/jpeg" || media.type === "image/png";
+    const padAudio = still || media.hasAudio === false;
     const input = still
       ? ["-loop", "1", "-framerate", "30", "-t", String(duration), "-i", media.path]
       : ["-t", String(duration), "-i", media.path];
-    const audioInput = still ? silentAudioInput(duration) : [];
-    const audioMap = still ? "1:a" : "0:a";
+    const audioInput = padAudio ? silentAudioInput(duration) : [];
+    const audioMap = padAudio ? "1:a" : "0:a";
     return [
       "-y",
       ...input,

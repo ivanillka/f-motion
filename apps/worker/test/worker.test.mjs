@@ -77,10 +77,12 @@ test("ffprobe accepts fixture media and rejects corrupt bytes", async () => {
   assert.ok(video.width && video.width > 0);
   assert.ok(video.height && video.height > 0);
   assert.ok(video.duration_ms && video.duration_ms > 0);
+  assert.equal(video.has_audio, true);
   assert.equal(inspectMedia("video/mp4", { ...video, bytes: 1000 }, 1000).accepted, true);
 
   const jpeg = await probeMediaFile(join(fixtures, "still.jpg"));
   assert.equal(jpeg.type, "image/jpeg");
+  assert.equal(jpeg.has_audio, false);
   assert.equal(inspectMedia("image/jpeg", { ...jpeg, bytes: 100 }, 100).accepted, true);
 
   const png = await probeMediaFile(join(fixtures, "still.png"));
@@ -191,6 +193,33 @@ test("render job clip uses attached media input when provided", () => {
   assert.match(args, /\/tmp\/media\.mp4/);
   assert.doesNotMatch(args, /color=c=#202027/);
   assert.match(args, /force_original_aspect_ratio=increase/);
+  assert.match(args, /-map 0:a/);
+  assert.doesNotMatch(args, /anullsrc=/);
+});
+test("render job pads silent video with anullsrc and maps 1:a", () => {
+  const withMedia = {
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], media_id: "asset-1" }]
+  };
+  const job = buildRenderJob(withMedia, "preview.mp4", {
+    "asset-1": { path: "/tmp/silent.mp4", type: "video/mp4", hasAudio: false }
+  }, "/tmp/job");
+  const args = job.clips[0].args.join(" ");
+  assert.match(args, /anullsrc=/);
+  assert.match(args, /-map 1:a/);
+  assert.doesNotMatch(args, /-map 0:a/);
+});
+test("render job maps video audio from 0:a when hasAudio is true", () => {
+  const withMedia = {
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], media_id: "asset-1" }]
+  };
+  const job = buildRenderJob(withMedia, "preview.mp4", {
+    "asset-1": { path: "/tmp/media.mp4", type: "video/mp4", hasAudio: true }
+  }, "/tmp/job");
+  const args = job.clips[0].args.join(" ");
+  assert.match(args, /-map 0:a/);
+  assert.doesNotMatch(args, /anullsrc=/);
 });
 test("render job clip crops around the scene's focal point", () => {
   const withFocal = {
