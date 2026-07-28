@@ -39,6 +39,52 @@ scoped to it. Record: `R2_ENDPOINT`, `R2_REGION` (use `auto` for R2),
 `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`. The bucket must stay
 private — the API only ever hands out short-lived signed URLs.
 
+### CORS (required for browser uploads)
+
+The web client uploads with a browser `PUT` straight to the presigned
+object-storage URL. That request is **cross-origin** (web app origin → bucket
+host), so the bucket must allow CORS for the **hosted web origin** (e.g.
+`https://app.example.com`).
+
+Configure bucket CORS with at least:
+
+- **Allowed origins**: your web app origin (not `*` in production unless you
+  accept the risk on a private demo).
+- **Allowed methods**: `PUT`, `GET`, `HEAD` (`GET` for signed download URLs).
+- **Allowed headers**: `Content-Type` (the client sends the file's MIME type
+  on upload). `*` is acceptable for a private demo bucket.
+
+**Cloudflare R2** (dashboard → bucket → Settings → CORS policy) or API — example
+JSON shape:
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://app.example.com"],
+    "AllowedMethods": ["PUT", "GET", "HEAD"],
+    "AllowedHeaders": ["Content-Type"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+**S3-compatible** (AWS CLI or any store that accepts the S3 CORS API):
+
+```sh
+aws s3api put-bucket-cors --bucket <your-bucket> --endpoint-url <R2_ENDPOINT> \
+  --cors-configuration '{
+    "CORSRules": [{
+      "AllowedOrigins": ["https://app.example.com"],
+      "AllowedMethods": ["PUT", "GET", "HEAD"],
+      "AllowedHeaders": ["Content-Type"],
+      "MaxAgeSeconds": 3600
+    }]
+  }'
+```
+
+Replace `<your-bucket>`, `<R2_ENDPOINT>`, and the origin with your values. CORS
+lives on the **bucket**, not the API.
+
 ## 3. Create the Supabase project (auth)
 
 1. Create a Supabase project. Enable email magic-link (and Google, if
@@ -72,7 +118,7 @@ fly launch --config fly.api.toml --no-deploy
 fly secrets set --config fly.api.toml \
   DATABASE_URL=... SUPABASE_ISSUER=... SUPABASE_AUDIENCE=... SUPABASE_JWKS_URL=... \
   R2_ENDPOINT=... R2_REGION=... R2_BUCKET=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... \
-  PEXELS_API_KEY=... MEDIA_SIGNING_SECRET=...
+  PEXELS_API_KEY=...
 fly deploy --config fly.api.toml
 
 fly launch --config fly.worker.toml --no-deploy
@@ -115,7 +161,9 @@ curl -f https://api.example.com/readyz   # 503 until Postgres is reachable
 
 Then, from the hosted web origin: request a magic-link email, follow the
 link, create a brief, pick a concept, attach media, render, and download —
-end to end through the hosted API/worker/storage/Postgres.
+end to end through the hosted API/worker/storage/Postgres. Upload a small
+JPEG or MP4 from the editor — if the browser console shows a CORS error on
+the storage host, fix bucket CORS (§2) before debugging the API.
 
 ## Required secrets (names only — never commit values)
 
@@ -125,7 +173,6 @@ end to end through the hosted API/worker/storage/Postgres.
 | `QUEUE_DATABASE_URL` | worker | session-mode Postgres (pg-boss) |
 | `R2_ENDPOINT`, `R2_REGION`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | API + worker | private object storage |
 | `PEXELS_API_KEY` | API | stock media search |
-| `MEDIA_SIGNING_SECRET` | API | upload/download URL signing |
 | `SUPABASE_ISSUER`, `SUPABASE_AUDIENCE`, `SUPABASE_JWKS_URL` | API | JWT verification |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | web build | Supabase client |
 | `FMOTION_LOCAL_AUTH` | — | must stay **unset** on every hosted process |
