@@ -146,17 +146,101 @@ VITE_SUPABASE_ANON_KEY=<anon-key> \
 npm run build --workspace apps/web
 ```
 
-Host `apps/web/dist` on any static host (Fly static, Cloudflare Pages,
-Netlify, etc.) that proxies `/api` to the API app's origin. **Do not set
-`VITE_ALLOW_DEMO_AUTH`** — its absence plus a production (non-`vite dev`)
-build is what disables the local demo identity fallback
+Host `apps/web/dist` on a static host (Fly static, Cloudflare Pages, Netlify,
+nginx, Caddy, etc.). The production web build calls relative `/api/...` paths
+(`apps/web/src/api.ts`); Vite's dev proxy is **not** used in production. The
+static host must reverse-proxy `/api` to the API app's origin so the browser
+stays same-origin — the API has no CORS middleware.
+
+The web origin (e.g. `https://app.example.com`) and API origin (e.g.
+`https://api.example.com`) may be different Fly apps or hosts; the **browser**
+only ever talks to the web origin.
+
+**Do not set `VITE_ALLOW_DEMO_AUTH`** — its absence plus a production
+(non-`vite dev`) build is what disables the local demo identity fallback
 (`apps/web/src/main.tsx`).
 
+### Reverse proxy
+
+Requirements for any proxy in front of `apps/web/dist`:
+
+- Forward `/api/*` (and ideally bare `/api`) to the API origin with the `/api`
+  path prefix preserved (`/api/projects` → `https://api.example.com/api/projects`).
+- Pass through the client's `Authorization` header unchanged (JWT bearer tokens).
+- Do **not** buffer streaming responses. Render progress uses `fetch` +
+  `ReadableStream` on `/api/render-jobs/:id/events`; a buffering proxy delivers
+  the whole body at once and breaks live progress. Disable response buffering on
+  that path (or globally for `/api/`).
+
+Process health (`/healthz`, `/readyz`) lives at the **API root**, not under
+`/api`. For same-origin smoke (§7), expose it at `/api/healthz` via a rewrite
+or dedicated rule (examples below).
+
+**nginx** (serves `apps/web/dist` and proxies API):
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name app.example.com;
+    root /var/www/f-motion/dist;
+
+    location = /api/healthz {
+        proxy_pass https://api.example.com/healthz;
+        proxy_set_header Host api.example.com;
+    }
+
+    location /api/ {
+        proxy_pass https://api.example.com/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host api.example.com;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+    }
+
+    location = /api {
+        return 301 /api/;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+**Cloudflare Pages** — add `_redirects` to `apps/web/dist` before deploy
+(200 = proxy, not browser redirect):
+
+```
+/api/healthz https://api.example.com/healthz 200
+/api/*       https://api.example.com/api/:splat 200
+```
+
+Cloudflare may buffer SSE by default on proxied routes; if render progress
+stalls until the job finishes, move `/api/render-jobs/*/events` to a Worker or
+nginx/Caddy host where you can disable buffering (see nginx example above).
+
 ## 7. Smoke test
+
+API directly (confirms the API app is up):
 
 ```sh
 curl -f https://api.example.com/healthz
 curl -f https://api.example.com/readyz   # 503 until Postgres is reachable
+```
+
+Same-origin proxy (confirms the web host forwards `/api` before auth testing):
+
+```sh
+curl -f https://app.example.com/api/healthz   # expect {"status":"ok"}, not index.html
+```
+
+Or in the browser DevTools console on `https://app.example.com`:
+
+```js
+fetch("/api/healthz").then((r) => r.json()).then(console.log);
 ```
 
 Then, from the hosted web origin: request a magic-link email, follow the
