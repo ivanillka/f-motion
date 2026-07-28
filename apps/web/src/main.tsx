@@ -160,12 +160,14 @@ function App() {
     setStatus("✓ All changes saved");
   }
 
-  /** Polls the asset briefly and attaches it to scene 0 once the worker marks it ready. */
+  /** Polls until the worker marks the asset ready (or times out) and attaches it to scene 0. */
   async function attachMediaWhenReady(assetId: string): Promise<boolean> {
     if (!project) return false;
     const scene = project.scenes[0];
     if (!scene) return false;
-    for (let attempt = 0; attempt < 5; attempt++) {
+    setStatus("Waiting for media inspection…");
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline) {
       const media = await api.request<{ id: string; state: string }>(`/api/projects/${project.id}/media/${assetId}`);
       if (media.state === "ready") {
         const updated = await api.command(project.id, project.revision, "update_scene", {
@@ -177,6 +179,7 @@ function App() {
       if (media.state !== "admitted" && media.state !== "inspecting") return false;
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
+    setStatus("Media is still inspecting — try again in a moment.");
     return false;
   }
 
