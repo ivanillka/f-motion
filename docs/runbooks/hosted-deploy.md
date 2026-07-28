@@ -133,6 +133,10 @@ refuses to boot with it set when `NODE_ENV=production` or
 `FMOTION_ENV=hosted` (`apps/api/src/local-auth.ts`); leaving it unset is the
 correct, safest choice on a host regardless.
 
+`fly.api.toml` sets `FMOTION_ENV=hosted` in `[env]` for Fly deploys. On
+non-Fly platforms, export `FMOTION_ENV=hosted` on the API process (alongside
+the secrets above); `FMOTION_LOCAL_AUTH` must still stay unset.
+
 Any platform that can run `apps/api/Dockerfile` / `apps/worker/Dockerfile`
 and inject the same env vars works the same way — swap this step for
 `docker build`/`docker run`/your platform's deploy command and keep steps

@@ -17,6 +17,7 @@ primary_region = "iad"          # change to your preferred Fly region
 
 [env]
   PORT = "3000"
+  FMOTION_ENV = "hosted"
 
 [http_service]
   internal_port = 3000
