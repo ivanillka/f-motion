@@ -34,6 +34,11 @@ header strong {
   font-weight: 600;
   letter-spacing: 0.02em;
 }
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 section { max-width: 680px; margin: 10vh auto 0; display: grid; gap: 18px; }
 h1 {
   font-size: clamp(2rem, 6vw, 3.25rem);

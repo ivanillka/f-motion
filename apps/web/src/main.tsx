@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { ApiClient, ApiResponseError, type Concept, type ProjectSnapshot, type ProjectSummary, type Scene } from "./api";
 import "./style.css";
 
-type Step = "sign-in" | "drafts" | "brief" | "concepts" | "editor" | "render";
+type Step = "sign-in" | "drafts" | "brief" | "concepts" | "editor" | "render" | "settings";
 
 function demoAuthAllowed(): boolean {
   return Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1";
@@ -249,6 +249,40 @@ function App() {
     }
   }
 
+  async function saveAsNewProject() {
+    const source = conflict ?? project;
+    if (!source) return;
+    const brief = source.brief;
+    const conceptId = selected || source.selected_concept_id;
+    const pendingMotion = project?.scenes[0]?.motion;
+    setStatus("Saving as new project…");
+    const body = await api.request<{ project: ProjectSnapshot; concepts: Concept[] }>("/api/projects", {
+      method: "POST",
+      body: JSON.stringify(brief)
+    });
+    let updated = body.project;
+    if (conceptId) {
+      updated = await api.command(updated.id, updated.revision, "select_concept", { concept_id: conceptId });
+    }
+    const scene = updated.scenes[0];
+    if (scene) {
+      const { media_id, ...sceneWithoutMedia } = scene;
+      updated = await api.command(updated.id, updated.revision, "update_scene", {
+        scene: {
+          ...sceneWithoutMedia,
+          caption: draft,
+          ...(pendingMotion !== undefined ? { motion: pendingMotion } : {}),
+          caption_cues: undefined
+        }
+      });
+    }
+    setProject(updated);
+    localStorage.setItem("fmotion-project", updated.id);
+    setConflict(undefined);
+    setStep("editor");
+    setStatus("Saved as a new project (media not copied).");
+  }
+
   async function followRender(id: string, lastEventId = "") {
     const deadline = Date.now() + 15 * 60_000;
     while (Date.now() < deadline) {
@@ -300,14 +334,41 @@ function App() {
     await followRender(job.job_id);
   }
 
+  async function retryRender() {
+    setDownloadUrl("");
+    setProgress({ phase: "queued", percent: 0 });
+    await requestRender();
+  }
+
   async function cancelRender() {
     if (!jobId) return;
     await api.request(`/api/render-jobs/${jobId}/cancel`, { method: "POST" });
     setProgress({ phase: "cancelled", percent: 0 });
   }
 
+  function signOut() {
+    sessionStorage.removeItem("fmotion-access-token");
+    setToken("");
+    setProject(undefined);
+    setDrafts([]);
+    setConcepts([]);
+    setSelected("");
+    setConflict(undefined);
+    setStatus("");
+    setJobId("");
+    setDownloadUrl("");
+    setPexelsResults([]);
+    setProgress({ phase: "queued", percent: 0 });
+    setStep("sign-in");
+  }
+
   return <main>
-    <header><strong>F‑Motion</strong><span role="status">{online ? "● Connected" : "○ Reconnecting — draft kept locally"}</span></header>
+    <header><strong>F‑Motion</strong>
+      <div className="header-actions">
+        {token && step !== "sign-in" && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
+        <span role="status">{online ? "● Connected" : "○ Reconnecting — draft kept locally"}</span>
+      </div>
+    </header>
     {step === "sign-in" && <section>
       <h1>Shape a vertical video</h1>
       <p>Sign in to keep projects private.</p>
@@ -320,6 +381,7 @@ function App() {
       <h1>Drafts</h1>
       <p>Pick up where you left off or start a new video.</p>
       <button onClick={startCreate}>Create new video</button>
+      <button className="secondary" onClick={() => setStep("settings")}>Settings</button>
       {draftsLoading && <p role="status">Loading drafts…</p>}
       {!draftsLoading && drafts.length === 0 && <p role="status">No drafts yet.</p>}
       <div className="concepts">{drafts.map((item) =>
@@ -367,15 +429,26 @@ function App() {
       <button className="secondary" onClick={() => void proveConflict()}>Test stale revision</button>
       {conflict && <dialog open><h2>Newer changes exist</h2><p>Your changes were not merged.</p>
         <button onClick={() => { setProject(conflict); setConflict(undefined); }}>Reload latest</button>
-        <button onClick={() => { setConflict(undefined); void createProject().then(() => setStep("concepts")); }}>Save as new project</button>
+        <button onClick={() => void saveAsNewProject()}>Save as new project</button>
       </dialog>}
     </section>}
     {step === "render" && <section>
-      <h1>Accurate preview</h1><p role="status">{progress.phase} · 720p watermarked preview</p>
+      <h1>Accurate preview</h1>
+      <p role="status">{progress.phase === "failed" ? "Accurate preview failed — try again or keep editing." : `${progress.phase} · 720p watermarked preview`}</p>
       <progress value={progress.percent} max="100">{progress.percent}%</progress>
-      <div><button disabled={progress.phase === "complete" || progress.phase === "cancelled"} onClick={() => void cancelRender()}>Cancel render</button>
-        <a href={downloadUrl} download><button disabled={!downloadUrl}>Download preview</button></a></div>
+      <div>
+        <button disabled={progress.phase === "complete" || progress.phase === "cancelled" || progress.phase === "failed"} onClick={() => void cancelRender()}>Cancel render</button>
+        {(progress.phase === "failed" || progress.phase === "cancelled") && <button onClick={() => void retryRender()}>Retry</button>}
+        <a href={downloadUrl} download><button disabled={!downloadUrl || progress.phase === "failed"}>Download preview</button></a>
+      </div>
       <button className="secondary" onClick={() => setStep("editor")}>Keep editing</button>
+    </section>}
+    {step === "settings" && <section>
+      <h1>Settings</h1>
+      <p>Pexels videos require on-product attribution — see “Use video by … · Pexels” in the editor when you add stock footage.</p>
+      <p>Privacy and terms will ship with Gate 0 launch policy evidence.</p>
+      <button onClick={signOut}>Sign out</button>
+      <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
     </section>}
   </main>;
 }
