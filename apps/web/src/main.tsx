@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { ApiClient, ApiResponseError, type Concept, type ProjectSnapshot, type ProjectSummary, type Scene } from "./api";
 import "./style.css";
 
-type Step = "sign-in" | "drafts" | "brief" | "concepts" | "editor" | "render";
+type Step = "sign-in" | "drafts" | "brief" | "concepts" | "editor" | "render" | "settings";
 
 function demoAuthAllowed(): boolean {
   return Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1";
@@ -346,8 +346,29 @@ function App() {
     setProgress({ phase: "cancelled", percent: 0 });
   }
 
+  function signOut() {
+    sessionStorage.removeItem("fmotion-access-token");
+    setToken("");
+    setProject(undefined);
+    setDrafts([]);
+    setConcepts([]);
+    setSelected("");
+    setConflict(undefined);
+    setStatus("");
+    setJobId("");
+    setDownloadUrl("");
+    setPexelsResults([]);
+    setProgress({ phase: "queued", percent: 0 });
+    setStep("sign-in");
+  }
+
   return <main>
-    <header><strong>F‑Motion</strong><span role="status">{online ? "● Connected" : "○ Reconnecting — draft kept locally"}</span></header>
+    <header><strong>F‑Motion</strong>
+      <div className="header-actions">
+        {token && step !== "sign-in" && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
+        <span role="status">{online ? "● Connected" : "○ Reconnecting — draft kept locally"}</span>
+      </div>
+    </header>
     {step === "sign-in" && <section>
       <h1>Shape a vertical video</h1>
       <p>Sign in to keep projects private.</p>
@@ -360,6 +381,7 @@ function App() {
       <h1>Drafts</h1>
       <p>Pick up where you left off or start a new video.</p>
       <button onClick={startCreate}>Create new video</button>
+      <button className="secondary" onClick={() => setStep("settings")}>Settings</button>
       {draftsLoading && <p role="status">Loading drafts…</p>}
       {!draftsLoading && drafts.length === 0 && <p role="status">No drafts yet.</p>}
       <div className="concepts">{drafts.map((item) =>
@@ -420,6 +442,13 @@ function App() {
         <a href={downloadUrl} download><button disabled={!downloadUrl || progress.phase === "failed"}>Download preview</button></a>
       </div>
       <button className="secondary" onClick={() => setStep("editor")}>Keep editing</button>
+    </section>}
+    {step === "settings" && <section>
+      <h1>Settings</h1>
+      <p>Pexels videos require on-product attribution — see “Use video by … · Pexels” in the editor when you add stock footage.</p>
+      <p>Privacy and terms will ship with Gate 0 launch policy evidence.</p>
+      <button onClick={signOut}>Sign out</button>
+      <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
     </section>}
   </main>;
 }
