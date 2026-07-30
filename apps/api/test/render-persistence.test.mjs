@@ -73,6 +73,41 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
     assert.equal(await renders.complete(cancelled.jobId, "cancelled.mp4", {}), false);
     assert.equal(await renders.result("owner", cancelled.jobId), undefined);
 
+    const running = await renders.create("owner", project.id);
+    assert.ok(running);
+    assert.equal(await renders.progress(running.jobId, "preparing", 10), true);
+    const waitingOne = await renders.create("owner", project.id);
+    const waitingTwo = await renders.create("owner", project.id);
+    assert.ok(waitingOne);
+    assert.ok(waitingTwo);
+    await assert.rejects(
+      () => renders.create("owner", project.id),
+      /render capacity reached/
+    );
+    assert.equal((await fetch(`${origin}/api/projects/${project.id}/render`, { method: "POST" })).status, 429);
+    assert.equal((await renders.cancel("owner", waitingOne.jobId)).state, "cancelled");
+    assert.ok(await renders.create("owner", project.id), "terminal jobs release capacity");
+
+    await pool.query(
+      `UPDATE "RenderJob" SET state = 'cancelled'
+        WHERE "ownerId" = 'owner' AND state IN ('queued', 'running')`
+    );
+    const concurrent = await Promise.allSettled(
+      Array.from({ length: 8 }, () => renders.create("owner", project.id))
+    );
+    assert.equal(
+      concurrent.filter(({ status }) => status === "fulfilled").length,
+      3,
+      "owner lock must admit only three concurrent attempts"
+    );
+    assert.equal(
+      Number((await pool.query(
+        `SELECT COUNT(*) AS count FROM "RenderJob"
+          WHERE "ownerId" = 'owner' AND state IN ('queued', 'running')`
+      )).rows[0].count),
+      3
+    );
+
     await projects.command("owner", {
       command_id: "after-render",
       project_id: project.id,
@@ -84,7 +119,7 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
     assert.equal((await renders.result("owner", created.job_id)).stale, true);
     assert.equal(
       Number((await pool.query(`SELECT COUNT(*) AS count FROM "WorkOutbox" WHERE kind = 'render-preview'`)).rows[0].count),
-      2
+      9
     );
   } finally {
     if (server.listening) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

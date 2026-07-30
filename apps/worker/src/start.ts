@@ -1,6 +1,10 @@
 import { S3Client } from "@aws-sdk/client-s3";
 import pg from "pg";
-import { createQueueHandlers, S3WorkerObjectStore } from "./runtime.js";
+import {
+  createQueueHandlers,
+  renderProfileFromEnv,
+  S3WorkerObjectStore
+} from "./runtime.js";
 import { startQueueRuntime } from "./queue.js";
 
 function required(name: string): string {
@@ -10,6 +14,7 @@ function required(name: string): string {
 }
 
 const connectionString = required("QUEUE_DATABASE_URL");
+const renderProfile = renderProfileFromEnv(process.env);
 const pool = new pg.Pool({ connectionString });
 const store = new S3WorkerObjectStore(new S3Client({
   region: process.env.R2_REGION ?? "auto",
@@ -21,4 +26,8 @@ const store = new S3WorkerObjectStore(new S3Client({
   }
 }), required("R2_BUCKET"));
 
-await startQueueRuntime(connectionString, createQueueHandlers(pool, store), pool);
+await startQueueRuntime(
+  connectionString,
+  createQueueHandlers(pool, store, renderProfile),
+  pool
+);

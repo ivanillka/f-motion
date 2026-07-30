@@ -1,43 +1,102 @@
 import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ApiClient, ApiResponseError, type Concept, type ProjectSnapshot, type ProjectSummary, type Scene } from "./api";
+import { ApiClient, ApiResponseError, type ProjectSnapshot, type ProjectSummary, type Scene } from "./api";
+import { AuthConfigurationError, createAuthGateway } from "./auth";
 import "./style.css";
 
-type Step = "sign-in" | "drafts" | "brief" | "concepts" | "editor" | "render" | "settings";
-
-function demoAuthAllowed(): boolean {
-  return Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1";
-}
-
-function accessTokenFromLocation(): string {
-  const token = new URLSearchParams(location.hash.slice(1)).get("access_token");
-  if (token) {
-    sessionStorage.setItem("fmotion-access-token", token);
-    history.replaceState(null, "", location.pathname);
-  }
-  return token ?? sessionStorage.getItem("fmotion-access-token") ?? "";
+type Step = "sign-in" | "drafts" | "brief" | "source" | "media" | "editor" | "render" | "settings";
+type MediaSource = "upload" | "stock";
+interface StockResult {
+  id: number;
+  creator: string;
+  attributionUrl: string;
+  previewUrl: string;
 }
 
 function App() {
-  const [token, setToken] = useState(accessTokenFromLocation);
-  const api = useMemo(() => new ApiClient(() => token), [token]);
-  const [step, setStep] = useState<Step>(() => token ? "drafts" : "sign-in");
+  const authSetup = useMemo(() => {
+    try {
+      return {
+        gateway: createAuthGateway({
+          url: import.meta.env.VITE_SUPABASE_URL,
+          publicKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          origin: location.origin,
+          allowDemo: Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1"
+        })
+      };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error : new AuthConfigurationError()
+      };
+    }
+  }, []);
+  const tokenRef = useRef("");
+  const [token, setToken] = useState("");
+  const [authReady, setAuthReady] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [step, setStep] = useState<Step>("sign-in");
   const [email, setEmail] = useState("");
-  const [draft, setDraft] = useState(() => localStorage.getItem("fmotion-draft") ?? "");
+  const [draft, setDraft] = useState(() => localStorage.getItem("fengine-draft") ?? "");
   const [project, setProject] = useState<ProjectSnapshot>();
   const [drafts, setDrafts] = useState<ProjectSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
-  const [concepts, setConcepts] = useState<Concept[]>([]);
-  const [selected, setSelected] = useState("");
+  const [mediaSource, setMediaSource] = useState<MediaSource>();
+  const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const [status, setStatus] = useState("");
+  const api = useMemo(() => new ApiClient(
+    () => tokenRef.current,
+    () => {
+      void authSetup.gateway?.signOut()
+        .catch(() => undefined)
+        .finally(() => setStatus("Your session expired. Please sign in again."));
+    }
+  ), [authSetup.gateway]);
   const [conflict, setConflict] = useState<ProjectSnapshot>();
   const [pexelsQuery, setPexelsQuery] = useState("");
-  const [pexelsResults, setPexelsResults] = useState<Array<{ id: number; creator: string; attributionUrl: string }>>([]);
+  const [pexelsResults, setPexelsResults] = useState<StockResult[]>([]);
   const [jobId, setJobId] = useState("");
   const [progress, setProgress] = useState({ phase: "queued", percent: 0 });
   const [downloadUrl, setDownloadUrl] = useState("");
   const upload = useRef<HTMLInputElement>(null);
+
+  function clearSessionState() {
+    tokenRef.current = "";
+    setToken("");
+    setProject(undefined);
+    setDrafts([]);
+    setMediaSource(undefined);
+    setConflict(undefined);
+    setJobId("");
+    setDownloadUrl("");
+    setPexelsResults([]);
+    setProgress({ phase: "queued", percent: 0 });
+    setStatus("");
+    setStep("sign-in");
+  }
+
+  useEffect(() => {
+    if (!authSetup.gateway) {
+      setAuthReady(true);
+      setStatus(authSetup.error?.message ?? "Sign-in is not configured for this deployment.");
+      return;
+    }
+    return authSetup.gateway.subscribe((session) => {
+      setAuthReady(true);
+      if (!session) {
+        clearSessionState();
+        return;
+      }
+      tokenRef.current = session.accessToken;
+      setToken(session.accessToken);
+      const callback = new URL(location.href);
+      if (callback.searchParams.has("code")) {
+        callback.searchParams.delete("code");
+        history.replaceState(null, "", `${callback.pathname}${callback.search}${callback.hash}`);
+      }
+      setStep((current) => current === "sign-in" ? "drafts" : current);
+    });
+  }, [authSetup.error, authSetup.gateway]);
 
   useEffect(() => {
     const up = () => setOnline(true);
@@ -49,7 +108,7 @@ function App() {
       window.removeEventListener("offline", down);
     };
   }, []);
-  useEffect(() => localStorage.setItem("fmotion-draft", draft), [draft]);
+  useEffect(() => localStorage.setItem("fengine-draft", draft), [draft]);
 
   useEffect(() => {
     if (step !== "drafts" || !token) return;
@@ -71,80 +130,82 @@ function App() {
   }, [api, step, token]);
 
   async function magicLink() {
-    const supabase = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-    if (!supabase) {
-      if (!demoAuthAllowed()) {
-        setStatus("Sign-in is not configured for this deployment.");
-        return;
+    if (!authSetup.gateway) return;
+    setAuthBusy(true);
+    try {
+      await authSetup.gateway.sendMagicLink(email);
+      if (import.meta.env.DEV || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1") {
+        setStatus("");
+      } else {
+        setStatus("Check your email for the sign-in link.");
       }
-      sessionStorage.setItem("fmotion-access-token", "e2e-test-token");
-      setToken("e2e-test-token");
-      setStep("drafts");
-      return;
+    } catch {
+      setStatus("Sign-in link could not be sent.");
+    } finally {
+      setAuthBusy(false);
     }
-    const response = await fetch(`${supabase}/auth/v1/otp`, {
-      method: "POST",
-      headers: { "content-type": "application/json", apikey: String(import.meta.env.VITE_SUPABASE_ANON_KEY ?? "") },
-      body: JSON.stringify({ email, options: { emailRedirectTo: location.origin } })
-    });
-    setStatus(response.ok ? "Check your email for the sign-in link." : "Sign-in link could not be sent.");
   }
 
-  function googleSignIn() {
-    const supabase = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-    if (!supabase) {
-      if (!demoAuthAllowed()) {
-        setStatus("Sign-in is not configured for this deployment.");
-        return;
-      }
-      sessionStorage.setItem("fmotion-access-token", "e2e-test-token");
-      setToken("e2e-test-token");
-      setStep("drafts");
-      return;
+  async function googleSignIn() {
+    if (!authSetup.gateway) return;
+    setAuthBusy(true);
+    try {
+      await authSetup.gateway.signInWithGoogle();
+    } catch {
+      setStatus("Google sign-in could not be started.");
+    } finally {
+      setAuthBusy(false);
     }
-    location.assign(`${supabase}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(location.origin)}`);
   }
 
-  async function createProject() {
-    const body = await api.request<{ project: ProjectSnapshot; concepts: Concept[] }>("/api/projects", {
-      method: "POST",
-      body: JSON.stringify({ purpose: draft, audience: "Customers", tone: "Warm" })
-    });
-    setProject(body.project);
-    setConcepts(body.concepts);
-    localStorage.setItem("fmotion-project", body.project.id);
-    setStep("concepts");
+  async function initializeScene(snapshot: ProjectSnapshot): Promise<ProjectSnapshot> {
+    if (snapshot.scenes.length) return snapshot;
+    return api.command(snapshot.id, snapshot.revision, "select_concept", { concept_id: "direct" });
+  }
+
+  async function chooseSource(nextSource: MediaSource) {
+    if (busy) return;
+    setMediaSource(nextSource);
+    setStatus("Creating your draft…");
+    setBusy(true);
+    try {
+      let current = project;
+      if (!current) {
+        const body = await api.request<{ project: ProjectSnapshot }>("/api/projects", {
+          method: "POST",
+          body: JSON.stringify({ purpose: draft, audience: "Customers", tone: "Warm" })
+        });
+        current = body.project;
+        localStorage.setItem("fengine-project", current.id);
+      }
+      current = await initializeScene(current);
+      setProject(current);
+      setStatus("");
+      setStep("media");
+    } catch {
+      setStatus("Your draft could not be created. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function openDraft(projectId: string) {
     setStatus("Opening draft…");
-    const { project: opened, concepts: draftConcepts } = await api.getProject(projectId);
-    setProject(opened);
-    localStorage.setItem("fmotion-project", opened.id);
-    setDraft(opened.scenes[0]?.caption ?? opened.brief.purpose);
-    setSelected(opened.selected_concept_id ?? "");
-    if (opened.scenes.length > 0) {
-      setStep("editor");
-    } else {
-      setConcepts(draftConcepts ?? []);
-      setStep("concepts");
-    }
+    const { project: opened } = await api.getProject(projectId);
+    const initialized = await initializeScene(opened);
+    setProject(initialized);
+    localStorage.setItem("fengine-project", initialized.id);
+    setDraft(initialized.scenes[0]?.caption ?? initialized.brief.purpose);
+    setStep(initialized.scenes[0]?.media_id ? "editor" : "source");
     setStatus("");
   }
 
   function startCreate() {
     setProject(undefined);
-    setConcepts([]);
-    setSelected("");
-    setDraft(localStorage.getItem("fmotion-draft") ?? "");
+    setMediaSource(undefined);
+    setPexelsResults([]);
+    setDraft(localStorage.getItem("fengine-draft") ?? "");
     setStep("brief");
-  }
-
-  async function chooseConcept() {
-    if (!project) return;
-    const updated = await api.command(project.id, project.revision, "select_concept", { concept_id: selected });
-    setProject(updated);
-    setStep("editor");
   }
 
   async function saveScene() {
@@ -174,6 +235,7 @@ function App() {
           scene: { ...scene, caption: draft, media_id: assetId }
         });
         setProject(updated);
+        setStep("editor");
         return true;
       }
       if (media.state !== "admitted" && media.state !== "inspecting") return false;
@@ -204,51 +266,63 @@ function App() {
 
   async function admitFile(file: File) {
     if (!project) return;
-    const admission = await api.request<{ asset_id: string; upload_url: string }>(
-      `/api/projects/${project.id}/media/uploads`,
-      {
-        method: "POST",
-        body: JSON.stringify({ content_type: file.type, bytes: file.size })
-      }
-    );
-    const uploaded = await fetch(admission.upload_url, {
-      method: "PUT",
-      headers: { "content-type": file.type },
-      body: file
-    });
-    if (!uploaded.ok) throw new Error("Upload failed");
-    await api.request(`/api/projects/${project.id}/media/${admission.asset_id}/complete`, { method: "POST" });
-    setStatus("Media uploaded and queued for inspection.");
-    if (await attachMediaWhenReady(admission.asset_id)) setStatus("Media attached.");
+    setBusy(true);
+    setStatus("Uploading media…");
+    try {
+      const admission = await api.request<{ asset_id: string; upload_url: string }>(
+        `/api/projects/${project.id}/media/uploads`,
+        {
+          method: "POST",
+          body: JSON.stringify({ content_type: file.type, bytes: file.size })
+        }
+      );
+      const uploaded = await fetch(admission.upload_url, {
+        method: "PUT",
+        headers: { "content-type": file.type },
+        body: file
+      });
+      if (!uploaded.ok) throw new Error("Upload failed");
+      await api.request(`/api/projects/${project.id}/media/${admission.asset_id}/complete`, { method: "POST" });
+      setStatus("Media uploaded and queued for inspection.");
+      if (await attachMediaWhenReady(admission.asset_id)) setStatus("Media attached.");
+    } catch {
+      setStatus("Media could not be uploaded. Check the file and try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function searchPexels() {
-    const body = await api.request<{ results: Array<{ id: number; creator: string; attributionUrl: string }> }>(
-      `/api/pexels/search?q=${encodeURIComponent(pexelsQuery)}`
-    );
-    setPexelsResults(body.results);
+    setBusy(true);
+    setStatus("Searching licensed stock…");
+    try {
+      const body = await api.request<{ results: StockResult[] }>(
+        `/api/pexels/search?q=${encodeURIComponent(pexelsQuery)}`
+      );
+      setPexelsResults(body.results);
+      setStatus(body.results.length ? "" : "No stock videos matched that search.");
+    } catch {
+      setStatus("Licensed stock search is unavailable. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function copyPexels(id: number) {
     if (!project) return;
-    const body = await api.request<{ asset: { id: string } }>(`/api/projects/${project.id}/media/pexels`, {
-      method: "POST",
-      body: JSON.stringify({ query: pexelsQuery, pexels_id: id })
-    });
-    setStatus("Pexels media queued for inspection.");
-    if (await attachMediaWhenReady(body.asset.id)) setStatus("Pexels media attached with attribution.");
-  }
-
-  async function proveConflict() {
-    if (!project) return;
+    setBusy(true);
+    setStatus("Adding licensed stock…");
     try {
-      await api.command(project.id, 0, "select_concept", { concept_id: selected || "direct" });
-    } catch (error) {
-      if (error instanceof ApiResponseError && error.status === 409) {
-        setConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot);
-        return;
-      }
-      throw error;
+      const body = await api.request<{ asset: { id: string } }>(`/api/projects/${project.id}/media/pexels`, {
+        method: "POST",
+        body: JSON.stringify({ query: pexelsQuery, pexels_id: id })
+      });
+      setStatus("Pexels media queued for inspection.");
+      if (await attachMediaWhenReady(body.asset.id)) setStatus("Pexels media attached with attribution.");
+    } catch {
+      setStatus("That stock video could not be added. Please choose another.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -256,17 +330,14 @@ function App() {
     const source = conflict ?? project;
     if (!source) return;
     const brief = source.brief;
-    const conceptId = selected || source.selected_concept_id;
     const pendingMotion = project?.scenes[0]?.motion;
     setStatus("Saving as new project…");
-    const body = await api.request<{ project: ProjectSnapshot; concepts: Concept[] }>("/api/projects", {
+    const body = await api.request<{ project: ProjectSnapshot }>("/api/projects", {
       method: "POST",
       body: JSON.stringify(brief)
     });
     let updated = body.project;
-    if (conceptId) {
-      updated = await api.command(updated.id, updated.revision, "select_concept", { concept_id: conceptId });
-    }
+    updated = await api.command(updated.id, updated.revision, "select_concept", { concept_id: "direct" });
     const scene = updated.scenes[0];
     if (scene) {
       const { media_id, ...sceneWithoutMedia } = scene;
@@ -280,7 +351,7 @@ function App() {
       });
     }
     setProject(updated);
-    localStorage.setItem("fmotion-project", updated.id);
+    localStorage.setItem("fengine-project", updated.id);
     setConflict(undefined);
     setStep("editor");
     setStatus("Saved as a new project (media not copied).");
@@ -291,10 +362,15 @@ function App() {
     while (Date.now() < deadline) {
       const response = await fetch(`/api/render-jobs/${id}/events`, {
         headers: {
-          authorization: `Bearer ${token}`,
+          authorization: `Bearer ${tokenRef.current}`,
           ...(lastEventId ? { "last-event-id": lastEventId } : {})
         }
       });
+      if (response.status === 401) {
+        await authSetup.gateway?.signOut().catch(() => undefined);
+        setStatus("Your session expired. Please sign in again.");
+        return;
+      }
       if (!response.ok) throw new Error("Render progress unavailable");
       if (!response.body) throw new Error("Render progress stream unavailable");
 
@@ -349,38 +425,38 @@ function App() {
     setProgress({ phase: "cancelled", percent: 0 });
   }
 
-  function signOut() {
-    sessionStorage.removeItem("fmotion-access-token");
-    setToken("");
-    setProject(undefined);
-    setDrafts([]);
-    setConcepts([]);
-    setSelected("");
-    setConflict(undefined);
-    setStatus("");
-    setJobId("");
-    setDownloadUrl("");
-    setPexelsResults([]);
-    setProgress({ phase: "queued", percent: 0 });
-    setStep("sign-in");
+  async function signOut() {
+    if (!authSetup.gateway) return;
+    setAuthBusy(true);
+    try {
+      await authSetup.gateway.signOut();
+      setStatus("");
+    } catch {
+      setStatus("Sign out could not be completed. Please try again.");
+    } finally {
+      setAuthBusy(false);
+    }
   }
 
   return <main>
-    <header><strong>F‑Motion</strong>
+    <header><strong>F-Engine Reference</strong>
       <div className="header-actions">
-        {token && step !== "sign-in" && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
+        {authReady && token && step !== "sign-in" && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
         <span role="status">{online ? "● Connected" : "○ Reconnecting — draft kept locally"}</span>
       </div>
     </header>
-    {step === "sign-in" && <section>
+    {!authReady && <section><p role="status">Checking session…</p></section>}
+    {authReady && step === "sign-in" && <section>
       <h1>Shape a vertical video</h1>
       <p>Sign in to keep projects private.</p>
       <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-      <button disabled={Boolean(import.meta.env.VITE_SUPABASE_URL) && !email} onClick={() => void magicLink()}>Email me a magic link</button>
-      <button className="secondary" onClick={googleSignIn}>Continue with Google</button>
+      <button disabled={authBusy || !authSetup.gateway || (Boolean(import.meta.env.VITE_SUPABASE_URL) && !email.trim())} onClick={() => void magicLink()}>Email me a magic link</button>
+      {import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "1"
+        ? <button className="secondary" disabled={authBusy || !authSetup.gateway} onClick={() => void googleSignIn()}>Continue with Google</button>
+        : null}
       <p role="status">{status}</p>
     </section>}
-    {step === "drafts" && <section>
+    {authReady && step === "drafts" && <section>
       <h1>Drafts</h1>
       <p>Pick up where you left off or start a new video.</p>
       <button onClick={startCreate}>Create new video</button>
@@ -394,48 +470,73 @@ function App() {
         </button>)}</div>
       <p role="status">{status}</p>
     </section>}
-    {step === "brief" && <section>
-      <h1>What should this video achieve?</h1>
-      <label>Brief<textarea value={draft} maxLength={500} onChange={(event) => setDraft(event.target.value)} placeholder="Launch a product for small teams…" /></label>
-      <button disabled={!draft.trim()} onClick={() => void createProject()}>Review brief</button>
+    {authReady && step === "brief" && <section>
+      <h1>What do you want to make?</h1>
+      <p>Describe the result. This first version creates one short vertical clip.</p>
+      <label>Video description<textarea value={draft} maxLength={500} onChange={(event) => setDraft(event.target.value)} placeholder="A quick product launch for small teams…" /></label>
+      <button disabled={!draft.trim()} onClick={() => setStep("source")}>Choose visuals</button>
       <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
     </section>}
-    {step === "concepts" && <section>
-      <h1>Choose one concept</h1>
-      <div className="concepts">{concepts.map((concept) =>
-        <button key={concept.id} aria-pressed={selected === concept.id} className="card" onClick={() => setSelected(concept.id)}>
-          <strong>{concept.title}</strong><span>{concept.treatment}</span>
-        </button>)}</div>
-      <button disabled={!selected} onClick={() => void chooseConcept()}>Use {concepts.find(({ id }) => id === selected)?.title ?? "concept"}</button>
+    {authReady && step === "source" && <section>
+      <h1>Choose visuals</h1>
+      <p>Start with media you own or licensed stock footage.</p>
+      <div className="source-grid">
+        <button className="card" disabled={busy} onClick={() => void chooseSource("upload")}>
+          <strong>Upload my media</strong>
+          <span>Use a JPEG, PNG, or MP4 you have permission to use.</span>
+        </button>
+        <button className="card" disabled={busy} onClick={() => void chooseSource("stock")}>
+          <strong>Find licensed stock</strong>
+          <span>Search Pexels stock footage; attribution stays with the project.</span>
+        </button>
+        <button className="card" disabled aria-disabled="true">
+          <strong>Generate with AI — coming later</strong>
+          <span>No generation provider is connected yet.</span>
+        </button>
+      </div>
+      <p role="status" aria-live="polite">{status}</p>
+      <button className="secondary" disabled={busy} onClick={() => setStep(project ? "drafts" : "brief")}>Back</button>
     </section>}
-    {step === "editor" && project && <section>
-      <h1>Storyboard</h1>
+    {authReady && step === "media" && project && <section>
+      <h1>{mediaSource === "upload" ? "Upload your media" : "Find licensed stock"}</h1>
+      {mediaSource === "upload" ? <>
+        <p>Choose one JPEG, PNG, or MP4. It is inspected before it can be rendered.</p>
+        <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png" onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void admitFile(file);
+        }} />
+        <button disabled={busy} onClick={() => upload.current?.click()}>Choose a file</button>
+      </> : <>
+        <p><a href="https://www.pexels.com" target="_blank" rel="noreferrer">Videos provided by Pexels</a></p>
+        <label>Search licensed stock<input maxLength={100} value={pexelsQuery} onChange={(event) => setPexelsQuery(event.target.value)} /></label>
+        <button disabled={busy || !pexelsQuery.trim()} onClick={() => void searchPexels()}>Search Pexels</button>
+        <div className="stock-grid">{pexelsResults.map((result) => <article key={result.id} className="stock-card">
+          <img src={result.previewUrl} alt={`Stock video by ${result.creator}`} />
+          <p>Video by <a href={result.attributionUrl} target="_blank" rel="noreferrer">{result.creator}</a> · <a href="https://www.pexels.com" target="_blank" rel="noreferrer">Pexels</a></p>
+          <button disabled={busy} onClick={() => void copyPexels(result.id)}>Use this video</button>
+        </article>)}</div>
+      </>}
+      <p role="status" aria-live="polite">{status}</p>
+      <button className="secondary" disabled={busy} onClick={() => setStep("source")}>Back to visual choices</button>
+    </section>}
+    {authReady && step === "editor" && project && <section>
+      <h1>Video preview</h1>
       <p className="notice">Approximate preview — request an accurate render to verify timing and crop.</p>
       <div className="preview" aria-label="Approximate vertical preview"><span>{draft}</span></div>
       <label>Caption<input maxLength={180} value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={() => void saveScene()} /></label>
       <label>Motion<select value={project.scenes[0]?.motion ?? "none"} onChange={(event) => void saveMotion(event.target.value as Scene["motion"])}>
         <option value="none">None</option><option value="push">Push</option><option value="zoom">Zoom</option></select></label>
-      <label>Duration<input type="range" min="500" max="15000" step="100" value={project.scenes[0]?.duration_ms ?? 3000} readOnly /></label>
-      <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png" onChange={(event) => {
-        const file = event.target.files?.[0];
-        if (file) void admitFile(file);
-      }} />
-      <div><button onClick={() => upload.current?.click()}>Upload media</button></div>
-      <label>Search Pexels<input value={pexelsQuery} onChange={(event) => setPexelsQuery(event.target.value)} /></label>
-      <button className="secondary" disabled={!pexelsQuery} onClick={() => void searchPexels()}>Search Pexels</button>
-      {pexelsResults.map((result) => <button key={result.id} className="card" onClick={() => void copyPexels(result.id)}>
-        Use video by {result.creator} · Pexels
-      </button>)}
       <p role="status">{status || "✓ All changes saved"}</p>
-      <button onClick={() => void requestRender()}>Render accurate 720p preview</button>
+      <button disabled={!project.scenes[0]?.media_id} onClick={() => void requestRender()}>Render accurate 720p preview</button>
+      {!project.scenes[0]?.media_id && <p>Add media before rendering.</p>}
+      <button className="secondary" onClick={() => setStep("source")}>Change media</button>
       <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
-      <button className="secondary" onClick={() => void proveConflict()}>Test stale revision</button>
       {conflict && <dialog open><h2>Newer changes exist</h2><p>Your changes were not merged.</p>
         <button onClick={() => { setProject(conflict); setConflict(undefined); }}>Reload latest</button>
         <button onClick={() => void saveAsNewProject()}>Save as new project</button>
       </dialog>}
     </section>}
-    {step === "render" && <section>
+    {authReady && step === "render" && <section>
       <h1>Accurate preview</h1>
       <p role="status">{progress.phase === "failed" ? "Accurate preview failed — try again or keep editing." : `${progress.phase} · 720p watermarked preview`}</p>
       <progress value={progress.percent} max="100">{progress.percent}%</progress>
@@ -446,11 +547,11 @@ function App() {
       </div>
       <button className="secondary" onClick={() => setStep("editor")}>Keep editing</button>
     </section>}
-    {step === "settings" && <section>
+    {authReady && step === "settings" && <section>
       <h1>Settings</h1>
       <p>Pexels videos require on-product attribution — see “Use video by … · Pexels” in the editor when you add stock footage.</p>
       <p>Privacy and terms will ship with Gate 0 launch policy evidence.</p>
-      <button onClick={signOut}>Sign out</button>
+      <button disabled={authBusy} onClick={() => void signOut()}>Sign out</button>
       <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
     </section>}
   </main>;

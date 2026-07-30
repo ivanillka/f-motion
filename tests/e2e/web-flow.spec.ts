@@ -1,36 +1,61 @@
 import { expect, test } from "@playwright/test";
 
-test("happy path, draft restart, conflict recovery, render reconnect, and download", async ({ page }) => {
-  const resumedFrom: string[] = [];
-  page.on("request", (request) => {
-    if (request.url().includes("/events")) {
-      const lastEventId = request.headers()["last-event-id"];
-      if (lastEventId) resumedFrom.push(lastEventId);
-    }
-  });
-  await page.setViewportSize({ width: 320, height: 900 });
+async function signIn(page: import("@playwright/test").Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "Email me a magic link" }).click();
-  await page.getByLabel("Brief").fill("Launch a product for small teams");
+  await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
+}
+
+test("upload journey, natural conflict recovery, render, and download", async ({ page }) => {
+  await page.route("https://e2e-storage.invalid/**", (route) =>
+    route.fulfill({ status: 200, body: "" }));
+  await page.setViewportSize({ width: 320, height: 900 });
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Video description").fill("Launch a product for small teams");
   await page.reload();
-  await expect(page.getByLabel("Brief")).toHaveValue("Launch a product for small teams");
-  await page.getByRole("button", { name: "Review brief" }).click();
-  await expect(page.getByRole("button", { name: /Direct/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Story/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Rhythm/ })).toBeVisible();
-  await page.getByRole("button", { name: /Direct/ }).click();
-  await page.getByRole("button", { name: "Use Direct" }).click();
-  await expect(page.getByText(/Approximate preview/)).toBeVisible();
-  await page.getByRole("button", { name: "Test stale revision" }).click();
+  await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await expect(page.getByLabel("Video description")).toHaveValue("Launch a product for small teams");
+  await page.getByRole("button", { name: "Choose visuals" }).click();
+
+  await expect(page.getByRole("button", { name: /Upload my media/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Find licensed stock/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Generate with AI/ })).toBeDisabled();
+  await expect(page.getByText("Choose one concept")).toHaveCount(0);
+  await expect(page.getByText("Test stale revision")).toHaveCount(0);
+
+  await page.getByRole("button", { name: /Upload my media/ }).click();
+  await page.locator('input[type="file"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await expect(page.getByRole("heading", { name: "Video preview" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
+
+  const projectId = await page.evaluate(() => localStorage.getItem("fengine-project"));
+  expect(projectId).toBeTruthy();
+  await page.evaluate(async (id) => {
+    const found = await fetch(`/api/projects/${id}`);
+    const { project } = await found.json();
+    const response = await fetch(`/api/projects/${id}/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command_id: crypto.randomUUID(),
+        base_revision: project.revision,
+        client_timestamp: new Date().toISOString(),
+        kind: "update_scene",
+        payload: { scene: { ...project.scenes[0], caption: `${project.scenes[0].caption}!` } }
+      })
+    });
+    if (!response.ok) throw new Error(`conflict setup failed: ${response.status}`);
+  }, projectId);
+  await page.getByLabel("Motion").selectOption("push");
   await expect(page.getByRole("button", { name: "Reload latest" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save as new project" })).toBeVisible();
   await page.getByRole("button", { name: "Reload latest" }).click();
+
   await page.getByRole("button", { name: /Render accurate/ }).click();
   await expect(page.getByRole("status").filter({ hasText: "complete · 720p watermarked preview" })).toBeVisible();
-  // Long-lived SSE completes on one connection; reconnects only happen after drops.
-  expect(resumedFrom).toEqual([]);
-  await expect(page.getByRole("button", { name: "Cancel render" })).toBeVisible();
-  const download = page.getByRole("link");
+  const download = page.getByRole("link").filter({ has: page.getByRole("button", { name: "Download preview" }) });
   await expect(page.getByRole("button", { name: "Download preview" })).toBeEnabled();
   const href = await download.getAttribute("href");
   expect(href).toMatch(/^http:\/\/127\.0\.0\.1:43141\/downloads\//);
@@ -38,4 +63,40 @@ test("happy path, draft restart, conflict recovery, render reconnect, and downlo
   expect(rendered.ok()).toBeTruthy();
   expect(rendered.headers()["content-type"]).toContain("video/mp4");
   expect((await rendered.body()).length).toBeGreaterThan(1000);
+});
+
+test("licensed stock journey shows previews and attribution", async ({ page }) => {
+  await page.route("https://e2e-images.invalid/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="90" height="160"><rect width="90" height="160" fill="#333"/></svg>'
+    }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Video description").fill("A calm studio introduction");
+  await page.getByRole("button", { name: "Choose visuals" }).click();
+  await page.getByRole("button", { name: /Find licensed stock/ }).click();
+  await page.getByLabel("Search licensed stock").fill("studio");
+  await page.getByRole("button", { name: "Search Pexels" }).click();
+
+  await expect(page.getByAltText("Stock video by Fixture One")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Fixture One" })).toHaveAttribute(
+    "href",
+    "https://www.pexels.com/video/101"
+  );
+  await expect(page.getByRole("link", { name: "Pexels" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Use this video" }).first().click();
+  await expect(page.getByRole("heading", { name: "Video preview" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Pexels media attached with attribution" })).toBeVisible();
+
+  const storedSessionValues = await page.evaluate(() =>
+    Object.values(sessionStorage));
+  expect(storedSessionValues).not.toContainEqual(expect.stringMatching(/^local-demo-/));
+  await expect(page.locator("body")).not.toContainText(/local-demo-|access_token/i);
+  await page.getByRole("button", { name: "Settings" }).first().click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("heading", { name: "Shape a vertical video" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Shape a vertical video" })).toBeVisible();
 });

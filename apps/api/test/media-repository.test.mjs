@@ -57,7 +57,7 @@ test("signedPut binds the admitted byte ceiling into the presigned PUT request",
     region: "us-east-1",
     endpoint: "http://127.0.0.1:1",
     forcePathStyle: true,
-    credentials: { accessKeyId: "fmotion", secretAccessKey: "fmotion-secret" }
+    credentials: { accessKeyId: "fengine", secretAccessKey: "fengine-secret" }
   });
   const store = new PrivateObjectStore(client, "bucket");
   const url = new URL(await store.signedPut("projects/p/media/a", "video/mp4", 4096));
@@ -106,6 +106,7 @@ test("PexelsClient.copy admits the asset for worker inspection instead of trusti
     id: 1,
     creator: "Fixture Creator",
     attributionUrl: "https://www.pexels.com/video/1",
+    previewUrl: "https://images.pexels.com/videos/1/preview.jpg",
     sourceUrl: "https://media.pexels.test/1.mp4",
     contentType: "video/mp4"
   };
@@ -115,4 +116,44 @@ test("PexelsClient.copy admits the asset for worker inspection instead of trusti
   assert.equal(pool.getAssets().get(asset.id).state, "inspecting");
   assert.deepEqual(pool.getOutbox().map((row) => row.dedupeKey), [`inspect-media:${asset.id}`]);
   assert.equal(objects.has(asset.objectKey), true);
+});
+
+test("PexelsClient.search uses the v1 portrait endpoint and maps safe previews", async () => {
+  let requested;
+  const pexels = new PexelsClient("server-only-key", async (url) => {
+    requested = new URL(url);
+    return Response.json({
+      videos: [
+        {
+          id: 1,
+          url: "https://www.pexels.com/video/1",
+          image: "https://images.pexels.com/videos/1/preview.jpg",
+          user: { name: "Fixture Creator" },
+          video_files: [
+            { link: "https://media.pexels.test/wide.mp4", file_type: "video/mp4", width: 1920 },
+            { link: "https://media.pexels.test/near.mp4", file_type: "video/mp4", width: 720 }
+          ]
+        },
+        {
+          id: 2,
+          url: "https://www.pexels.com/video/2",
+          image: "http://insecure.example/preview.jpg",
+          user: { name: "Unsafe Preview" },
+          video_files: [{ link: "https://media.pexels.test/2.mp4", file_type: "video/mp4", width: 720 }]
+        }
+      ]
+    });
+  });
+  const results = await pexels.search("small teams");
+  assert.equal(requested.pathname, "/v1/videos/search");
+  assert.equal(requested.searchParams.get("orientation"), "portrait");
+  assert.equal(requested.searchParams.get("per_page"), "12");
+  assert.deepEqual(results, [{
+    id: 1,
+    creator: "Fixture Creator",
+    attributionUrl: "https://www.pexels.com/video/1",
+    previewUrl: "https://images.pexels.com/videos/1/preview.jpg",
+    sourceUrl: "https://media.pexels.test/near.mp4",
+    contentType: "video/mp4"
+  }]);
 });

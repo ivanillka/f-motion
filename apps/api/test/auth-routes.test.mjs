@@ -12,7 +12,7 @@ async function listen(server) {
   return `http://127.0.0.1:${address.port}`;
 }
 
-async function fixture({ provision = false } = {}) {
+async function fixture({ provision = false, accessPolicy } = {}) {
   const { privateKey, publicKey } = await generateKeyPair("RS256");
   const jwk = { ...await exportJWK(publicKey), kid: "test-key", alg: "RS256", use: "sig" };
   const jwksServer = createServer((_request, response) => {
@@ -32,18 +32,19 @@ async function fixture({ provision = false } = {}) {
     projects: new ProjectService(),
     authConfig: {
       issuer: "https://issuer.example",
-      audience: "f-motion",
+      audience: "f-engine-reference",
       jwksUrl: new URL("/jwks", jwksOrigin)
     },
     accountState: async (ownerId) => states.get(ownerId),
-    ensureUser
+    ensureUser,
+    accessPolicy
   });
   const apiServer = createServer(app);
   const apiOrigin = await listen(apiServer);
   const token = (subject) => new SignJWT({})
     .setProtectedHeader({ alg: "RS256", kid: "test-key" })
     .setIssuer("https://issuer.example")
-    .setAudience("f-motion")
+    .setAudience("f-engine-reference")
     .setSubject(subject)
     .setExpirationTime("5m")
     .sign(privateKey);
@@ -176,6 +177,54 @@ test("an invalid JWT is rejected without provisioning a User row", async () => {
   }
 });
 
+test("invite-only admits and provisions an invited verified subject", async () => {
+  const invited = "11111111-1111-4111-8111-111111111111";
+  const context = await fixture({
+    provision: true,
+    accessPolicy: { mode: "invite_only", allowedOwnerIds: new Set([invited]) }
+  });
+  try {
+    const response = await fetch(`${context.apiOrigin}/api/projects`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${await context.token(invited)}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ purpose: "Invited" })
+    });
+    assert.equal(response.status, 201);
+    assert.equal(context.states.get(invited), "active");
+    assert.equal(context.insertCalls(), 1);
+  } finally {
+    await context.close();
+  }
+});
+
+test("invite-only denies valid unknown and existing subjects before provisioning", async () => {
+  const invited = "11111111-1111-4111-8111-111111111111";
+  const unknown = "22222222-2222-4222-8222-222222222222";
+  const existing = "33333333-3333-4333-8333-333333333333";
+  const context = await fixture({
+    provision: true,
+    accessPolicy: { mode: "invite_only", allowedOwnerIds: new Set([invited]) }
+  });
+  context.states.set(existing, "active");
+  try {
+    for (const subject of [unknown, existing]) {
+      const response = await fetch(`${context.apiOrigin}/api/projects`, {
+        headers: { authorization: `Bearer ${await context.token(subject)}` }
+      });
+      assert.equal(response.status, 403);
+      assert.equal((await response.json()).type, "forbidden");
+    }
+    assert.equal(context.insertCalls(), 0);
+    assert.equal(context.states.has(unknown), false);
+    assert.equal(context.states.get(existing), "active");
+  } finally {
+    await context.close();
+  }
+});
+
 test("/readyz reflects an async ready check and /healthz stays process-alive only", async () => {
   let dbUp = true;
   const server = createServer(createTestApp({
@@ -205,9 +254,76 @@ test("explicit test app adapter injects only its configured identity", async () 
   const server = createServer(createTestApp({ ownerId: "test-owner" }));
   const origin = await listen(server);
   try {
-    const response = await fetch(`${origin}/api/projects`, { method: "POST" });
+    const response = await fetch(`${origin}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "Identity" })
+    });
     assert.equal(response.status, 201);
     assert.equal((await response.json()).project.owner_id, "test-owner");
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("project creation validates a bounded string purpose", async () => {
+  const server = createServer(createTestApp());
+  const origin = await listen(server);
+  try {
+    for (const purpose of ["", { nested: true }, "x".repeat(501)]) {
+      const response = await fetch(`${origin}/api/projects`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ purpose })
+      });
+      assert.equal(response.status, 422);
+      assert.equal((await response.json()).type, "validation");
+    }
+    const response = await fetch(`${origin}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "  A useful clip  " })
+    });
+    assert.equal(response.status, 201);
+    assert.equal((await response.json()).project.brief.purpose, "A useful clip");
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("Pexels search is bounded and never exposes provider source URLs", async () => {
+  const server = createServer(createTestApp({
+    media: {
+      repository: {},
+      store: {},
+      pexels: {
+        async search() {
+          return [{
+            id: 7,
+            creator: "Creator",
+            attributionUrl: "https://www.pexels.com/video/7",
+            previewUrl: "https://images.pexels.com/videos/7/preview.jpg",
+            sourceUrl: "https://provider.example/private-source.mp4",
+            contentType: "video/mp4"
+          }];
+        }
+      }
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    assert.equal((await fetch(`${origin}/api/pexels/search?q=`)).status, 422);
+    assert.equal((await fetch(`${origin}/api/pexels/search?q=${"x".repeat(101)}`)).status, 422);
+    const response = await fetch(`${origin}/api/pexels/search?q=team`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      results: [{
+        id: 7,
+        creator: "Creator",
+        attributionUrl: "https://www.pexels.com/video/7",
+        previewUrl: "https://images.pexels.com/videos/7/preview.jpg"
+      }]
+    });
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

@@ -4,7 +4,7 @@ import {
   PutObjectCommand,
   S3Client
 } from "@aws-sdk/client-s3";
-import type { ProjectSnapshot, Scene } from "@f-motion/contracts";
+import type { ProjectSnapshot, Scene } from "@f-engine/contracts";
 import { createWriteStream } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,6 +13,10 @@ import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
+import {
+  validateRenderProfile,
+  type RenderProfile
+} from "@f-engine/reel-engine";
 import {
   inspectMedia,
   probeMediaFile,
@@ -29,6 +33,17 @@ interface WorkerObjectStore {
   put(objectKey: string, body: Uint8Array, contentType: string): Promise<void>;
 }
 
+export function renderProfileFromEnv(
+  env: Record<string, string | undefined>
+): RenderProfile {
+  const watermark = env.RENDER_WATERMARK?.trim();
+  return validateRenderProfile({
+    width: Number(env.RENDER_WIDTH ?? "720"),
+    height: Number(env.RENDER_HEIGHT ?? "1280"),
+    ...(watermark ? { watermark } : {})
+  });
+}
+
 export class S3WorkerObjectStore implements WorkerObjectStore {
   constructor(readonly client: S3Client, readonly bucket: string) {}
 
@@ -41,7 +56,7 @@ export class S3WorkerObjectStore implements WorkerObjectStore {
     if (bytes <= 0) return { type: "application/octet-stream", bytes: 0 };
     if (bytes > maxBytes) return { type: "application/octet-stream", bytes };
 
-    const directory = await mkdtemp(join(tmpdir(), "fmotion-inspect-"));
+    const directory = await mkdtemp(join(tmpdir(), "fengine-inspect-"));
     const path = join(directory, "object");
     try {
       await this.download(objectKey, path);
@@ -178,7 +193,11 @@ async function mediaInputsFor(
   return inputs;
 }
 
-export function createQueueHandlers(pool: pg.Pool, store: WorkerObjectStore): QueueHandlers {
+export function createQueueHandlers(
+  pool: pg.Pool,
+  store: WorkerObjectStore,
+  profile: RenderProfile
+): QueueHandlers {
   return {
     async inspect(job: InspectionJob) {
       const result = await pool.query<{
@@ -205,13 +224,13 @@ export function createQueueHandlers(pool: pg.Pool, store: WorkerObjectStore): Qu
     async render(job: PreviewJob, signal: AbortSignal) {
       const snapshot = await projectSnapshot(pool, job);
       if (!snapshot || !await event(pool, job.jobId, "preparing", 10)) return { state: "cancelled" };
-      const directory = await mkdtemp(join(tmpdir(), `fmotion-${job.jobId}-`));
+      const directory = await mkdtemp(join(tmpdir(), `fengine-${job.jobId}-`));
       const output = join(directory, "preview.mp4");
       try {
         try {
           const mediaInputs = await mediaInputsFor(pool, store, snapshot, directory);
           if (!await event(pool, job.jobId, "rendering", 35)) return { state: "cancelled" };
-          await renderPreview(output, snapshot, signal, mediaInputs);
+          await renderPreview(output, snapshot, signal, mediaInputs, profile);
           if (!await event(pool, job.jobId, "uploading", 85)) return { state: "cancelled" };
           const objectKey = renderObjectKey(job.projectId, job.revision);
           await store.put(objectKey, await readFile(output), "video/mp4");
@@ -230,9 +249,9 @@ export function createQueueHandlers(pool: pg.Pool, store: WorkerObjectStore): Qu
               `INSERT INTO "RenderResult" (id, "jobId", "objectKey", metadata)
                VALUES ($1, $2, $3, $4) ON CONFLICT ("jobId") DO NOTHING`,
               [randomUUID(), job.jobId, objectKey, {
-                width: 720,
-                height: 1280,
-                watermark: "F-Motion preview",
+                width: profile.width,
+                height: profile.height,
+                ...(profile.watermark ? { watermark: profile.watermark } : {}),
                 revision: job.revision,
                 immutable: true
               }]

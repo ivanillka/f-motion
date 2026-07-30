@@ -1,5 +1,6 @@
 import { S3Client } from "@aws-sdk/client-s3";
 import pg from "pg";
+import { accessPolicyFromEnv } from "./access-policy.js";
 import { PostgresProjectRepository } from "./domain.js";
 import { assertLocalAuthAllowed } from "./local-auth.js";
 import { PexelsClient, PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
@@ -13,6 +14,7 @@ function required(name: string): string {
 }
 
 assertLocalAuthAllowed(process.env);
+const accessPolicy = accessPolicyFromEnv(process.env);
 
 const pool = new pg.Pool({ connectionString: required("DATABASE_URL") });
 // pg.Pool emits "error" for idle-client connection drops (DB restart, network
@@ -46,7 +48,7 @@ const ready = async () => {
   return true;
 };
 
-if (process.env.FMOTION_LOCAL_AUTH === "1") {
+if (process.env.FENGINE_LOCAL_AUTH === "1") {
   // ponytail: local-only identity inject. Ceiling: single fixed owner. Upgrade: real Supabase JWT.
   const ownerId = "local-dev";
   await pool.query(
@@ -78,6 +80,7 @@ if (process.env.FMOTION_LOCAL_AUTH === "1") {
         `INSERT INTO "User" (id, state) VALUES ($1, 'active') ON CONFLICT (id) DO NOTHING`,
         [ownerId]
       );
-    }
+    },
+    accessPolicy
   }).listen(port);
 }

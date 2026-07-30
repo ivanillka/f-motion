@@ -1,8 +1,8 @@
-# F-Motion worker image. Only the worker runs FFmpeg (see
+# F-Engine reference worker image. Only the worker runs FFmpeg (see
 # docs/runbooks/render-worker.md — the API must never fall back to it).
 # Build from the repo root so the npm workspace tree resolves:
 #
-#   docker build -f apps/worker/Dockerfile -t f-motion-worker .
+#   docker build -f apps/worker/Dockerfile -t f-engine-reference-worker .
 #
 # .dockerignore keeps .env* and node_modules out of the build context.
 
@@ -47,6 +47,8 @@ RUN npm run build --workspace packages/contracts \
 FROM node:24.15.0-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /repo
+COPY certs/supabase-root-2021-ca.crt certs/supabase-root-2021-ca.crt
+ENV NODE_EXTRA_CA_CERTS=/repo/certs/supabase-root-2021-ca.crt
 COPY --from=ffmpeg /tmp/ffmpeg/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg /tmp/ffmpeg/ffprobe /usr/local/bin/ffprobe
 # ponytail: ships the full workspace node_modules (incl. devDependencies of

@@ -1,9 +1,23 @@
-import type { CaptionCue, CommandEnvelope, ProjectSnapshot, Scene } from "@f-motion/contracts";
+import type { CaptionCue, CommandEnvelope, ProjectSnapshot, Scene } from "@f-engine/contracts";
 
 export interface Concept {
   id: string;
   title: string;
   treatment: string;
+}
+
+export interface RenderProfile {
+  width: number;
+  height: number;
+  watermark?: string;
+}
+
+export interface RenderPlan {
+  revision: number;
+  width: number;
+  height: number;
+  watermark?: string;
+  scenes: Array<Scene & { caption_cues: CaptionCue[] }>;
 }
 
 export function conceptsFor(brief: ProjectSnapshot["brief"]): [Concept, Concept, Concept] {
@@ -201,12 +215,35 @@ export function coverCropFilter(width: number, height: number, focal_x: number, 
   ];
 }
 
-export function renderPlan(snapshot: ProjectSnapshot) {
+export function validateRenderProfile(profile: RenderProfile): RenderProfile {
+  if (
+    !Number.isInteger(profile?.width)
+    || !Number.isInteger(profile?.height)
+    || profile.width < 16
+    || profile.width > 7680
+    || profile.height < 16
+    || profile.height > 7680
+  ) {
+    throw new Error("render dimensions out of bounds");
+  }
+  if (profile.watermark !== undefined && (
+    typeof profile.watermark !== "string"
+    || !profile.watermark
+    || profile.watermark !== profile.watermark.trim()
+    || profile.watermark.length > 120
+  )) {
+    throw new Error("invalid render watermark");
+  }
+  return profile;
+}
+
+export function renderPlan(snapshot: ProjectSnapshot, profile: RenderProfile): RenderPlan {
+  validateRenderProfile(profile);
   return {
     revision: snapshot.revision,
-    width: 720,
-    height: 1280,
-    watermark: "F-Motion preview",
+    width: profile.width,
+    height: profile.height,
+    ...(profile.watermark === undefined ? {} : { watermark: profile.watermark }),
     scenes: snapshot.scenes.map(boundedScene).map((scene) => ({ ...scene, caption_cues: cuesForScene(scene) }))
-  } as const;
+  };
 }

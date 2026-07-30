@@ -4,26 +4,26 @@ import { assertLocalAuthAllowed, LocalAuthForbiddenError } from "../dist/local-a
 
 test("refuses local auth when NODE_ENV=production", () => {
   assert.throws(
-    () => assertLocalAuthAllowed({ FMOTION_LOCAL_AUTH: "1", NODE_ENV: "production" }),
+    () => assertLocalAuthAllowed({ FENGINE_LOCAL_AUTH: "1", NODE_ENV: "production" }),
     LocalAuthForbiddenError
   );
 });
 
-test("refuses local auth when FMOTION_ENV=hosted", () => {
+test("refuses local auth when FENGINE_ENV=hosted", () => {
   assert.throws(
-    () => assertLocalAuthAllowed({ FMOTION_LOCAL_AUTH: "1", FMOTION_ENV: "hosted" }),
+    () => assertLocalAuthAllowed({ FENGINE_LOCAL_AUTH: "1", FENGINE_ENV: "hosted" }),
     LocalAuthForbiddenError
   );
 });
 
 test("allows local auth in development", () => {
-  assert.doesNotThrow(() => assertLocalAuthAllowed({ FMOTION_LOCAL_AUTH: "1", NODE_ENV: "development" }));
+  assert.doesNotThrow(() => assertLocalAuthAllowed({ FENGINE_LOCAL_AUTH: "1", NODE_ENV: "development" }));
 });
 
 test("allows local auth when NODE_ENV is unset", () => {
-  assert.doesNotThrow(() => assertLocalAuthAllowed({ FMOTION_LOCAL_AUTH: "1" }));
+  assert.doesNotThrow(() => assertLocalAuthAllowed({ FENGINE_LOCAL_AUTH: "1" }));
 });
 
-test("is a no-op when FMOTION_LOCAL_AUTH is unset, even in production", () => {
+test("is a no-op when FENGINE_LOCAL_AUTH is unset, even in production", () => {
   assert.doesNotThrow(() => assertLocalAuthAllowed({ NODE_ENV: "production" }));
 });

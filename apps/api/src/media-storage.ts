@@ -169,6 +169,7 @@ export interface PexelsResult {
   id: number;
   creator: string;
   attributionUrl: string;
+  previewUrl: string;
   sourceUrl: string;
   contentType: string;
 }
@@ -177,7 +178,7 @@ export class PexelsClient {
   constructor(readonly apiKey: string, readonly request: typeof fetch = fetch) {}
 
   async search(query: string): Promise<PexelsResult[]> {
-    const response = await this.request(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=12`, {
+    const response = await this.request(`https://api.pexels.com/v1/videos/search?query=${encodeURIComponent(query)}&orientation=portrait&per_page=12`, {
       headers: { authorization: this.apiKey }
     });
     if (!response.ok) throw new Error("Pexels unavailable");
@@ -185,6 +186,7 @@ export class PexelsClient {
       videos?: Array<{
         id: number;
         url: string;
+        image: string;
         user: { name: string };
         video_files: Array<{ link: string; file_type: string; width: number }>;
       }>;
@@ -193,10 +195,17 @@ export class PexelsClient {
       const file = video.video_files
         .filter(({ file_type: type }) => type === "video/mp4")
         .sort((left, right) => Math.abs(left.width - 720) - Math.abs(right.width - 720))[0];
-      return file ? [{
+      let preview: URL;
+      try {
+        preview = new URL(video.image);
+      } catch {
+        return [];
+      }
+      return file && preview.protocol === "https:" ? [{
         id: video.id,
         creator: video.user.name,
         attributionUrl: video.url,
+        previewUrl: preview.href,
         sourceUrl: file.link,
         contentType: file.file_type
       }] : [];

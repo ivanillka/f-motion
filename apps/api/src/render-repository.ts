@@ -22,6 +22,12 @@ export interface RenderResultRecord {
   stale: boolean;
 }
 
+export class RenderCapacityError extends Error {
+  constructor() {
+    super("render capacity reached");
+  }
+}
+
 async function insertEvent(
   client: PoolClient,
   jobId: string,
@@ -41,6 +47,22 @@ export class PostgresRenderRepository {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
+      const owner = await client.query(
+        `SELECT id FROM "User" WHERE id = $1 FOR UPDATE`,
+        [ownerId]
+      );
+      if (!owner.rowCount) {
+        await client.query("ROLLBACK");
+        return undefined;
+      }
+      const active = await client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM "RenderJob"
+          WHERE "ownerId" = $1 AND state IN ('queued', 'running')`,
+        [ownerId]
+      );
+      if (Number(active.rows[0]?.count ?? 0) >= 3) {
+        throw new RenderCapacityError();
+      }
       const project = await client.query<{ revision: number }>(
         `SELECT revision FROM "Project" WHERE "ownerId" = $1 AND id = $2 FOR UPDATE`,
         [ownerId, projectId]

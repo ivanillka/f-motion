@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { CommandEnvelope, ProjectSnapshot, ProjectSummary } from "@f-motion/contracts";
+import type { CommandEnvelope, ProjectSnapshot, ProjectSummary } from "@f-engine/contracts";
 import type { Pool, PoolClient } from "pg";
-import { applyCommand, conceptsFor } from "@f-motion/reel-engine";
+import { applyCommand, conceptsFor } from "@f-engine/reel-engine";
 
 export class ConflictError extends Error {
   constructor(readonly authoritativeSnapshot: ProjectSnapshot) { super("stale base revision"); }

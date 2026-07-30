@@ -22,7 +22,7 @@ if (!databaseUrl || !endpoint) throw new Error("worker integration configuration
 
 test("worker probes stored media and renders an immutable project result", async () => {
   const schema = `worker_test_${randomUUID().replaceAll("-", "_")}`;
-  const bucket = `fmotion-${randomUUID()}`;
+  const bucket = `fengine-${randomUUID()}`;
   const admin = new pg.Pool({ connectionString: databaseUrl });
   await admin.query(`CREATE SCHEMA "${schema}"`);
   const pool = new pg.Pool({ connectionString: databaseUrl, options: `-c search_path=${schema}` });
@@ -30,7 +30,7 @@ test("worker probes stored media and renders an immutable project result", async
     region: "us-east-1",
     endpoint,
     forcePathStyle: true,
-    credentials: { accessKeyId: "fmotion", secretAccessKey: "fmotion-local-secret" }
+    credentials: { accessKeyId: "fengine", secretAccessKey: "fengine-local-secret" }
   });
   await s3.send(new CreateBucketCommand({ Bucket: bucket }));
   try {
@@ -88,7 +88,11 @@ test("worker probes stored media and renders an immutable project result", async
        VALUES ('job', 'owner', 'project', 0, 'queued'),
               ('cancelled-job', 'owner', 'project', 0, 'cancelled')`
     );
-    const handlers = createQueueHandlers(pool, new S3WorkerObjectStore(s3, bucket));
+    const handlers = createQueueHandlers(
+      pool,
+      new S3WorkerObjectStore(s3, bucket),
+      { width: 720, height: 1280, watermark: "Reference preview" }
+    );
     assert.deepEqual(await handlers.inspect({
       assetId: "asset",
       ownerId: "owner",

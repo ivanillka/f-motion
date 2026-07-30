@@ -1,8 +1,13 @@
 import { spawn } from "node:child_process";
 import { unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { CaptionCue, ProjectSnapshot, Scene } from "@f-motion/contracts";
-import { coverCropFilter, renderPlan } from "@f-motion/reel-engine";
+import type { CaptionCue, ProjectSnapshot, Scene } from "@f-engine/contracts";
+import {
+  coverCropFilter,
+  renderPlan,
+  type RenderPlan,
+  type RenderProfile
+} from "@f-engine/reel-engine";
 
 export const renderPhases = ["queued", "preparing", "rendering", "uploading", "complete"] as const;
 
@@ -243,7 +248,7 @@ const emptyScene: Scene = {
 };
 
 export function sceneClipArguments(
-  plan: ReturnType<typeof renderPlan>,
+  plan: RenderPlan,
   scene: Scene,
   media: MediaInput | undefined,
   clipPath: string,
@@ -289,7 +294,7 @@ export function sceneClipArguments(
 
 export function concatArguments(
   listPath: string,
-  plan: ReturnType<typeof renderPlan>,
+  plan: RenderPlan,
   snapshot: ProjectSnapshot,
   outputPath: string
 ): string[] {
@@ -298,8 +303,8 @@ export function concatArguments(
     "-f", "concat",
     "-safe", "0",
     "-i", listPath,
-    ...vfArgs(watermarkFilters(plan.watermark)),
-    "-metadata", `comment=F-Motion project ${snapshot.id} revision ${snapshot.revision}`,
+    ...vfArgs(plan.watermark ? watermarkFilters(plan.watermark) : []),
+    "-metadata", `comment=project ${snapshot.id} revision ${snapshot.revision}`,
     ...concatEncode,
     outputPath
   ];
@@ -328,9 +333,10 @@ export function buildRenderJob(
   snapshot: ProjectSnapshot,
   outputPath: string,
   mediaInputs: Record<string, MediaInput>,
-  tempDir: string
+  tempDir: string,
+  profile: RenderProfile
 ): RenderJob {
-  const plan = renderPlan(snapshot);
+  const plan = renderPlan(snapshot, profile);
   const scenes = plan.scenes.length
     ? [...plan.scenes].sort((a, b) => a.order - b.order)
     : [emptyScene];
@@ -357,7 +363,8 @@ export async function renderPreview(
   outputPath: string,
   snapshot?: ProjectSnapshot,
   signal?: AbortSignal,
-  mediaInputs: Record<string, MediaInput> = {}
+  mediaInputs: Record<string, MediaInput> = {},
+  profile?: RenderProfile
 ): Promise<void> {
   const fallback: ProjectSnapshot = {
     schema_version: 1,
@@ -367,7 +374,14 @@ export async function renderPreview(
     brief: { purpose: "Fixture", audience: "Fixture", tone: "Neutral" },
     scenes: []
   };
-  const job = buildRenderJob(snapshot ?? fallback, outputPath, mediaInputs, dirname(outputPath));
+  if (!profile) throw new Error("render profile required");
+  const job = buildRenderJob(
+    snapshot ?? fallback,
+    outputPath,
+    mediaInputs,
+    dirname(outputPath),
+    profile
+  );
   try {
     for (const clip of job.clips) {
       if (clip.assPath && clip.assContents) await writeFile(clip.assPath, clip.assContents, "utf8");

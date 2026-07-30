@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { renderPreview } from "../../apps/worker/dist/index.js";
 
-const directory = await mkdtemp(join(tmpdir(), "fmotion-e2e-worker-"));
+const directory = await mkdtemp(join(tmpdir(), "fengine-e2e-worker-"));
 const results = new Map();
 createServer(async (request, response) => {
   if (request.method === "POST" && request.url === "/jobs") {
@@ -13,7 +13,13 @@ createServer(async (request, response) => {
     for await (const chunk of request) body += chunk;
     const job = JSON.parse(body);
     const output = join(directory, `${job.jobId}.mp4`);
-    await renderPreview(output);
+    await renderPreview(
+      output,
+      undefined,
+      undefined,
+      {},
+      { width: 720, height: 1280, watermark: "Reference preview" }
+    );
     results.set(job.jobId, output);
     response.setHeader("content-type", "application/json");
     return response.end(JSON.stringify({

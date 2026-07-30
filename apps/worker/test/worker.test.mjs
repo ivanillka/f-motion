@@ -5,19 +5,24 @@ import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { renderPlan } from "@f-motion/reel-engine";
+import { renderPlan } from "@f-engine/reel-engine";
 import {
   IdempotentResults,
   buildCaptionAss,
-  buildRenderJob,
+  buildRenderJob as buildRenderJobWithProfile,
   inspectMedia,
   probeMediaFile,
   renderObjectKey,
   renderPhases,
-  renderPreview
+  renderPreview as renderPreviewWithProfile
 } from "../dist/index.js";
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
+const referenceProfile = { width: 720, height: 1280, watermark: "Reference preview" };
+const buildRenderJob = (snapshot, output, media, directory) =>
+  buildRenderJobWithProfile(snapshot, output, media, directory, referenceProfile);
+const renderPreview = (output, snapshot, signal, media = {}) =>
+  renderPreviewWithProfile(output, snapshot, signal, media, referenceProfile);
 
 async function probeAudioStream(path) {
   const raw = await new Promise((resolve, reject) => {
@@ -112,12 +117,25 @@ test("render job builds one deterministic-plan clip per scene", () => {
   assert.match(args, /subtitles=/);
   assert.match(job.clips[0].assContents ?? "", /Project caption/);
   const concat = job.concatArgs.join(" ");
-  assert.match(concat, /F-Motion preview/);
+  assert.match(concat, /Reference preview/);
   assert.match(concat, /project project revision 3/);
   assert.match(args, /-c:a aac/);
   assert.match(concat, /-c:a aac/);
   assert.doesNotMatch(args, /-an/);
   assert.doesNotMatch(concat, /-an/);
+});
+
+test("host profile controls dimensions, watermark, and neutral metadata", () => {
+  const custom = buildRenderJobWithProfile(
+    snapshot,
+    "preview.mp4",
+    {},
+    "/tmp/job",
+    { width: 1080, height: 1920 }
+  );
+  assert.match(custom.clips[0].args.join(" "), /1080x1920/);
+  assert.doesNotMatch(custom.concatArgs.join(" "), /drawtext|drawbox/);
+  assert.match(custom.concatArgs.join(" "), /comment=project project revision 3/);
 });
 test("render job applies volume filter for non-1.0 audio_level", () => {
   const half = { ...snapshot, scenes: [{ ...snapshot.scenes[0], audio_level: 0.5 }] };
@@ -137,7 +155,7 @@ test("render job omits subtitles when caption is empty", () => {
   const job = buildRenderJob(noCaption, "preview.mp4", {}, "/tmp/job");
   assert.doesNotMatch(job.clips[0].args.join(" "), /subtitles=/);
   assert.equal(job.clips[0].assPath, undefined);
-  assert.match(job.concatArgs.join(" "), /F-Motion preview/, "watermark-only path unchanged");
+  assert.match(job.concatArgs.join(" "), /Reference preview/, "watermark-only path unchanged");
 });
 test("caption ass builder freezes the safe-area layout", () => {
   const ass = buildCaptionAss([{ text: "Project caption", start_ms: 0, end_ms: 500 }]);
@@ -283,7 +301,7 @@ test("render job duration is the honest per-scene sum, not first-scene-only", ()
   assert.match(job.clips[1].args.join(" "), /d=0\.9/);
 });
 test("cancellation removes partial output, rejects, and leaves no temp clips", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "fmotion-cancel-"));
+  const directory = await mkdtemp(join(tmpdir(), "fengine-cancel-"));
   const output = join(directory, "preview.mp4");
   const controller = new AbortController();
   controller.abort();
@@ -292,7 +310,7 @@ test("cancellation removes partial output, rejects, and leaves no temp clips", a
   assert.deepEqual(await readdir(directory), []);
 });
 test("worker renders the 720p accurate preview outside the API", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "fmotion-render-"));
+  const directory = await mkdtemp(join(tmpdir(), "fengine-render-"));
   const output = join(directory, "preview.mp4");
   await renderPreview(output, snapshot);
   const bytes = await readFile(output);
@@ -304,7 +322,7 @@ test("worker renders the 720p accurate preview outside the API", async () => {
   assert.deepEqual(await readdir(directory), ["preview.mp4"]);
 });
 test("renderPreview does not throw for captions with filtergraph-hostile characters", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "fmotion-caption-special-"));
+  const directory = await mkdtemp(join(tmpdir(), "fengine-caption-special-"));
   const output = join(directory, "preview.mp4");
   const special = {
     ...snapshot,
@@ -320,7 +338,7 @@ test("renderPlan cues feed multiple timed Dialogue lines with distinct, contiguo
     ...snapshot,
     scenes: [{ ...snapshot.scenes[0], caption: "First part happens now. Second part happens later.", duration_ms: 4000 }]
   };
-  const plan = renderPlan(multiSentence);
+  const plan = renderPlan(multiSentence, referenceProfile);
   const cues = plan.scenes[0].caption_cues;
   assert.ok(cues.length >= 2, "multi-sentence caption yields multiple cues");
   const ass = buildCaptionAss(cues);
@@ -332,7 +350,7 @@ test("renderPlan cues feed multiple timed Dialogue lines with distinct, contiguo
   assert.match(ass, /Second part happens later\./);
 });
 test("worker renders a preview with multiple timed caption cues burned in", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "fmotion-multi-cue-"));
+  const directory = await mkdtemp(join(tmpdir(), "fengine-multi-cue-"));
   const output = join(directory, "preview.mp4");
   const multiSentence = {
     ...snapshot,
@@ -344,7 +362,7 @@ test("worker renders a preview with multiple timed caption cues burned in", asyn
   assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
 });
 test("worker renders attached fixture media into the preview", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "fmotion-media-render-"));
+  const directory = await mkdtemp(join(tmpdir(), "fengine-media-render-"));
   const output = join(directory, "preview.mp4");
   const withMedia = {
     ...snapshot,
@@ -358,7 +376,7 @@ test("worker renders attached fixture media into the preview", async () => {
   assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
 });
 test("worker concatenates every scene's media with an honest total duration", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "fmotion-multi-render-"));
+  const directory = await mkdtemp(join(tmpdir(), "fengine-multi-render-"));
   const output = join(directory, "preview.mp4");
   const multiScene = {
     ...snapshot,
@@ -385,7 +403,7 @@ test("worker concatenates every scene's media with an honest total duration", as
   assert.deepEqual(await readdir(directory), ["preview.mp4"]);
 });
 test("worker renders image-only scene with a silent audio pad", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "fmotion-still-render-"));
+  const directory = await mkdtemp(join(tmpdir(), "fengine-still-render-"));
   const output = join(directory, "preview.mp4");
   const withStill = {
     ...snapshot,
@@ -403,7 +421,7 @@ test("worker renders image-only scene with a silent audio pad", async () => {
 });
 test("worker renders zoompan motion (zoom and push) without ffmpeg errors", async () => {
   for (const motion of ["zoom", "push"]) {
-    const directory = await mkdtemp(join(tmpdir(), `fmotion-motion-${motion}-`));
+    const directory = await mkdtemp(join(tmpdir(), `fengine-motion-${motion}-`));
     const output = join(directory, "preview.mp4");
     const withMotion = {
       ...snapshot,

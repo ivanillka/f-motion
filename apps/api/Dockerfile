@@ -1,8 +1,8 @@
-# F-Motion API image. No FFmpeg — the API never renders (see
+# F-Engine reference API image. No FFmpeg — the API never renders (see
 # docs/runbooks/render-worker.md). Build from the repo root so the npm
 # workspace tree (packages/contracts, packages/reel-engine) resolves:
 #
-#   docker build -f apps/api/Dockerfile -t f-motion-api .
+#   docker build -f apps/api/Dockerfile -t f-engine-reference-api .
 #
 # .dockerignore keeps .env* and node_modules out of the build context.
 
@@ -28,6 +28,8 @@ RUN npm run build --workspace packages/contracts \
 FROM node:24.15.0-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /repo
+COPY certs/supabase-root-2021-ca.crt certs/supabase-root-2021-ca.crt
+ENV NODE_EXTRA_CA_CERTS=/repo/certs/supabase-root-2021-ca.crt
 # ponytail: ships the full workspace node_modules (incl. devDependencies of
 # other workspaces) for simplicity. Ceiling: acceptable for a private demo
 # image. Upgrade: prune with a workspace-aware `npm ci --omit=dev` pass.

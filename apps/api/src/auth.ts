@@ -1,4 +1,11 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import {
+  AccountUnavailableError,
+  assertOwnerAdmitted,
+  type AccessPolicy
+} from "./access-policy.js";
+
+export { AccountUnavailableError } from "./access-policy.js";
 
 export interface AuthConfig { issuer: string; audience: string; jwksUrl: URL }
 export type AccountStateLookup = (ownerId: string) => Promise<string | undefined>;
@@ -6,10 +13,6 @@ export type EnsureUser = (ownerId: string) => Promise<void>;
 
 export class UnauthorizedError extends Error {
   constructor() { super("authentication required"); }
-}
-
-export class AccountUnavailableError extends Error {
-  constructor() { super("account unavailable"); }
 }
 
 export async function verifyAccessToken(token: string, config: AuthConfig): Promise<JWTPayload> {
@@ -29,7 +32,8 @@ export async function authenticateBearer(
   authorization: string | undefined,
   config: AuthConfig,
   accountState: AccountStateLookup,
-  ensureUser?: EnsureUser
+  ensureUser?: EnsureUser,
+  accessPolicy: AccessPolicy = { mode: "provision_verified", allowedOwnerIds: new Set() }
 ): Promise<string> {
   const match = authorization?.match(/^Bearer ([^\s]+)$/i);
   if (!match?.[1]) throw new UnauthorizedError();
@@ -43,6 +47,7 @@ export async function authenticateBearer(
 
   const ownerId = payload.sub;
   if (!ownerId) throw new UnauthorizedError();
+  assertOwnerAdmitted(ownerId, accessPolicy);
   let state = await accountState(ownerId);
   if (state === undefined && ensureUser) {
     await ensureUser(ownerId);

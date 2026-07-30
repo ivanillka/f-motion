@@ -7,6 +7,7 @@ const snapshot = {
   brief: { purpose: "Launch", audience: "Teams", tone: "Warm" },
   scenes: [{ id: "s1", order: 0, caption: "Hello", duration_ms: 1000, focal_x: .5, focal_y: .5, motion: "none", audio_level: 1, ducking: Boolean(0) }]
 };
+const referenceProfile = { width: 720, height: 1280, watermark: "Reference preview" };
 
 test("concept construction is deterministic and exactly three", () => {
   assert.equal(conceptsFor(snapshot.brief).length, 3);
@@ -34,7 +35,35 @@ test("update_scene rejects captions over 180 characters", () => assert.throws(
   () => applyCommand(snapshot, { command_id: "c6", project_id: "p1", base_revision: 0, client_timestamp: "", kind: "update_scene", payload: { scene: { ...snapshot.scenes[0], caption: "x".repeat(181) } } }),
   /caption exceeds/
 ));
-test("render plan is 720p and watermarked", () => assert.deepEqual(renderPlan(snapshot).width, 720));
+test("render presentation is required host input without changing resolved scenes", () => {
+  const reference = renderPlan(snapshot, referenceProfile);
+  const alternate = renderPlan(snapshot, { width: 1080, height: 1920 });
+  assert.deepEqual(
+    { width: reference.width, height: reference.height, watermark: reference.watermark },
+    referenceProfile
+  );
+  assert.deepEqual(
+    { width: alternate.width, height: alternate.height, watermark: alternate.watermark },
+    { width: 1080, height: 1920, watermark: undefined }
+  );
+  assert.deepEqual(reference.scenes, alternate.scenes);
+});
+
+test("render profile rejects unsafe dimensions and watermark values", () => {
+  for (const profile of [
+    { width: 15, height: 1280 },
+    { width: 720.5, height: 1280 },
+    { width: 720, height: 7681 }
+  ]) {
+    assert.throws(() => renderPlan(snapshot, profile), /dimensions/);
+  }
+  for (const watermark of ["", " padded ", "x".repeat(121)]) {
+    assert.throws(
+      () => renderPlan(snapshot, { width: 720, height: 1280, watermark }),
+      /watermark/
+    );
+  }
+});
 
 test("a short single-sentence caption derives one cue spanning the full duration", () => {
   const cues = cuesForScene(snapshot.scenes[0]);
@@ -85,7 +114,7 @@ test("update_scene rejects overlapping caption_cues", () => assert.throws(
   /overlapping/
 ));
 test("render plan resolves each scene's cue list (derived or explicit)", () => {
-  const plan = renderPlan(snapshot);
+  const plan = renderPlan(snapshot, referenceProfile);
   assert.ok(Array.isArray(plan.scenes[0].caption_cues));
   assert.ok(plan.scenes[0].caption_cues.length > 0);
 });

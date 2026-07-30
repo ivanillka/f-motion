@@ -1,7 +1,7 @@
 import express from "express";
 import { randomUUID } from "node:crypto";
-import { conceptsFor } from "@f-motion/reel-engine";
-import type { CommandEnvelope } from "@f-motion/contracts";
+import { conceptsFor } from "@f-engine/reel-engine";
+import type { CommandEnvelope } from "@f-engine/contracts";
 import {
   AccountUnavailableError,
   UnauthorizedError,
@@ -25,7 +25,8 @@ import {
   type PostgresMediaRepository,
   type PrivateObjectStore
 } from "./media-storage.js";
-import { PostgresRenderRepository } from "./render-repository.js";
+import { PostgresRenderRepository, RenderCapacityError } from "./render-repository.js";
+import type { AccessPolicy } from "./access-policy.js";
 
 export interface MediaDependencies {
   repository: PostgresMediaRepository;
@@ -45,6 +46,7 @@ export interface AppOptions extends AppBaseOptions {
   authConfig: AuthConfig;
   accountState: AccountStateLookup;
   ensureUser?: EnsureUser;
+  accessPolicy?: AccessPolicy;
 }
 
 export interface TestAppOptions extends Omit<AppBaseOptions, "projects"> {
@@ -96,6 +98,36 @@ function commandEnvelope(value: unknown, projectId: string): CommandEnvelope {
   };
 }
 
+function projectBrief(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ValidationError("invalid brief");
+  }
+  const body = value as Record<string, unknown>;
+  if (typeof body.purpose !== "string") throw new ValidationError("invalid brief");
+  const purpose = body.purpose.trim();
+  if (!purpose || purpose.length > 500) throw new ValidationError("invalid brief");
+  const field = (name: "audience" | "tone", fallback: string) => {
+    const raw = body[name];
+    if (raw === undefined) return fallback;
+    if (typeof raw !== "string") throw new ValidationError("invalid brief");
+    const result = raw.trim();
+    if (!result || result.length > 80) throw new ValidationError("invalid brief");
+    return result;
+  };
+  return {
+    purpose,
+    audience: field("audience", "Customers"),
+    tone: field("tone", "Warm")
+  };
+}
+
+function pexelsQuery(value: unknown): string {
+  if (typeof value !== "string") throw new ValidationError("invalid Pexels query");
+  const query = value.trim();
+  if (!query || query.length > 100) throw new ValidationError("invalid Pexels query");
+  return query;
+}
+
 function buildApp(options: AppBaseOptions, identify: Identify) {
   const app = express();
   const projects = options.projects;
@@ -145,14 +177,13 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
   app.post("/api/projects", async (request, response, next) => {
     try {
       const ownerId = String(response.locals.ownerId);
-      const brief = {
-        purpose: String(request.body?.purpose || ""),
-        audience: String(request.body?.audience || "Customers"),
-        tone: String(request.body?.tone || "Warm")
-      };
+      const brief = projectBrief(request.body);
       const project = await projects.create(ownerId, brief);
       response.status(201).json({ project, concepts: conceptsFor(project.brief) });
     } catch (error) {
+      if (error instanceof ValidationError) {
+        return response.status(422).json({ type: "validation", message: error.message });
+      }
       next(error);
     }
   });
@@ -240,8 +271,15 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
   app.get("/api/pexels/search", async (request, response, next) => {
     try {
       if (!options.media) return response.status(503).json({ type: "unavailable" });
-      const query = String(request.query.q ?? "").trim();
-      if (!query) return response.status(422).json({ type: "validation", message: "query required" });
+      let query: string;
+      try {
+        query = pexelsQuery(request.query.q);
+      } catch (error) {
+        return response.status(422).json({
+          type: "validation",
+          message: error instanceof Error ? error.message : "invalid Pexels query"
+        });
+      }
       const results = await options.media.pexels.search(query);
       response.json({
         results: results.map(({ sourceUrl: _sourceUrl, contentType: _contentType, ...result }) => result)
@@ -257,7 +295,15 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       if (!await projects.get(ownerId, request.params.projectId)) {
         return response.status(404).json({ type: "not_found", message: "not found" });
       }
-      const query = String(request.body?.query ?? "").trim();
+      let query: string;
+      try {
+        query = pexelsQuery(request.body?.query);
+      } catch (error) {
+        return response.status(422).json({
+          type: "validation",
+          message: error instanceof Error ? error.message : "invalid Pexels query"
+        });
+      }
       const pexelsId = Number(request.body?.pexels_id);
       const selected = (await options.media.pexels.search(query)).find(({ id }) => id === pexelsId);
       if (!selected) return response.status(404).json({ type: "not_found", message: "Pexels result unavailable" });
@@ -285,7 +331,15 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         revision: job.revision,
         state: job.state
       });
-    } catch (error) { next(error); }
+    } catch (error) {
+      if (error instanceof RenderCapacityError) {
+        return response.status(429).json({
+          type: "render_capacity",
+          message: "Finish or cancel an existing render before starting another."
+        });
+      }
+      next(error);
+    }
   });
   app.post("/api/render-jobs/:jobId/cancel", async (request, response, next) => {
     try {
@@ -378,7 +432,13 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
 
 export function createApp(options: AppOptions) {
   return buildApp(options, (authorization) =>
-    authenticateBearer(authorization, options.authConfig, options.accountState, options.ensureUser));
+    authenticateBearer(
+      authorization,
+      options.authConfig,
+      options.accountState,
+      options.ensureUser,
+      options.accessPolicy
+    ));
 }
 
 export function createTestApp(options: TestAppOptions = {}) {

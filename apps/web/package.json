@@ -1,5 +1,5 @@
 {
-  "name": "@f-motion/web",
+  "name": "@f-engine/reference-web",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +8,7 @@
     "test": "npm run build && node --test test/*.test.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.111.0",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },

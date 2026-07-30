@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: F-Motion API
+  title: F-Engine Reference API
   version: 1.0.0
 paths:
   /v1/projects/{project_id}/commands:

@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createQueueHandlers } from "../dist/runtime.js";
+import { createQueueHandlers, renderProfileFromEnv } from "../dist/runtime.js";
+
+const profile = { width: 720, height: 1280 };
 
 const brief = { purpose: "Demo", audience: "Teams", tone: "Warm" };
 const scenePayload = {
@@ -58,7 +60,7 @@ test("render persists a failed state and event when upload fails after rendering
     async download() { throw new Error("not used"); },
     async put() { throw new Error("upload failed"); }
   };
-  const handlers = createQueueHandlers(pool, store);
+  const handlers = createQueueHandlers(pool, store, profile);
   const result = await handlers.render(
     { jobId: "job-1", ownerId: "owner", projectId: "project", revision: 0 },
     new AbortController().signal
@@ -79,7 +81,7 @@ test("render does not overwrite a job already cancelled by the time the failure 
       throw new Error("upload failed");
     }
   };
-  const handlers = createQueueHandlers(pool, store);
+  const handlers = createQueueHandlers(pool, store, profile);
   const result = await handlers.render(
     { jobId: "job-1", ownerId: "owner", projectId: "project", revision: 0 },
     new AbortController().signal
@@ -87,4 +89,20 @@ test("render does not overwrite a job already cancelled by the time the failure 
   assert.deepEqual(result, { state: "failed" });
   assert.equal(pool.getState(), "cancelled");
   assert.equal(pool.getEvents().some((event) => event.phase === "failed"), false);
+});
+
+test("reference render profile defaults and rejects invalid startup values", () => {
+  assert.deepEqual(renderProfileFromEnv({}), { width: 720, height: 1280 });
+  assert.deepEqual(
+    renderProfileFromEnv({
+      RENDER_WIDTH: "1080",
+      RENDER_HEIGHT: "1920",
+      RENDER_WATERMARK: "Reference"
+    }),
+    { width: 1080, height: 1920, watermark: "Reference" }
+  );
+  assert.throws(
+    () => renderProfileFromEnv({ RENDER_WIDTH: "wide" }),
+    /dimensions/
+  );
 });

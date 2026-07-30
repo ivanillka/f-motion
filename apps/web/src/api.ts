@@ -32,13 +32,27 @@ export interface Concept {
 }
 
 export class ApiResponseError extends Error {
-  constructor(readonly status: number, readonly body: Record<string, unknown>) {
+  readonly status: number;
+  readonly body: Record<string, unknown>;
+
+  constructor(status: number, body: Record<string, unknown>) {
     super(String(body.message ?? `request failed (${status})`));
+    this.status = status;
+    this.body = body;
   }
 }
 
 export class ApiClient {
-  constructor(readonly token: () => string) {}
+  readonly token: () => string;
+  readonly onUnauthorized: () => void;
+
+  constructor(
+    token: () => string,
+    onUnauthorized: () => void = () => undefined
+  ) {
+    this.token = token;
+    this.onUnauthorized = onUnauthorized;
+  }
 
   async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
@@ -48,6 +62,7 @@ export class ApiClient {
     const body = response.headers.get("content-type")?.includes("json")
       ? await response.json() as Record<string, unknown>
       : {};
+    if (response.status === 401) this.onUnauthorized();
     if (!response.ok) throw new ApiResponseError(response.status, body);
     return body as T;
   }

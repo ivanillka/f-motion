@@ -7,9 +7,10 @@ npm ci
 npm run demo
 ```
 
-Open `http://127.0.0.1:4173`. Without `VITE_SUPABASE_URL`, magic-link and Google
-sign-in use the local test identity against an in-memory API. The worker renders
-a real FFmpeg 720p preview. This is the Gate 2 UI path used by
+Open `http://127.0.0.1:4173`. Without both Supabase web variables, the email
+button uses an explicit session-only demo identity against an in-memory API.
+No bearer token is stored by the demo gateway. The worker renders a real FFmpeg
+720p preview. This is the Gate 2 UI path used by
 `npm run test:e2e:web`.
 
 ## Full local stack (Postgres + MinIO + API + worker)
@@ -18,7 +19,7 @@ Requires Docker access (your user must be in the `docker` group).
 
 ```sh
 cp .env.example .env
-# Fill PEXELS_API_KEY; keep FMOTION_LOCAL_AUTH=1 for local.
+# Fill PEXELS_API_KEY; keep FENGINE_LOCAL_AUTH=1 for local.
 
 bash scripts/local-deps.sh
 npx prisma migrate deploy
@@ -41,13 +42,15 @@ npm run dev --workspace apps/web -- --host 127.0.0.1 --port 4173
 Or after deps + migrate + build: `npm run stack` starts API and prints worker/web
 commands.
 
-`FMOTION_LOCAL_AUTH=1` injects a fixed local owner and skips Supabase JWKS. Leave
+`FENGINE_LOCAL_AUTH=1` injects a fixed local owner and skips Supabase JWKS. Leave
 it unset for real JWT verification.
 
-**Never set `FMOTION_LOCAL_AUTH=1` or `VITE_ALLOW_DEMO_AUTH=1` on a public host.**
+**Never set `FENGINE_LOCAL_AUTH=1` or `VITE_ALLOW_DEMO_AUTH=1` on a public host.**
 The API refuses to boot with local auth when `NODE_ENV=production` or
-`FMOTION_ENV=hosted`; the web client only falls back to the demo token in
+`FENGINE_ENV=hosted`; the web client only falls back to the demo token in
 `vite dev` or with `VITE_ALLOW_DEMO_AUTH=1` set, which hosted builds must not set.
+Real browser auth uses Supabase's PKCE client, including persisted session
+refresh and callback detection.
 
 Use PostgreSQL session-mode connections for pg-boss. Never expose the Pexels,
 R2, database, or queue credentials to either client. The web PWA does not
@@ -61,7 +64,7 @@ deploy (see `docs/runbooks/hosted-deploy.md` §2).
 ### Integration tests
 
 ```sh
-export TEST_DATABASE_URL=postgresql://fmotion:fmotion@127.0.0.1:5432/fmotion
+export TEST_DATABASE_URL=postgresql://fengine:fengine@127.0.0.1:5432/fengine
 export TEST_S3_ENDPOINT=http://127.0.0.1:9000
 export RUN_MEDIA_INTEGRATION=1
 export RUN_QUEUE_INTEGRATION=1

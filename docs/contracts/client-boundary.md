@@ -1,4 +1,4 @@
-# F-Motion client boundary
+# F-Engine client boundary
 
 ## Ownership
 
@@ -8,11 +8,10 @@ assets, concepts, render jobs, and render results. It performs authoritative
 validation, asset admission, media inspection, command ordering, and render
 truth.
 
-React + TypeScript web and Flutter/Dart Android clients own only their
-framework UI, accessibility behavior, native media playback, secure-token
-adapter, and replaceable local cache. Reel Engine remains private
-server/worker TypeScript; it is neither shipped to Flutter nor duplicated in
-Dart. Clients never synchronize directly.
+Reference clients own only their framework UI, accessibility behavior, native
+media playback, secure-token adapter, and replaceable local cache. Reel Engine
+is server/worker TypeScript; it is neither shipped to non-TypeScript clients
+nor reimplemented in them. Clients never synchronize directly.
 
 ## Commands and responses
 

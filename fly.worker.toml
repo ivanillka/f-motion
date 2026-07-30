@@ -10,7 +10,10 @@
 # docs/runbooks/hosted-deploy.md.
 
 app = "f-motion-worker"         # pick a real, unique Fly app name
-primary_region = "iad"          # change to your preferred Fly region
+primary_region = "ams"
+
+[env]
+  PGSSLMODE = "verify-full"
 
 [build]
   dockerfile = "apps/worker/Dockerfile"

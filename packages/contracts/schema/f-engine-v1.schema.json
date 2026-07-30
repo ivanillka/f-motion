@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://f-motion.app/contracts/v1",
-  "title": "F-Motion API v1",
+  "$id": "urn:f-engine:contracts:v1",
+  "title": "F-Engine contracts v1",
   "type": "object",
   "required": ["schema_version", "command_id", "project_id", "base_revision"],
   "properties": {

@@ -12,16 +12,16 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: fmotion
-          POSTGRES_PASSWORD: fmotion
-          POSTGRES_DB: fmotion
+          POSTGRES_USER: fengine
+          POSTGRES_PASSWORD: fengine
+          POSTGRES_DB: fengine
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U fmotion"
+          --health-cmd "pg_isready -U fengine"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql://fmotion:fmotion@127.0.0.1:5432/fmotion
-      TEST_DATABASE_URL: postgresql://fmotion:fmotion@127.0.0.1:5432/fmotion
+      DATABASE_URL: postgresql://fengine:fengine@127.0.0.1:5432/fengine
+      TEST_DATABASE_URL: postgresql://fengine:fengine@127.0.0.1:5432/fengine
       TEST_S3_ENDPOINT: http://127.0.0.1:9000
       RUN_MEDIA_INTEGRATION: "1"
       RUN_QUEUE_INTEGRATION: "1"
@@ -41,16 +41,19 @@ jobs:
           cache: true
       - uses: android-actions/setup-android@v3
       - run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
-      - run: docker run -d --name minio -e MINIO_ROOT_USER=fmotion -e MINIO_ROOT_PASSWORD=fmotion-local-secret -p 9000:9000 minio/minio:latest server /data
+      - run: docker run -d --name minio -e MINIO_ROOT_USER=fengine -e MINIO_ROOT_PASSWORD=fengine-local-secret -p 9000:9000 minio/minio:latest server /data
       - run: |
           until curl --fail --silent http://127.0.0.1:9000/minio/health/live; do sleep 1; done
-          docker run --rm --network container:minio minio/mc alias set local http://127.0.0.1:9000 fmotion fmotion-local-secret
-          docker run --rm --network container:minio minio/mc mb --ignore-existing local/fmotion-local
+          docker run --rm --network container:minio minio/mc alias set local http://127.0.0.1:9000 fengine fengine-local-secret
+          docker run --rm --network container:minio minio/mc mb --ignore-existing local/fengine-local
       - run: npm ci
       - run: npx prisma migrate deploy
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - run: npm run test:package-consumer
+      - run: node --test tools/publication/*.test.mjs
+      - run: git ls-files -z | node tools/publication/check.mjs --inventory0
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:web
       - run: npx prisma validate

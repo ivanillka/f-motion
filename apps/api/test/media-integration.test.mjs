@@ -30,7 +30,7 @@ integration("authenticated media routes use real PostgreSQL and private S3 stora
   const endpoint = process.env.TEST_S3_ENDPOINT;
   if (!databaseUrl || !endpoint) throw new Error("media integration configuration is required");
   const schema = `media_test_${randomUUID().replaceAll("-", "_")}`;
-  const bucket = `fmotion-${randomUUID()}`;
+  const bucket = `fengine-${randomUUID()}`;
   const admin = new pg.Pool({ connectionString: databaseUrl });
   await admin.query(`CREATE SCHEMA "${schema}"`);
   const pool = new pg.Pool({ connectionString: databaseUrl, options: `-c search_path=${schema}` });
@@ -38,7 +38,7 @@ integration("authenticated media routes use real PostgreSQL and private S3 stora
     region: "us-east-1",
     endpoint,
     forcePathStyle: true,
-    credentials: { accessKeyId: "fmotion", secretAccessKey: "fmotion-local-secret" }
+    credentials: { accessKeyId: "fengine", secretAccessKey: "fengine-local-secret" }
   });
   await client.send(new CreateBucketCommand({ Bucket: bucket }));
   const server = createServer();

@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "requiredPaths": [
+    "LICENSE",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "docs/publication-boundary.md",
+    "tools/publication/manifest.json",
+    "tools/publication/check.mjs",
+    "tools/publication/export.mjs"
+  ],
+  "rules": [
+    {
+      "name": "public-governance",
+      "classification": "public",
+      "paths": ["LICENSE", "SECURITY.md", "CONTRIBUTING.md", "docs/publication-boundary.md"],
+      "reason": "Reviewed public license, security, contribution, and boundary policy"
+    },
+    {
+      "name": "private-publication-tools",
+      "classification": "private",
+      "prefixes": ["tools/publication/"],
+      "reason": "Private release tooling contains redaction patterns and is not part of the sanitized candidate"
+    },
+    {
+      "name": "deferred-root-build",
+      "classification": "public",
+      "paths": [
+        ".dockerignore",
+        ".gitignore",
+        ".nvmrc",
+        "README.md",
+        "package.json",
+        "package-lock.json",
+        "tsconfig.base.json",
+        "tsconfig.json"
+      ],
+      "reason": "Generic build surface after product identities are removed"
+    },
+    {
+      "name": "deferred-ci",
+      "classification": "private",
+      "prefixes": [".github/"],
+      "reason": "Generic verification workflow after public checks are integrated"
+    },
+    {
+      "name": "deferred-contracts-engine",
+      "classification": "public",
+      "prefixes": ["packages/contracts/", "packages/reel-engine/"],
+      "reason": "Neutral contracts and deterministic engine after identity extraction"
+    },
+    {
+      "name": "deferred-reference-api-worker",
+      "classification": "public",
+      "prefixes": ["apps/api/", "apps/worker/"],
+      "excludePaths": ["apps/api/Dockerfile", "apps/worker/Dockerfile"],
+      "reason": "Generic executable reference host after identity extraction"
+    },
+    {
+      "name": "private-pages-function",
+      "classification": "private",
+      "prefixes": ["apps/web/functions/"],
+      "paths": ["apps/web/test/pages-proxy.test.mjs"],
+      "reason": "Private production proxy and domain topology"
+    },
+    {
+      "name": "deferred-reference-web-source",
+      "classification": "public",
+      "prefixes": ["apps/web/src/", "apps/web/public/"],
+      "paths": [
+        "apps/web/index.html",
+        "apps/web/package.json",
+        "apps/web/tsconfig.json",
+        "apps/web/vite.config.ts",
+        "apps/web/test/api.test.mjs",
+        "apps/web/test/auth.test.mjs",
+        "apps/web/test/web.test.mjs"
+      ],
+      "reason": "Generic reference browser after identity extraction"
+    },
+    {
+      "name": "private-mobile",
+      "classification": "private",
+      "prefixes": ["apps/mobile/"],
+      "reason": "Private product-specific client"
+    },
+    {
+      "name": "deferred-contract-docs",
+      "classification": "public",
+      "prefixes": ["docs/contracts/", "docs/decisions/"],
+      "reason": "Neutral integration and technical decisions"
+    },
+    {
+      "name": "private-documentation",
+      "classification": "private",
+      "prefixes": ["docs/architecture/", "docs/design/", "docs/runbooks/", "docs/spikes/"],
+      "reason": "Private product, identity, deployment, and research material"
+    },
+    {
+      "name": "deferred-reference-infrastructure",
+      "classification": "public",
+      "prefixes": ["prisma/", "scripts/", "tests/"],
+      "reason": "Generic reference schema, local support, and verification"
+    },
+    {
+      "name": "private-plans-and-evidence",
+      "classification": "private",
+      "prefixes": ["plans/", "spikes/"],
+      "paths": ["AGENTS.md", "DESIGN.md"],
+      "reason": "Internal instructions, strategy, and brand evidence"
+    },
+    {
+      "name": "private-deployment",
+      "classification": "private",
+      "paths": [
+        ".env.example",
+        "fly.api.toml",
+        "fly.worker.toml",
+        "apps/api/Dockerfile",
+        "apps/worker/Dockerfile"
+      ],
+      "reason": "Private deployment topology and environment contract"
+    },
+    {
+      "name": "forbidden-sensitive-paths",
+      "classification": "forbidden",
+      "prefixes": ["certs/", "backups/", "downloads/", "customer-data/"],
+      "reason": "Certificates, backups, artifacts, and customer data never leave the private repository"
+    },
+    {
+      "name": "fallback-forbidden",
+      "classification": "forbidden",
+      "fallback": true,
+      "reason": "Deny by default until a path receives an explicit reviewed rule"
+    }
+  ],
+  "forbiddenBasenames": [
+    ".git",
+    ".env",
+    ".env.local",
+    ".env.production",
+    "credentials.json",
+    "service-account.json"
+  ],
+  "forbiddenExtensions": [".key", ".pem", ".p12", ".pfx", ".crt", ".cer", ".dump", ".sql.gz"],
+  "binaryExtensions": [".jpg", ".jpeg", ".png", ".gif", ".webp", ".ico", ".mp4", ".mov", ".woff", ".woff2"],
+  "forbiddenTextPatterns": [
+    {"name": "fotium-name", "pattern": "Fotium", "flags": "i"},
+    {"name": "f-motion-name", "pattern": "F[‑-]Motion", "flags": "i"},
+    {"name": "f-motion-domain", "pattern": "f-motion\\.com", "flags": "i"},
+    {"name": "old-package-scope", "pattern": "@f-motion/", "flags": "i"},
+    {"name": "old-runtime-prefix", "pattern": "fmotion-", "flags": "i"},
+    {"name": "private-key", "pattern": "-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", "flags": "i"},
+    {"name": "cloudflare-token", "pattern": "cfat_[A-Za-z0-9_-]{20,}", "flags": ""},
+    {"name": "jwt", "pattern": "eyJ[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]{20,}\\.", "flags": ""}
+  ]
+}

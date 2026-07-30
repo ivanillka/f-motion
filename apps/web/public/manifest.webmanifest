@@ -1,6 +1,6 @@
 {
-  "name": "F-Motion",
-  "short_name": "F-Motion",
+  "name": "F-Engine Reference",
+  "short_name": "F-Engine",
   "description": "Online vertical-video storyboard and accurate preview workflow",
   "start_url": "/",
   "display": "standalone",

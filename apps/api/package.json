@@ -1,5 +1,5 @@
 {
-  "name": "@f-motion/api",
+  "name": "@f-engine/reference-api",
   "private": true,
   "type": "module",
   "main": "dist/start.js",
@@ -11,8 +11,8 @@
   "dependencies": {
     "@aws-sdk/client-s3": "3.1095.0",
     "@aws-sdk/s3-request-presigner": "3.1095.0",
-    "@f-motion/contracts": "*",
-    "@f-motion/reel-engine": "*",
+    "@f-engine/contracts": "^0.1.0",
+    "@f-engine/reel-engine": "^0.1.0",
     "express": "5.1.0",
     "jose": "6.0.12",
     "pg": "8.16.3"

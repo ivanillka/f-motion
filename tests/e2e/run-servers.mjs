@@ -7,6 +7,7 @@ const worker = spawn(process.execPath, ["tests/e2e/worker-server.mjs"], { stdio:
 const projects = new ProjectService();
 const completed = new Map();
 const events = new Map();
+const mediaAssets = new Map();
 const renders = {
   async create(ownerId, projectId) {
     const project = projects.get(ownerId, projectId);
@@ -37,8 +38,80 @@ const renders = {
     return completed.get(jobId);
   }
 };
+const mediaRepository = {
+  async insert(asset) {
+    mediaAssets.set(asset.id, structuredClone(asset));
+  },
+  async get(ownerId, projectId, id) {
+    const asset = mediaAssets.get(id);
+    return asset?.ownerId === ownerId && asset?.projectId === projectId
+      ? structuredClone(asset)
+      : undefined;
+  },
+  async completeAdmission(ownerId, projectId, id) {
+    const asset = mediaAssets.get(id);
+    if (!asset || asset.ownerId !== ownerId || asset.projectId !== projectId) return false;
+    asset.state = "ready";
+    asset.detected = { type: asset.declaredType, bytes: asset.maxBytes };
+    return true;
+  }
+};
+const pexelsResults = [
+  {
+    id: 101,
+    creator: "Fixture One",
+    attributionUrl: "https://www.pexels.com/video/101",
+    previewUrl: "https://e2e-images.invalid/101.jpg",
+    sourceUrl: "https://e2e-media.invalid/101.mp4",
+    contentType: "video/mp4"
+  },
+  {
+    id: 102,
+    creator: "Fixture Two With A Long Name",
+    attributionUrl: "https://www.pexels.com/video/102",
+    previewUrl: "https://e2e-images.invalid/102.jpg",
+    sourceUrl: "https://e2e-media.invalid/102.mp4",
+    contentType: "video/mp4"
+  }
+];
 const media = {
-  store: { signedGet: async (jobId) => `http://127.0.0.1:43141/downloads/${jobId}` }
+  repository: mediaRepository,
+  store: {
+    async signedPut(objectKey) {
+      return `https://e2e-storage.invalid/${encodeURIComponent(objectKey)}`;
+    },
+    async exists() {
+      return true;
+    },
+    async put() {},
+    async signedGet(jobId) {
+      return `http://127.0.0.1:43141/downloads/${jobId}`;
+    }
+  },
+  pexels: {
+    async search() {
+      return structuredClone(pexelsResults);
+    },
+    async copy(ownerId, projectId, selected, repository) {
+      const asset = {
+        id: randomUUID(),
+        ownerId,
+        projectId,
+        objectKey: `projects/${projectId}/media/pexels-${selected.id}`,
+        state: "ready",
+        declaredType: selected.contentType,
+        maxBytes: 4096,
+        detected: { type: selected.contentType, bytes: 4096 },
+        attribution: {
+          source: "Pexels",
+          creator: selected.creator,
+          url: selected.attributionUrl
+        }
+      };
+      await repository.insert(asset);
+      return asset;
+    }
+  }
 };
 const api = createTestApp({ ownerId: "e2e-owner", projects, renders, media }).listen(43140, "127.0.0.1");
 const web = spawn("npm", ["run", "dev", "--workspace", "apps/web", "--", "--host", "127.0.0.1", "--port", "4173"], { stdio: "inherit" });

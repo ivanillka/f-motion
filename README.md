@@ -1,66 +1,55 @@
-# F-Motion
+# F-Engine
 
-F-Motion is a split-client vertical-video editor for **f-motion.com**: React on
-the web, Flutter on Android, and one authoritative Express/worker API. It reuses
-Fotium's visual language with separate accounts, database, and deployment.
+F-Engine is a host-neutral, deterministic vertical-video engine with a small
+reference application. It separates reusable reel contracts and render
+planning from product identity, accounts, persistence, providers, deployment,
+and customer operations.
 
-**Status:** Gate 1 feasibility is accepted (Flutter Android + React web). Gate 2
-vertical slice is in progress on this branch. Gate 0 launch-policy evidence is
-still open before public/paid launch. iOS and Linux remain later decisions.
+The repository contains:
 
-## Source-of-truth order
+- `@f-engine/contracts`: versioned language-neutral JSON/OpenAPI contracts;
+- `@f-engine/reel-engine`: deterministic commands, cues, crop math, and render
+  planning;
+- a reference API, worker, and React client that exercise the boundary;
+- private release tooling that produces sanitized snapshots.
 
-1. `docs/architecture/f-motion.drawio`
-2. `docs/design/ACCEPTANCE.md`
-3. `DESIGN.md`
-4. Stitch screenshots
-5. Stitch-generated HTML (reference only; never production code)
+All npm workspaces remain `"private": true`. The package names are for local
+boundaries and tarball verification; no registry package or hosted customer
+service is implied.
 
-## Gate 0 — launch-policy evidence
+## Host boundary
 
-- [ ] Written FAL output ownership, training/data-use, retention, and commercial-use terms
-- [ ] Pexels API use, attribution, caching, and media-license requirements
-- [ ] Payment processor, tax/VAT, refunds, chargebacks, receipts, and credit-expiry policy
-- [ ] Privacy notice, consent, data retention, subprocessors, and deletion/recovery schedule
-- [ ] Copyright reporting and takedown workflow
-- [ ] Google Play and future Apple App Store rules for digital credits and external payments
-- [ ] `f-motion.com` trademark, product-name, and brand clearance
-- [ ] Security review for encrypted provider credentials, uploads, sessions, and export URLs
+A host supplies authentication, databases, object storage, provider
+credentials/adapters, UI and branding, operational policy, and a validated
+render profile. The engine does not read environment variables, call provider
+SDKs, persist data, or choose presentation identity.
 
-Beatoven and all generated-music functionality are blocked until licensing,
-sublicensing, attribution, output-ownership, and data-use terms are verified in
-writing.
+Private hosts pin reviewed F-Engine releases and adapt at the package/API
+boundary. They do not edit a vendored fork.
 
-## Demo today
+## Run the reference
+
+Requires Node 24.15.0, npm 11.12.1, and FFmpeg.
 
 ```sh
 npm ci
 npm run demo
 ```
 
-Then open `http://127.0.0.1:4173` and click **Email me a magic link** (local
-test identity when Supabase env vars are unset). Flow: brief → three concepts →
-storyboard → accurate 720p preview → download. See
-`docs/runbooks/local-development.md` for the durable Postgres/MinIO stack, or
-`docs/runbooks/hosted-deploy.md` for a private hosted deploy (API + worker
-containers, Fly.io config, Supabase auth).
+Open `http://127.0.0.1:4173`. The reference journey accepts a short brief,
+then either user-owned media or licensed Pexels footage, and produces an
+accurate vertical preview. AI generation is deliberately not implemented.
 
-## Supported toolchain
-
-- Node 24.15.0 and npm 11.12.1
-- Flutter 3.44.8, framework revision `058e0af2c2`, Dart 3.12.2
-- Android command-line tools 19.0, Android platform/build-tools 36.0.0,
-  platform-tools 36.0.2, NDK 28.2.13676358
-- FFmpeg 8.1.2
-
-Run Node gates with `npm ci`, `npm run lint`, `npm test`, `npm run build`, and
-`npm run test:e2e:web`. Run Android gates from the repository root with:
+## Verify
 
 ```sh
-FLUTTER_BIN=/absolute/path/to/flutter apps/mobile/tool/flutter_from_root.sh analyze
-FLUTTER_BIN=/absolute/path/to/flutter apps/mobile/tool/flutter_from_root.sh test
-FLUTTER_BIN=/absolute/path/to/flutter apps/mobile/tool/flutter_from_root.sh build-apk
+npm run lint
+npm test
+npm run build
+npm run test:package-consumer
+npm run test:e2e:web
 ```
 
-The PWA is online-only. A local draft survives reconnection, but editing,
-rendering, and downloads require the API.
+Stored project and command payloads remain wire schema version 1. Clients
+consume the HTTP/SSE and JSON/OpenAPI boundary; they do not import the
+TypeScript engine directly.
