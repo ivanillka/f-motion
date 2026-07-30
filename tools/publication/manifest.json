@@ -13,7 +13,13 @@
     {
       "name": "public-governance",
       "classification": "public",
-      "paths": ["LICENSE", "SECURITY.md", "CONTRIBUTING.md", "docs/publication-boundary.md"],
+      "paths": [
+        "LICENSE",
+        "SECURITY.md",
+        "CONTRIBUTING.md",
+        "docs/getting-started.md",
+        "docs/publication-boundary.md"
+      ],
       "reason": "Reviewed public license, security, contribution, and boundary policy"
     },
     {
@@ -27,6 +33,7 @@
       "classification": "public",
       "paths": [
         ".dockerignore",
+        ".env.example",
         ".gitignore",
         ".nvmrc",
         "README.md",
@@ -113,7 +120,6 @@
       "name": "private-deployment",
       "classification": "private",
       "paths": [
-        ".env.example",
         "fly.api.toml",
         "fly.worker.toml",
         "apps/api/Dockerfile",
