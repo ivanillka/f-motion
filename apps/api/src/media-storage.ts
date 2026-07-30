@@ -174,6 +174,57 @@ export interface PexelsResult {
   contentType: string;
 }
 
+const pexelsIgnoredWords = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "by", "create", "every", "for",
+  "from", "have", "in", "into", "is", "it", "its", "make", "no", "of", "on", "or",
+  "our", "return", "shines", "show", "story", "that", "the", "their", "this",
+  "through", "to", "video", "we", "with", "without", "you", "your", "appears",
+  "record", "records"
+]);
+
+const pexelsWordAliases = new Map([
+  ["foggy", "fog"],
+  ["islands", "island"],
+  ["lighthouses", "lighthouse"],
+  ["mist", "fog"],
+  ["misty", "fog"],
+  ["mystery", "mysterious"],
+  ["oceanic", "ocean"],
+  ["sea", "ocean"],
+  ["seas", "ocean"]
+]);
+
+const pexelsLowSignalWords = new Set([
+  "clip", "life", "light", "lights", "map", "maps", "night", "quick"
+]);
+
+/**
+ * Turns narrative copy into short, concrete visual searches. Pexels already
+ * ranks by relevance; the application supplies imageable subjects and mood
+ * instead of sending prose, calls to action, or production instructions.
+ */
+export function pexelsQueriesForBrief(brief: string): string[] {
+  const words = brief.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const word of words) {
+    const candidate = pexelsWordAliases.get(word) ?? word;
+    if (candidate.length < 2 || pexelsIgnoredWords.has(candidate) || seen.has(candidate)) continue;
+    seen.add(candidate);
+    unique.push(candidate);
+  }
+  const preferred = unique.filter((word) => !pexelsLowSignalWords.has(word));
+  const ranked = [
+    ...preferred,
+    ...unique.filter((word) => pexelsLowSignalWords.has(word))
+  ];
+  const searches = [
+    ranked.slice(0, 7).join(" "),
+    ranked.slice(0, 4).join(" ")
+  ].filter(Boolean);
+  return [...new Set(searches.length ? searches : ["cinematic"])];
+}
+
 export class PexelsClient {
   constructor(readonly apiKey: string, readonly request: typeof fetch = fetch) {}
 
@@ -188,13 +239,14 @@ export class PexelsClient {
         url: string;
         image: string;
         user: { name: string };
-        video_files: Array<{ link: string; file_type: string; width: number }>;
+        video_files: Array<{ link: string; file_type: string; width: number; file_size?: number }>;
       }>;
     };
     return (body.videos ?? []).flatMap((video) => {
       const file = video.video_files
-        .filter(({ file_type: type }) => type === "video/mp4")
-        .sort((left, right) => Math.abs(left.width - 720) - Math.abs(right.width - 720))[0];
+        .filter(({ file_type: type, file_size: bytes }) =>
+          type === "video/mp4" && (bytes === undefined || bytes <= maximumMediaBytes))
+        .sort((left, right) => Math.abs(left.width - 1080) - Math.abs(right.width - 1080))[0];
       let preview: URL;
       try {
         preview = new URL(video.image);

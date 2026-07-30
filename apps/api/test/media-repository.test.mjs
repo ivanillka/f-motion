@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { S3Client } from "@aws-sdk/client-s3";
-import { PexelsClient, PostgresMediaRepository, PrivateObjectStore } from "../dist/media-storage.js";
+import {
+  PexelsClient,
+  PostgresMediaRepository,
+  PrivateObjectStore,
+  pexelsQueriesForBrief
+} from "../dist/media-storage.js";
 
 /** Fake pool that answers only the queries `completeAdmission` issues. */
 function createFakePool(initialState) {
@@ -131,7 +136,14 @@ test("PexelsClient.search uses the v1 portrait endpoint and maps safe previews",
           user: { name: "Fixture Creator" },
           video_files: [
             { link: "https://media.pexels.test/wide.mp4", file_type: "video/mp4", width: 1920 },
-            { link: "https://media.pexels.test/near.mp4", file_type: "video/mp4", width: 720 }
+            { link: "https://media.pexels.test/near.mp4", file_type: "video/mp4", width: 720 },
+            { link: "https://media.pexels.test/final.mp4", file_type: "video/mp4", width: 1080 },
+            {
+              link: "https://media.pexels.test/oversized.mp4",
+              file_type: "video/mp4",
+              width: 1080,
+              file_size: 100000001
+            }
           ]
         },
         {
@@ -153,7 +165,23 @@ test("PexelsClient.search uses the v1 portrait endpoint and maps safe previews",
     creator: "Fixture Creator",
     attributionUrl: "https://www.pexels.com/video/1",
     previewUrl: "https://images.pexels.com/videos/1/preview.jpg",
-    sourceUrl: "https://media.pexels.test/near.mp4",
+    sourceUrl: "https://media.pexels.test/final.mp4",
     contentType: "video/mp4"
   }]);
+});
+
+test("Pexels brief queries prefer concrete visual language over narrative prose", () => {
+  assert.deepEqual(
+    pexelsQueriesForBrief(
+      "A lonely island appears through the ocean mist. No maps record it, and every night a mysterious light shines from its abandoned lighthouse."
+    ),
+    [
+      "lonely island ocean fog mysterious abandoned lighthouse",
+      "lonely island ocean fog"
+    ]
+  );
+  assert.deepEqual(
+    pexelsQueriesForBrief("Make a video"),
+    ["cinematic"]
+  );
 });

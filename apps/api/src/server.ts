@@ -21,6 +21,7 @@ import {
 import {
   allowedMediaTypes,
   maximumMediaBytes,
+  pexelsQueriesForBrief,
   type PexelsClient,
   type PostgresMediaRepository,
   type PrivateObjectStore
@@ -315,6 +316,45 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         options.media.store
       );
       response.status(201).json({ asset });
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.post("/api/projects/:projectId/media/pexels/auto", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      const project = await projects.get(ownerId, request.params.projectId);
+      if (!project) return response.status(404).json({ type: "not_found", message: "not found" });
+      const description = request.body?.description === undefined
+        ? project.brief.purpose
+        : projectBrief({ purpose: request.body.description }).purpose;
+
+      let selected: Awaited<ReturnType<PexelsClient["search"]>>[number] | undefined;
+      let matchedQuery = "";
+      for (const query of pexelsQueriesForBrief(description)) {
+        const [result] = await options.media.pexels.search(query);
+        if (!result) continue;
+        selected = result;
+        matchedQuery = query;
+        break;
+      }
+      if (!selected) {
+        return response.status(404).json({
+          type: "not_found",
+          message: "No licensed stock matched this description"
+        });
+      }
+
+      const asset = await options.media.pexels.copy(
+        ownerId,
+        request.params.projectId,
+        selected,
+        options.media.repository,
+        options.media.store
+      );
+      const { sourceUrl: _sourceUrl, contentType: _contentType, ...match } = selected;
+      response.status(201).json({ asset, match, query: matchedQuery });
     } catch (error) {
       next(error);
     }

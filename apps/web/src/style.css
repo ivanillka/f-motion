@@ -81,7 +81,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   outline-offset: 2px;
 }
 .concepts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.source-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .card {
   border-radius: 8px;
   display: grid;
@@ -96,29 +95,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
-.stock-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-.stock-card {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-  padding: 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-.stock-card img {
-  width: 100%;
-  max-height: 360px;
-  aspect-ratio: 9 / 16;
-  object-fit: cover;
-  border-radius: 6px;
-  background: var(--soft);
-}
-.stock-card p, .stock-card a { overflow-wrap: anywhere; }
 a { color: var(--accent-soft); }
 .notice {
   border-left: 3px solid var(--warning);
@@ -135,6 +111,20 @@ a { color: var(--accent-soft); }
   place-items: center;
   text-align: center;
   padding: 24px;
+  overflow: hidden;
+}
+.preview > * { grid-area: 1 / 1; }
+.preview img {
+  width: calc(100% + 48px);
+  height: calc(100% + 48px);
+  object-fit: cover;
+}
+.preview span {
+  z-index: 1;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.58);
+  text-shadow: 0 1px 2px #000;
 }
 dialog {
   color: inherit;
@@ -147,13 +137,12 @@ dialog {
 [role="status"] { color: var(--success); font-size: 0.875rem; }
 header [role="status"] { color: var(--muted); }
 @media (max-width: 980px) {
-  .concepts, .source-grid { grid-template-columns: 1fr; }
+  .concepts { grid-template-columns: 1fr; }
 }
 @media (max-width: 520px) {
   main { padding: 16px; }
   header { font-size: 0.85rem; }
   section { margin-top: 7vh; }
-  .stock-grid { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

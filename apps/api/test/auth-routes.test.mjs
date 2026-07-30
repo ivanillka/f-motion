@@ -329,6 +329,61 @@ test("Pexels search is bounded and never exposes provider source URLs", async ()
   }
 });
 
+test("automatic Pexels matching derives a visual query and never exposes the source URL", async () => {
+  const queries = [];
+  const selected = {
+    id: 17,
+    creator: "Island Creator",
+    attributionUrl: "https://www.pexels.com/video/17",
+    previewUrl: "https://images.pexels.com/videos/17/preview.jpg",
+    sourceUrl: "https://provider.example/private-island.mp4",
+    contentType: "video/mp4"
+  };
+  const server = createServer(createTestApp({
+    media: {
+      repository: {},
+      store: {},
+      pexels: {
+        async search(query) {
+          queries.push(query);
+          return [selected];
+        },
+        async copy() {
+          return { id: "asset-17", state: "inspecting" };
+        }
+      }
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const created = await (await fetch(`${origin}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        purpose: "A lonely island through ocean mist with an abandoned lighthouse."
+      })
+    })).json();
+    const response = await fetch(
+      `${origin}/api/projects/${created.project.id}/media/pexels/auto`,
+      { method: "POST" }
+    );
+    assert.equal(response.status, 201);
+    assert.deepEqual(queries, ["lonely island ocean fog abandoned lighthouse"]);
+    assert.deepEqual(await response.json(), {
+      asset: { id: "asset-17", state: "inspecting" },
+      match: {
+        id: 17,
+        creator: "Island Creator",
+        attributionUrl: "https://www.pexels.com/video/17",
+        previewUrl: "https://images.pexels.com/videos/17/preview.jpg"
+      },
+      query: "lonely island ocean fog abandoned lighthouse"
+    });
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("test app rejects invalid command kinds with validation errors", async () => {
   const server = createServer(createTestApp());
   const origin = await listen(server);

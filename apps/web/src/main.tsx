@@ -4,9 +4,8 @@ import { ApiClient, ApiResponseError, type ProjectSnapshot, type ProjectSummary,
 import { AuthConfigurationError, createAuthGateway } from "./auth";
 import "./style.css";
 
-type Step = "sign-in" | "drafts" | "brief" | "source" | "media" | "editor" | "render" | "settings";
-type MediaSource = "upload" | "stock";
-interface StockResult {
+type Step = "sign-in" | "drafts" | "brief" | "media" | "editor" | "render" | "settings";
+interface StockMatch {
   id: number;
   creator: string;
   attributionUrl: string;
@@ -40,7 +39,7 @@ function App() {
   const [project, setProject] = useState<ProjectSnapshot>();
   const [drafts, setDrafts] = useState<ProjectSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
-  const [mediaSource, setMediaSource] = useState<MediaSource>();
+  const [stockMatch, setStockMatch] = useState<StockMatch>();
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const [status, setStatus] = useState("");
@@ -53,23 +52,21 @@ function App() {
     }
   ), [authSetup.gateway]);
   const [conflict, setConflict] = useState<ProjectSnapshot>();
-  const [pexelsQuery, setPexelsQuery] = useState("");
-  const [pexelsResults, setPexelsResults] = useState<StockResult[]>([]);
   const [jobId, setJobId] = useState("");
   const [progress, setProgress] = useState({ phase: "queued", percent: 0 });
   const [downloadUrl, setDownloadUrl] = useState("");
   const upload = useRef<HTMLInputElement>(null);
+  const renderLabel = import.meta.env.VITE_RENDER_LABEL?.trim() || "720p preview";
 
   function clearSessionState() {
     tokenRef.current = "";
     setToken("");
     setProject(undefined);
     setDrafts([]);
-    setMediaSource(undefined);
+    setStockMatch(undefined);
     setConflict(undefined);
     setJobId("");
     setDownloadUrl("");
-    setPexelsResults([]);
     setProgress({ phase: "queued", percent: 0 });
     setStatus("");
     setStep("sign-in");
@@ -163,27 +160,56 @@ function App() {
     return api.command(snapshot.id, snapshot.revision, "select_concept", { concept_id: "direct" });
   }
 
-  async function chooseSource(nextSource: MediaSource) {
+  async function prepareProject(): Promise<ProjectSnapshot> {
+    let current = project;
+    if (!current) {
+      const body = await api.request<{ project: ProjectSnapshot }>("/api/projects", {
+        method: "POST",
+        body: JSON.stringify({ purpose: draft, audience: "Viewers", tone: "Cinematic" })
+      });
+      current = body.project;
+      localStorage.setItem("fengine-project", current.id);
+    }
+    current = await initializeScene(current);
+    setProject(current);
+    return current;
+  }
+
+  async function chooseUpload() {
     if (busy) return;
-    setMediaSource(nextSource);
-    setStatus("Creating your draft…");
     setBusy(true);
+    setStatus("Creating your draft…");
     try {
-      let current = project;
-      if (!current) {
-        const body = await api.request<{ project: ProjectSnapshot }>("/api/projects", {
-          method: "POST",
-          body: JSON.stringify({ purpose: draft, audience: "Customers", tone: "Warm" })
-        });
-        current = body.project;
-        localStorage.setItem("fengine-project", current.id);
-      }
-      current = await initializeScene(current);
-      setProject(current);
+      await prepareProject();
       setStatus("");
       setStep("media");
     } catch {
       setStatus("Your draft could not be created. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function autoMatchStock() {
+    if (busy) return;
+    setBusy(true);
+    setStatus("Finding the best licensed visual for your description…");
+    try {
+      const current = await prepareProject();
+      const body = await api.request<{ asset: { id: string }; match: StockMatch }>(
+        `/api/projects/${current.id}/media/pexels/auto`,
+        {
+          method: "POST",
+          body: JSON.stringify({ description: draft })
+        }
+      );
+      setStockMatch(body.match);
+      setStatus("Licensed visual selected. Checking it for a safe render…");
+      if (await attachMediaWhenReady(body.asset.id, current)) {
+        setStatus(`Visual matched automatically · video by ${body.match.creator} on Pexels`);
+      }
+    } catch {
+      setStatus("No suitable licensed visual was found. Make the visual description more concrete or upload your own media.");
     } finally {
       setBusy(false);
     }
@@ -196,15 +222,15 @@ function App() {
     setProject(initialized);
     localStorage.setItem("fengine-project", initialized.id);
     setDraft(initialized.scenes[0]?.caption ?? initialized.brief.purpose);
-    setStep(initialized.scenes[0]?.media_id ? "editor" : "source");
+    setStep(initialized.scenes[0]?.media_id ? "editor" : "brief");
     setStatus("");
   }
 
   function startCreate() {
     setProject(undefined);
-    setMediaSource(undefined);
-    setPexelsResults([]);
+    setStockMatch(undefined);
     setDraft(localStorage.getItem("fengine-draft") ?? "");
+    setStatus("");
     setStep("brief");
   }
 
@@ -222,16 +248,19 @@ function App() {
   }
 
   /** Polls until the worker marks the asset ready (or times out) and attaches it to scene 0. */
-  async function attachMediaWhenReady(assetId: string): Promise<boolean> {
-    if (!project) return false;
-    const scene = project.scenes[0];
+  async function attachMediaWhenReady(
+    assetId: string,
+    snapshot: ProjectSnapshot | undefined = project
+  ): Promise<boolean> {
+    if (!snapshot) return false;
+    const scene = snapshot.scenes[0];
     if (!scene) return false;
     setStatus("Waiting for media inspection…");
     const deadline = Date.now() + 60_000;
     while (Date.now() < deadline) {
-      const media = await api.request<{ id: string; state: string }>(`/api/projects/${project.id}/media/${assetId}`);
+      const media = await api.request<{ id: string; state: string }>(`/api/projects/${snapshot.id}/media/${assetId}`);
       if (media.state === "ready") {
-        const updated = await api.command(project.id, project.revision, "update_scene", {
+        const updated = await api.command(snapshot.id, snapshot.revision, "update_scene", {
           scene: { ...scene, caption: draft, media_id: assetId }
         });
         setProject(updated);
@@ -287,40 +316,6 @@ function App() {
       if (await attachMediaWhenReady(admission.asset_id)) setStatus("Media attached.");
     } catch {
       setStatus("Media could not be uploaded. Check the file and try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function searchPexels() {
-    setBusy(true);
-    setStatus("Searching licensed stock…");
-    try {
-      const body = await api.request<{ results: StockResult[] }>(
-        `/api/pexels/search?q=${encodeURIComponent(pexelsQuery)}`
-      );
-      setPexelsResults(body.results);
-      setStatus(body.results.length ? "" : "No stock videos matched that search.");
-    } catch {
-      setStatus("Licensed stock search is unavailable. Please try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function copyPexels(id: number) {
-    if (!project) return;
-    setBusy(true);
-    setStatus("Adding licensed stock…");
-    try {
-      const body = await api.request<{ asset: { id: string } }>(`/api/projects/${project.id}/media/pexels`, {
-        method: "POST",
-        body: JSON.stringify({ query: pexelsQuery, pexels_id: id })
-      });
-      setStatus("Pexels media queued for inspection.");
-      if (await attachMediaWhenReady(body.asset.id)) setStatus("Pexels media attached with attribution.");
-    } catch {
-      setStatus("That stock video could not be added. Please choose another.");
     } finally {
       setBusy(false);
     }
@@ -472,64 +467,45 @@ function App() {
     </section>}
     {authReady && step === "brief" && <section>
       <h1>What do you want to make?</h1>
-      <p>Describe the result. This first version creates one short vertical clip.</p>
-      <label>Video description<textarea value={draft} maxLength={500} onChange={(event) => setDraft(event.target.value)} placeholder="A quick product launch for small teams…" /></label>
-      <button disabled={!draft.trim()} onClick={() => setStep("source")}>Choose visuals</button>
-      <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
-    </section>}
-    {authReady && step === "source" && <section>
-      <h1>Choose visuals</h1>
-      <p>Start with media you own or licensed stock footage.</p>
-      <div className="source-grid">
-        <button className="card" disabled={busy} onClick={() => void chooseSource("upload")}>
-          <strong>Upload my media</strong>
-          <span>Use a JPEG, PNG, or MP4 you have permission to use.</span>
-        </button>
-        <button className="card" disabled={busy} onClick={() => void chooseSource("stock")}>
-          <strong>Find licensed stock</strong>
-          <span>Search Pexels stock footage; attribution stays with the project.</span>
-        </button>
-        <button className="card" disabled aria-disabled="true">
-          <strong>Generate with AI — coming later</strong>
-          <span>No generation provider is connected yet.</span>
-        </button>
-      </div>
+      <p>Describe what viewers should see using concrete subjects, setting, mood, weather, and camera style. We will translate it into a visual-first stock search and attach the strongest licensed match automatically.</p>
+      <label>Visual description<textarea value={draft} maxLength={500} onChange={(event) => setDraft(event.target.value)} placeholder="A remote island in dark ocean fog, an abandoned lighthouse, cinematic aerial shot…" /></label>
+      <button disabled={busy || !draft.trim()} onClick={() => void autoMatchStock()}>
+        {busy ? "Finding the best visual…" : "Create with licensed stock"}
+      </button>
+      <button className="secondary" disabled={busy || !draft.trim()} onClick={() => void chooseUpload()}>Use my own media instead</button>
       <p role="status" aria-live="polite">{status}</p>
-      <button className="secondary" disabled={busy} onClick={() => setStep(project ? "drafts" : "brief")}>Back</button>
+      <button className="secondary" disabled={busy} onClick={() => setStep("drafts")}>Back to drafts</button>
     </section>}
     {authReady && step === "media" && project && <section>
-      <h1>{mediaSource === "upload" ? "Upload your media" : "Find licensed stock"}</h1>
-      {mediaSource === "upload" ? <>
-        <p>Choose one JPEG, PNG, or MP4. It is inspected before it can be rendered.</p>
-        <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png" onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) void admitFile(file);
-        }} />
-        <button disabled={busy} onClick={() => upload.current?.click()}>Choose a file</button>
-      </> : <>
-        <p><a href="https://www.pexels.com" target="_blank" rel="noreferrer">Videos provided by Pexels</a></p>
-        <label>Search licensed stock<input maxLength={100} value={pexelsQuery} onChange={(event) => setPexelsQuery(event.target.value)} /></label>
-        <button disabled={busy || !pexelsQuery.trim()} onClick={() => void searchPexels()}>Search Pexels</button>
-        <div className="stock-grid">{pexelsResults.map((result) => <article key={result.id} className="stock-card">
-          <img src={result.previewUrl} alt={`Stock video by ${result.creator}`} />
-          <p>Video by <a href={result.attributionUrl} target="_blank" rel="noreferrer">{result.creator}</a> · <a href="https://www.pexels.com" target="_blank" rel="noreferrer">Pexels</a></p>
-          <button disabled={busy} onClick={() => void copyPexels(result.id)}>Use this video</button>
-        </article>)}</div>
-      </>}
+      <h1>Upload your media</h1>
+      <p>Choose one JPEG, PNG, or MP4 you have permission to use. It is inspected before it can be rendered.</p>
+      <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png" onChange={(event) => {
+        const file = event.target.files?.[0];
+        if (file) void admitFile(file);
+      }} />
+      <button disabled={busy} onClick={() => upload.current?.click()}>Choose a file</button>
       <p role="status" aria-live="polite">{status}</p>
-      <button className="secondary" disabled={busy} onClick={() => setStep("source")}>Back to visual choices</button>
+      <button className="secondary" disabled={busy} onClick={() => setStep("brief")}>Back to description</button>
     </section>}
     {authReady && step === "editor" && project && <section>
       <h1>Video preview</h1>
       <p className="notice">Approximate preview — request an accurate render to verify timing and crop.</p>
-      <div className="preview" aria-label="Approximate vertical preview"><span>{draft}</span></div>
+      <div className="preview" aria-label="Approximate vertical preview">
+        {stockMatch && <img src={stockMatch.previewUrl} alt={`Automatically selected stock video by ${stockMatch.creator}`} />}
+        <span>{draft}</span>
+      </div>
+      {stockMatch && <p>
+        Automatically matched video by <a href={stockMatch.attributionUrl} target="_blank" rel="noreferrer">{stockMatch.creator}</a>
+        {" · "}<a href="https://www.pexels.com" target="_blank" rel="noreferrer">Pexels</a>
+      </p>}
       <label>Caption<input maxLength={180} value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={() => void saveScene()} /></label>
       <label>Motion<select value={project.scenes[0]?.motion ?? "none"} onChange={(event) => void saveMotion(event.target.value as Scene["motion"])}>
         <option value="none">None</option><option value="push">Push</option><option value="zoom">Zoom</option></select></label>
       <p role="status">{status || "✓ All changes saved"}</p>
-      <button disabled={!project.scenes[0]?.media_id} onClick={() => void requestRender()}>Render accurate 720p preview</button>
+      <button disabled={!project.scenes[0]?.media_id} onClick={() => void requestRender()}>Render {renderLabel}</button>
       {!project.scenes[0]?.media_id && <p>Add media before rendering.</p>}
-      <button className="secondary" onClick={() => setStep("source")}>Change media</button>
+      <button className="secondary" onClick={() => setStep("brief")}>Edit description and rematch</button>
+      <button className="secondary" onClick={() => setStep("media")}>Upload different media</button>
       <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
       {conflict && <dialog open><h2>Newer changes exist</h2><p>Your changes were not merged.</p>
         <button onClick={() => { setProject(conflict); setConflict(undefined); }}>Reload latest</button>
@@ -537,13 +513,13 @@ function App() {
       </dialog>}
     </section>}
     {authReady && step === "render" && <section>
-      <h1>Accurate preview</h1>
-      <p role="status">{progress.phase === "failed" ? "Accurate preview failed — try again or keep editing." : `${progress.phase} · 720p watermarked preview`}</p>
+      <h1>Final render</h1>
+      <p role="status">{progress.phase === "failed" ? "Final render failed — try again or keep editing." : `${progress.phase} · ${renderLabel}`}</p>
       <progress value={progress.percent} max="100">{progress.percent}%</progress>
       <div>
         <button disabled={progress.phase === "complete" || progress.phase === "cancelled" || progress.phase === "failed"} onClick={() => void cancelRender()}>Cancel render</button>
         {(progress.phase === "failed" || progress.phase === "cancelled") && <button onClick={() => void retryRender()}>Retry</button>}
-        <a href={downloadUrl} download><button disabled={!downloadUrl || progress.phase === "failed"}>Download preview</button></a>
+        <a href={downloadUrl} download><button disabled={!downloadUrl || progress.phase === "failed"}>Download video</button></a>
       </div>
       <button className="secondary" onClick={() => setStep("editor")}>Keep editing</button>
     </section>}
