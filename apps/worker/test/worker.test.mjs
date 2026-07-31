@@ -38,7 +38,21 @@ async function waitForText(path) {
   throw new Error("probe fixture did not start");
 }
 
-async function withControllableProbe(run) {
+async function waitForProcessExit(pid) {
+  const deadline = Date.now() + 2000;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (error?.code === "ESRCH") return;
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("probe fixture cleanup exceeded deadline");
+}
+
+async function withControllableProbe(run, { ignoreSigterm = false } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "fengine-probe-process-"));
   const executable = join(directory, "ffprobe");
   const pidPath = join(directory, "probe.pid");
@@ -46,10 +60,11 @@ async function withControllableProbe(run) {
   await writeFile(executable, `#!/usr/bin/env node
 const { appendFileSync, writeFileSync } = require("node:fs");
 const target = process.argv.at(-1);
+const ignoreSigterm = ${JSON.stringify(ignoreSigterm)};
 writeFileSync(target, String(process.pid));
 process.on("SIGTERM", () => {
   appendFileSync(target + ".signals", "term\\n");
-  process.exit(0);
+  if (!ignoreSigterm) process.exit(0);
 });
 setInterval(() => {}, 1000);
 `, { mode: 0o755 });
@@ -59,10 +74,23 @@ setInterval(() => {}, 1000);
   } finally {
     process.env.PATH = originalPath;
     try {
-      const pid = Number(await readFile(pidPath, "utf8"));
-      process.kill(pid, "SIGKILL");
-    } catch {}
-    await rm(directory, { recursive: true, force: true });
+      let pid;
+      try {
+        pid = Number(await readFile(pidPath, "utf8"));
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw error;
+      }
+      if (pid) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch (error) {
+          if (error?.code !== "ESRCH") throw error;
+        }
+        await waitForProcessExit(pid);
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   }
 }
 
@@ -187,6 +215,33 @@ test("ffprobe deadline terminates and awaits a controllable process", async () =
     assert.equal(await readFile(`${pidPath}.signals`, "utf8"), "term\n");
     assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
   });
+});
+
+test("ffprobe deadline forcibly kills a process that ignores graceful termination", async () => {
+  await withControllableProbe(async (pidPath) => {
+    const startedAt = Date.now();
+    const pending = probeMediaFile(pidPath, undefined, 100);
+    const pid = Number(await waitForText(pidPath));
+    let settlementTimer;
+    const bounded = new Promise((resolve, reject) => {
+      settlementTimer = setTimeout(() => reject(new Error("forced probe termination did not settle")), 2500);
+      pending.then(resolve, reject);
+    });
+    try {
+      await assert.rejects(bounded, (error) => {
+        assert.ok(error instanceof MediaProbeError);
+        assert.equal(error.code, "timeout");
+        return true;
+      });
+    } finally {
+      clearTimeout(settlementTimer);
+    }
+    const elapsed = Date.now() - startedAt;
+    assert.ok(elapsed >= 1000, `expected SIGKILL grace period, settled after ${elapsed}ms`);
+    assert.ok(elapsed < 2500, `expected bounded SIGKILL cleanup, settled after ${elapsed}ms`);
+    assert.equal(await readFile(`${pidPath}.signals`, "utf8"), "term\n");
+    assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+  }, { ignoreSigterm: true });
 });
 
 test("ffprobe accepts fixture media and rejects corrupt bytes", async () => {
