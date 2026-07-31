@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createQueueHandlers, renderProfileFromEnv } from "../dist/runtime.js";
+import { stat, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import { createQueueHandlers, mediaLimitsFromEnv, renderProfileFromEnv } from "../dist/runtime.js";
 
 const profile = { width: 720, height: 1280 };
 
@@ -129,6 +131,54 @@ test("render does not overwrite a job already cancelled by the time the failure 
   assert.deepEqual(result, { state: "failed" });
   assert.equal(pool.getState(), "cancelled");
   assert.equal(pool.getEvents().some((event) => event.phase === "failed"), false);
+});
+
+test("render cancellation aborts a sealed download and removes its temp directory", async () => {
+  const storedInput = {
+    ...renderInput,
+    scenes: [{ ...scenePayload, media_id: "asset" }]
+  };
+  const pool = createFakePool("queued", storedInput, {
+    mediaRow: {
+      sealedObjectKey: "sealed-object",
+      sealedEtag: "sealed-etag",
+      sealedVersionId: null,
+      sealedSha256: "a".repeat(64),
+      declaredType: "video/mp4",
+      maxBytes: 100,
+      detected: { type: "video/mp4", bytes: 10, width: 10, height: 10, duration_ms: 500 }
+    }
+  });
+  const controller = new AbortController();
+  let destination;
+  let started;
+  const downloadStarted = new Promise((resolve) => { started = resolve; });
+  const store = {
+    async inspect() { throw new Error("not used"); },
+    async seal() { throw new Error("not used"); },
+    async downloadSealed(_key, path, _identity, signal) {
+      destination = path;
+      assert.equal(signal, controller.signal);
+      await writeFile(path, "partial");
+      started();
+      await new Promise((_, reject) => signal.addEventListener(
+        "abort",
+        () => reject(new Error("aborted")),
+        { once: true }
+      ));
+    },
+    async delete() {},
+    async put() { throw new Error("not used"); }
+  };
+  const pending = createQueueHandlers(pool, store, profile).render(
+    { jobId: "job-1", ownerId: "owner", projectId: "project", revision: 0 },
+    controller.signal
+  );
+  await downloadStarted;
+  controller.abort();
+  assert.deepEqual(await pending, { state: "failed" });
+  assert.equal(pool.getState(), "failed");
+  await assert.rejects(stat(dirname(destination)), { code: "ENOENT" });
 });
 
 test("cancellation before upload does not create an object", async () => {
@@ -389,4 +439,34 @@ test("reference render profile defaults and rejects invalid startup values", () 
     () => renderProfileFromEnv({ RENDER_WIDTH: "wide" }),
     /dimensions/
   );
+});
+
+test("media safety limits have conservative defaults and reject invalid startup values", () => {
+  assert.deepEqual(mediaLimitsFromEnv({}), {
+    maxWidth: 4096,
+    maxHeight: 4096,
+    maxPixels: 16_000_000,
+    maxVideoDurationMs: 60_000,
+    probeTimeoutMs: 10_000
+  });
+  assert.deepEqual(mediaLimitsFromEnv({
+    MEDIA_MAX_WIDTH: "2048",
+    MEDIA_MAX_HEIGHT: "3072",
+    MEDIA_MAX_PIXELS: "6000000",
+    MEDIA_MAX_VIDEO_DURATION_MS: "30000",
+    MEDIA_PROBE_TIMEOUT_MS: "5000"
+  }), {
+    maxWidth: 2048,
+    maxHeight: 3072,
+    maxPixels: 6_000_000,
+    maxVideoDurationMs: 30_000,
+    probeTimeoutMs: 5000
+  });
+  for (const [name, value] of [
+    ["MEDIA_MAX_WIDTH", "0"],
+    ["MEDIA_MAX_PIXELS", "1.5"],
+    ["MEDIA_PROBE_TIMEOUT_MS", "soon"]
+  ]) {
+    assert.throws(() => mediaLimitsFromEnv({ [name]: value }), new RegExp(name));
+  }
 });

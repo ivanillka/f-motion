@@ -15,6 +15,11 @@ primary_region = "ams"
 [env]
   PGSSLMODE = "verify-full"
   OUTBOX_RETENTION_HOURS = "168"
+  MEDIA_MAX_WIDTH = "4096"
+  MEDIA_MAX_HEIGHT = "4096"
+  MEDIA_MAX_PIXELS = "16000000"
+  MEDIA_MAX_VIDEO_DURATION_MS = "60000"
+  MEDIA_PROBE_TIMEOUT_MS = "10000"
 
 [build]
   dockerfile = "apps/worker/Dockerfile"

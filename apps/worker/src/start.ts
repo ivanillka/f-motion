@@ -2,6 +2,7 @@ import { S3Client } from "@aws-sdk/client-s3";
 import pg from "pg";
 import {
   createQueueHandlers,
+  mediaLimitsFromEnv,
   renderProfileFromEnv,
   S3WorkerObjectStore
 } from "./runtime.js";
@@ -15,6 +16,7 @@ function required(name: string): string {
 
 const connectionString = required("QUEUE_DATABASE_URL");
 const renderProfile = renderProfileFromEnv(process.env);
+const mediaLimits = mediaLimitsFromEnv(process.env);
 const outboxRetentionHours = outboxRetentionHoursFromEnv(process.env);
 const pool = new pg.Pool({ connectionString });
 const store = new S3WorkerObjectStore(new S3Client({
@@ -25,11 +27,11 @@ const store = new S3WorkerObjectStore(new S3Client({
     accessKeyId: required("R2_ACCESS_KEY_ID"),
     secretAccessKey: required("R2_SECRET_ACCESS_KEY")
   }
-}), required("R2_BUCKET"));
+}), required("R2_BUCKET"), mediaLimits.probeTimeoutMs);
 
 await startQueueRuntime(
   connectionString,
-  createQueueHandlers(pool, store, renderProfile),
+  createQueueHandlers(pool, store, renderProfile, mediaLimits),
   pool,
   outboxRetentionHours
 );

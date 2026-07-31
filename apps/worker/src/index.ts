@@ -29,10 +29,30 @@ export interface MediaInput {
   hasAudio?: boolean;
 }
 
+export interface MediaLimits {
+  maxWidth: number;
+  maxHeight: number;
+  maxPixels: number;
+  maxVideoDurationMs: number;
+  probeTimeoutMs: number;
+}
+
+// ponytail: these ceilings cover 4K/16 MP phone and stock inputs and four
+// maximum-length (15s) scenes. Upgrade by explicitly changing the matching
+// MEDIA_* host configuration after profiling worker memory and render time.
+export const defaultMediaLimits: MediaLimits = {
+  maxWidth: 4096,
+  maxHeight: 4096,
+  maxPixels: 16_000_000,
+  maxVideoDurationMs: 60_000,
+  probeTimeoutMs: 10_000
+};
+
 export function inspectMedia(
   declared: string,
   detected: DetectedMedia,
-  maxBytes: number
+  maxBytes: number,
+  limits: MediaLimits = defaultMediaLimits
 ): { accepted: boolean } {
   if (!allowedProbeTypes.has(detected.type) || detected.type !== declared) {
     return { accepted: false };
@@ -41,8 +61,14 @@ export function inspectMedia(
   if (!detected.width || detected.width <= 0 || !detected.height || detected.height <= 0) {
     return { accepted: false };
   }
+  if (!Number.isInteger(detected.width) || !Number.isInteger(detected.height)
+    || detected.width > limits.maxWidth || detected.height > limits.maxHeight
+    || detected.width * detected.height > limits.maxPixels) {
+    return { accepted: false };
+  }
   if (detected.type === "video/mp4") {
-    if (!detected.duration_ms || detected.duration_ms <= 0) return { accepted: false };
+    if (!detected.duration_ms || detected.duration_ms <= 0
+      || detected.duration_ms > limits.maxVideoDurationMs) return { accepted: false };
   }
   return { accepted: true };
 }
@@ -68,7 +94,29 @@ function mimeFromProbe(
   return "application/octet-stream";
 }
 
-export async function probeMediaFile(path: string): Promise<Omit<DetectedMedia, "bytes">> {
+export type MediaProbeErrorCode = "aborted" | "timeout" | "failed" | "invalid_output";
+
+export class MediaProbeError extends Error {
+  readonly name = "MediaProbeError";
+
+  constructor(readonly code: MediaProbeErrorCode) {
+    super(code === "aborted" ? "media probe aborted"
+      : code === "timeout" ? "media probe timed out"
+        : code === "invalid_output" ? "media probe returned invalid output"
+          : "media probe failed");
+  }
+}
+
+const MAX_PROBE_OUTPUT_BYTES = 1_000_000;
+const PROBE_KILL_GRACE_MS = 1_000;
+
+export async function probeMediaFile(
+  path: string,
+  signal?: AbortSignal,
+  timeoutMs = defaultMediaLimits.probeTimeoutMs
+): Promise<Omit<DetectedMedia, "bytes">> {
+  if (signal?.aborted) throw new MediaProbeError("aborted");
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) throw new MediaProbeError("failed");
   const raw = await new Promise<string>((resolve, reject) => {
     const child = spawn("ffprobe", [
       "-v", "error",
@@ -77,18 +125,58 @@ export async function probeMediaFile(path: string): Promise<Omit<DetectedMedia, 
       path
     ], { stdio: ["ignore", "pipe", "ignore"] });
     let stdout = "";
+    let spawnFailed = false;
+    let termination: "aborted" | "timeout" | "failed" | undefined;
+    let killTimer: NodeJS.Timeout | undefined;
     child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => { stdout += chunk; });
-    child.once("error", reject);
-    child.once("exit", (code) => {
-      if (code === 0) resolve(stdout);
-      else reject(new Error(`ffprobe exited ${code}`));
+    const onData = (chunk: string) => {
+      stdout += chunk;
+      if (Buffer.byteLength(stdout) > MAX_PROBE_OUTPUT_BYTES) terminate("failed");
+    };
+    const terminate = (reason: "aborted" | "timeout" | "failed") => {
+      if (termination) return;
+      termination = reason;
+      stdout = "";
+      child.stdout.off("data", onData);
+      child.stdout.resume();
+      if (child.kill("SIGTERM")) {
+        killTimer = setTimeout(() => child.kill("SIGKILL"), PROBE_KILL_GRACE_MS);
+        killTimer.unref();
+      }
+    };
+    const onAbort = () => terminate("aborted");
+    const timeout = setTimeout(() => terminate("timeout"), timeoutMs);
+    timeout.unref();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    child.stdout.on("data", onData);
+    child.once("error", () => { spawnFailed = true; });
+    child.once("close", (code) => {
+      clearTimeout(timeout);
+      if (killTimer) clearTimeout(killTimer);
+      signal?.removeEventListener("abort", onAbort);
+      child.stdout.off("data", onData);
+      if (termination) reject(new MediaProbeError(termination));
+      else if (spawnFailed || code !== 0) reject(new MediaProbeError("failed"));
+      else resolve(stdout);
     });
   });
-  const parsed = JSON.parse(raw) as {
+  type ProbeOutput = {
     format?: { duration?: string; format_name?: string };
     streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number }>;
   };
+  let parsed: ProbeOutput;
+  try {
+    const value = JSON.parse(raw) as unknown;
+    if (!value || typeof value !== "object") throw new Error("invalid probe output");
+    const candidate = value as ProbeOutput;
+    if ((candidate.format !== undefined && (!candidate.format || typeof candidate.format !== "object"))
+      || (candidate.streams !== undefined && !Array.isArray(candidate.streams))) {
+      throw new Error("invalid probe output");
+    }
+    parsed = candidate;
+  } catch {
+    throw new MediaProbeError("invalid_output");
+  }
   const streams = parsed.streams ?? [];
   const video = streams.find((stream) => stream.codec_type === "video");
   const type = mimeFromProbe(parsed.format?.format_name ?? "", streams);

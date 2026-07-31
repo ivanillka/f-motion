@@ -1,13 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderPlan } from "@f-engine/reel-engine";
 import {
   IdempotentResults,
+  MediaProbeError,
   buildCaptionAss,
   buildRenderJob as buildRenderJobWithProfile,
   inspectMedia,
@@ -23,6 +24,47 @@ const buildRenderJob = (snapshot, output, media, directory) =>
   buildRenderJobWithProfile(snapshot, output, media, directory, referenceProfile);
 const renderPreview = (output, snapshot, signal, media = {}) =>
   renderPreviewWithProfile(output, snapshot, signal, media, referenceProfile);
+
+async function waitForText(path) {
+  const deadline = Date.now() + 2000;
+  while (Date.now() < deadline) {
+    try {
+      return await readFile(path, "utf8");
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+  throw new Error("probe fixture did not start");
+}
+
+async function withControllableProbe(run) {
+  const directory = await mkdtemp(join(tmpdir(), "fengine-probe-process-"));
+  const executable = join(directory, "ffprobe");
+  const pidPath = join(directory, "probe.pid");
+  const originalPath = process.env.PATH;
+  await writeFile(executable, `#!/usr/bin/env node
+const { appendFileSync, writeFileSync } = require("node:fs");
+const target = process.argv.at(-1);
+writeFileSync(target, String(process.pid));
+process.on("SIGTERM", () => {
+  appendFileSync(target + ".signals", "term\\n");
+  process.exit(0);
+});
+setInterval(() => {}, 1000);
+`, { mode: 0o755 });
+  process.env.PATH = `${directory}:${originalPath ?? ""}`;
+  try {
+    await run(pidPath);
+  } finally {
+    process.env.PATH = originalPath;
+    try {
+      const pid = Number(await readFile(pidPath, "utf8"));
+      process.kill(pid, "SIGKILL");
+    } catch {}
+    await rm(directory, { recursive: true, force: true });
+  }
+}
 
 async function probeAudioStream(path) {
   const raw = await new Promise((resolve, reject) => {
@@ -93,6 +135,58 @@ test("media-inspection rejects mismatch, oversize, and incomplete facts", () => 
     duration_ms: 100
   }, 10).accepted, true);
   assert.equal(inspectMedia("image/png", { type: "image/png", bytes: 10, width: 64, height: 64 }, 10).accepted, true);
+});
+
+test("media-inspection enforces each configured dimension, pixel, and duration boundary", () => {
+  const limits = {
+    maxWidth: 100,
+    maxHeight: 200,
+    maxPixels: 10_000,
+    maxVideoDurationMs: 1000,
+    probeTimeoutMs: 100
+  };
+  const image = (width, height) => ({ type: "image/png", bytes: 10, width, height });
+  const video = (duration_ms) => ({ type: "video/mp4", bytes: 10, width: 10, height: 10, duration_ms });
+
+  assert.equal(inspectMedia("image/png", image(100, 1), 10, limits).accepted, true);
+  assert.equal(inspectMedia("image/png", image(101, 1), 10, limits).accepted, false);
+  assert.equal(inspectMedia("image/png", image(1, 200), 10, limits).accepted, true);
+  assert.equal(inspectMedia("image/png", image(1, 201), 10, limits).accepted, false);
+  assert.equal(inspectMedia("image/png", image(100, 100), 10, limits).accepted, true);
+  assert.equal(inspectMedia("image/png", image(100, 101), 10, limits).accepted, false);
+  assert.equal(inspectMedia("video/mp4", video(1000), 10, limits).accepted, true);
+  assert.equal(inspectMedia("video/mp4", video(1001), 10, limits).accepted, false);
+});
+
+test("ffprobe abort terminates once, awaits exit, and returns a typed non-sensitive error", async () => {
+  await withControllableProbe(async (pidPath) => {
+    const controller = new AbortController();
+    const pending = probeMediaFile(pidPath, controller.signal, 5000);
+    const pid = Number(await waitForText(pidPath));
+    controller.abort();
+    await assert.rejects(pending, (error) => {
+      assert.ok(error instanceof MediaProbeError);
+      assert.equal(error.code, "aborted");
+      assert.doesNotMatch(error.message, new RegExp(pidPath));
+      return true;
+    });
+    assert.equal(await readFile(`${pidPath}.signals`, "utf8"), "term\n");
+    assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+  });
+});
+
+test("ffprobe deadline terminates and awaits a controllable process", async () => {
+  await withControllableProbe(async (pidPath) => {
+    const pending = probeMediaFile(pidPath, undefined, 100);
+    const pid = Number(await waitForText(pidPath));
+    await assert.rejects(pending, (error) => {
+      assert.ok(error instanceof MediaProbeError);
+      assert.equal(error.code, "timeout");
+      return true;
+    });
+    assert.equal(await readFile(`${pidPath}.signals`, "utf8"), "term\n");
+    assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+  });
 });
 
 test("ffprobe accepts fixture media and rejects corrupt bytes", async () => {

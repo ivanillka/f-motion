@@ -18,6 +18,18 @@ Record the reason without logging signed URLs or media content. An operator may
 retry inspection after correcting an infrastructure failure, but must never
 manually mark an uninspected object ready.
 
+The worker bounds every `ffprobe` to 10 seconds and cancels probes and object
+downloads when the queue lease expires or the job is cancelled. It accepts at
+most 4096 pixels on either axis, 16,000,000 pixels total, and 60 seconds of
+source video. Configure these startup-validated ceilings with
+`MEDIA_PROBE_TIMEOUT_MS`, `MEDIA_MAX_WIDTH`, `MEDIA_MAX_HEIGHT`,
+`MEDIA_MAX_PIXELS`, and `MEDIA_MAX_VIDEO_DURATION_MS`.
+
+Treat these values as safety limits. Review them when adding a media type or
+render profile and measure peak worker memory before changing them. Never
+silently raise a limit; update configuration and this runbook in the same
+reviewed deployment change.
+
 ## Rollout and existing media
 
 Apply the seal migration before starting the new API and worker. The migration
