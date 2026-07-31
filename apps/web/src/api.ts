@@ -86,8 +86,10 @@ export class ApiClient {
     });
   }
 
-  listProjects() {
-    return this.request<{ projects: ProjectSummary[] }>("/api/projects");
+  async listProjects() {
+    const body = await this.request<{ projects?: ProjectSummary[] }>("/api/projects");
+    if (!Array.isArray(body.projects)) throw new Error("invalid projects response");
+    return { projects: body.projects };
   }
 
   getProject(projectId: string) {

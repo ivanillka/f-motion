@@ -32,3 +32,17 @@ test("API requests read the current token and report unauthorized sessions", asy
     globalThis.fetch = originalFetch;
   }
 });
+
+test("project listing rejects an HTML fallback response instead of crashing the page", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("<!doctype html>", {
+    status: 200,
+    headers: { "content-type": "text/html" }
+  });
+  try {
+    const client = new ApiClient(() => "token");
+    await assert.rejects(client.listProjects(), /invalid projects response/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
