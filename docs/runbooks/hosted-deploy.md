@@ -244,8 +244,28 @@ server {
 Use a Pages Function under `apps/web/functions/api/[[path]].js` instead. The
 checked-in function forwards `/api/*` to `https://api.f-motion.com`, maps
 `/api/healthz` to the API-root health endpoint, and returns the upstream
-response without consuming its streaming body. Deploy with Wrangler from
-`apps/web` so it includes both `dist` and `functions`.
+response without consuming its streaming body. A successful Vite build or
+local Vite proxy is not proof of this production topology: Pages must receive
+both `dist` and `functions`.
+
+Build and verify those inputs from the repository root:
+
+```sh
+npm run build:pages
+```
+
+After explicit operator approval for the live Cloudflare mutation, inspect the
+resolved directory and command without network access, then run the manual
+deployment with the real Pages project name:
+
+```sh
+npm run deploy:pages -- --project-name <pages-project-name> --dry-run
+npm run deploy:pages -- --project-name <pages-project-name>
+```
+
+The wrapper builds and verifies first, then invokes Wrangler from `apps/web`
+with both `dist` and the adjacent `functions` directory discoverable. It does
+not store an account ID, inspect credentials, or run from CI.
 
 Cloudflare may buffer SSE by default on proxied routes; if render progress
 stalls until the job finishes, move `/api/render-jobs/*/events` to a Worker or
@@ -263,7 +283,7 @@ curl -f https://api.example.com/readyz   # 503 until Postgres is reachable
 Same-origin proxy (confirms the web host forwards `/api` before auth testing):
 
 ```sh
-curl -f https://app.example.com/api/healthz   # expect {"status":"ok"}, not index.html
+npm run smoke:pages -- https://app.example.com
 ```
 
 Or in the browser DevTools console on `https://app.example.com`:
@@ -271,6 +291,16 @@ Or in the browser DevTools console on `https://app.example.com`:
 ```js
 fetch("/api/healthz").then((r) => r.json()).then(console.log);
 ```
+
+The smoke requires a 2xx JSON response containing `{"status":"ok"}` and fails
+if the route returns the SPA HTML fallback, an upstream error, or times out.
+Run it immediately after the manual Pages deployment and before auth testing.
+
+If the Pages deployment or same-origin smoke fails, use the Cloudflare Pages
+deployment history to roll back by promoting the last known-good production
+deployment. Re-run the same smoke against the production origin, then continue
+the clean-browser sign-in and authenticated journey checks. Do not work around
+a broken `/api` route by changing the Vite proxy; it is development-only.
 
 ### Invite-only operator rollout (manual)
 

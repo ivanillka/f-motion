@@ -51,6 +51,7 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - run: npm run verify:pages-artifact
       - run: npm run test:package-consumer
       - run: node --test tools/publication/*.test.mjs
       - run: git ls-files -z | node tools/publication/check.mjs --inventory0
