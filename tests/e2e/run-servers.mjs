@@ -8,6 +8,7 @@ const projects = new ProjectService();
 const completed = new Map();
 const events = new Map();
 const mediaAssets = new Map();
+const inspectionPolls = new Map();
 const renders = {
   async create(ownerId, projectId) {
     const project = projects.get(ownerId, projectId);
@@ -44,15 +45,19 @@ const mediaRepository = {
   },
   async get(ownerId, projectId, id) {
     const asset = mediaAssets.get(id);
-    return asset?.ownerId === ownerId && asset?.projectId === projectId
-      ? structuredClone(asset)
-      : undefined;
+    if (!asset || asset.ownerId !== ownerId || asset.projectId !== projectId) return undefined;
+    const snapshot = structuredClone(asset);
+    if (asset.state === "inspecting" && !inspectionPolls.has(id)) {
+      inspectionPolls.set(id, 1);
+      asset.state = "ready";
+      asset.detected = { type: asset.declaredType, bytes: asset.maxBytes };
+    }
+    return snapshot;
   },
   async completeAdmission(ownerId, projectId, id) {
     const asset = mediaAssets.get(id);
     if (!asset || asset.ownerId !== ownerId || asset.projectId !== projectId) return false;
-    asset.state = "ready";
-    asset.detected = { type: asset.declaredType, bytes: asset.maxBytes };
+    asset.state = "inspecting";
     return true;
   }
 };
@@ -98,10 +103,9 @@ const media = {
         ownerId,
         projectId,
         objectKey: `projects/${projectId}/media/pexels-${selected.id}`,
-        state: "ready",
+        state: "inspecting",
         declaredType: selected.contentType,
         maxBytes: 4096,
-        detected: { type: selected.contentType, bytes: 4096 },
         attribution: {
           source: "Pexels",
           creator: selected.creator,

@@ -12,20 +12,14 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await page.setViewportSize({ width: 320, height: 900 });
   await signIn(page);
   await page.getByRole("button", { name: "Create new video" }).click();
-  await page.getByLabel("Video description").fill("Launch a product for small teams");
+  await page.getByLabel("Visual description").fill("Launch a product for small teams");
   await page.reload();
   await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
   await page.getByRole("button", { name: "Create new video" }).click();
-  await expect(page.getByLabel("Video description")).toHaveValue("Launch a product for small teams");
-  await page.getByRole("button", { name: "Choose visuals" }).click();
+  await expect(page.getByLabel("Visual description")).toHaveValue("Launch a product for small teams");
+  await page.getByRole("button", { name: "Use my own media instead" }).click();
 
-  await expect(page.getByRole("button", { name: /Upload my media/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Find licensed stock/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Generate with AI/ })).toBeDisabled();
-  await expect(page.getByText("Choose one concept")).toHaveCount(0);
-  await expect(page.getByText("Test stale revision")).toHaveCount(0);
-
-  await page.getByRole("button", { name: /Upload my media/ }).click();
+  await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
   await page.locator('input[type="file"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("heading", { name: "Video preview" })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
@@ -53,10 +47,10 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await expect(page.getByRole("button", { name: "Save as new project" })).toBeVisible();
   await page.getByRole("button", { name: "Reload latest" }).click();
 
-  await page.getByRole("button", { name: /Render accurate/ }).click();
-  await expect(page.getByRole("status").filter({ hasText: "complete · 720p watermarked preview" })).toBeVisible();
-  const download = page.getByRole("link").filter({ has: page.getByRole("button", { name: "Download preview" }) });
-  await expect(page.getByRole("button", { name: "Download preview" })).toBeEnabled();
+  await page.getByRole("button", { name: "Render 720p preview" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible();
+  const download = page.getByRole("link").filter({ has: page.getByRole("button", { name: "Download video" }) });
+  await expect(page.getByRole("button", { name: "Download video" })).toBeEnabled();
   const href = await download.getAttribute("href");
   expect(href).toMatch(/^http:\/\/127\.0\.0\.1:43141\/downloads\//);
   const rendered = await page.request.get(href!);
@@ -71,29 +65,39 @@ test("licensed stock journey shows previews and attribution", async ({ page }) =
       status: 200,
       contentType: "image/svg+xml",
       body: '<svg xmlns="http://www.w3.org/2000/svg" width="90" height="160"><rect width="90" height="160" fill="#333"/></svg>'
-    }));
+  }));
   await signIn(page);
   await page.getByRole("button", { name: "Create new video" }).click();
-  await page.getByLabel("Video description").fill("A calm studio introduction");
-  await page.getByRole("button", { name: "Choose visuals" }).click();
-  await page.getByRole("button", { name: /Find licensed stock/ }).click();
-  await page.getByLabel("Search licensed stock").fill("studio");
-  await page.getByRole("button", { name: "Search Pexels" }).click();
+  await page.getByLabel("Visual description").fill("A calm studio introduction");
+  await page.getByRole("button", { name: "Create with licensed stock" }).click();
 
-  await expect(page.getByAltText("Stock video by Fixture One")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Video preview" })).toBeVisible();
+  await expect(page.getByAltText("Automatically selected stock video by Fixture One")).toBeVisible();
   await expect(page.getByRole("link", { name: "Fixture One" })).toHaveAttribute(
     "href",
     "https://www.pexels.com/video/101"
   );
   await expect(page.getByRole("link", { name: "Pexels" }).first()).toBeVisible();
-  await page.getByRole("button", { name: "Use this video" }).first().click();
-  await expect(page.getByRole("heading", { name: "Video preview" })).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "Pexels media attached with attribution" })).toBeVisible();
+  await expect(page.getByRole("status").filter({
+    hasText: "Visual matched automatically · video by Fixture One on Pexels"
+  })).toBeVisible();
+
+  await page.getByRole("button", { name: "Render 720p preview" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible();
+  const download = page.getByRole("link").filter({ has: page.getByRole("button", { name: "Download video" }) });
+  await expect(page.getByRole("button", { name: "Download video" })).toBeEnabled();
+  const href = await download.getAttribute("href");
+  expect(href).toMatch(/^http:\/\/127\.0\.0\.1:43141\/downloads\//);
+  const rendered = await page.request.get(href!);
+  expect(rendered.ok()).toBeTruthy();
+  expect(rendered.headers()["content-type"]).toContain("video/mp4");
+  expect((await rendered.body()).length).toBeGreaterThan(1000);
 
   const storedSessionValues = await page.evaluate(() =>
     Object.values(sessionStorage));
   expect(storedSessionValues).not.toContainEqual(expect.stringMatching(/^local-demo-/));
   await expect(page.locator("body")).not.toContainText(/local-demo-|access_token/i);
+  await page.getByRole("button", { name: "Keep editing" }).click();
   await page.getByRole("button", { name: "Settings" }).first().click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("heading", { name: "Shape a vertical video" })).toBeVisible();
