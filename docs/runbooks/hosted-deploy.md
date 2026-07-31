@@ -150,7 +150,10 @@ correct, safest choice on a host regardless.
 
 `fly.api.toml` sets `FENGINE_ENV=hosted` in `[env]` for Fly deploys. On
 non-Fly platforms, export `FENGINE_ENV=hosted` on the API process (alongside
-the secrets above); `FENGINE_LOCAL_AUTH` must still stay unset.
+the secrets above); `FENGINE_LOCAL_AUTH` must still stay unset. In hosted mode,
+the API refuses to start unless `FENGINE_ACCESS_MODE` is explicitly
+`invite_only` and `FENGINE_ALLOWED_USER_IDS` is a valid non-empty list. Missing
+configuration never falls back to verified-user provisioning.
 
 `FENGINE_ALLOWED_USER_IDS` is identity configuration, not source code. Keep it
 in protected host configuration and never commit real UUIDs. The API refuses

@@ -7,8 +7,10 @@
 # set`): DATABASE_URL, R2_ENDPOINT, R2_REGION, R2_BUCKET, R2_ACCESS_KEY_ID,
 # R2_SECRET_ACCESS_KEY, PEXELS_API_KEY,
 # SUPABASE_ISSUER, SUPABASE_AUDIENCE, SUPABASE_JWKS_URL,
-# FENGINE_ACCESS_MODE, FENGINE_ALLOWED_USER_IDS. FENGINE_LOCAL_AUTH must stay
-# unset. Never commit real allowed user IDs. See docs/runbooks/hosted-deploy.md.
+# FENGINE_ACCESS_MODE=invite_only, FENGINE_ALLOWED_USER_IDS=<comma-separated-
+# supabase-user-uuids>. Hosted startup fails if either is missing or invalid.
+# FENGINE_LOCAL_AUTH must stay unset. Never commit real allowed user IDs. See
+# docs/runbooks/hosted-deploy.md.
 
 app = "f-motion-api"            # pick a real, unique Fly app name
 primary_region = "ams"

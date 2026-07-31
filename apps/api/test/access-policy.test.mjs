@@ -15,8 +15,33 @@ test("verified provisioning remains the local compatibility default", () => {
   assert.doesNotThrow(() => assertOwnerAdmitted("any-subject", policy));
 });
 
-test("invite-only admits exact configured Supabase subjects", () => {
+test("hosted access requires an explicit invite-only mode", () => {
+  assert.throws(
+    () => accessPolicyFromEnv({ FENGINE_ENV: "hosted" }),
+    /hosted requires FENGINE_ACCESS_MODE=invite_only/
+  );
+  assert.throws(
+    () => accessPolicyFromEnv({
+      FENGINE_ENV: "hosted",
+      FENGINE_ACCESS_MODE: "provision_verified"
+    }),
+    /hosted requires FENGINE_ACCESS_MODE=invite_only/
+  );
+});
+
+test("hosted invite-only mode requires a valid non-empty allowlist", () => {
+  assert.throws(
+    () => accessPolicyFromEnv({
+      FENGINE_ENV: "hosted",
+      FENGINE_ACCESS_MODE: "invite_only"
+    }),
+    /missing FENGINE_ALLOWED_USER_IDS/
+  );
+});
+
+test("hosted invite-only admits exact configured Supabase subjects", () => {
   const policy = accessPolicyFromEnv({
+    FENGINE_ENV: "hosted",
     FENGINE_ACCESS_MODE: "invite_only",
     FENGINE_ALLOWED_USER_IDS: invited
   });

@@ -20,6 +20,9 @@ export function accessPolicyFromEnv(
   if (mode !== "provision_verified" && mode !== "invite_only") {
     throw new Error("invalid FENGINE_ACCESS_MODE");
   }
+  if (env.FENGINE_ENV === "hosted" && mode !== "invite_only") {
+    throw new Error("hosted requires FENGINE_ACCESS_MODE=invite_only");
+  }
   if (mode === "provision_verified") {
     return { mode, allowedOwnerIds: new Set() };
   }
