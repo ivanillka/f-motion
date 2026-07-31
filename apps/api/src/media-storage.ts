@@ -21,7 +21,72 @@ export interface StoredMedia {
     height?: number;
     duration_ms?: number;
   };
-  attribution?: { source: "Pexels"; creator: string; url: string };
+  attribution?: { source: "Pexels"; creator: string; url: string; previewUrl?: string };
+}
+
+export interface SceneMediaView {
+  id: string;
+  state: StoredMedia["state"];
+  detected?: {
+    type?: string;
+    bytes?: number;
+    width?: number;
+    height?: number;
+    duration_ms?: number;
+  };
+  attribution?: {
+    source: "Pexels";
+    creator: string;
+    attributionUrl: string;
+    previewUrl?: string;
+  };
+}
+
+function safeHttpsUrl(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function safePexelsAttribution(value: unknown): SceneMediaView["attribution"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const attribution = value as Record<string, unknown>;
+  const creator = typeof attribution.creator === "string" ? attribution.creator.trim() : "";
+  const attributionUrl = safeHttpsUrl(attribution.url);
+  if (attribution.source !== "Pexels" || !creator || creator.length > 200 || !attributionUrl) return undefined;
+  const previewUrl = safeHttpsUrl(attribution.previewUrl);
+  return {
+    source: "Pexels",
+    creator,
+    attributionUrl,
+    ...(previewUrl ? { previewUrl } : {})
+  };
+}
+
+/** Builds the complete client-safe projection; storage keys never cross this boundary. */
+export function sceneMediaView(asset: StoredMedia): SceneMediaView {
+  const detected = asset.detected && typeof asset.detected === "object"
+    ? {
+        ...(allowedMediaTypes.has(asset.detected.type) ? { type: asset.detected.type } : {}),
+        ...(Number.isInteger(asset.detected.bytes) && asset.detected.bytes > 0 ? { bytes: asset.detected.bytes } : {}),
+        ...(Number.isInteger(asset.detected.width) && (asset.detected.width ?? 0) > 0 ? { width: asset.detected.width } : {}),
+        ...(Number.isInteger(asset.detected.height) && (asset.detected.height ?? 0) > 0 ? { height: asset.detected.height } : {}),
+        ...(Number.isFinite(asset.detected.duration_ms) && (asset.detected.duration_ms ?? 0) >= 0
+          ? { duration_ms: asset.detected.duration_ms }
+          : {})
+      }
+    : undefined;
+  const attribution = safePexelsAttribution(asset.attribution);
+  return {
+    id: asset.id,
+    state: asset.state,
+    ...(detected && Object.keys(detected).length ? { detected } : {}),
+    ...(attribution ? { attribution } : {})
+  };
 }
 
 interface MediaRow {
@@ -247,18 +312,16 @@ export class PexelsClient {
         .filter(({ file_type: type, file_size: bytes }) =>
           type === "video/mp4" && (bytes === undefined || bytes <= maximumMediaBytes))
         .sort((left, right) => Math.abs(left.width - 1080) - Math.abs(right.width - 1080))[0];
-      let preview: URL;
-      try {
-        preview = new URL(video.image);
-      } catch {
-        return [];
-      }
-      return file && preview.protocol === "https:" ? [{
+      const creator = video.user.name.trim();
+      const attributionUrl = safeHttpsUrl(video.url);
+      const previewUrl = safeHttpsUrl(video.image);
+      const sourceUrl = safeHttpsUrl(file?.link);
+      return file && creator && creator.length <= 200 && attributionUrl && previewUrl && sourceUrl ? [{
         id: video.id,
-        creator: video.user.name,
-        attributionUrl: video.url,
-        previewUrl: preview.href,
-        sourceUrl: file.link,
+        creator,
+        attributionUrl,
+        previewUrl,
+        sourceUrl,
         contentType: file.file_type
       }] : [];
     });
@@ -271,6 +334,12 @@ export class PexelsClient {
     repository: PostgresMediaRepository,
     store: PrivateObjectStore
   ): Promise<StoredMedia> {
+    const attributionUrl = safeHttpsUrl(selected.attributionUrl);
+    const previewUrl = safeHttpsUrl(selected.previewUrl);
+    const creator = selected.creator.trim();
+    if (!attributionUrl || !previewUrl || !creator || creator.length > 200) {
+      throw new Error("Pexels metadata rejected");
+    }
     const response = await this.request(selected.sourceUrl);
     if (!response.ok) throw new Error("Pexels media unavailable");
     const bytes = await readBoundedBody(response, maximumMediaBytes);
@@ -283,7 +352,12 @@ export class PexelsClient {
       state: "admitted",
       declaredType: selected.contentType,
       maxBytes: bytes.length,
-      attribution: { source: "Pexels", creator: selected.creator, url: selected.attributionUrl }
+      attribution: {
+        source: "Pexels",
+        creator,
+        url: attributionUrl,
+        previewUrl
+      }
     };
     await store.put(asset.objectKey, bytes, selected.contentType);
     await repository.insert(asset);

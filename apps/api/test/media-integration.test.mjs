@@ -60,6 +60,7 @@ integration("authenticated media routes use real PostgreSQL and private S3 stora
           videos: [{
             id: 42,
             url: "https://www.pexels.com/video/42",
+            image: "https://images.pexels.com/videos/42/preview.jpg",
             user: { name: "Fixture Creator" },
             video_files: [{ link: "https://media.pexels.test/42.mp4", file_type: "video/mp4", width: 720 }]
           }]
@@ -131,6 +132,9 @@ integration("authenticated media routes use real PostgreSQL and private S3 stora
     const copiedAsset = (await copied.json()).asset;
     assert.equal(copiedAsset.attribution.source, "Pexels");
     assert.equal(copiedAsset.attribution.creator, "Fixture Creator");
+    assert.equal(copiedAsset.attribution.previewUrl, "https://images.pexels.com/videos/42/preview.jpg");
+    assert.equal("objectKey" in copiedAsset, false);
+    assert.equal("sourceUrl" in copiedAsset, false);
     assert.notEqual(copiedAsset.state, "ready");
     assert.equal(copiedAsset.state, "inspecting");
     assert.equal((await repository.get("owner", project.id, copiedAsset.id))?.state, "inspecting");
@@ -141,7 +145,16 @@ integration("authenticated media routes use real PostgreSQL and private S3 stora
     assert.equal(pexelsOutbox.rows.length, 1);
     const fetched = await fetch(`${origin}/api/projects/${project.id}/media/${copiedAsset.id}`);
     assert.equal(fetched.status, 200);
-    assert.deepEqual(await fetched.json(), { id: copiedAsset.id, state: "inspecting" });
+    assert.deepEqual(await fetched.json(), {
+      id: copiedAsset.id,
+      state: "inspecting",
+      attribution: {
+        source: "Pexels",
+        creator: "Fixture Creator",
+        attributionUrl: "https://www.pexels.com/video/42",
+        previewUrl: "https://images.pexels.com/videos/42/preview.jpg"
+      }
+    });
     assert.equal(await repository.get("other", project.id, copiedAsset.id), undefined);
   } finally {
     if (server.listening) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

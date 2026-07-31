@@ -22,6 +22,7 @@ import {
   allowedMediaTypes,
   maximumMediaBytes,
   pexelsQueriesForBrief,
+  sceneMediaView,
   type PexelsClient,
   type PostgresMediaRepository,
   type PrivateObjectStore
@@ -264,12 +265,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const ownerId = String(response.locals.ownerId);
       const asset = await options.media.repository.get(ownerId, request.params.projectId, request.params.assetId);
       if (!asset) return response.status(404).json({ type: "not_found", message: "not found" });
-      const durationMs = asset.detected?.duration_ms;
-      response.json({
-        id: asset.id,
-        state: asset.state,
-        ...(typeof durationMs === "number" ? { detected: { duration_ms: durationMs } } : {})
-      });
+      response.json(sceneMediaView(asset));
     } catch (error) {
       next(error);
     }
@@ -320,7 +316,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         options.media.repository,
         options.media.store
       );
-      response.status(201).json({ asset });
+      response.status(201).json({ asset: sceneMediaView(asset) });
     } catch (error) {
       next(error);
     }
@@ -359,7 +355,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         options.media.store
       );
       const { sourceUrl: _sourceUrl, contentType: _contentType, ...match } = selected;
-      response.status(201).json({ asset, match, query: matchedQuery });
+      response.status(201).json({ asset: sceneMediaView(asset), match, query: matchedQuery });
     } catch (error) {
       next(error);
     }

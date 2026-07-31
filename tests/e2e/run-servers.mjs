@@ -94,8 +94,9 @@ const media = {
     }
   },
   pexels: {
-    async search() {
-      return structuredClone(pexelsResults);
+    async search(query) {
+      const results = query.includes("mountain") ? [...pexelsResults].reverse() : pexelsResults;
+      return structuredClone(results);
     },
     async copy(ownerId, projectId, selected, repository) {
       const asset = {
@@ -109,7 +110,8 @@ const media = {
         attribution: {
           source: "Pexels",
           creator: selected.creator,
-          url: selected.attributionUrl
+          url: selected.attributionUrl,
+          previewUrl: selected.previewUrl
         }
       };
       await repository.insert(asset);

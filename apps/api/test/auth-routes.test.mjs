@@ -329,22 +329,35 @@ test("Pexels search is bounded and never exposes provider source URLs", async ()
   }
 });
 
-test("ready media exposes only the inspected duration needed by the editor", async () => {
+test("scene media view is owner-scoped and exposes only validated public fields", async () => {
+  const lookups = [];
   const server = createServer(createTestApp({
     media: {
       repository: {
-        async get() {
+        async get(ownerId, projectId, assetId) {
+          lookups.push([ownerId, projectId, assetId]);
           return {
             id: "asset-1",
+            ownerId,
+            projectId,
             state: "ready",
             objectKey: "private/object/key",
+            declaredType: "video/mp4",
+            maxBytes: 42,
             detected: {
               type: "video/mp4",
               bytes: 42,
               width: 1080,
               height: 1920,
               duration_ms: 12_345
-            }
+            },
+            attribution: {
+              source: "Pexels",
+              creator: "Fixture Creator",
+              url: "https://www.pexels.com/video/7",
+              previewUrl: "https://images.pexels.com/videos/7/preview.jpg"
+            },
+            sourceUrl: "https://provider.example/private-source.mp4"
           };
         }
       },
@@ -359,8 +372,54 @@ test("ready media exposes only the inspected duration needed by the editor", asy
     assert.deepEqual(await response.json(), {
       id: "asset-1",
       state: "ready",
-      detected: { duration_ms: 12_345 }
+      detected: { type: "video/mp4", bytes: 42, width: 1080, height: 1920, duration_ms: 12_345 },
+      attribution: {
+        source: "Pexels",
+        creator: "Fixture Creator",
+        attributionUrl: "https://www.pexels.com/video/7",
+        previewUrl: "https://images.pexels.com/videos/7/preview.jpg"
+      }
     });
+    assert.deepEqual(lookups, [["authenticated-user", "project-1", "asset-1"]]);
+    const body = JSON.stringify(await (await fetch(`${origin}/api/projects/project-1/media/asset-1`)).json());
+    assert.doesNotMatch(body, /objectKey|private\/object|sourceUrl|private-source/);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("legacy and invalid persisted stock metadata never invents a preview", async () => {
+  let legacy = true;
+  const server = createServer(createTestApp({
+    media: {
+      repository: {
+        async get() {
+          return {
+            id: "asset-legacy",
+            state: "ready",
+            objectKey: "private/key",
+            attribution: legacy
+              ? { source: "Pexels", creator: "Legacy Creator", url: "https://www.pexels.com/video/8" }
+              : { source: "Pexels", creator: "Unsafe Creator", url: "http://example.test/video/8", previewUrl: "javascript:alert(1)" }
+          };
+        }
+      },
+      store: {},
+      pexels: {}
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const legacyBody = await (await fetch(`${origin}/api/projects/project-1/media/asset-legacy`)).json();
+    assert.deepEqual(legacyBody.attribution, {
+      source: "Pexels",
+      creator: "Legacy Creator",
+      attributionUrl: "https://www.pexels.com/video/8"
+    });
+    assert.equal("previewUrl" in legacyBody.attribution, false);
+    legacy = false;
+    const invalidBody = await (await fetch(`${origin}/api/projects/project-1/media/asset-legacy`)).json();
+    assert.equal("attribution" in invalidBody, false);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

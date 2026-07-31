@@ -82,6 +82,25 @@ test("licensed stock journey shows previews and attribution", async ({ page }) =
     hasText: "Visual matched automatically · video by Fixture One on Pexels"
   })).toBeVisible();
 
+  await page.getByRole("button", { name: "Back to drafts" }).click();
+  await page.getByRole("button").filter({ hasText: "A calm studio introduction" }).click();
+  await expect(page.getByAltText("Automatically selected stock video by Fixture One")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Fixture One" })).toHaveAttribute(
+    "href",
+    "https://www.pexels.com/video/101"
+  );
+
+  await page.getByRole("button", { name: "Back to drafts" }).click();
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Visual description").fill("A stormy mountain in cinematic fog");
+  await page.getByRole("button", { name: "Create with licensed stock" }).click();
+  await expect(page.getByAltText("Automatically selected stock video by Fixture Two With A Long Name")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Fixture Two With A Long Name" })).toHaveAttribute(
+    "href",
+    "https://www.pexels.com/video/102"
+  );
+  await expect(page.locator("body")).not.toContainText("Fixture One");
+
   await page.getByRole("button", { name: "Render 720p preview" }).click();
   await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible();
   const download = page.getByRole("link").filter({ has: page.getByRole("button", { name: "Download video" }) });

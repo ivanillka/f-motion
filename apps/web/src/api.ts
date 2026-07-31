@@ -31,6 +31,24 @@ export interface Concept {
   treatment: string;
 }
 
+export interface SceneMediaView {
+  id: string;
+  state: "admitted" | "inspecting" | "ready" | "quarantined" | "rejected";
+  detected?: {
+    type?: string;
+    bytes?: number;
+    width?: number;
+    height?: number;
+    duration_ms?: number;
+  };
+  attribution?: {
+    source: "Pexels";
+    creator: string;
+    attributionUrl: string;
+    previewUrl?: string;
+  };
+}
+
 /** Uses the inspected clip length while keeping it inside the engine's scene bounds. */
 export function sceneDurationForMedia(detectedDurationMs: unknown, fallbackMs: number): number {
   if (typeof detectedDurationMs !== "number" || !Number.isFinite(detectedDurationMs)) return fallbackMs;
@@ -95,4 +113,15 @@ export class ApiClient {
   getProject(projectId: string) {
     return this.request<{ project: ProjectSnapshot; concepts?: Concept[] }>(`/api/projects/${projectId}`);
   }
+}
+
+/** Loads a fresh, project-scoped map so callers replace rather than merge stale media state. */
+export async function loadSceneMediaViews(
+  api: Pick<ApiClient, "request">,
+  project: ProjectSnapshot
+): Promise<Record<string, SceneMediaView>> {
+  const mediaIds = [...new Set(project.scenes.flatMap(({ media_id: id }) => id ? [id] : []))];
+  const views = await Promise.all(mediaIds.map((id) =>
+    api.request<SceneMediaView>(`/api/projects/${project.id}/media/${id}`)));
+  return Object.fromEntries(views.map((view) => [view.id, view]));
 }

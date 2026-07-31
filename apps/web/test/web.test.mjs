@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { createServer } from "vite";
 
 test("required recovery, accessibility, and preview language is present", async () => {
   const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
@@ -9,6 +11,50 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.doesNotMatch(source, /Search Pexels|Use this video|Choose visuals/);
   for (const unsafe of ["fengine-access-token", "/auth/v1/otp", "/authorize", "location.hash"]) {
     assert.doesNotMatch(source, new RegExp(unsafe.replace("/", "\\/")));
+  }
+});
+
+test("draft media hydration replaces project-scoped stock, upload, reopen, and failure state", async () => {
+  const vite = await createServer({
+    root: fileURLToPath(new URL("..", import.meta.url)),
+    logLevel: "silent",
+    server: { middlewareMode: true },
+    appType: "custom"
+  });
+  try {
+    const { loadSceneMediaViews } = await vite.ssrLoadModule("/src/api.ts");
+    const project = (id, mediaId) => ({
+      id,
+      revision: 1,
+      brief: { purpose: id, audience: "Viewers", tone: "Warm" },
+      scenes: [{ id: `scene-${id}`, media_id: mediaId }]
+    });
+    const views = {
+      a: { id: "a", state: "ready", attribution: { source: "Pexels", creator: "Creator A", attributionUrl: "https://www.pexels.com/a", previewUrl: "https://images.pexels.com/a.jpg" } },
+      b: { id: "b", state: "ready", attribution: { source: "Pexels", creator: "Creator B", attributionUrl: "https://www.pexels.com/b", previewUrl: "https://images.pexels.com/b.jpg" } },
+      upload: { id: "upload", state: "ready" }
+    };
+    const api = { request: async (path) => views[path.split("/").at(-1)] };
+
+    const first = await loadSceneMediaViews(api, project("one", "a"));
+    const second = await loadSceneMediaViews(api, project("two", "b"));
+    assert.deepEqual(Object.keys(first), ["a"]);
+    assert.deepEqual(Object.keys(second), ["b"]);
+    assert.equal(second.b.attribution.creator, "Creator B");
+
+    const uploaded = await loadSceneMediaViews(api, project("two", "upload"));
+    assert.deepEqual(uploaded, { upload: views.upload });
+    assert.equal(uploaded.upload.attribution, undefined);
+
+    const reopened = await loadSceneMediaViews(api, project("one", "a"));
+    assert.equal(reopened.a.attribution.previewUrl, "https://images.pexels.com/a.jpg");
+    await assert.rejects(() => loadSceneMediaViews({ request: async () => { throw new Error("offline"); } }, project("one", "a")), /offline/);
+
+    const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
+    assert.match(source, /setSceneMedia\(\{\}\);\s+setStatus\("Opening draft/);
+    assert.match(source, /setStatus\(hydrationFailed \? "Draft media details could not be loaded\."/);
+  } finally {
+    await vite.close();
   }
 });
 test("320px and reduced motion styles are explicit", async () => {

@@ -119,8 +119,40 @@ test("PexelsClient.copy admits the asset for worker inspection instead of trusti
   assert.equal(asset.state, "inspecting");
   assert.equal(asset.detected, undefined);
   assert.equal(pool.getAssets().get(asset.id).state, "inspecting");
+  assert.deepEqual(pool.getAssets().get(asset.id).attribution, {
+    source: "Pexels",
+    creator: "Fixture Creator",
+    url: "https://www.pexels.com/video/1",
+    previewUrl: "https://images.pexels.com/videos/1/preview.jpg"
+  });
+  assert.equal("sourceUrl" in pool.getAssets().get(asset.id).attribution, false);
   assert.deepEqual(pool.getOutbox().map((row) => row.dedupeKey), [`inspect-media:${asset.id}`]);
   assert.equal(objects.has(asset.objectKey), true);
+});
+
+test("PexelsClient.copy rejects unsafe attribution metadata before downloading or persisting", async () => {
+  for (const unsafe of [
+    { attributionUrl: "http://www.pexels.com/video/1" },
+    { previewUrl: "http://images.pexels.com/videos/1/preview.jpg" }
+  ]) {
+    let requests = 0;
+    const pool = createFakeMediaPool();
+    const pexels = new PexelsClient("server-only-key", async () => {
+      requests += 1;
+      return new Response(new Uint8Array([1]), { status: 200 });
+    });
+    await assert.rejects(() => pexels.copy("owner", "project", {
+      id: 1,
+      creator: "Fixture Creator",
+      attributionUrl: "https://www.pexels.com/video/1",
+      previewUrl: "https://images.pexels.com/videos/1/preview.jpg",
+      sourceUrl: "https://media.pexels.test/1.mp4",
+      contentType: "video/mp4",
+      ...unsafe
+    }, new PostgresMediaRepository(pool), { put: async () => undefined }), /metadata rejected/);
+    assert.equal(requests, 0);
+    assert.equal(pool.getAssets().size, 0);
+  }
 });
 
 test("PexelsClient.search uses the v1 portrait endpoint and maps safe previews", async () => {
@@ -152,6 +184,13 @@ test("PexelsClient.search uses the v1 portrait endpoint and maps safe previews",
           image: "http://insecure.example/preview.jpg",
           user: { name: "Unsafe Preview" },
           video_files: [{ link: "https://media.pexels.test/2.mp4", file_type: "video/mp4", width: 720 }]
+        },
+        {
+          id: 3,
+          url: "http://www.pexels.com/video/3",
+          image: "https://images.pexels.com/videos/3/preview.jpg",
+          user: { name: "Unsafe Attribution" },
+          video_files: [{ link: "https://media.pexels.test/3.mp4", file_type: "video/mp4", width: 720 }]
         }
       ]
     });

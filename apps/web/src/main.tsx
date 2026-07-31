@@ -3,16 +3,18 @@ import { createRoot } from "react-dom/client";
 import {
   ApiClient,
   ApiResponseError,
+  loadSceneMediaViews,
   sceneDurationForMedia,
   type ProjectSnapshot,
   type ProjectSummary,
-  type Scene
+  type Scene,
+  type SceneMediaView
 } from "./api";
 import { AuthConfigurationError, createAuthGateway } from "./auth";
 import "./style.css";
 
 type Step = "sign-in" | "drafts" | "brief" | "media" | "editor" | "render" | "settings";
-interface StockMatch {
+interface PexelsMatch {
   id: number;
   creator: string;
   attributionUrl: string;
@@ -46,7 +48,8 @@ function App() {
   const [project, setProject] = useState<ProjectSnapshot>();
   const [drafts, setDrafts] = useState<ProjectSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
-  const [stockMatch, setStockMatch] = useState<StockMatch>();
+  const [sceneMedia, setSceneMedia] = useState<Record<string, SceneMediaView>>({});
+  const mediaTransition = useRef(0);
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const [status, setStatus] = useState("");
@@ -70,7 +73,8 @@ function App() {
     setToken("");
     setProject(undefined);
     setDrafts([]);
-    setStockMatch(undefined);
+    mediaTransition.current += 1;
+    setSceneMedia({});
     setConflict(undefined);
     setJobId("");
     setDownloadUrl("");
@@ -199,18 +203,19 @@ function App() {
 
   async function autoMatchStock() {
     if (busy) return;
+    mediaTransition.current += 1;
+    setSceneMedia({});
     setBusy(true);
     setStatus("Finding the best licensed visual for your description…");
     try {
       const current = await prepareProject();
-      const body = await api.request<{ asset: { id: string }; match: StockMatch }>(
+      const body = await api.request<{ asset: { id: string }; match: PexelsMatch }>(
         `/api/projects/${current.id}/media/pexels/auto`,
         {
           method: "POST",
           body: JSON.stringify({ description: draft })
         }
       );
-      setStockMatch(body.match);
       setStatus("Licensed visual selected. Checking it for a safe render…");
       if (await attachMediaWhenReady(body.asset.id, current)) {
         setStatus(`Visual matched automatically · video by ${body.match.creator} on Pexels`);
@@ -223,19 +228,36 @@ function App() {
   }
 
   async function openDraft(projectId: string) {
+    const transition = ++mediaTransition.current;
+    setSceneMedia({});
     setStatus("Opening draft…");
-    const { project: opened } = await api.getProject(projectId);
-    const initialized = await initializeScene(opened);
-    setProject(initialized);
-    localStorage.setItem("fengine-project", initialized.id);
-    setDraft(initialized.scenes[0]?.caption ?? initialized.brief.purpose);
-    setStep(initialized.scenes[0]?.media_id ? "editor" : "brief");
-    setStatus("");
+    try {
+      const { project: opened } = await api.getProject(projectId);
+      const initialized = await initializeScene(opened);
+      if (transition !== mediaTransition.current) return;
+      setProject(initialized);
+      localStorage.setItem("fengine-project", initialized.id);
+      setDraft(initialized.scenes[0]?.caption ?? initialized.brief.purpose);
+      let hydrationFailed = false;
+      try {
+        const views = await loadSceneMediaViews(api, initialized);
+        if (transition !== mediaTransition.current) return;
+        setSceneMedia(views);
+      } catch {
+        hydrationFailed = true;
+      }
+      if (transition !== mediaTransition.current) return;
+      setStep(initialized.scenes[0]?.media_id ? "editor" : "brief");
+      setStatus(hydrationFailed ? "Draft media details could not be loaded." : "");
+    } catch {
+      if (transition === mediaTransition.current) setStatus("Draft could not be opened.");
+    }
   }
 
   function startCreate() {
+    mediaTransition.current += 1;
     setProject(undefined);
-    setStockMatch(undefined);
+    setSceneMedia({});
     setDraft(localStorage.getItem("fengine-draft") ?? "");
     setStatus("");
     setStep("brief");
@@ -265,11 +287,7 @@ function App() {
     setStatus("Waiting for media inspection…");
     const deadline = Date.now() + 60_000;
     while (Date.now() < deadline) {
-      const media = await api.request<{
-        id: string;
-        state: string;
-        detected?: { duration_ms?: number };
-      }>(`/api/projects/${snapshot.id}/media/${assetId}`);
+      const media = await api.request<SceneMediaView>(`/api/projects/${snapshot.id}/media/${assetId}`);
       if (media.state === "ready") {
         const updated = await api.command(snapshot.id, snapshot.revision, "update_scene", {
           scene: {
@@ -280,6 +298,7 @@ function App() {
           }
         });
         setProject(updated);
+        setSceneMedia({ [media.id]: media });
         setStep("editor");
         return true;
       }
@@ -311,6 +330,8 @@ function App() {
 
   async function admitFile(file: File) {
     if (!project) return;
+    mediaTransition.current += 1;
+    setSceneMedia({});
     setBusy(true);
     setStatus("Uploading media…");
     try {
@@ -449,6 +470,9 @@ function App() {
     }
   }
 
+  const activeMediaId = project?.scenes[0]?.media_id;
+  const activeMedia = activeMediaId ? sceneMedia[activeMediaId] : undefined;
+
   return <main>
     <header><strong>F-Engine Reference</strong>
       <div className="header-actions">
@@ -507,11 +531,12 @@ function App() {
       <h1>Video preview</h1>
       <p className="notice">Approximate preview — request an accurate render to verify timing and crop.</p>
       <div className="preview" aria-label="Approximate vertical preview">
-        {stockMatch && <img src={stockMatch.previewUrl} alt={`Automatically selected stock video by ${stockMatch.creator}`} />}
+        {activeMedia?.attribution?.previewUrl && <img src={activeMedia.attribution.previewUrl} alt={`Automatically selected stock video by ${activeMedia.attribution.creator}`} />}
+        {activeMedia?.attribution && !activeMedia.attribution.previewUrl && <span>Preview unavailable</span>}
         <span>{draft}</span>
       </div>
-      {stockMatch && <p>
-        Automatically matched video by <a href={stockMatch.attributionUrl} target="_blank" rel="noreferrer">{stockMatch.creator}</a>
+      {activeMedia?.attribution && <p>
+        Automatically matched video by <a href={activeMedia.attribution.attributionUrl} target="_blank" rel="noreferrer">{activeMedia.attribution.creator}</a>
         {" · "}<a href="https://www.pexels.com" target="_blank" rel="noreferrer">Pexels</a>
       </p>}
       <label>Caption<input maxLength={180} value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={() => void saveScene()} /></label>
@@ -521,7 +546,7 @@ function App() {
       <button disabled={!project.scenes[0]?.media_id} onClick={() => void requestRender()}>Render {renderLabel}</button>
       {!project.scenes[0]?.media_id && <p>Add media before rendering.</p>}
       <button className="secondary" onClick={() => setStep("brief")}>Edit description and rematch</button>
-      <button className="secondary" onClick={() => setStep("media")}>Upload different media</button>
+      <button className="secondary" onClick={() => { mediaTransition.current += 1; setSceneMedia({}); setStep("media"); }}>Upload different media</button>
       <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
       {conflict && <dialog open><h2>Newer changes exist</h2><p>Your changes were not merged.</p>
         <button onClick={() => { setProject(conflict); setConflict(undefined); }}>Reload latest</button>
