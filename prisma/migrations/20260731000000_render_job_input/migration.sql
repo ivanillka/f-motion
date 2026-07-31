@@ -26,6 +26,11 @@ WHERE project.id = job."projectId"
   AND project.revision = job.revision;
 
 -- An older revision cannot be reconstructed from mutable rows. Never relabel current content as old.
+INSERT INTO "RenderEvent" ("jobId", phase, percent)
+SELECT id, 'failed', 0
+FROM "RenderJob"
+WHERE "renderInput" IS NULL AND state IN ('queued', 'running');
+
 UPDATE "RenderJob"
 SET state = 'failed'
 WHERE "renderInput" IS NULL AND state IN ('queued', 'running');

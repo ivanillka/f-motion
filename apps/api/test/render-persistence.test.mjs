@@ -198,9 +198,15 @@ test("render-input migration refuses to relabel an ambiguous historical job", as
     assert.equal(jobs[0].id, "ambiguous");
     assert.equal(jobs[0].state, "failed");
     assert.equal(jobs[0].renderInput.migration_error, "historical render input unavailable");
+    assert.deepEqual((await pool.query(
+      `SELECT phase, percent FROM "RenderEvent" WHERE "jobId" = 'ambiguous' ORDER BY id`
+    )).rows, [{ phase: "failed", percent: 0 }]);
     assert.equal(jobs[1].id, "safe");
     assert.equal(jobs[1].state, "queued");
     assert.equal(jobs[1].renderInput.revision, 1);
+    assert.equal(Number((await pool.query(
+      `SELECT COUNT(*) AS count FROM "RenderEvent" WHERE "jobId" = 'safe'`
+    )).rows[0].count), 0);
     await assert.rejects(
       () => pool.query(
         `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, state)
