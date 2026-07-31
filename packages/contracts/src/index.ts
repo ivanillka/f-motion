@@ -62,7 +62,81 @@ export interface ApiError {
   authoritative_snapshot?: ProjectSnapshot;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isCaptionCue(value: unknown, durationMs: number, previousEnd: number): value is CaptionCue {
+  if (!isRecord(value)) return false;
+  return typeof value.text === "string"
+    && !!value.text.trim()
+    && isFiniteNumber(value.start_ms)
+    && isFiniteNumber(value.end_ms)
+    && value.start_ms >= previousEnd
+    && value.start_ms < value.end_ms
+    && value.end_ms <= durationMs;
+}
+
+function isScene(value: unknown, order: number): value is Scene {
+  if (!isRecord(value)
+    || typeof value.id !== "string"
+    || !value.id
+    || value.order !== order
+    || typeof value.caption !== "string"
+    || value.caption.length > 180
+    || !isFiniteNumber(value.duration_ms)
+    || value.duration_ms < 500
+    || value.duration_ms > 15_000
+    || !isFiniteNumber(value.focal_x)
+    || value.focal_x < 0
+    || value.focal_x > 1
+    || !isFiniteNumber(value.focal_y)
+    || value.focal_y < 0
+    || value.focal_y > 1
+    || !["none", "push", "zoom"].includes(String(value.motion))
+    || !isFiniteNumber(value.audio_level)
+    || value.audio_level < 0
+    || value.audio_level > 1
+    || typeof value.ducking !== "boolean"
+    || ("media_id" in value && (typeof value.media_id !== "string" || !value.media_id))) {
+    return false;
+  }
+  if (!("caption_cues" in value)) return true;
+  if (!Array.isArray(value.caption_cues)) return false;
+  let previousEnd = 0;
+  for (const cue of value.caption_cues) {
+    if (!isCaptionCue(cue, value.duration_ms, previousEnd)) return false;
+    previousEnd = cue.end_ms;
+  }
+  return true;
+}
+
+/** Validates persisted render input at the API/worker trust boundary. */
+export function isProjectSnapshot(value: unknown): value is ProjectSnapshot {
+  if (!isRecord(value)
+    || value.schema_version !== contractVersion
+    || typeof value.id !== "string"
+    || !value.id
+    || typeof value.owner_id !== "string"
+    || !value.owner_id
+    || !Number.isInteger(value.revision)
+    || (value.revision as number) < 0
+    || !isRecord(value.brief)
+    || typeof value.brief.purpose !== "string"
+    || typeof value.brief.audience !== "string"
+    || typeof value.brief.tone !== "string"
+    || ("selected_concept_id" in value
+      && (typeof value.selected_concept_id !== "string" || !value.selected_concept_id))
+    || !Array.isArray(value.scenes)) {
+    return false;
+  }
+  return value.scenes.every((scene, order) => isScene(scene, order));
+}
+
 export function acceptsFixture(value: unknown): boolean {
-  if (!value || typeof value !== "object") return false;
-  return (value as { schema_version?: unknown }).schema_version === contractVersion;
+  return isProjectSnapshot(value);
 }

@@ -16,17 +16,23 @@ const scenePayload = {
   audio_level: 1,
   ducking: false
 };
+const renderInput = {
+  schema_version: 1,
+  id: "project",
+  owner_id: "owner",
+  revision: 0,
+  brief,
+  scenes: [scenePayload]
+};
 
 /** Fake pool that answers only the queries `handlers.render` issues, tracking `RenderJob.state`. */
-function createFakePool(initialState) {
+function createFakePool(initialState, storedInput = renderInput) {
   let state = initialState;
   const events = [];
   const query = async (sql, params = []) => {
-    if (sql.includes(`FROM "RenderJob" j JOIN "Project" p`)) {
-      if (state === "cancelled") return { rows: [] };
-      return { rows: [{ id: "project", ownerId: "owner", revision: 0, brief, state }] };
+    if (sql.includes(`SELECT "renderInput", state FROM "RenderJob"`)) {
+      return { rows: [{ renderInput: storedInput, state }] };
     }
-    if (sql.includes(`FROM "Scene"`)) return { rows: [{ position: 0, payload: scenePayload }] };
     if (sql.includes(`FROM "MediaAsset"`)) return { rows: [] };
     if (sql.includes(`SET state = 'running'`)) {
       if (state === "queued" || state === "running") { state = "running"; return { rowCount: 1 }; }
@@ -52,6 +58,24 @@ function createFakePool(initialState) {
     getEvents: () => events
   };
 }
+
+test("invalid stored render input fails before media or FFmpeg work starts", async () => {
+  const pool = createFakePool("queued", { migration_error: "historical render input unavailable" });
+  let storeCalls = 0;
+  const store = {
+    async inspect() { storeCalls += 1; throw new Error("must not inspect"); },
+    async download() { storeCalls += 1; throw new Error("must not download"); },
+    async put() { storeCalls += 1; throw new Error("must not upload"); }
+  };
+  const handlers = createQueueHandlers(pool, store, profile);
+  assert.deepEqual(await handlers.render(
+    { jobId: "job-1", ownerId: "owner", projectId: "project", revision: 0 },
+    new AbortController().signal
+  ), { state: "failed" });
+  assert.equal(pool.getState(), "failed");
+  assert.equal(storeCalls, 0);
+  assert.deepEqual(pool.getEvents(), [{ phase: "failed", percent: 0 }]);
+});
 
 test("render persists a failed state and event when upload fails after rendering starts", async () => {
   const pool = createFakePool("queued");

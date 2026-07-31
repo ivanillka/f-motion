@@ -28,7 +28,8 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
     for (const path of [
       "../../../prisma/migrations/20260726000000_initial/migration.sql",
       "../../../prisma/migrations/20260726001000_media_admission/migration.sql",
-      "../../../prisma/migrations/20260726002000_render_events/migration.sql"
+      "../../../prisma/migrations/20260726002000_render_events/migration.sql",
+      "../../../prisma/migrations/20260731000000_render_job_input/migration.sql"
     ]) {
       await pool.query(await readFile(new URL(path, import.meta.url), "utf8"));
     }
@@ -108,7 +109,11 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
       3
     );
 
-    await projects.command("owner", {
+    await pool.query(
+      `UPDATE "RenderJob" SET state = 'cancelled'
+        WHERE "ownerId" = 'owner' AND state IN ('queued', 'running')`
+    );
+    const selected = await projects.command("owner", {
       command_id: "after-render",
       project_id: project.id,
       base_revision: 0,
@@ -116,13 +121,94 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
       kind: "select_concept",
       payload: { concept_id: "direct" }
     });
+    const sceneN = { ...selected.scenes[0], caption: "Frozen revision N", media_id: "media-n" };
+    const revisionN = await projects.command("owner", {
+      command_id: "freeze-scene",
+      project_id: project.id,
+      base_revision: selected.revision,
+      client_timestamp: "diagnostic",
+      kind: "update_scene",
+      payload: { scene: sceneN }
+    });
+    const frozenJob = await renders.create("owner", project.id);
+    assert.ok(frozenJob);
+    await projects.command("owner", {
+      command_id: "mutate-after-enqueue",
+      project_id: project.id,
+      base_revision: revisionN.revision,
+      client_timestamp: "diagnostic",
+      kind: "update_scene",
+      payload: { scene: { ...sceneN, caption: "Mutable revision N+1", media_id: "media-n-plus-1" } }
+    });
+    const stored = (await pool.query(
+      `SELECT revision, "renderInput" FROM "RenderJob" WHERE id = $1`,
+      [frozenJob.jobId]
+    )).rows[0];
+    assert.equal(stored.revision, revisionN.revision);
+    assert.equal(stored.renderInput.revision, revisionN.revision);
+    assert.equal(stored.renderInput.scenes[0].caption, "Frozen revision N");
+    assert.equal(stored.renderInput.scenes[0].media_id, "media-n");
+    assert.equal(stored.renderInput.scenes[0].order, 0);
+    assert.equal(await renders.complete(frozenJob.jobId, `projects/${project.id}/renders/${revisionN.revision}.mp4`, {
+      revision: revisionN.revision,
+      immutable: true
+    }), true);
+    assert.equal((await renders.result("owner", frozenJob.jobId)).stale, true);
     assert.equal((await renders.result("owner", created.job_id)).stale, true);
     assert.equal(
       Number((await pool.query(`SELECT COUNT(*) AS count FROM "WorkOutbox" WHERE kind = 'render-preview'`)).rows[0].count),
-      9
+      10
     );
   } finally {
     if (server.listening) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await pool.end();
+    await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    await admin.end();
+  }
+});
+
+test("render-input migration refuses to relabel an ambiguous historical job", async () => {
+  const schema = `render_migration_${randomUUID().replaceAll("-", "_")}`;
+  const admin = new pg.Pool({ connectionString: databaseUrl });
+  await admin.query(`CREATE SCHEMA "${schema}"`);
+  const pool = new pg.Pool({ connectionString: databaseUrl, options: `-c search_path=${schema}` });
+  try {
+    for (const path of [
+      "../../../prisma/migrations/20260726000000_initial/migration.sql",
+      "../../../prisma/migrations/20260726001000_media_admission/migration.sql",
+      "../../../prisma/migrations/20260726002000_render_events/migration.sql"
+    ]) {
+      await pool.query(await readFile(new URL(path, import.meta.url), "utf8"));
+    }
+    await pool.query(`INSERT INTO "User" (id, state) VALUES ('owner', 'active')`);
+    await pool.query(
+      `INSERT INTO "Project" (id, "ownerId", revision, brief)
+       VALUES ('project', 'owner', 1, '{"purpose":"Current","audience":"Teams","tone":"Warm"}');
+       INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, state)
+       VALUES ('safe', 'owner', 'project', 1, 'queued'),
+              ('ambiguous', 'owner', 'project', 0, 'queued')`
+    );
+    await pool.query(await readFile(
+      new URL("../../../prisma/migrations/20260731000000_render_job_input/migration.sql", import.meta.url),
+      "utf8"
+    ));
+    const jobs = (await pool.query(
+      `SELECT id, state, "renderInput" FROM "RenderJob" ORDER BY id`
+    )).rows;
+    assert.equal(jobs[0].id, "ambiguous");
+    assert.equal(jobs[0].state, "failed");
+    assert.equal(jobs[0].renderInput.migration_error, "historical render input unavailable");
+    assert.equal(jobs[1].id, "safe");
+    assert.equal(jobs[1].state, "queued");
+    assert.equal(jobs[1].renderInput.revision, 1);
+    await assert.rejects(
+      () => pool.query(
+        `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, state)
+         VALUES ('missing-input', 'owner', 'project', 1, 'queued')`
+      ),
+      /renderInput/
+    );
+  } finally {
     await pool.end();
     await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
     await admin.end();

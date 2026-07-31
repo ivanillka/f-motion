@@ -112,6 +112,7 @@ model RenderJob {
   projectId   String
   project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   revision    Int
+  renderInput Json
   state       RenderState @default(queued)
   result      RenderResult?
   events      RenderEvent[]

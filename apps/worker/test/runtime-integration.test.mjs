@@ -37,7 +37,8 @@ test("worker probes stored media and renders an immutable project result", async
     for (const path of [
       "../../../prisma/migrations/20260726000000_initial/migration.sql",
       "../../../prisma/migrations/20260726001000_media_admission/migration.sql",
-      "../../../prisma/migrations/20260726002000_render_events/migration.sql"
+      "../../../prisma/migrations/20260726002000_render_events/migration.sql",
+      "../../../prisma/migrations/20260731000000_render_job_input/migration.sql"
     ]) {
       await pool.query(await readFile(new URL(path, import.meta.url), "utf8"));
     }
@@ -84,15 +85,33 @@ test("worker probes stored media and renders an immutable project result", async
       ContentType: "video/mp4"
     }));
     await pool.query(
-      `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, state)
-       VALUES ('job', 'owner', 'project', 0, 'queued'),
-              ('cancelled-job', 'owner', 'project', 0, 'cancelled')`
+      `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, "renderInput", state)
+       VALUES ('job', 'owner', 'project', 0, $1, 'queued'),
+              ('cancelled-job', 'owner', 'project', 0, $1, 'cancelled')`,
+      [{
+        schema_version: 1,
+        id: "project",
+        owner_id: "owner",
+        revision: 0,
+        brief: { purpose: "Worker", audience: "Teams", tone: "Warm" },
+        scenes: [scene]
+      }]
     );
-    const handlers = createQueueHandlers(
-      pool,
-      new S3WorkerObjectStore(s3, bucket),
-      { width: 720, height: 1280, watermark: "Reference preview" }
+    await pool.query(
+      `UPDATE "Project" SET revision = 1 WHERE id = 'project';
+       UPDATE "Scene" SET payload = payload || '{"caption":"Mutable N+1 caption","media_id":"fake"}'
+       WHERE id = 'scene'`
     );
+    const s3Store = new S3WorkerObjectStore(s3, bucket);
+    const downloaded = [];
+    const handlers = createQueueHandlers(pool, {
+      inspect: (...args) => s3Store.inspect(...args),
+      async download(...args) {
+        downloaded.push(args[0]);
+        return s3Store.download(...args);
+      },
+      put: (...args) => s3Store.put(...args)
+    }, { width: 720, height: 1280, watermark: "Reference preview" });
     assert.deepEqual(await handlers.inspect({
       assetId: "asset",
       ownerId: "owner",
@@ -114,6 +133,12 @@ test("worker probes stored media and renders an immutable project result", async
     assert.equal(rendered.state, "complete");
     assert.equal((await pool.query(`SELECT state FROM "RenderJob" WHERE id = 'job'`)).rows[0].state, "complete");
     assert.equal(Number((await pool.query(`SELECT COUNT(*) AS count FROM "RenderResult" WHERE "jobId" = 'job'`)).rows[0].count), 1);
+    const frozen = (await pool.query(`SELECT "renderInput" FROM "RenderJob" WHERE id = 'job'`)).rows[0].renderInput;
+    assert.equal(frozen.revision, 0);
+    assert.equal(frozen.scenes[0].caption, "Rendered project caption");
+    assert.equal(frozen.scenes[0].media_id, "asset");
+    assert.equal(frozen.scenes[0].order, 0);
+    assert.deepEqual(downloaded, ["projects/project/media/asset"]);
     assert.deepEqual(await handlers.render({
       jobId: "cancelled-job",
       ownerId: "owner",

@@ -4,7 +4,7 @@ import {
   PutObjectCommand,
   S3Client
 } from "@aws-sdk/client-s3";
-import type { ProjectSnapshot, Scene } from "@f-engine/contracts";
+import { isProjectSnapshot, type ProjectSnapshot } from "@f-engine/contracts";
 import { createWriteStream } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -133,32 +133,23 @@ async function markFailed(pool: pg.Pool, jobId: string): Promise<void> {
 }
 
 async function projectSnapshot(pool: pg.Pool, job: PreviewJob): Promise<ProjectSnapshot | undefined> {
-  const project = await pool.query<{
-    id: string;
-    ownerId: string;
-    revision: number;
-    brief: ProjectSnapshot["brief"];
+  const result = await pool.query<{
+    renderInput: unknown;
     state: string;
   }>(
-    `SELECT p.id, p."ownerId", p.revision, p.brief, j.state
-       FROM "RenderJob" j JOIN "Project" p ON p.id = j."projectId"
-      WHERE j.id = $1 AND j."ownerId" = $2 AND j."projectId" = $3 AND j.revision = $4`,
+    `SELECT "renderInput", state FROM "RenderJob"
+      WHERE id = $1 AND "ownerId" = $2 AND "projectId" = $3 AND revision = $4`,
     [job.jobId, job.ownerId, job.projectId, job.revision]
   );
-  const row = project.rows[0];
-  if (!row || row.state === "cancelled") return undefined;
-  const scenes = await pool.query<{ position: number; payload: Scene }>(
-    `SELECT position, payload FROM "Scene" WHERE "projectId" = $1 ORDER BY position`,
-    [job.projectId]
-  );
-  return {
-    schema_version: 1,
-    id: row.id,
-    owner_id: row.ownerId,
-    revision: job.revision,
-    brief: row.brief,
-    scenes: scenes.rows.map(({ position, payload }) => ({ ...payload, order: position }))
-  };
+  const row = result.rows[0];
+  if (!row || !["queued", "running"].includes(row.state)) return undefined;
+  if (!isProjectSnapshot(row.renderInput)
+    || row.renderInput.id !== job.projectId
+    || row.renderInput.owner_id !== job.ownerId
+    || row.renderInput.revision !== job.revision) {
+    throw new Error("invalid stored render input");
+  }
+  return row.renderInput;
 }
 
 async function mediaInputsFor(
@@ -222,7 +213,13 @@ export function createQueueHandlers(
       return { state };
     },
     async render(job: PreviewJob, signal: AbortSignal) {
-      const snapshot = await projectSnapshot(pool, job);
+      let snapshot: ProjectSnapshot | undefined;
+      try {
+        snapshot = await projectSnapshot(pool, job);
+      } catch {
+        await markFailed(pool, job.jobId);
+        return { state: "failed" };
+      }
       if (!snapshot || !await event(pool, job.jobId, "preparing", 10)) return { state: "cancelled" };
       const directory = await mkdtemp(join(tmpdir(), `fengine-${job.jobId}-`));
       const output = join(directory, "preview.mp4");
