@@ -26,15 +26,18 @@ const renderInput = {
 };
 
 /** Fake pool that answers only the queries `handlers.render` issues, tracking `RenderJob.state`. */
-function createFakePool(initialState, storedInput = renderInput) {
+function createFakePool(initialState, storedInput = renderInput, options = {}) {
   let state = initialState;
   const events = [];
+  let runningUpdates = 0;
   const query = async (sql, params = []) => {
     if (sql.includes(`SELECT "renderInput", state FROM "RenderJob"`)) {
       return { rows: [{ renderInput: storedInput, state }] };
     }
     if (sql.includes(`FROM "MediaAsset"`)) return { rows: [] };
     if (sql.includes(`SET state = 'running'`)) {
+      runningUpdates += 1;
+      if (runningUpdates === options.cancelOnRunningUpdate) state = "cancelled";
       if (state === "queued" || state === "running") { state = "running"; return { rowCount: 1 }; }
       return { rowCount: 0 };
     }
@@ -45,6 +48,14 @@ function createFakePool(initialState, storedInput = renderInput) {
     if (sql.startsWith(`INSERT INTO "RenderEvent"`)) {
       const literal = sql.includes(`'failed', 0`);
       events.push({ phase: literal ? "failed" : params[1], percent: literal ? 0 : params[2] });
+      return { rowCount: 1 };
+    }
+    if (sql.includes(`SELECT 1 FROM "RenderJob"`) && sql.includes(`state = 'running' FOR UPDATE`)) {
+      return { rowCount: state === "running" ? 1 : 0 };
+    }
+    if (sql.startsWith(`INSERT INTO "RenderResult"`)) return { rowCount: 1 };
+    if (sql.includes(`UPDATE "RenderJob" SET state = 'complete'`)) {
+      state = "complete";
       return { rowCount: 1 };
     }
     if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
@@ -113,6 +124,48 @@ test("render does not overwrite a job already cancelled by the time the failure 
   assert.deepEqual(result, { state: "failed" });
   assert.equal(pool.getState(), "cancelled");
   assert.equal(pool.getEvents().some((event) => event.phase === "failed"), false);
+});
+
+test("cancellation before upload does not create an object", async () => {
+  const pool = createFakePool("queued", renderInput, { cancelOnRunningUpdate: 3 });
+  let uploads = 0;
+  const store = {
+    async inspect() { throw new Error("not used"); },
+    async download() { throw new Error("not used"); },
+    async put() { uploads += 1; },
+    async remove() { throw new Error("nothing was uploaded"); }
+  };
+  const handlers = createQueueHandlers(pool, store, profile);
+  assert.deepEqual(await handlers.render(
+    { jobId: "cancel-before-upload", ownerId: "owner", projectId: "project", revision: 0 },
+    new AbortController().signal
+  ), { state: "cancelled" });
+  assert.equal(uploads, 0);
+  assert.equal(pool.getState(), "cancelled");
+});
+
+test("cancellation during upload removes only that execution's object", async () => {
+  const pool = createFakePool("queued");
+  const uploaded = [];
+  const removed = [];
+  const store = {
+    async inspect() { throw new Error("not used"); },
+    async download() { throw new Error("not used"); },
+    async put(objectKey) {
+      uploaded.push(objectKey);
+      pool.forceState("cancelled");
+    },
+    async remove(objectKey) { removed.push(objectKey); }
+  };
+  const handlers = createQueueHandlers(pool, store, profile);
+  assert.deepEqual(await handlers.render(
+    { jobId: "cancel-during-upload", ownerId: "owner", projectId: "project", revision: 0 },
+    new AbortController().signal
+  ), { state: "cancelled" });
+  assert.equal(uploaded.length, 1);
+  assert.deepEqual(removed, uploaded);
+  assert.match(uploaded[0], /\/cancel-during-upload\/[^/]+\.mp4$/);
+  assert.equal(pool.getState(), "cancelled");
 });
 
 test("reference render profile defaults and rejects invalid startup values", () => {

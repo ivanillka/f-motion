@@ -1,4 +1,5 @@
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -31,6 +32,7 @@ interface WorkerObjectStore {
   inspect(objectKey: string, maxBytes: number): Promise<DetectedMedia>;
   download(objectKey: string, destination: string): Promise<void>;
   put(objectKey: string, body: Uint8Array, contentType: string): Promise<void>;
+  remove(objectKey: string): Promise<void>;
 }
 
 export function renderProfileFromEnv(
@@ -84,6 +86,13 @@ export class S3WorkerObjectStore implements WorkerObjectStore {
       Key: objectKey,
       Body: body,
       ContentType: contentType
+    }));
+  }
+
+  async remove(objectKey: string): Promise<void> {
+    await this.client.send(new DeleteObjectCommand({
+      Bucket: this.bucket,
+      Key: objectKey
     }));
   }
 }
@@ -223,14 +232,17 @@ export function createQueueHandlers(
       if (!snapshot || !await event(pool, job.jobId, "preparing", 10)) return { state: "cancelled" };
       const directory = await mkdtemp(join(tmpdir(), `fengine-${job.jobId}-`));
       const output = join(directory, "preview.mp4");
+      let uploadedObjectKey: string | undefined;
       try {
         try {
           const mediaInputs = await mediaInputsFor(pool, store, snapshot, directory);
           if (!await event(pool, job.jobId, "rendering", 35)) return { state: "cancelled" };
           await renderPreview(output, snapshot, signal, mediaInputs, profile);
           if (!await event(pool, job.jobId, "uploading", 85)) return { state: "cancelled" };
-          const objectKey = renderObjectKey(job.projectId, job.revision);
+          const revisionKey = renderObjectKey(job.projectId, job.revision).replace(/\.mp4$/, "");
+          const objectKey = `${revisionKey}/${job.jobId}/${randomUUID()}.mp4`;
           await store.put(objectKey, await readFile(output), "video/mp4");
+          uploadedObjectKey = objectKey;
           const client = await pool.connect();
           try {
             await client.query("BEGIN");
@@ -240,9 +252,11 @@ export function createQueueHandlers(
             );
             if (!active.rowCount) {
               await client.query("ROLLBACK");
+              await store.remove(objectKey);
+              uploadedObjectKey = undefined;
               return { state: "cancelled" };
             }
-            await client.query(
+            const inserted = await client.query(
               `INSERT INTO "RenderResult" (id, "jobId", "objectKey", metadata)
                VALUES ($1, $2, $3, $4) ON CONFLICT ("jobId") DO NOTHING`,
               [randomUUID(), job.jobId, objectKey, {
@@ -253,12 +267,19 @@ export function createQueueHandlers(
                 immutable: true
               }]
             );
+            if (!inserted.rowCount) {
+              await client.query("ROLLBACK");
+              await store.remove(objectKey);
+              uploadedObjectKey = undefined;
+              return { state: "cancelled" };
+            }
             await client.query(`UPDATE "RenderJob" SET state = 'complete' WHERE id = $1`, [job.jobId]);
             await client.query(
               `INSERT INTO "RenderEvent" ("jobId", phase, percent) VALUES ($1, 'complete', 100)`,
               [job.jobId]
             );
             await client.query("COMMIT");
+            uploadedObjectKey = undefined;
             return { state: "complete", objectKey };
           } catch (error) {
             await client.query("ROLLBACK");
@@ -267,6 +288,7 @@ export function createQueueHandlers(
             client.release();
           }
         } catch {
+          if (uploadedObjectKey) await store.remove(uploadedObjectKey);
           // Rendering had already started (past `preparing`): treat every failure here as
           // terminal so the client SSE stops waiting instead of polling to the 15m ceiling.
           await markFailed(pool, job.jobId);

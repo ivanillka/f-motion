@@ -8,6 +8,7 @@ import {
   CreateBucketCommand,
   DeleteBucketCommand,
   DeleteObjectsCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client
@@ -38,7 +39,8 @@ test("worker probes stored media and renders an immutable project result", async
       "../../../prisma/migrations/20260726000000_initial/migration.sql",
       "../../../prisma/migrations/20260726001000_media_admission/migration.sql",
       "../../../prisma/migrations/20260726002000_render_events/migration.sql",
-      "../../../prisma/migrations/20260731000000_render_job_input/migration.sql"
+      "../../../prisma/migrations/20260731000000_render_job_input/migration.sql",
+      "../../../prisma/migrations/20260801000000_coalesce_render_jobs/migration.sql"
     ]) {
       await pool.query(await readFile(new URL(path, import.meta.url), "utf8"));
     }
@@ -110,7 +112,8 @@ test("worker probes stored media and renders an immutable project result", async
         downloaded.push(args[0]);
         return s3Store.download(...args);
       },
-      put: (...args) => s3Store.put(...args)
+      put: (...args) => s3Store.put(...args),
+      remove: (...args) => s3Store.remove(...args)
     }, { width: 720, height: 1280, watermark: "Reference preview" });
     assert.deepEqual(await handlers.inspect({
       assetId: "asset",
@@ -145,6 +148,95 @@ test("worker probes stored media and renders an immutable project result", async
       projectId: "project",
       revision: 0
     }, new AbortController().signal), { state: "cancelled" });
+
+    const snapshot = {
+      schema_version: 1,
+      id: "project",
+      owner_id: "owner",
+      revision: 1,
+      brief: { purpose: "Worker", audience: "Teams", tone: "Warm" },
+      scenes: [scene]
+    };
+    await pool.query(
+      `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, "renderInput", state)
+       VALUES ('race-job', 'owner', 'project', 1, $1, 'queued')`,
+      [snapshot]
+    );
+    const uploaded = [];
+    const removed = [];
+    let releaseUploads;
+    const bothUploaded = new Promise((resolve) => { releaseUploads = resolve; });
+    const raceHandlers = createQueueHandlers(pool, {
+      inspect: (...args) => s3Store.inspect(...args),
+      download: (...args) => s3Store.download(...args),
+      async put(...args) {
+        await s3Store.put(...args);
+        uploaded.push(args[0]);
+        if (uploaded.length === 2) releaseUploads();
+        await bothUploaded;
+      },
+      async remove(objectKey) {
+        removed.push(objectKey);
+        await s3Store.remove(objectKey);
+      }
+    }, { width: 720, height: 1280, watermark: "Reference preview" });
+    const duplicateDeliveries = await Promise.all([
+      raceHandlers.render({ jobId: "race-job", ownerId: "owner", projectId: "project", revision: 1 }, new AbortController().signal),
+      raceHandlers.render({ jobId: "race-job", ownerId: "owner", projectId: "project", revision: 1 }, new AbortController().signal)
+    ]);
+    assert.deepEqual(duplicateDeliveries.map(({ state }) => state).sort(), ["cancelled", "complete"]);
+    assert.equal(new Set(uploaded).size, 2, "duplicate deliveries use distinct attempt keys");
+    assert.equal(removed.length, 1, "the losing upload is removed");
+    const raceResult = (await pool.query(
+      `SELECT "objectKey" FROM "RenderResult" WHERE "jobId" = 'race-job'`
+    )).rows[0];
+    assert.ok(raceResult.objectKey.includes("/race-job/"));
+    assert.equal(uploaded.includes(raceResult.objectKey), true);
+    await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: raceResult.objectKey }));
+
+    await pool.query(
+      `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, "renderInput", state)
+       VALUES ('failed-attempt', 'owner', 'project', 2, $1, 'failed'),
+              ('retry-job', 'owner', 'project', 2, $1, 'queued')`,
+      [{ ...snapshot, revision: 2 }]
+    );
+    assert.equal((await handlers.render({
+      jobId: "retry-job",
+      ownerId: "owner",
+      projectId: "project",
+      revision: 2
+    }, new AbortController().signal)).state, "complete");
+
+    await pool.query(
+      `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, "renderInput", state)
+       VALUES ('cancel-during-upload', 'owner', 'project', 3, $1, 'queued')`,
+      [{ ...snapshot, revision: 3 }]
+    );
+    const cancelledUploads = [];
+    const cancelledRemovals = [];
+    const cancellationHandlers = createQueueHandlers(pool, {
+      inspect: (...args) => s3Store.inspect(...args),
+      download: (...args) => s3Store.download(...args),
+      async put(...args) {
+        await s3Store.put(...args);
+        cancelledUploads.push(args[0]);
+        await pool.query(`UPDATE "RenderJob" SET state = 'cancelled' WHERE id = 'cancel-during-upload'`);
+      },
+      async remove(objectKey) {
+        cancelledRemovals.push(objectKey);
+        await s3Store.remove(objectKey);
+      }
+    }, { width: 720, height: 1280, watermark: "Reference preview" });
+    assert.deepEqual(await cancellationHandlers.render({
+      jobId: "cancel-during-upload",
+      ownerId: "owner",
+      projectId: "project",
+      revision: 3
+    }, new AbortController().signal), { state: "cancelled" });
+    assert.deepEqual(cancelledRemovals, cancelledUploads);
+    assert.equal(Number((await pool.query(
+      `SELECT COUNT(*) AS count FROM "RenderResult" WHERE "jobId" = 'cancel-during-upload'`
+    )).rows[0].count), 0);
   } finally {
     const listed = await s3.send(new ListObjectsV2Command({ Bucket: bucket }));
     if (listed.Contents?.length) {

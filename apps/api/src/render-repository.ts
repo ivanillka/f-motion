@@ -46,6 +46,7 @@ export class PostgresRenderRepository {
 
   async create(ownerId: string, projectId: string): Promise<RenderJobRecord | undefined> {
     const client = await this.pool.connect();
+    let attemptedRevision: number | undefined;
     try {
       await client.query("BEGIN");
       const owner = await client.query(
@@ -55,14 +56,6 @@ export class PostgresRenderRepository {
       if (!owner.rowCount) {
         await client.query("ROLLBACK");
         return undefined;
-      }
-      const active = await client.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count FROM "RenderJob"
-          WHERE "ownerId" = $1 AND state IN ('queued', 'running')`,
-        [ownerId]
-      );
-      if (Number(active.rows[0]?.count ?? 0) >= 3) {
-        throw new RenderCapacityError();
       }
       const project = await client.query<{
         id: string;
@@ -78,6 +71,40 @@ export class PostgresRenderRepository {
       if (!projectRow) {
         await client.query("ROLLBACK");
         return undefined;
+      }
+      attemptedRevision = projectRow.revision;
+      const existing = await client.query<{
+        id: string;
+        ownerId: string;
+        projectId: string;
+        revision: number;
+        state: RenderJobRecord["state"];
+      }>(
+        `SELECT id, "ownerId", "projectId", revision, state
+           FROM "RenderJob"
+          WHERE "ownerId" = $1 AND "projectId" = $2 AND revision = $3
+            AND state IN ('queued', 'running', 'complete')
+          LIMIT 1`,
+        [ownerId, projectId, projectRow.revision]
+      );
+      const existingRow = existing.rows[0];
+      if (existingRow) {
+        await client.query("COMMIT");
+        return {
+          jobId: existingRow.id,
+          ownerId: existingRow.ownerId,
+          projectId: existingRow.projectId,
+          revision: existingRow.revision,
+          state: existingRow.state
+        };
+      }
+      const active = await client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM "RenderJob"
+          WHERE "ownerId" = $1 AND state IN ('queued', 'running')`,
+        [ownerId]
+      );
+      if (Number(active.rows[0]?.count ?? 0) >= 3) {
+        throw new RenderCapacityError();
       }
       const selected = await client.query<{ conceptId: string }>(
         `SELECT LOWER(title) AS "conceptId"
@@ -131,6 +158,34 @@ export class PostgresRenderRepository {
       return job;
     } catch (error) {
       await client.query("ROLLBACK");
+      if ((error as { code?: string; constraint?: string }).code === "23505"
+        && (error as { constraint?: string }).constraint === "RenderJob_canonical_revision_key"
+        && attemptedRevision !== undefined) {
+        const canonical = await client.query<{
+          id: string;
+          ownerId: string;
+          projectId: string;
+          revision: number;
+          state: RenderJobRecord["state"];
+        }>(
+          `SELECT id, "ownerId", "projectId", revision, state
+             FROM "RenderJob"
+            WHERE "ownerId" = $1 AND "projectId" = $2 AND revision = $3
+              AND state IN ('queued', 'running', 'complete')
+            LIMIT 1`,
+          [ownerId, projectId, attemptedRevision]
+        );
+        const row = canonical.rows[0];
+        if (row) {
+          return {
+            jobId: row.id,
+            ownerId: row.ownerId,
+            projectId: row.projectId,
+            revision: row.revision,
+            state: row.state
+          };
+        }
+      }
       throw error;
     } finally {
       client.release();
