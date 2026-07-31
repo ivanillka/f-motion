@@ -8,8 +8,8 @@ import {
   CreateBucketCommand,
   DeleteBucketCommand,
   DeleteObjectsCommand,
-  HeadObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client
@@ -22,7 +22,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL;
 const endpoint = process.env.TEST_S3_ENDPOINT;
 if (!databaseUrl || !endpoint) throw new Error("worker integration configuration is required");
 
-test("worker probes stored media and renders an immutable project result", async () => {
+test("worker probes stored media and renders an immutable project result", async (context) => {
   const schema = `worker_test_${randomUUID().replaceAll("-", "_")}`;
   const bucket = `fengine-${randomUUID()}`;
   const admin = new pg.Pool({ connectionString: databaseUrl });
@@ -72,6 +72,7 @@ test("worker probes stored media and renders an immutable project result", async
       `INSERT INTO "MediaAsset"
         (id, "ownerId", "projectId", "quarantineObjectKey", state, "declaredType", "maxBytes")
        VALUES ('asset', 'owner', 'project', 'projects/project/media-quarantine/asset', 'inspecting', 'video/mp4', $1),
+              ('race', 'owner', 'project', 'projects/project/media-quarantine/race', 'inspecting', 'video/mp4', $1),
               ('fake', 'owner', 'project', 'projects/project/media-quarantine/fake', 'inspecting', 'video/mp4', 100)`
       ,
       [mp4.length]
@@ -79,6 +80,12 @@ test("worker probes stored media and renders an immutable project result", async
     await s3.send(new PutObjectCommand({
       Bucket: bucket,
       Key: "projects/project/media-quarantine/asset",
+      Body: mp4,
+      ContentType: "video/mp4"
+    }));
+    await s3.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: "projects/project/media-quarantine/race",
       Body: mp4,
       ContentType: "video/mp4"
     }));
@@ -107,6 +114,44 @@ test("worker probes stored media and renders an immutable project result", async
        WHERE id = 'scene'`
     );
     const s3Store = new S3WorkerObjectStore(s3, bucket);
+    await context.test("conditional seal rejects a quarantine overwrite after inspection", async () => {
+      const inspectedA = await s3Store.inspect(
+        "projects/project/media-quarantine/race",
+        mp4.length
+      );
+      assert.ok(inspectedA.identity);
+      await s3.send(new PutObjectCommand({
+        Bucket: bucket,
+        Key: "projects/project/media-quarantine/race",
+        Body: "replacement B",
+        ContentType: "video/mp4"
+      }));
+      await assert.rejects(
+        () => s3Store.seal(
+          "projects/project/media-quarantine/race",
+          "projects/project/media-sealed/race",
+          inspectedA.identity
+        ),
+        (error) => error?.$metadata?.httpStatusCode === 412
+      );
+      await assert.rejects(
+        () => s3.send(new HeadObjectCommand({
+          Bucket: bucket,
+          Key: "projects/project/media-sealed/race"
+        })),
+        (error) => error?.$metadata?.httpStatusCode === 404
+      );
+      assert.deepEqual((await pool.query(
+        `SELECT state, "sealedObjectKey", "sealedEtag", "sealedSha256"
+           FROM "MediaAsset" WHERE id = 'race'`
+      )).rows[0], {
+        state: "inspecting",
+        sealedObjectKey: null,
+        sealedEtag: null,
+        sealedSha256: null
+      });
+    });
+
     const downloaded = [];
     const handlers = createQueueHandlers(pool, {
       inspect: (...args) => s3Store.inspect(...args),
