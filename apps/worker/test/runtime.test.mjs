@@ -168,6 +168,27 @@ test("cancellation during upload removes only that execution's object", async ()
   assert.equal(pool.getState(), "cancelled");
 });
 
+test("cleanup rejection remains observable after a losing upload is terminal", async () => {
+  const pool = createFakePool("queued");
+  const cleanupError = new Error("render object cleanup failed");
+  const store = {
+    async inspect() { throw new Error("not used"); },
+    async download() { throw new Error("not used"); },
+    async put() { pool.forceState("cancelled"); },
+    async remove() { throw cleanupError; }
+  };
+  const handlers = createQueueHandlers(pool, store, profile);
+  await assert.rejects(
+    () => handlers.render(
+      { jobId: "cleanup-failure", ownerId: "owner", projectId: "project", revision: 0 },
+      new AbortController().signal
+    ),
+    (error) => error === cleanupError
+  );
+  assert.equal(pool.getState(), "cancelled");
+  assert.notEqual(pool.getState(), "running");
+});
+
 test("reference render profile defaults and rejects invalid startup values", () => {
   assert.deepEqual(renderProfileFromEnv({}), { width: 720, height: 1280 });
   assert.deepEqual(

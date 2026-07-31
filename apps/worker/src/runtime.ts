@@ -35,6 +35,8 @@ interface WorkerObjectStore {
   remove(objectKey: string): Promise<void>;
 }
 
+class RenderCompletionRefusedError extends Error {}
+
 export function renderProfileFromEnv(
   env: Record<string, string | undefined>
 ): RenderProfile {
@@ -250,12 +252,7 @@ export function createQueueHandlers(
               `SELECT 1 FROM "RenderJob" WHERE id = $1 AND state = 'running' FOR UPDATE`,
               [job.jobId]
             );
-            if (!active.rowCount) {
-              await client.query("ROLLBACK");
-              await store.remove(objectKey);
-              uploadedObjectKey = undefined;
-              return { state: "cancelled" };
-            }
+            if (!active.rowCount) throw new RenderCompletionRefusedError();
             const inserted = await client.query(
               `INSERT INTO "RenderResult" (id, "jobId", "objectKey", metadata)
                VALUES ($1, $2, $3, $4) ON CONFLICT ("jobId") DO NOTHING`,
@@ -267,12 +264,7 @@ export function createQueueHandlers(
                 immutable: true
               }]
             );
-            if (!inserted.rowCount) {
-              await client.query("ROLLBACK");
-              await store.remove(objectKey);
-              uploadedObjectKey = undefined;
-              return { state: "cancelled" };
-            }
+            if (!inserted.rowCount) throw new RenderCompletionRefusedError();
             await client.query(`UPDATE "RenderJob" SET state = 'complete' WHERE id = $1`, [job.jobId]);
             await client.query(
               `INSERT INTO "RenderEvent" ("jobId", phase, percent) VALUES ($1, 'complete', 100)`,
@@ -287,11 +279,20 @@ export function createQueueHandlers(
           } finally {
             client.release();
           }
-        } catch {
-          if (uploadedObjectKey) await store.remove(uploadedObjectKey);
+        } catch (error) {
+          let cleanupError: unknown;
+          if (uploadedObjectKey) {
+            try {
+              await store.remove(uploadedObjectKey);
+            } catch (caught) {
+              cleanupError = caught;
+            }
+          }
           // Rendering had already started (past `preparing`): treat every failure here as
           // terminal so the client SSE stops waiting instead of polling to the 15m ceiling.
           await markFailed(pool, job.jobId);
+          if (cleanupError) throw cleanupError;
+          if (error instanceof RenderCompletionRefusedError) return { state: "cancelled" };
           return { state: "failed" };
         }
       } finally {
