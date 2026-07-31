@@ -1,6 +1,12 @@
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable, Transform } from "node:stream";
+import { finished, pipeline } from "node:stream/promises";
 import type { Pool } from "pg";
 
 export const allowedMediaTypes = new Set(["video/mp4", "image/jpeg", "image/png"]);
@@ -204,12 +210,18 @@ export class PrivateObjectStore {
     );
   }
 
-  async put(objectKey: string, body: Uint8Array, contentType: string): Promise<void> {
+  async put(
+    objectKey: string,
+    body: Uint8Array | Readable,
+    contentType: string,
+    contentLength: number
+  ): Promise<void> {
     await this.client.send(new PutObjectCommand({
       Bucket: this.bucket,
       Key: objectKey,
       Body: body,
-      ContentType: contentType
+      ContentType: contentType,
+      ContentLength: contentLength
     }));
   }
 
@@ -280,7 +292,12 @@ export function pexelsQueriesForBrief(brief: string): string[] {
 }
 
 export class PexelsClient {
-  constructor(readonly apiKey: string, readonly request: typeof fetch = fetch) {}
+  constructor(
+    readonly apiKey: string,
+    readonly request: typeof fetch = fetch,
+    readonly copyDeadlineMs = 30_000,
+    readonly temporaryRoot = tmpdir()
+  ) {}
 
   async search(query: string): Promise<PexelsResult[]> {
     const response = await this.request(`https://api.pexels.com/v1/videos/search?query=${encodeURIComponent(query)}&orientation=portrait&per_page=12`, {
@@ -329,58 +346,81 @@ export class PexelsClient {
     if (!attributionUrl || !previewUrl || !creator || creator.length > 200) {
       throw new Error("Pexels metadata rejected");
     }
-    const response = await this.request(selected.sourceUrl);
-    if (!response.ok) throw new Error("Pexels media unavailable");
-    const bytes = await readBoundedBody(response, maximumMediaBytes);
-    const id = randomUUID();
-    const asset: StoredMedia = {
-      id,
-      ownerId,
-      projectId,
-      quarantineObjectKey: `projects/${projectId}/media-quarantine/${id}`,
-      state: "admitted",
-      declaredType: selected.contentType,
-      maxBytes: bytes.length,
-      attribution: {
-        source: "Pexels",
-        creator,
-        url: attributionUrl,
-        previewUrl
+    const directory = await mkdtemp(join(this.temporaryRoot, "fengine-pexels-"));
+    const path = join(directory, "media");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.copyDeadlineMs);
+    timeout.unref();
+    let response: Response | undefined;
+    try {
+      response = await this.request(selected.sourceUrl, { signal: controller.signal });
+      if (!response.ok) throw new Error("Pexels media unavailable");
+      const bytes = await spoolBoundedBody(response, path, maximumMediaBytes, controller.signal);
+      const id = randomUUID();
+      const asset: StoredMedia = {
+        id,
+        ownerId,
+        projectId,
+        quarantineObjectKey: `projects/${projectId}/media-quarantine/${id}`,
+        state: "admitted",
+        declaredType: selected.contentType,
+        maxBytes: bytes,
+        attribution: {
+          source: "Pexels",
+          creator,
+          url: attributionUrl,
+          previewUrl
+        }
+      };
+      const upload = createReadStream(path);
+      try {
+        await store.put(asset.quarantineObjectKey, upload, selected.contentType, bytes);
+      } finally {
+        upload.destroy();
+        await finished(upload).catch(() => undefined);
       }
-    };
-    await store.put(asset.quarantineObjectKey, bytes, selected.contentType);
-    await repository.insert(asset);
-    if (!await repository.completeAdmission(ownerId, projectId, id)) {
-      throw new Error("Pexels media admission failed");
+      await repository.insert(asset);
+      if (!await repository.completeAdmission(ownerId, projectId, id)) {
+        throw new Error("Pexels media admission failed");
+      }
+      return { ...asset, state: "inspecting" };
+    } finally {
+      clearTimeout(timeout);
+      controller.abort();
+      if (response?.body && !response.body.locked) {
+        await response.body.cancel().catch(() => undefined);
+      }
+      await rm(directory, { recursive: true, force: true });
     }
-    return { ...asset, state: "inspecting" };
   }
 }
 
-/** Stream a response body while enforcing a hard byte ceiling. */
-export async function readBoundedBody(response: Response, maxBytes: number): Promise<Uint8Array> {
-  const declared = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > maxBytes) throw new Error("Pexels media rejected");
+/** Spool a response to a private file while enforcing a hard byte ceiling. */
+export async function spoolBoundedBody(
+  response: Response,
+  destination: string,
+  maxBytes: number,
+  signal?: AbortSignal
+): Promise<number> {
+  const declaredHeader = response.headers.get("content-length");
+  const declared = declaredHeader === null ? undefined : Number(declaredHeader);
+  if (declared !== undefined && Number.isFinite(declared) && declared > maxBytes) {
+    throw new Error("Pexels media rejected");
+  }
   if (!response.body) throw new Error("Pexels media unavailable");
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
   let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel();
-      throw new Error("Pexels media rejected");
+  const counter = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      total += chunk.byteLength;
+      callback(total > maxBytes ? new Error("Pexels media rejected") : null, chunk);
     }
-    chunks.push(value);
-  }
+  });
+  await pipeline(
+    Readable.fromWeb(response.body as never),
+    counter,
+    createWriteStream(destination, { flags: "wx", mode: 0o600 }),
+    ...(signal ? [{ signal }] : [])
+  );
   if (!total) throw new Error("Pexels media rejected");
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
+  return total;
 }

@@ -47,6 +47,9 @@ function createFakePool(initialState, storedInput = renderInput, options = {}) {
       if (state === "queued" || state === "running") { state = "failed"; return { rowCount: 1 }; }
       return { rowCount: 0 };
     }
+    if (sql.includes(`SELECT 1 FROM "RenderJob"`) && sql.includes("FOR UPDATE")) {
+      return { rowCount: state === "running" ? 1 : 0, rows: state === "running" ? [{ "?column?": 1 }] : [] };
+    }
     if (sql.startsWith(`INSERT INTO "RenderEvent"`)) {
       const literal = sql.includes(`'failed', 0`);
       events.push({ phase: literal ? "failed" : params[1], percent: literal ? 0 : params[2] });
@@ -189,6 +192,33 @@ test("cleanup rejection remains observable after a losing upload is terminal", a
   );
   assert.equal(pool.getState(), "cancelled");
   assert.notEqual(pool.getState(), "running");
+});
+
+test("render streams its job-scoped output and removes the upload if completion is refused", async () => {
+  const pool = createFakePool("queued");
+  let uploadedBytes = 0;
+  let uploadedKey;
+  let deleted;
+  const store = {
+    async inspect() { throw new Error("not used"); },
+    async downloadSealed() { throw new Error("not used"); },
+    async put(objectKey, body, _contentType, contentLength) {
+      uploadedKey = objectKey;
+      assert.equal(body instanceof Uint8Array, false);
+      for await (const chunk of body) uploadedBytes += chunk.byteLength;
+      assert.equal(uploadedBytes, contentLength);
+      pool.forceState("cancelled");
+    },
+    async delete(objectKey) { deleted = objectKey; }
+  };
+  const handlers = createQueueHandlers(pool, store, profile);
+  assert.deepEqual(await handlers.render(
+    { jobId: "job-1", ownerId: "owner", projectId: "project", revision: 0 },
+    new AbortController().signal
+  ), { state: "cancelled" });
+  assert.ok(uploadedBytes > 0);
+  assert.match(uploadedKey, /projects\/project\/renders\/0\/job-1\/[^/]+\.mp4$/);
+  assert.equal(deleted, uploadedKey);
 });
 
 test("render fails closed when attached media is missing instead of falling back", async () => {

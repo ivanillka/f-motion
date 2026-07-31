@@ -8,10 +8,10 @@ import {
 } from "@aws-sdk/client-s3";
 import { isProjectSnapshot, type ProjectSnapshot } from "@f-engine/contracts";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pipeline } from "node:stream/promises";
+import { finished, pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { createHash, randomUUID } from "node:crypto";
 import pg from "pg";
@@ -45,7 +45,7 @@ interface WorkerObjectStore {
   seal(sourceKey: string, sealedKey: string, identity: ObjectIdentity): Promise<ObjectIdentity>;
   downloadSealed(objectKey: string, destination: string, identity: ObjectIdentity): Promise<void>;
   delete(objectKey: string): Promise<void>;
-  put(objectKey: string, body: Uint8Array, contentType: string): Promise<void>;
+  put(objectKey: string, body: Uint8Array | Readable, contentType: string, contentLength: number): Promise<void>;
 }
 
 class RenderCompletionRefusedError extends Error {}
@@ -192,12 +192,18 @@ export class S3WorkerObjectStore implements WorkerObjectStore {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: objectKey }));
   }
 
-  async put(objectKey: string, body: Uint8Array, contentType: string): Promise<void> {
+  async put(
+    objectKey: string,
+    body: Uint8Array | Readable,
+    contentType: string,
+    contentLength: number
+  ): Promise<void> {
     await this.client.send(new PutObjectCommand({
       Bucket: this.bucket,
       Key: objectKey,
       Body: body,
-      ContentType: contentType
+      ContentType: contentType,
+      ContentLength: contentLength
     }));
   }
 
@@ -429,8 +435,15 @@ export function createQueueHandlers(
           if (!await event(pool, job.jobId, "uploading", 85)) return { state: "cancelled" };
           const revisionKey = renderObjectKey(job.projectId, job.revision).replace(/\.mp4$/, "");
           const objectKey = `${revisionKey}/${job.jobId}/${randomUUID()}.mp4`;
-          await store.put(objectKey, await readFile(output), "video/mp4");
-          uploadedObjectKey = objectKey;
+          const { size } = await stat(output);
+          const upload = createReadStream(output);
+          try {
+            await store.put(objectKey, upload, "video/mp4", size);
+            uploadedObjectKey = objectKey;
+          } finally {
+            upload.destroy();
+            await finished(upload).catch(() => undefined);
+          }
           const client = await pool.connect();
           try {
             await client.query("BEGIN");

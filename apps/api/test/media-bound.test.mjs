@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { maximumMediaBytes, readBoundedBody } from "../dist/media-storage.js";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { maximumMediaBytes, spoolBoundedBody } from "../dist/media-storage.js";
 
 function streamResponse(chunks, headers = {}) {
   return new Response(new ReadableStream({
@@ -11,24 +14,54 @@ function streamResponse(chunks, headers = {}) {
   }), { headers });
 }
 
-test("readBoundedBody rejects oversized content-length before reading", async () => {
-  const response = new Response(null, { headers: { "content-length": String(maximumMediaBytes + 1) } });
-  await assert.rejects(() => readBoundedBody(response, maximumMediaBytes), /Pexels media rejected/);
+test("spoolBoundedBody enforces declared and streamed limits without combining chunks", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fengine-spool-test-"));
+  try {
+    await assert.rejects(
+      () => spoolBoundedBody(
+        new Response(null, { headers: { "content-length": String(maximumMediaBytes + 1) } }),
+        join(directory, "declared"),
+        maximumMediaBytes
+      ),
+      /Pexels media rejected/
+    );
+
+    const chunk = new Uint8Array(1024).fill(7);
+    await assert.rejects(
+      () => spoolBoundedBody(
+        streamResponse(Array.from({ length: 8 }, () => chunk)),
+        join(directory, "streamed"),
+        3000
+      ),
+      /Pexels media rejected/
+    );
+
+    const destination = join(directory, "valid");
+    assert.equal(await spoolBoundedBody(streamResponse([
+      new Uint8Array([1, 2]),
+      new Uint8Array([3])
+    ]), destination, 10), 3);
+    assert.deepEqual([...await readFile(destination)], [1, 2, 3]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
-test("readBoundedBody aborts once the stream exceeds the ceiling", async () => {
-  const chunk = new Uint8Array(1024).fill(7);
-  const chunks = Array.from({ length: 8 }, () => chunk);
-  await assert.rejects(
-    () => readBoundedBody(streamResponse(chunks), 3000),
-    /Pexels media rejected/
-  );
-});
-
-test("readBoundedBody returns the concatenated body under the ceiling", async () => {
-  const bytes = await readBoundedBody(streamResponse([
-    new Uint8Array([1, 2]),
-    new Uint8Array([3])
-  ]), 10);
-  assert.deepEqual([...bytes], [1, 2, 3]);
+test("spoolBoundedBody rejects empty and provider-aborted bodies", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fengine-spool-test-"));
+  try {
+    await assert.rejects(
+      () => spoolBoundedBody(streamResponse([]), join(directory, "empty"), 10),
+      /Pexels media rejected/
+    );
+    const aborted = new Response(new ReadableStream({
+      start(controller) { controller.error(new Error("provider aborted")); }
+    }));
+    await assert.rejects(
+      () => spoolBoundedBody(aborted, join(directory, "aborted"), 10),
+      /provider aborted/
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

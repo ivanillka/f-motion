@@ -114,6 +114,15 @@ test("worker probes stored media and renders an immutable project result", async
        WHERE id = 'scene'`
     );
     const s3Store = new S3WorkerObjectStore(s3, bucket);
+    let renderedFromStream = false;
+    const upload = s3Store.put.bind(s3Store);
+    s3Store.put = async (objectKey, body, contentType, contentLength) => {
+      if (objectKey.includes("/renders/")) {
+        assert.equal(body instanceof Uint8Array, false);
+        renderedFromStream = true;
+      }
+      return upload(objectKey, body, contentType, contentLength);
+    };
     await context.test("conditional seal rejects a quarantine overwrite after inspection", async () => {
       const inspectedA = await s3Store.inspect(
         "projects/project/media-quarantine/race",
@@ -211,6 +220,11 @@ test("worker probes stored media and renders an immutable project result", async
       revision: 0
     }, new AbortController().signal);
     assert.equal(rendered.state, "complete");
+    assert.equal(renderedFromStream, true);
+    const renderedObject = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: rendered.objectKey }));
+    const renderedBytes = Buffer.from(await renderedObject.Body.transformToByteArray());
+    assert.ok(renderedBytes.length > 8);
+    assert.equal(renderedBytes.subarray(4, 8).toString("ascii"), "ftyp");
     assert.equal((await pool.query(`SELECT state FROM "RenderJob" WHERE id = 'job'`)).rows[0].state, "complete");
     assert.equal(Number((await pool.query(`SELECT COUNT(*) AS count FROM "RenderResult" WHERE "jobId" = 'job'`)).rows[0].count), 1);
     const frozen = (await pool.query(`SELECT "renderInput" FROM "RenderJob" WHERE id = 'job'`)).rows[0].renderInput;

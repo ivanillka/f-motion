@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { S3Client } from "@aws-sdk/client-s3";
+import { access, mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
 import {
   PexelsClient,
   PostgresMediaRepository,
@@ -71,6 +75,19 @@ test("signedPut binds the admitted byte ceiling and only targets quarantine", as
   assert.doesNotMatch(decodeURIComponent(url.pathname), /\/media\/a$/);
 });
 
+test("PrivateObjectStore uploads a multi-chunk stream with its known length", async () => {
+  const chunks = [Buffer.from([1, 2]), Buffer.from([3, 4])];
+  const body = Readable.from(chunks);
+  let input;
+  const store = new PrivateObjectStore({
+    async send(command) { input = command.input; }
+  }, "bucket");
+  await store.put("object", body, "video/mp4", 4);
+  assert.equal(input.Body, body);
+  assert.equal(input.ContentLength, 4);
+  assert.equal(input.ContentType, "video/mp4");
+});
+
 /** Fake pool backing both `insert` (top-level query) and `completeAdmission` (transaction). */
 function createFakeMediaPool() {
   const assets = new Map();
@@ -107,7 +124,17 @@ test("PexelsClient.copy admits the asset for worker inspection instead of trusti
   const pool = createFakeMediaPool();
   const repository = new PostgresMediaRepository(pool);
   const objects = new Map();
-  const store = { put: async (objectKey, body) => objects.set(objectKey, body) };
+  let uploadedPath;
+  const store = {
+    async put(objectKey, body, _contentType, contentLength) {
+      uploadedPath = body.path;
+      const chunks = [];
+      for await (const chunk of body) chunks.push(chunk);
+      const bytes = Buffer.concat(chunks);
+      assert.equal(bytes.length, contentLength);
+      objects.set(objectKey, bytes);
+    }
+  };
   const pexels = new PexelsClient("server-only-key", async () => new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 }));
   const selected = {
     id: 1,
@@ -130,7 +157,67 @@ test("PexelsClient.copy admits the asset for worker inspection instead of trusti
   assert.equal("sourceUrl" in pool.getAssets().get(asset.id).attribution, false);
   assert.deepEqual(pool.getOutbox().map((row) => row.dedupeKey), [`inspect-media:${asset.id}`]);
   assert.equal(objects.has(asset.quarantineObjectKey), true);
+  assert.deepEqual([...objects.get(asset.quarantineObjectKey)], [1, 2, 3, 4]);
   assert.match(asset.quarantineObjectKey, /\/media-quarantine\//);
+  await assert.rejects(access(uploadedPath), { code: "ENOENT" });
+});
+
+test("PexelsClient.copy removes its private spool when upload fails", async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "fengine-pexels-test-"));
+  let uploadedPath;
+  try {
+    const pexels = new PexelsClient(
+      "server-only-key",
+      async () => new Response(new Uint8Array([1, 2, 3])),
+      30_000,
+      temporaryRoot
+    );
+    await assert.rejects(
+      () => pexels.copy("owner", "project", {
+        id: 1,
+        creator: "Fixture Creator",
+        attributionUrl: "https://www.pexels.com/video/1",
+        previewUrl: "https://images.pexels.com/videos/1/preview.jpg",
+        sourceUrl: "https://media.pexels.test/1.mp4",
+        contentType: "video/mp4"
+      }, new PostgresMediaRepository(createFakeMediaPool()), {
+        async put(_key, body) {
+          uploadedPath = body.path;
+          throw new Error("upload failed");
+        }
+      }),
+      /upload failed/
+    );
+    await assert.rejects(access(uploadedPath), { code: "ENOENT" });
+    assert.deepEqual(await readdir(temporaryRoot), []);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("PexelsClient.copy bounds the provider request deadline and cleans up", async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "fengine-pexels-test-"));
+  try {
+    const pexels = new PexelsClient(
+      "server-only-key",
+      async (_url, init) => await new Promise((_resolve, reject) => {
+        init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+      }),
+      10,
+      temporaryRoot
+    );
+    await assert.rejects(() => pexels.copy("owner", "project", {
+      id: 1,
+      creator: "Fixture Creator",
+      attributionUrl: "https://www.pexels.com/video/1",
+      previewUrl: "https://images.pexels.com/videos/1/preview.jpg",
+      sourceUrl: "https://media.pexels.test/1.mp4",
+      contentType: "video/mp4"
+    }, new PostgresMediaRepository(createFakeMediaPool()), { async put() {} }), /abort/i);
+    assert.deepEqual(await readdir(temporaryRoot), []);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
 });
 
 test("PexelsClient.copy rejects unsafe attribution metadata before downloading or persisting", async () => {
