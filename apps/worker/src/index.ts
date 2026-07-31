@@ -216,7 +216,9 @@ function watermarkFilters(watermark: string): string[] {
   ];
 }
 
-const clipVideoEncode = ["-c:v", "mpeg4", "-pix_fmt", "yuv420p", "-movflags", "+faststart"];
+// `h264` lets FFmpeg select the available software encoder (libx264 in the
+// production GPL build and OpenH264 in the local development image).
+const clipVideoEncode = ["-c:v", "h264", "-b:v", "4M", "-pix_fmt", "yuv420p", "-movflags", "+faststart"];
 const clipAudioEncode = ["-c:a", "aac", "-ar", "44100", "-ac", "2"];
 const concatEncode = [...clipVideoEncode, ...clipAudioEncode];
 

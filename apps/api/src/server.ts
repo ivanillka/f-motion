@@ -264,7 +264,12 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const ownerId = String(response.locals.ownerId);
       const asset = await options.media.repository.get(ownerId, request.params.projectId, request.params.assetId);
       if (!asset) return response.status(404).json({ type: "not_found", message: "not found" });
-      response.json({ id: asset.id, state: asset.state });
+      const durationMs = asset.detected?.duration_ms;
+      response.json({
+        id: asset.id,
+        state: asset.state,
+        ...(typeof durationMs === "number" ? { detected: { duration_ms: durationMs } } : {})
+      });
     } catch (error) {
       next(error);
     }

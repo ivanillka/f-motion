@@ -47,6 +47,9 @@ RUN npm run build --workspace packages/contracts \
 FROM node:24.15.0-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /repo
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends fonts-dejavu-core \
+ && rm -rf /var/lib/apt/lists/*
 COPY certs/supabase-root-2021-ca.crt certs/supabase-root-2021-ca.crt
 ENV NODE_EXTRA_CA_CERTS=/repo/certs/supabase-root-2021-ca.crt
 COPY --from=ffmpeg /tmp/ffmpeg/ffmpeg /usr/local/bin/ffmpeg

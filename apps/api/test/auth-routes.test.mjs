@@ -329,6 +329,43 @@ test("Pexels search is bounded and never exposes provider source URLs", async ()
   }
 });
 
+test("ready media exposes only the inspected duration needed by the editor", async () => {
+  const server = createServer(createTestApp({
+    media: {
+      repository: {
+        async get() {
+          return {
+            id: "asset-1",
+            state: "ready",
+            objectKey: "private/object/key",
+            detected: {
+              type: "video/mp4",
+              bytes: 42,
+              width: 1080,
+              height: 1920,
+              duration_ms: 12_345
+            }
+          };
+        }
+      },
+      store: {},
+      pexels: {}
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const response = await fetch(`${origin}/api/projects/project-1/media/asset-1`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      id: "asset-1",
+      state: "ready",
+      detected: { duration_ms: 12_345 }
+    });
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("automatic Pexels matching derives a visual query and never exposes the source URL", async () => {
   const queries = [];
   const selected = {

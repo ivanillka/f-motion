@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError } from "../src/api.ts";
+import { ApiClient, ApiResponseError, sceneDurationForMedia } from "../src/api.ts";
+
+test("inspected video duration becomes a bounded scene duration", () => {
+  assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
+  assert.equal(sceneDurationForMedia(40_000, 3000), 15_000);
+  assert.equal(sceneDurationForMedia(200, 3000), 500);
+  assert.equal(sceneDurationForMedia(undefined, 3000), 3000);
+});
 
 test("API requests read the current token and report unauthorized sessions", async () => {
   const originalFetch = globalThis.fetch;

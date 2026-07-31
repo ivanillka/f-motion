@@ -31,6 +31,12 @@ export interface Concept {
   treatment: string;
 }
 
+/** Uses the inspected clip length while keeping it inside the engine's scene bounds. */
+export function sceneDurationForMedia(detectedDurationMs: unknown, fallbackMs: number): number {
+  if (typeof detectedDurationMs !== "number" || !Number.isFinite(detectedDurationMs)) return fallbackMs;
+  return Math.min(15_000, Math.max(500, Math.round(detectedDurationMs)));
+}
+
 export class ApiResponseError extends Error {
   readonly status: number;
   readonly body: Record<string, unknown>;

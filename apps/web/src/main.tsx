@@ -1,6 +1,13 @@
 import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ApiClient, ApiResponseError, type ProjectSnapshot, type ProjectSummary, type Scene } from "./api";
+import {
+  ApiClient,
+  ApiResponseError,
+  sceneDurationForMedia,
+  type ProjectSnapshot,
+  type ProjectSummary,
+  type Scene
+} from "./api";
 import { AuthConfigurationError, createAuthGateway } from "./auth";
 import "./style.css";
 
@@ -258,10 +265,19 @@ function App() {
     setStatus("Waiting for media inspection…");
     const deadline = Date.now() + 60_000;
     while (Date.now() < deadline) {
-      const media = await api.request<{ id: string; state: string }>(`/api/projects/${snapshot.id}/media/${assetId}`);
+      const media = await api.request<{
+        id: string;
+        state: string;
+        detected?: { duration_ms?: number };
+      }>(`/api/projects/${snapshot.id}/media/${assetId}`);
       if (media.state === "ready") {
         const updated = await api.command(snapshot.id, snapshot.revision, "update_scene", {
-          scene: { ...scene, caption: draft, media_id: assetId }
+          scene: {
+            ...scene,
+            caption: draft,
+            duration_ms: sceneDurationForMedia(media.detected?.duration_ms, scene.duration_ms),
+            media_id: assetId
+          }
         });
         setProject(updated);
         setStep("editor");

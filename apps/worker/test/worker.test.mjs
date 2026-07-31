@@ -42,6 +42,25 @@ async function probeAudioStream(path) {
   return (parsed.streams ?? []).find((stream) => stream.codec_type === "audio");
 }
 
+async function frameHash(path) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("ffmpeg", [
+      "-v", "error",
+      "-ss", "0.25",
+      "-i", path,
+      "-frames:v", "1",
+      "-f", "hash",
+      "-hash", "sha256",
+      "-"
+    ], { stdio: ["ignore", "pipe", "ignore"] });
+    let stdout = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.once("error", reject);
+    child.once("exit", (code) => code === 0 ? resolve(stdout.trim()) : reject(new Error(`ffmpeg exited ${code}`)));
+  });
+}
+
 const snapshot = {
   schema_version: 1,
   id: "project",
@@ -123,6 +142,8 @@ test("render job builds one deterministic-plan clip per scene", () => {
   assert.match(concat, /-c:a aac/);
   assert.doesNotMatch(args, /-an/);
   assert.doesNotMatch(concat, /-an/);
+  assert.match(args, /-c:v h264/);
+  assert.match(concat, /-c:v h264/);
 });
 
 test("host profile controls dimensions, watermark, and neutral metadata", () => {
@@ -360,6 +381,18 @@ test("worker renders a preview with multiple timed caption cues burned in", asyn
   const bytes = await readFile(output);
   assert.ok(bytes.length > 1000);
   assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
+});
+test("worker burns caption pixels into the rendered frame", async () => {
+  const withCaptionDirectory = await mkdtemp(join(tmpdir(), "fengine-caption-visible-"));
+  const withoutCaptionDirectory = await mkdtemp(join(tmpdir(), "fengine-caption-empty-"));
+  const withCaption = join(withCaptionDirectory, "preview.mp4");
+  const withoutCaption = join(withoutCaptionDirectory, "preview.mp4");
+  await renderPreview(withCaption, snapshot);
+  await renderPreview(withoutCaption, {
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], caption: "" }]
+  });
+  assert.notEqual(await frameHash(withCaption), await frameHash(withoutCaption));
 });
 test("worker renders attached fixture media into the preview", async () => {
   const directory = await mkdtemp(join(tmpdir(), "fengine-media-render-"));
