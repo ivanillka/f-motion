@@ -9,6 +9,7 @@ import {
   DeleteBucketCommand,
   DeleteObjectsCommand,
   HeadObjectCommand,
+  GetObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client
@@ -40,6 +41,7 @@ test("worker probes stored media and renders an immutable project result", async
       "../../../prisma/migrations/20260726001000_media_admission/migration.sql",
       "../../../prisma/migrations/20260726002000_render_events/migration.sql",
       "../../../prisma/migrations/20260731000000_render_job_input/migration.sql",
+      "../../../prisma/migrations/20260731000000_seal_inspected_media/migration.sql",
       "../../../prisma/migrations/20260801000000_coalesce_render_jobs/migration.sql"
     ]) {
       await pool.query(await readFile(new URL(path, import.meta.url), "utf8"));
@@ -68,21 +70,21 @@ test("worker probes stored media and renders an immutable project result", async
     const mp4 = await readFile(join(fixtures, "scene_one.mp4"));
     await pool.query(
       `INSERT INTO "MediaAsset"
-        (id, "ownerId", "projectId", "objectKey", state, "declaredType", "maxBytes")
-       VALUES ('asset', 'owner', 'project', 'projects/project/media/asset', 'inspecting', 'video/mp4', $1),
-              ('fake', 'owner', 'project', 'projects/project/media/fake', 'inspecting', 'video/mp4', 100)`
+        (id, "ownerId", "projectId", "quarantineObjectKey", state, "declaredType", "maxBytes")
+       VALUES ('asset', 'owner', 'project', 'projects/project/media-quarantine/asset', 'inspecting', 'video/mp4', $1),
+              ('fake', 'owner', 'project', 'projects/project/media-quarantine/fake', 'inspecting', 'video/mp4', 100)`
       ,
       [mp4.length]
     );
     await s3.send(new PutObjectCommand({
       Bucket: bucket,
-      Key: "projects/project/media/asset",
+      Key: "projects/project/media-quarantine/asset",
       Body: mp4,
       ContentType: "video/mp4"
     }));
     await s3.send(new PutObjectCommand({
       Bucket: bucket,
-      Key: "projects/project/media/fake",
+      Key: "projects/project/media-quarantine/fake",
       Body: "fixture",
       ContentType: "video/mp4"
     }));
@@ -108,19 +110,49 @@ test("worker probes stored media and renders an immutable project result", async
     const downloaded = [];
     const handlers = createQueueHandlers(pool, {
       inspect: (...args) => s3Store.inspect(...args),
-      async download(...args) {
+      seal: (...args) => s3Store.seal(...args),
+      async downloadSealed(...args) {
         downloaded.push(args[0]);
-        return s3Store.download(...args);
+        return s3Store.downloadSealed(...args);
       },
       put: (...args) => s3Store.put(...args),
-      remove: (...args) => s3Store.remove(...args)
+      delete: (...args) => s3Store.delete(...args)
     }, { width: 720, height: 1280, watermark: "Reference preview" });
     assert.deepEqual(await handlers.inspect({
       assetId: "asset",
       ownerId: "owner",
       projectId: "project"
     }, new AbortController().signal), { state: "ready" });
-    assert.equal((await pool.query(`SELECT state FROM "MediaAsset" WHERE id = 'asset'`)).rows[0].state, "ready");
+    const sealed = (await pool.query(
+      `SELECT state, "sealedObjectKey", "sealedEtag", "sealedSha256"
+         FROM "MediaAsset" WHERE id = 'asset'`
+    )).rows[0];
+    assert.equal(sealed.state, "ready");
+    assert.equal(sealed.sealedObjectKey, "projects/project/media-sealed/asset");
+    assert.ok(sealed.sealedEtag);
+    assert.match(sealed.sealedSha256, /^[0-9a-f]{64}$/);
+    assert.deepEqual(await handlers.inspect({
+      assetId: "asset",
+      ownerId: "owner",
+      projectId: "project"
+    }, new AbortController().signal), { state: "ready" });
+
+    // A still-valid direct upload can recreate/overwrite quarantine, but render
+    // remains bound to the independently sealed bytes inspected above.
+    await s3.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: "projects/project/media-quarantine/asset",
+      Body: "replacement B",
+      ContentType: "video/mp4"
+    }));
+    const sealedBody = await s3.send(new GetObjectCommand({
+      Bucket: bucket,
+      Key: "projects/project/media-sealed/asset"
+    }));
+    assert.deepEqual(
+      Buffer.from(await sealedBody.Body.transformToByteArray()),
+      mp4
+    );
     assert.deepEqual(await handlers.inspect({
       assetId: "fake",
       ownerId: "owner",
@@ -141,7 +173,7 @@ test("worker probes stored media and renders an immutable project result", async
     assert.equal(frozen.scenes[0].caption, "Rendered project caption");
     assert.equal(frozen.scenes[0].media_id, "asset");
     assert.equal(frozen.scenes[0].order, 0);
-    assert.deepEqual(downloaded, ["projects/project/media/asset"]);
+    assert.deepEqual(downloaded, ["projects/project/media-sealed/asset"]);
     assert.deepEqual(await handlers.render({
       jobId: "cancelled-job",
       ownerId: "owner",
@@ -168,16 +200,17 @@ test("worker probes stored media and renders an immutable project result", async
     const bothUploaded = new Promise((resolve) => { releaseUploads = resolve; });
     const raceHandlers = createQueueHandlers(pool, {
       inspect: (...args) => s3Store.inspect(...args),
-      download: (...args) => s3Store.download(...args),
+      seal: (...args) => s3Store.seal(...args),
+      downloadSealed: (...args) => s3Store.downloadSealed(...args),
       async put(...args) {
         await s3Store.put(...args);
         uploaded.push(args[0]);
         if (uploaded.length === 2) releaseUploads();
         await bothUploaded;
       },
-      async remove(objectKey) {
+      async delete(objectKey) {
         removed.push(objectKey);
-        await s3Store.remove(objectKey);
+        await s3Store.delete(objectKey);
       }
     }, { width: 720, height: 1280, watermark: "Reference preview" });
     const duplicateDeliveries = await Promise.all([
@@ -216,15 +249,16 @@ test("worker probes stored media and renders an immutable project result", async
     const cancelledRemovals = [];
     const cancellationHandlers = createQueueHandlers(pool, {
       inspect: (...args) => s3Store.inspect(...args),
-      download: (...args) => s3Store.download(...args),
+      seal: (...args) => s3Store.seal(...args),
+      downloadSealed: (...args) => s3Store.downloadSealed(...args),
       async put(...args) {
         await s3Store.put(...args);
         cancelledUploads.push(args[0]);
         await pool.query(`UPDATE "RenderJob" SET state = 'cancelled' WHERE id = 'cancel-during-upload'`);
       },
-      async remove(objectKey) {
+      async delete(objectKey) {
         cancelledRemovals.push(objectKey);
-        await s3Store.remove(objectKey);
+        await s3Store.delete(objectKey);
       }
     }, { width: 720, height: 1280, watermark: "Reference preview" });
     assert.deepEqual(await cancellationHandlers.render({

@@ -10,7 +10,11 @@ export interface StoredMedia {
   id: string;
   ownerId: string;
   projectId: string;
-  objectKey: string;
+  quarantineObjectKey: string;
+  sealedObjectKey?: string;
+  sealedEtag?: string;
+  sealedVersionId?: string;
+  sealedSha256?: string;
   state: "admitted" | "inspecting" | "ready" | "quarantined" | "rejected";
   declaredType: string;
   maxBytes: number;
@@ -93,7 +97,11 @@ interface MediaRow {
   id: string;
   ownerId: string;
   projectId: string;
-  objectKey: string;
+  quarantineObjectKey: string;
+  sealedObjectKey?: string;
+  sealedEtag?: string;
+  sealedVersionId?: string;
+  sealedSha256?: string;
   state: StoredMedia["state"];
   declaredType: string;
   maxBytes: number;
@@ -107,13 +115,13 @@ export class PostgresMediaRepository {
   async insert(asset: StoredMedia): Promise<void> {
     await this.pool.query(
       `INSERT INTO "MediaAsset"
-        (id, "ownerId", "projectId", "objectKey", state, "declaredType", "maxBytes", detected, attribution)
+        (id, "ownerId", "projectId", "quarantineObjectKey", state, "declaredType", "maxBytes", detected, attribution)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         asset.id,
         asset.ownerId,
         asset.projectId,
-        asset.objectKey,
+        asset.quarantineObjectKey,
         asset.state,
         asset.declaredType,
         asset.maxBytes,
@@ -125,7 +133,8 @@ export class PostgresMediaRepository {
 
   async get(ownerId: string, projectId: string, id: string): Promise<StoredMedia | undefined> {
     const result = await this.pool.query<MediaRow>(
-      `SELECT id, "ownerId", "projectId", "objectKey", state, "declaredType",
+      `SELECT id, "ownerId", "projectId", "quarantineObjectKey", "sealedObjectKey",
+              "sealedEtag", "sealedVersionId", "sealedSha256", state, "declaredType",
               "maxBytes", detected, attribution
          FROM "MediaAsset"
         WHERE "ownerId" = $1 AND "projectId" = $2 AND id = $3`,
@@ -169,26 +178,6 @@ export class PostgresMediaRepository {
     }
   }
 
-  async recordInspection(
-    ownerId: string,
-    projectId: string,
-    id: string,
-    detected: { type: string; bytes: number }
-  ): Promise<StoredMedia | undefined> {
-    const asset = await this.get(ownerId, projectId, id);
-    if (!asset) return undefined;
-    const state = detected.type === asset.declaredType
-      && detected.bytes > 0
-      && detected.bytes <= asset.maxBytes ? "ready" : "quarantined";
-    const result = await this.pool.query<MediaRow>(
-      `UPDATE "MediaAsset" SET state = $1, detected = $2
-        WHERE "ownerId" = $3 AND "projectId" = $4 AND id = $5
-        RETURNING id, "ownerId", "projectId", "objectKey", state, "declaredType",
-                  "maxBytes", detected, attribution`,
-      [state, detected, ownerId, projectId, id]
-    );
-    return result.rows[0];
-  }
 }
 
 export class PrivateObjectStore {
@@ -348,7 +337,7 @@ export class PexelsClient {
       id,
       ownerId,
       projectId,
-      objectKey: `projects/${projectId}/media/${id}`,
+      quarantineObjectKey: `projects/${projectId}/media-quarantine/${id}`,
       state: "admitted",
       declaredType: selected.contentType,
       maxBytes: bytes.length,
@@ -359,7 +348,7 @@ export class PexelsClient {
         previewUrl
       }
     };
-    await store.put(asset.objectKey, bytes, selected.contentType);
+    await store.put(asset.quarantineObjectKey, bytes, selected.contentType);
     await repository.insert(asset);
     if (!await repository.completeAdmission(ownerId, projectId, id)) {
       throw new Error("Pexels media admission failed");

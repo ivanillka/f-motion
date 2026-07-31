@@ -77,20 +77,27 @@ model Scene {
 }
 
 model MediaAsset {
-  id          String     @id @default(uuid())
-  ownerId     String
-  owner       User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  projectId   String
-  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  objectKey   String
-  state       MediaState @default(admitted)
-  declaredType String
-  maxBytes     Int
-  detected    Json?
-  attribution Json?
+  id                  String     @id @default(uuid())
+  ownerId             String
+  owner               User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projectId           String
+  project             Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  quarantineObjectKey String
+  sealedObjectKey     String?    @unique
+  sealedEtag          String?
+  sealedVersionId     String?
+  sealedSha256        String?
+  inspectionEtag      String?
+  inspectionVersionId String?
+  inspectionSha256    String?
+  state               MediaState @default(admitted)
+  declaredType        String
+  maxBytes            Int
+  detected            Json?
+  attribution         Json?
 
   @@unique([ownerId, projectId, id])
-  @@unique([objectKey])
+  @@unique([quarantineObjectKey])
 }
 
 model CommandReceipt {

@@ -50,6 +50,30 @@ integration("authenticated media routes use real PostgreSQL and private S3 stora
       await pool.query(await readFile(new URL(path, import.meta.url), "utf8"));
     }
     await pool.query(`INSERT INTO "User" (id, state) VALUES ('owner', 'active'), ('other', 'active')`);
+    await pool.query(
+      `INSERT INTO "Project" (id, "ownerId", revision, brief)
+       VALUES ('legacy-project', 'owner', 0, '{"purpose":"Legacy","audience":"Teams","tone":"Warm"}');
+       INSERT INTO "MediaAsset"
+         (id, "ownerId", "projectId", "objectKey", state, "declaredType", "maxBytes")
+       VALUES ('legacy-asset', 'owner', 'legacy-project', 'projects/legacy-project/media/legacy-asset',
+               'ready', 'video/mp4', 42);
+       INSERT INTO "WorkOutbox" (id, kind, "dedupeKey", payload, "dispatchedAt")
+       VALUES ('legacy-work', 'inspect-media', 'inspect-media:legacy-asset',
+               '{"assetId":"legacy-asset","ownerId":"owner","projectId":"legacy-project"}', NOW())`
+    );
+    await pool.query(await readFile(
+      new URL("../../../prisma/migrations/20260731000000_seal_inspected_media/migration.sql", import.meta.url),
+      "utf8"
+    ));
+    const legacy = (await pool.query(
+      `SELECT asset.state, asset."sealedObjectKey", outbox."dispatchedAt"
+         FROM "MediaAsset" asset
+         JOIN "WorkOutbox" outbox ON outbox."dedupeKey" = 'inspect-media:' || asset.id
+        WHERE asset.id = 'legacy-asset'`
+    )).rows[0];
+    assert.equal(legacy.state, "inspecting");
+    assert.equal(legacy.sealedObjectKey, null);
+    assert.equal(legacy.dispatchedAt, null);
     const projects = new PostgresProjectRepository(pool);
     const project = await projects.create("owner", { purpose: "Media", audience: "Teams", tone: "Warm" });
     const repository = new PostgresMediaRepository(pool);
@@ -89,6 +113,8 @@ integration("authenticated media routes use real PostgreSQL and private S3 stora
     assert.equal(admission.method, "PUT");
     assert.match(admission.upload_url, /X-Amz-Signature=/i);
     assert.match(admission.upload_url, /X-Amz-SignedHeaders=[^&]*content-length/i);
+    assert.match(decodeURIComponent(new URL(admission.upload_url).pathname), /\/media-quarantine\//);
+    assert.doesNotMatch(decodeURIComponent(new URL(admission.upload_url).pathname), /\/media\/[0-9a-f-]+$/);
     assert.equal((await fetch(admission.upload_url, {
       method: "PUT",
       headers: { "content-type": "video/mp4" },
@@ -101,7 +127,8 @@ integration("authenticated media routes use real PostgreSQL and private S3 stora
     });
     assert.equal(complete.status, 202);
     const outbox = await pool.query(
-      `SELECT "dedupeKey", "dispatchedAt" FROM "WorkOutbox" WHERE kind = 'inspect-media'`
+      `SELECT "dedupeKey", "dispatchedAt" FROM "WorkOutbox" WHERE "dedupeKey" = $1`,
+      [`inspect-media:${admission.asset_id}`]
     );
     assert.equal(outbox.rows.length, 1);
     assert.equal(outbox.rows[0].dedupeKey, `inspect-media:${admission.asset_id}`);
@@ -112,14 +139,12 @@ integration("authenticated media routes use real PostgreSQL and private S3 stora
     });
     assert.equal(repeatComplete.status, 202);
     assert.equal(
-      Number((await pool.query(`SELECT COUNT(*) AS count FROM "WorkOutbox" WHERE kind = 'inspect-media'`)).rows[0].count),
+      Number((await pool.query(
+        `SELECT COUNT(*) AS count FROM "WorkOutbox" WHERE "dedupeKey" = $1`,
+        [`inspect-media:${admission.asset_id}`]
+      )).rows[0].count),
       1
     );
-    assert.equal((await repository.recordInspection("owner", project.id, admission.asset_id, {
-      type: "image/png",
-      bytes: 7
-    }))?.state, "quarantined");
-
     const search = await (await fetch(`${origin}/api/pexels/search?q=teams`)).json();
     assert.equal(search.results[0].creator, "Fixture Creator");
     assert.equal("sourceUrl" in search.results[0], false);

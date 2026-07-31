@@ -34,7 +34,9 @@ function createFakePool(initialState, storedInput = renderInput, options = {}) {
     if (sql.includes(`SELECT "renderInput", state FROM "RenderJob"`)) {
       return { rows: [{ renderInput: storedInput, state }] };
     }
-    if (sql.includes(`FROM "MediaAsset"`)) return { rows: [] };
+    if (sql.includes(`FROM "MediaAsset"`)) {
+      return { rows: options.mediaRow ? [options.mediaRow] : [] };
+    }
     if (sql.includes(`SET state = 'running'`)) {
       runningUpdates += 1;
       if (runningUpdates === options.cancelOnRunningUpdate) state = "cancelled";
@@ -133,7 +135,7 @@ test("cancellation before upload does not create an object", async () => {
     async inspect() { throw new Error("not used"); },
     async download() { throw new Error("not used"); },
     async put() { uploads += 1; },
-    async remove() { throw new Error("nothing was uploaded"); }
+    async delete() { throw new Error("nothing was uploaded"); }
   };
   const handlers = createQueueHandlers(pool, store, profile);
   assert.deepEqual(await handlers.render(
@@ -155,7 +157,7 @@ test("cancellation during upload removes only that execution's object", async ()
       uploaded.push(objectKey);
       pool.forceState("cancelled");
     },
-    async remove(objectKey) { removed.push(objectKey); }
+    async delete(objectKey) { removed.push(objectKey); }
   };
   const handlers = createQueueHandlers(pool, store, profile);
   assert.deepEqual(await handlers.render(
@@ -175,7 +177,7 @@ test("cleanup rejection remains observable after a losing upload is terminal", a
     async inspect() { throw new Error("not used"); },
     async download() { throw new Error("not used"); },
     async put() { pool.forceState("cancelled"); },
-    async remove() { throw cleanupError; }
+    async delete() { throw cleanupError; }
   };
   const handlers = createQueueHandlers(pool, store, profile);
   await assert.rejects(
@@ -187,6 +189,160 @@ test("cleanup rejection remains observable after a losing upload is terminal", a
   );
   assert.equal(pool.getState(), "cancelled");
   assert.notEqual(pool.getState(), "running");
+});
+
+test("render fails closed when attached media is missing instead of falling back", async () => {
+  const pool = createFakePool("queued", {
+    ...renderInput,
+    scenes: [{ ...scenePayload, media_id: "missing" }]
+  });
+  let uploaded = false;
+  const handlers = createQueueHandlers(pool, {
+    async inspect() { throw new Error("not used"); },
+    async seal() { throw new Error("not used"); },
+    async downloadSealed() { throw new Error("not used"); },
+    async delete() { throw new Error("not used"); },
+    async put() { uploaded = true; }
+  }, profile);
+  assert.deepEqual(await handlers.render(
+    { jobId: "job-1", ownerId: "owner", projectId: "project", revision: 0 },
+    new AbortController().signal
+  ), { state: "failed" });
+  assert.equal(uploaded, false);
+});
+
+test("render rejects a sealed-object identity mismatch", async () => {
+  const pool = createFakePool(
+    "queued",
+    { ...renderInput, scenes: [{ ...scenePayload, media_id: "asset" }] },
+    {
+      mediaRow: {
+        sealedObjectKey: "projects/project/media-sealed/asset",
+        sealedEtag: "etag-a",
+        sealedVersionId: null,
+        sealedSha256: "a".repeat(64),
+        declaredType: "video/mp4",
+        detected: { type: "video/mp4", bytes: 42 }
+      }
+    }
+  );
+  let uploaded = false;
+  const handlers = createQueueHandlers(pool, {
+    async inspect() { throw new Error("not used"); },
+    async seal() { throw new Error("not used"); },
+    async downloadSealed() { throw new Error("sealed object identity mismatch"); },
+    async delete() { throw new Error("not used"); },
+    async put() { uploaded = true; }
+  }, profile);
+  assert.deepEqual(await handlers.render(
+    { jobId: "job-1", ownerId: "owner", projectId: "project", revision: 0 },
+    new AbortController().signal
+  ), { state: "failed" });
+  assert.equal(uploaded, false);
+});
+
+function createInspectionPool({ failReadyOnce = false } = {}) {
+  const row = {
+    quarantineObjectKey: "projects/project/media-quarantine/asset",
+    state: "inspecting",
+    declaredType: "video/mp4",
+    maxBytes: 100,
+    detected: null,
+    inspectionEtag: null,
+    inspectionVersionId: null,
+    inspectionSha256: null,
+    sealedObjectKey: null,
+    sealedEtag: null,
+    sealedVersionId: null,
+    sealedSha256: null
+  };
+  let shouldFailReady = failReadyOnce;
+  return {
+    async query(sql, params = []) {
+      if (sql.includes(`FROM "MediaAsset"`) && sql.includes(`state IN ('inspecting', 'ready')`)) {
+        return { rows: [{ ...row }] };
+      }
+      if (sql.includes(`"inspectionSha256" = $4`) && sql.includes("RETURNING")) {
+        row.detected = params[0];
+        row.inspectionEtag = params[1];
+        row.inspectionVersionId = params[2];
+        row.inspectionSha256 = params[3];
+        return { rowCount: 1, rows: [{ ...row }] };
+      }
+      if (sql.includes(`SET state = 'ready'`)) {
+        if (shouldFailReady) {
+          shouldFailReady = false;
+          throw new Error("database unavailable after copy");
+        }
+        row.state = "ready";
+        row.sealedObjectKey = params[0];
+        row.sealedEtag = params[1];
+        row.sealedVersionId = params[2];
+        row.sealedSha256 = params[3];
+        return { rowCount: 1, rows: [] };
+      }
+      throw new Error(`unexpected inspection query: ${sql}`);
+    },
+    getRow: () => ({ ...row })
+  };
+}
+
+test("inspection retry reuses the persisted approved identity after copy succeeds but DB update fails", async () => {
+  const pool = createInspectionPool({ failReadyOnce: true });
+  let inspections = 0;
+  const sealedIdentities = [];
+  const store = {
+    async inspect() {
+      inspections += 1;
+      return {
+        detected: { type: "video/mp4", bytes: 42, width: 720, height: 1280, duration_ms: 500 },
+        identity: { etag: "etag-a", sha256: "a".repeat(64) }
+      };
+    },
+    async seal(_source, _destination, identity) {
+      sealedIdentities.push(identity);
+      return { etag: "sealed-etag-a", sha256: identity.sha256 };
+    },
+    async delete() {},
+    async downloadSealed() { throw new Error("not used"); },
+    async put() { throw new Error("not used"); }
+  };
+  const handlers = createQueueHandlers(pool, store, profile);
+  const job = { assetId: "asset", ownerId: "owner", projectId: "project" };
+  await assert.rejects(() => handlers.inspect(job, new AbortController().signal), /database unavailable/);
+  assert.deepEqual(await handlers.inspect(job, new AbortController().signal), { state: "ready" });
+  assert.equal(inspections, 1);
+  assert.equal(sealedIdentities.length, 2);
+  assert.equal(sealedIdentities[1].etag, "etag-a");
+  assert.equal(pool.getRow().sealedSha256, "a".repeat(64));
+});
+
+test("inspection retry cleans quarantine after a DB-success cleanup failure", async () => {
+  const pool = createInspectionPool();
+  let deletes = 0;
+  const store = {
+    async inspect() {
+      return {
+        detected: { type: "video/mp4", bytes: 42, width: 720, height: 1280, duration_ms: 500 },
+        identity: { etag: "etag-a", sha256: "a".repeat(64) }
+      };
+    },
+    async seal(_source, _destination, identity) {
+      return { etag: "sealed-etag-a", sha256: identity.sha256 };
+    },
+    async delete() {
+      deletes += 1;
+      if (deletes === 1) throw new Error("cleanup unavailable");
+    },
+    async downloadSealed() { throw new Error("not used"); },
+    async put() { throw new Error("not used"); }
+  };
+  const handlers = createQueueHandlers(pool, store, profile);
+  const job = { assetId: "asset", ownerId: "owner", projectId: "project" };
+  await assert.rejects(() => handlers.inspect(job, new AbortController().signal), /cleanup unavailable/);
+  assert.equal(pool.getRow().state, "ready");
+  assert.deepEqual(await handlers.inspect(job, new AbortController().signal), { state: "ready" });
+  assert.equal(deletes, 2);
 });
 
 test("reference render profile defaults and rejects invalid startup values", () => {

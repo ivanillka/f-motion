@@ -224,12 +224,12 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         return response.status(422).json({ type: "validation", message: "upload declaration rejected" });
       }
       const id = randomUUID();
-      const objectKey = `projects/${request.params.projectId}/media/${id}`;
+      const quarantineObjectKey = `projects/${request.params.projectId}/media-quarantine/${id}`;
       await options.media.repository.insert({
         id,
         ownerId,
         projectId: request.params.projectId,
-        objectKey,
+        quarantineObjectKey,
         state: "admitted",
         declaredType,
         maxBytes
@@ -237,7 +237,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       response.status(201).json({
         asset_id: id,
         method: "PUT",
-        upload_url: await options.media.store.signedPut(objectKey, declaredType, maxBytes),
+        upload_url: await options.media.store.signedPut(quarantineObjectKey, declaredType, maxBytes),
         expires_in_seconds: 300
       });
     } catch (error) {
@@ -250,7 +250,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const ownerId = String(response.locals.ownerId);
       const asset = await options.media.repository.get(ownerId, request.params.projectId, request.params.assetId);
       if (!asset) return response.status(404).json({ type: "not_found", message: "not found" });
-      await options.media.store.exists(asset.objectKey);
+      await options.media.store.exists(asset.quarantineObjectKey);
       if (!await options.media.repository.completeAdmission(ownerId, request.params.projectId, asset.id)) {
         return response.status(409).json({ type: "conflict", message: "media is not admissible" });
       }

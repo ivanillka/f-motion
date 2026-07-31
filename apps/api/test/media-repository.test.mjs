@@ -57,7 +57,7 @@ test("completeAdmission rejects assets that are not admissible and enqueues noth
   assert.equal(pool.getOutbox().length, 0);
 });
 
-test("signedPut binds the admitted byte ceiling into the presigned PUT request", async () => {
+test("signedPut binds the admitted byte ceiling and only targets quarantine", async () => {
   const client = new S3Client({
     region: "us-east-1",
     endpoint: "http://127.0.0.1:1",
@@ -65,8 +65,10 @@ test("signedPut binds the admitted byte ceiling into the presigned PUT request",
     credentials: { accessKeyId: "fengine", secretAccessKey: "fengine-secret" }
   });
   const store = new PrivateObjectStore(client, "bucket");
-  const url = new URL(await store.signedPut("projects/p/media/a", "video/mp4", 4096));
+  const url = new URL(await store.signedPut("projects/p/media-quarantine/a", "video/mp4", 4096));
   assert.match(String(url.searchParams.get("X-Amz-SignedHeaders")), /content-length/);
+  assert.match(decodeURIComponent(url.pathname), /\/media-quarantine\/a$/);
+  assert.doesNotMatch(decodeURIComponent(url.pathname), /\/media\/a$/);
 });
 
 /** Fake pool backing both `insert` (top-level query) and `completeAdmission` (transaction). */
@@ -75,8 +77,8 @@ function createFakeMediaPool() {
   const outbox = [];
   async function query(sql, params = []) {
     if (sql.startsWith(`INSERT INTO "MediaAsset"`)) {
-      const [id, ownerId, projectId, objectKey, state, declaredType, maxBytes, detected, attribution] = params;
-      assets.set(id, { id, ownerId, projectId, objectKey, state, declaredType, maxBytes, detected, attribution });
+      const [id, ownerId, projectId, quarantineObjectKey, state, declaredType, maxBytes, detected, attribution] = params;
+      assets.set(id, { id, ownerId, projectId, quarantineObjectKey, state, declaredType, maxBytes, detected, attribution });
       return { rowCount: 1 };
     }
     if (sql.includes(`SET state = 'inspecting'`)) {
@@ -127,7 +129,8 @@ test("PexelsClient.copy admits the asset for worker inspection instead of trusti
   });
   assert.equal("sourceUrl" in pool.getAssets().get(asset.id).attribution, false);
   assert.deepEqual(pool.getOutbox().map((row) => row.dedupeKey), [`inspect-media:${asset.id}`]);
-  assert.equal(objects.has(asset.objectKey), true);
+  assert.equal(objects.has(asset.quarantineObjectKey), true);
+  assert.match(asset.quarantineObjectKey, /\/media-quarantine\//);
 });
 
 test("PexelsClient.copy rejects unsafe attribution metadata before downloading or persisting", async () => {

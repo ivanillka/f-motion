@@ -1,4 +1,5 @@
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
@@ -6,13 +7,13 @@ import {
   S3Client
 } from "@aws-sdk/client-s3";
 import { isProjectSnapshot, type ProjectSnapshot } from "@f-engine/contracts";
-import { createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import pg from "pg";
 import {
   validateRenderProfile,
@@ -28,14 +29,39 @@ import {
 } from "./index.js";
 import type { InspectionJob, PreviewJob, QueueHandlers } from "./queue.js";
 
+interface ObjectIdentity {
+  etag: string;
+  versionId?: string;
+  sha256: string;
+}
+
+interface InspectionResult {
+  detected: DetectedMedia;
+  identity?: ObjectIdentity;
+}
+
 interface WorkerObjectStore {
-  inspect(objectKey: string, maxBytes: number): Promise<DetectedMedia>;
-  download(objectKey: string, destination: string): Promise<void>;
+  inspect(objectKey: string, maxBytes: number): Promise<InspectionResult>;
+  seal(sourceKey: string, sealedKey: string, identity: ObjectIdentity): Promise<ObjectIdentity>;
+  downloadSealed(objectKey: string, destination: string, identity: ObjectIdentity): Promise<void>;
+  delete(objectKey: string): Promise<void>;
   put(objectKey: string, body: Uint8Array, contentType: string): Promise<void>;
-  remove(objectKey: string): Promise<void>;
 }
 
 class RenderCompletionRefusedError extends Error {}
+
+async function sha256File(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  return hash.digest("hex");
+}
+
+function isMissingObject(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+  return candidate.name === "NoSuchKey" || candidate.name === "NotFound"
+    || candidate.$metadata?.httpStatusCode === 404;
+}
 
 export function renderProfileFromEnv(
   env: Record<string, string | undefined>
@@ -51,35 +77,119 @@ export function renderProfileFromEnv(
 export class S3WorkerObjectStore implements WorkerObjectStore {
   constructor(readonly client: S3Client, readonly bucket: string) {}
 
-  async inspect(objectKey: string, maxBytes: number): Promise<DetectedMedia> {
+  async inspect(objectKey: string, maxBytes: number): Promise<InspectionResult> {
     const head = await this.client.send(new HeadObjectCommand({
       Bucket: this.bucket,
       Key: objectKey
     }));
     const bytes = Number(head.ContentLength ?? 0);
-    if (bytes <= 0) return { type: "application/octet-stream", bytes: 0 };
-    if (bytes > maxBytes) return { type: "application/octet-stream", bytes };
+    if (bytes <= 0) return { detected: { type: "application/octet-stream", bytes: 0 } };
+    if (bytes > maxBytes) return { detected: { type: "application/octet-stream", bytes } };
+    if (!head.ETag) throw new Error("object identity missing");
 
     const directory = await mkdtemp(join(tmpdir(), "fengine-inspect-"));
     const path = join(directory, "object");
     try {
-      await this.download(objectKey, path);
-      const probed = await probeMediaFile(path);
-      return { ...probed, bytes };
-    } catch {
-      return { type: "application/octet-stream", bytes };
+      await this.download(objectKey, path, head.ETag, head.VersionId);
+      const identity = {
+        etag: head.ETag,
+        ...(head.VersionId ? { versionId: head.VersionId } : {}),
+        sha256: await sha256File(path)
+      };
+      let probed: Omit<DetectedMedia, "bytes">;
+      try {
+        probed = await probeMediaFile(path);
+      } catch {
+        return { detected: { type: "application/octet-stream", bytes }, identity };
+      }
+      return {
+        detected: { ...probed, bytes },
+        identity
+      };
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
   }
 
-  async download(objectKey: string, destination: string): Promise<void> {
+  private async download(
+    objectKey: string,
+    destination: string,
+    etag: string,
+    versionId?: string
+  ): Promise<void> {
     const result = await this.client.send(new GetObjectCommand({
       Bucket: this.bucket,
-      Key: objectKey
+      Key: objectKey,
+      IfMatch: etag,
+      ...(versionId ? { VersionId: versionId } : {})
     }));
     if (!result.Body) throw new Error("object body missing");
     await pipeline(result.Body as Readable, createWriteStream(destination));
+  }
+
+  async downloadSealed(
+    objectKey: string,
+    destination: string,
+    identity: ObjectIdentity
+  ): Promise<void> {
+    await this.download(objectKey, destination, identity.etag, identity.versionId);
+    if (await sha256File(destination) !== identity.sha256) {
+      throw new Error("sealed object identity mismatch");
+    }
+  }
+
+  async seal(
+    sourceKey: string,
+    sealedKey: string,
+    identity: ObjectIdentity
+  ): Promise<ObjectIdentity> {
+    const directory = await mkdtemp(join(tmpdir(), "fengine-seal-"));
+    const verificationPath = join(directory, "object");
+    try {
+      try {
+        const existing = await this.client.send(new HeadObjectCommand({
+          Bucket: this.bucket,
+          Key: sealedKey
+        }));
+        if (!existing.ETag) throw new Error("sealed object identity missing");
+        const sealedIdentity = {
+          etag: existing.ETag,
+          ...(existing.VersionId ? { versionId: existing.VersionId } : {}),
+          sha256: identity.sha256
+        };
+        await this.downloadSealed(sealedKey, verificationPath, sealedIdentity);
+        return sealedIdentity;
+      } catch (error) {
+        if (!isMissingObject(error)) throw error;
+      }
+
+      const encodedSource = `${this.bucket}/${sourceKey.split("/").map(encodeURIComponent).join("/")}`
+        + (identity.versionId ? `?versionId=${encodeURIComponent(identity.versionId)}` : "");
+      await this.client.send(new CopyObjectCommand({
+        Bucket: this.bucket,
+        Key: sealedKey,
+        CopySource: encodedSource,
+        CopySourceIfMatch: identity.etag
+      }));
+      const sealed = await this.client.send(new HeadObjectCommand({
+        Bucket: this.bucket,
+        Key: sealedKey
+      }));
+      if (!sealed.ETag) throw new Error("sealed object identity missing");
+      const sealedIdentity = {
+        etag: sealed.ETag,
+        ...(sealed.VersionId ? { versionId: sealed.VersionId } : {}),
+        sha256: identity.sha256
+      };
+      await this.downloadSealed(sealedKey, verificationPath, sealedIdentity);
+      return sealedIdentity;
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+
+  async delete(objectKey: string): Promise<void> {
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: objectKey }));
   }
 
   async put(objectKey: string, body: Uint8Array, contentType: string): Promise<void> {
@@ -91,12 +201,6 @@ export class S3WorkerObjectStore implements WorkerObjectStore {
     }));
   }
 
-  async remove(objectKey: string): Promise<void> {
-    await this.client.send(new DeleteObjectCommand({
-      Bucket: this.bucket,
-      Key: objectKey
-    }));
-  }
 }
 
 async function event(
@@ -173,18 +277,28 @@ async function mediaInputsFor(
   for (const scene of snapshot.scenes) {
     if (!scene.media_id || inputs[scene.media_id]) continue;
     const result = await pool.query<{
-      objectKey: string;
+      sealedObjectKey: string;
+      sealedEtag: string;
+      sealedVersionId: string | null;
+      sealedSha256: string;
       declaredType: string;
       detected: DetectedMedia | null;
     }>(
-      `SELECT "objectKey", "declaredType", detected FROM "MediaAsset"
+      `SELECT "sealedObjectKey", "sealedEtag", "sealedVersionId", "sealedSha256",
+              "declaredType", detected FROM "MediaAsset"
         WHERE id = $1 AND "ownerId" = $2 AND "projectId" = $3 AND state = 'ready'`,
       [scene.media_id, snapshot.owner_id, snapshot.id]
     );
     const asset = result.rows[0];
-    if (!asset) continue;
+    if (!asset?.sealedObjectKey || !asset.sealedEtag || !asset.sealedSha256) {
+      throw new Error("scene media is not sealed");
+    }
     const path = join(directory, scene.media_id);
-    await store.download(asset.objectKey, path);
+    await store.downloadSealed(asset.sealedObjectKey, path, {
+      etag: asset.sealedEtag,
+      ...(asset.sealedVersionId ? { versionId: asset.sealedVersionId } : {}),
+      sha256: asset.sealedSha256
+    });
     const probed = await probeMediaFile(path);
     inputs[scene.media_id] = {
       path,
@@ -202,26 +316,98 @@ export function createQueueHandlers(
 ): QueueHandlers {
   return {
     async inspect(job: InspectionJob) {
-      const result = await pool.query<{
-        objectKey: string;
+      let result = await pool.query<{
+        quarantineObjectKey: string;
+        state: "inspecting" | "ready";
         declaredType: string;
         maxBytes: number;
+        detected: DetectedMedia | null;
+        inspectionEtag: string | null;
+        inspectionVersionId: string | null;
+        inspectionSha256: string | null;
+        sealedObjectKey: string | null;
+        sealedEtag: string | null;
+        sealedVersionId: string | null;
+        sealedSha256: string | null;
       }>(
-        `SELECT "objectKey", "declaredType", "maxBytes" FROM "MediaAsset"
-          WHERE id = $1 AND "ownerId" = $2 AND "projectId" = $3 AND state = 'inspecting'`,
+        `SELECT "quarantineObjectKey", state, "declaredType", "maxBytes", detected,
+                "inspectionEtag", "inspectionVersionId", "inspectionSha256",
+                "sealedObjectKey", "sealedEtag", "sealedVersionId", "sealedSha256"
+           FROM "MediaAsset"
+          WHERE id = $1 AND "ownerId" = $2 AND "projectId" = $3
+            AND state IN ('inspecting', 'ready')`,
         [job.assetId, job.ownerId, job.projectId]
       );
-      const asset = result.rows[0];
+      let asset = result.rows[0];
       if (!asset) return { state: "ignored" };
-      const detected = await store.inspect(asset.objectKey, asset.maxBytes);
-      const accepted = inspectMedia(asset.declaredType, detected, asset.maxBytes).accepted;
-      const state = accepted ? "ready" : "quarantined";
-      await pool.query(
-        `UPDATE "MediaAsset" SET state = $1, detected = $2
-          WHERE id = $3 AND "ownerId" = $4 AND "projectId" = $5`,
-        [state, detected, job.assetId, job.ownerId, job.projectId]
+      if (asset.state === "ready") {
+        await store.delete(asset.quarantineObjectKey);
+        return { state: "ready" };
+      }
+
+      if (!asset.inspectionSha256) {
+        const inspection = await store.inspect(asset.quarantineObjectKey, asset.maxBytes);
+        const accepted = inspectMedia(asset.declaredType, inspection.detected, asset.maxBytes).accepted;
+        if (!accepted) {
+          await pool.query(
+            `UPDATE "MediaAsset" SET state = 'quarantined', detected = $1
+              WHERE id = $2 AND "ownerId" = $3 AND "projectId" = $4 AND state = 'inspecting'`,
+            [inspection.detected, job.assetId, job.ownerId, job.projectId]
+          );
+          return { state: "quarantined" };
+        }
+        if (!inspection.identity) throw new Error("inspection identity missing");
+        result = await pool.query(
+          `UPDATE "MediaAsset"
+              SET detected = $1, "inspectionEtag" = $2, "inspectionVersionId" = $3,
+                  "inspectionSha256" = $4
+            WHERE id = $5 AND "ownerId" = $6 AND "projectId" = $7
+              AND state = 'inspecting' AND "inspectionSha256" IS NULL
+          RETURNING "quarantineObjectKey", state, "declaredType", "maxBytes", detected,
+                    "inspectionEtag", "inspectionVersionId", "inspectionSha256",
+                    "sealedObjectKey", "sealedEtag", "sealedVersionId", "sealedSha256"`,
+          [
+            inspection.detected,
+            inspection.identity.etag,
+            inspection.identity.versionId ?? null,
+            inspection.identity.sha256,
+            job.assetId,
+            job.ownerId,
+            job.projectId
+          ]
+        );
+        asset = result.rows[0];
+        if (!asset) throw new Error("inspection state changed");
+      }
+
+      if (!asset.inspectionEtag || !asset.inspectionSha256 || !asset.detected) {
+        throw new Error("persisted inspection identity missing");
+      }
+      const sealedObjectKey = `projects/${job.projectId}/media-sealed/${job.assetId}`;
+      const sealed = await store.seal(asset.quarantineObjectKey, sealedObjectKey, {
+        etag: asset.inspectionEtag,
+        ...(asset.inspectionVersionId ? { versionId: asset.inspectionVersionId } : {}),
+        sha256: asset.inspectionSha256
+      });
+      const ready = await pool.query(
+        `UPDATE "MediaAsset"
+            SET state = 'ready', "sealedObjectKey" = $1, "sealedEtag" = $2,
+                "sealedVersionId" = $3, "sealedSha256" = $4
+          WHERE id = $5 AND "ownerId" = $6 AND "projectId" = $7
+            AND state = 'inspecting' AND "inspectionSha256" = $4`,
+        [
+          sealedObjectKey,
+          sealed.etag,
+          sealed.versionId ?? null,
+          sealed.sha256,
+          job.assetId,
+          job.ownerId,
+          job.projectId
+        ]
       );
-      return { state };
+      if (ready.rowCount !== 1) throw new Error("media seal state changed");
+      await store.delete(asset.quarantineObjectKey);
+      return { state: "ready" };
     },
     async render(job: PreviewJob, signal: AbortSignal) {
       let snapshot: ProjectSnapshot | undefined;
@@ -283,7 +469,7 @@ export function createQueueHandlers(
           let cleanupError: unknown;
           if (uploadedObjectKey) {
             try {
-              await store.remove(uploadedObjectKey);
+              await store.delete(uploadedObjectKey);
             } catch (caught) {
               cleanupError = caught;
             }
