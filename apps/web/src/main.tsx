@@ -221,7 +221,7 @@ function App() {
     setStatus("Creating an editable storyboard…");
     try {
       await prepareProject();
-      setStatus("Storyboard ready. Review each visual description, then choose media.");
+      setStatus("Storyboard ready. Review each footage search, then choose media.");
       setStep(architecture.media === "own" ? "media" : "editor");
     } catch {
       setStatus("Your storyboard could not be created. Please try again.");
@@ -384,7 +384,7 @@ function App() {
       const body = await api.request<{ results: PexelsMatch[] }>(`/api/pexels/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
       if (transition !== searchTransition.current || activeSceneId !== sceneId) return;
       setCandidates(body.results.slice(0, 3));
-      setStatus(body.results.length ? "Choose the visual that fits this scene." : "No licensed options found. Refine the visual description.");
+      setStatus(body.results.length ? "Choose the footage that fits this scene." : "No licensed options found. Refine the footage search.");
     } catch (error) {
       if (!controller.signal.aborted) setStatus("Licensed media search failed. Your scene edits are safe.");
     }
@@ -657,7 +657,7 @@ function App() {
     </section>}
     {authReady && step === "editor" && project && activeScene && <section className="editor">
       <h1>Storyboard</h1>
-      <p>Review each beat, describe the exact visual, and choose media only when it fits.</p>
+      <p>Review each beat, then search for concrete footage by subject, place, action, and shot.</p>
       <nav className="scene-strip" aria-label="Storyboard scenes">{project.scenes.map((scene) => {
         const media = scene.media_id ? sceneMedia[scene.media_id] : undefined;
         return <button
@@ -696,10 +696,10 @@ function App() {
         </div>
 
         <div className="scene-controls">
-          <label htmlFor={`prompt-${activeScene.id}`}>Scene {activeSceneNumber} visual description
-            <textarea id={`prompt-${activeScene.id}`} maxLength={240} defaultValue={activeScene.visual_prompt ?? ""} onBlur={(event) => void saveScenePatch(activeScene.id, { visual_prompt: event.currentTarget.value.trim() })} />
+          <label htmlFor={`prompt-${activeScene.id}`}>Scene {activeSceneNumber} footage search
+            <textarea id={`prompt-${activeScene.id}`} maxLength={100} defaultValue={activeScene.visual_prompt ?? ""} onBlur={(event) => void saveScenePatch(activeScene.id, { visual_prompt: event.currentTarget.value.trim() })} />
+            <small>Use concrete terms Pexels can match: subject, location, action, shot type, and mood. Maximum 100 characters.</small>
           </label>
-          <button disabled={busy || !activeScene.visual_prompt} onClick={() => void searchStock(activeScene.id)}>Find licensed media for scene {activeSceneNumber}</button>
           <label htmlFor={`caption-${activeScene.id}`}>Scene {activeSceneNumber} caption
             <input id={`caption-${activeScene.id}`} maxLength={180} defaultValue={activeScene.caption} onBlur={(event) => void saveScenePatch(activeScene.id, { caption: event.currentTarget.value })} />
           </label>
@@ -721,6 +721,7 @@ function App() {
             <input id={`audio-${activeScene.id}`} type="range" min="0" max="1" step="0.05" defaultValue={activeScene.audio_level} onBlur={(event) => void saveScenePatch(activeScene.id, { audio_level: event.currentTarget.valueAsNumber })} />
           </label>
           <button className="secondary" onClick={() => void saveScenePatch(activeScene.id, { audio_level: activeScene.audio_level === 0 ? 1 : 0 })}>{activeScene.audio_level === 0 ? `Unmute scene ${activeSceneNumber}` : `Mute scene ${activeSceneNumber}`}</button>
+          <button disabled={busy || !activeScene.visual_prompt} onClick={() => void searchStock(activeScene.id)}>Find licensed media for scene {activeSceneNumber}</button>
         </div>
       </div>
 

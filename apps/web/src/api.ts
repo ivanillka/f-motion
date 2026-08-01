@@ -83,12 +83,74 @@ export const defaultVideoArchitecture: VideoArchitecture = {
   media: "stock"
 };
 
-const ARCHITECTURE_ROLES: Record<VideoArchitecture["structure"], string[]> = {
-  story_arc: ["opening context", "inciting detail", "development", "key turn", "resolution", "memorable closing image"],
-  mystery: ["unanswered opening", "first clue", "growing unease", "key discovery", "reveal", "haunting closing image"],
-  problem_solution: ["problem in context", "human impact", "failed or difficult moment", "solution introduced", "proof of change", "clear outcome"],
-  chronological: ["earliest moment", "next development", "progression", "turning point", "result", "present-day closing view"]
+const ARCHITECTURE_FOOTAGE: Record<VideoArchitecture["structure"], string[]> = {
+  story_arc: ["wide aerial establishing", "human detail close up", "people in motion", "dramatic turning point", "hopeful outcome", "memorable wide closing"],
+  mystery: ["fog wide aerial establishing", "ancient symbol stone close up", "shadowy figure walking", "old documents map investigation", "dramatic silhouette reveal", "empty street dusk fog"],
+  problem_solution: ["real environment wide", "person struggling close up", "difficult process detail", "solution demonstration", "visible improvement", "confident outcome wide"],
+  chronological: ["historic location wide", "early activity detail", "people making progress", "major change in action", "finished result detail", "modern location wide"]
 };
+
+const ARCHITECTURE_CAPTIONS: Record<VideoArchitecture["structure"], string[]> = {
+  story_arc: ["The story begins.", "One detail changes everything.", "The situation develops.", "A decisive turn arrives.", "The pieces come together.", "The final image stays with us."],
+  mystery: ["The mystery begins.", "The first clue appears.", "The pattern grows harder to explain.", "A hidden connection comes into view.", "The truth is finally revealed.", "Some questions remain."],
+  problem_solution: ["The problem is visible.", "Its impact becomes personal.", "The old approach falls short.", "A practical solution emerges.", "The change becomes clear.", "The result speaks for itself."],
+  chronological: ["This is where it started.", "The next step followed.", "Progress gathered momentum.", "Then came the turning point.", "The result took shape.", "This is where things stand today."]
+};
+
+const FOOTAGE_STOP_WORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "by", "create", "for", "from", "in", "into", "is", "it", "make",
+  "of", "on", "or", "story", "the", "this", "through", "to", "video", "with", "without"
+]);
+
+const FOOTAGE_ALIASES = new Map([
+  ["cult", "hooded people"], ["cults", "hooded people"], ["culs", "hooded people"],
+  ["europe", "european old town"], ["european", "european old town"],
+  ["mystery", "mysterious"], ["mysteries", "mysterious"],
+  ["sea", "ocean"], ["seas", "ocean"], ["mist", "fog"], ["misty", "fog"], ["foggy", "fog"]
+]);
+
+const TONE_FOOTAGE_WORD: Record<VideoArchitecture["tone"], string> = {
+  cinematic: "cinematic",
+  documentary: "documentary",
+  energetic: "dynamic",
+  calm: "peaceful"
+};
+
+function architectureIndexes(sceneCount: number): number[] {
+  if (sceneCount === 4) return [0, 1, 4, 5];
+  if (sceneCount === 5) return [0, 1, 2, 4, 5];
+  return [0, 1, 2, 3, 4, 5];
+}
+
+function footageSubject(brief: string): string {
+  const words = brief.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const word of words) {
+    if (FOOTAGE_STOP_WORDS.has(word)) continue;
+    for (const candidate of (FOOTAGE_ALIASES.get(word) ?? word).split(" ")) {
+      if (candidate.length < 2 || seen.has(candidate)) continue;
+      seen.add(candidate);
+      result.push(candidate);
+      if (result.length === 6) return result.join(" ");
+    }
+  }
+  return result.join(" ") || "cinematic subject";
+}
+
+function footagePrompt(brief: string, cue: string, tone: VideoArchitecture["tone"]): string {
+  const words = `${footageSubject(brief)} ${cue} ${TONE_FOOTAGE_WORD[tone]}`.split(" ");
+  const unique = words.filter((word, index) => words.indexOf(word) === index);
+  const query = unique.join(" ");
+  if (query.length <= 100) return query;
+  return query.slice(0, 101).replace(/\s+\S*$/u, "").trim();
+}
+
+function subjectCaption(brief: string): string {
+  const subject = brief.trim().replace(/[.!?]+$/u, "");
+  if (!subject) return "The story begins.";
+  return `${subject.charAt(0).toLocaleUpperCase()}${subject.slice(1)}.`.slice(0, 180);
+}
 
 function promptWithRole(brief: string, role: string): string {
   const subject = brief.trim() || "Untitled subject";
@@ -107,10 +169,14 @@ export function buildStoryboardDraft(
     .map((part) => part.trim())
     .filter((part) => part.length >= 12)
     .slice(0, 6);
-  const sceneCount = architecture ? (architecture.durationSeconds === 15 ? 4 : architecture.durationSeconds === 30 ? 5 : 6) : undefined;
-  const roles = architecture ? ARCHITECTURE_ROLES[architecture.structure].slice(0, sceneCount) : STORY_ROLES;
+  const sceneCount = architecture ? (architecture.durationSeconds === 15 ? 4 : architecture.durationSeconds === 30 ? 5 : 6) : 0;
+  const architectureSceneIndexes = architecture ? architectureIndexes(sceneCount) : [];
   const visualPrompts = architecture
-    ? roles.map((role, index) => promptWithRole(fragments[index] ?? brief, `${role}, ${architecture.tone} ${architecture.pace} pacing`))
+    ? architectureSceneIndexes.map((roleIndex, index) => footagePrompt(
+      fragments[index] ?? brief,
+      ARCHITECTURE_FOOTAGE[architecture.structure][roleIndex] ?? "cinematic scene",
+      architecture.tone
+    ))
     : fragments.length >= 3
       ? fragments.map((fragment) => fragment.slice(0, 240).trim())
       : STORY_ROLES.map((role) => promptWithRole(brief, role));
@@ -122,7 +188,11 @@ export function buildStoryboardDraft(
   const durationBase = Math.floor(totalDurationMs / visualPrompts.length);
   return visualPrompts.map((visual_prompt, order) => {
     const count = base + (remainder-- > 0 ? 1 : 0);
-    const caption = words.slice(cursor, cursor + count).join(" ").slice(0, 180);
+    const caption = architecture
+      ? (fragments[order] ? subjectCaption(fragments[order]) : (order === 0
+          ? subjectCaption(brief)
+          : ARCHITECTURE_CAPTIONS[architecture.structure][architectureSceneIndexes[order] ?? 0] ?? "The story continues."))
+      : words.slice(cursor, cursor + count).join(" ").slice(0, 180);
     cursor += count;
     return {
       id: makeId(),
