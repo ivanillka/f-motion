@@ -183,7 +183,7 @@ test("licensed stock journey explicitly selects candidates for a multi-scene ren
   await page.getByRole("button", { name: "Remove scene 2" }).click();
   await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(4);
   await page.getByRole("button", { name: "Edit scene 1" }).click();
-  const firstPrompt = page.getByLabel("Scene 1 visual description");
+  const firstPrompt = page.getByLabel("Scene 1 footage search");
   await firstPrompt.fill("quiet cinematic studio with soft window light");
   await firstPrompt.press("Tab");
   await expect(page.getByRole("status").filter({ hasText: "All changes saved" })).toBeVisible();

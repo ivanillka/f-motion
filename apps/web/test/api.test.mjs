@@ -52,7 +52,7 @@ test("Unicode, excess clauses, and very short text stay bounded", () => {
   assert.ok(short.every(({ visual_prompt }) => visual_prompt.length <= 240));
 });
 
-test("video architecture controls structure, scene count, timing, tone, and pace", () => {
+test("video architecture creates concrete, bounded Pexels searches and complete scene beats", () => {
   const scenes = buildStoryboardDraft("A lighthouse keeps flashing on an empty island", ids(), {
     goal: "story",
     audience: "social",
@@ -64,9 +64,42 @@ test("video architecture controls structure, scene count, timing, tone, and pace
   });
   assert.equal(scenes.length, 5);
   assert.equal(scenes.reduce((sum, scene) => sum + scene.duration_ms, 0), 30_000);
-  assert.match(scenes[0].visual_prompt, /unanswered opening, documentary slow pacing$/);
-  assert.match(scenes[4].visual_prompt, /reveal, documentary slow pacing$/);
+  assert.match(scenes[0].visual_prompt, /lighthouse keeps flashing empty island fog wide aerial establishing documentary$/);
+  assert.match(scenes[3].visual_prompt, /dramatic silhouette reveal documentary$/);
+  assert.match(scenes[4].visual_prompt, /street dusk fog documentary$/);
+  assert.ok(scenes.every(({ visual_prompt }) => visual_prompt.length <= 100));
+  assert.deepEqual(scenes.map(({ caption }) => caption), [
+    "A lighthouse keeps flashing on an empty island.",
+    "The first clue appears.",
+    "The pattern grows harder to explain.",
+    "The truth is finally revealed.",
+    "Some questions remain."
+  ]);
   assert.deepEqual(scenes.map(({ duration_ms }) => duration_ms), Array(5).fill(6000));
+});
+
+test("short vague input is not split into one-word scenes or sent to Pexels as editorial prose", () => {
+  const scenes = buildStoryboardDraft("mystery culs in europe", ids(), {
+    goal: "story",
+    audience: "social",
+    structure: "mystery",
+    tone: "cinematic",
+    pace: "balanced",
+    durationSeconds: 30,
+    media: "stock"
+  });
+  assert.deepEqual(scenes.map(({ caption }) => caption), [
+    "Mystery culs in europe.",
+    "The first clue appears.",
+    "The pattern grows harder to explain.",
+    "The truth is finally revealed.",
+    "Some questions remain."
+  ]);
+  assert.match(scenes[0].visual_prompt, /^mysterious hooded people european old town fog wide aerial establishing cinematic$/);
+  assert.match(scenes[1].visual_prompt, /ancient symbol stone close up cinematic$/);
+  assert.match(scenes[3].visual_prompt, /dramatic silhouette reveal cinematic$/);
+  assert.ok(scenes.every(({ visual_prompt }) =>
+    visual_prompt.length <= 100 && !/opening|pacing|unease/u.test(visual_prompt)));
 });
 
 test("API requests read the current token and report unauthorized sessions", async () => {
