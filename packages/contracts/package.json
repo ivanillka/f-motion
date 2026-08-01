@@ -1,0 +1,22 @@
+{
+  "name": "@f-engine/contracts",
+  "private": true,
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./schema/f-engine-v1.schema.json": "./schema/f-engine-v1.schema.json",
+    "./openapi.yaml": "./openapi.yaml"
+  },
+  "files": ["dist", "schema", "openapi.yaml"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.mjs"
+  }
+}

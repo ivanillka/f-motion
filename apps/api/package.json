@@ -1,0 +1,24 @@
+{
+  "name": "@f-engine/reference-api",
+  "private": true,
+  "type": "module",
+  "main": "dist/start.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/start.js",
+    "test": "npm run build && node test/run.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1095.0",
+    "@aws-sdk/s3-request-presigner": "3.1095.0",
+    "@f-engine/contracts": "^0.1.0",
+    "@f-engine/reel-engine": "^0.1.0",
+    "express": "5.1.0",
+    "jose": "6.0.12",
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.3",
+    "@types/pg": "8.15.5"
+  }
+}

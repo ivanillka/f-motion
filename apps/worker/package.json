@@ -1,0 +1,21 @@
+{
+  "name": "@f-engine/reference-worker",
+  "private": true,
+  "type": "module",
+  "main": "dist/start.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node test/run.mjs",
+    "start": "node dist/start.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1095.0",
+    "@f-engine/contracts": "^0.1.0",
+    "@f-engine/reel-engine": "^0.1.0",
+    "pg": "^8.16.3",
+    "pg-boss": "12.26.3"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.5"
+  }
+}

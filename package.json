@@ -1,0 +1,31 @@
+{
+  "name": "f-engine",
+  "private": true,
+  "version": "0.1.0",
+  "engines": { "node": "24.15.0", "npm": "11.12.1" },
+  "workspaces": [
+    "apps/web",
+    "apps/api",
+    "apps/worker",
+    "packages/contracts",
+    "packages/reel-engine"
+  ],
+  "scripts": {
+    "lint": "tsc -b --pretty false",
+    "test": "npm test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "build:pages": "npm run build --workspace apps/web && npm run verify:pages-artifact",
+    "verify:pages-artifact": "node tools/deploy/verify-pages-artifact.mjs",
+    "deploy:pages": "node tools/deploy/deploy-pages.mjs",
+    "smoke:pages": "node tools/deploy/smoke-pages.mjs",
+    "demo": "npm run build --workspace apps/api && npm run build --workspace apps/worker && node tests/e2e/run-servers.mjs",
+    "stack": "npm run build --workspace apps/api && npm run start --workspace apps/api",
+    "test:e2e:web": "playwright test -c tests/e2e/playwright.config.ts",
+    "test:package-consumer": "node --test tests/package-consumer.test.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.0",
+    "prisma": "6.12.0",
+    "typescript": "5.8.3"
+  }
+}

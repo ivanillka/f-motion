@@ -2,3 +2,20 @@
 .env
 .env.*
 !.env.example
+# Production workspaces
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+test-results/
+playwright-report/
+.dart_tool/
+.flutter-plugins*
+apps/mobile/build/
+apps/mobile/android/.gradle/
+*.apk
+.env*
+!.env.example
+*.db
+uploads/
+.worktrees/

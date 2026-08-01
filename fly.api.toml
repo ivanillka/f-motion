@@ -1,0 +1,54 @@
+# Fly.io app config for the F-Motion API. Deploy with:
+#   fly launch --config fly.api.toml --no-deploy   # first time, creates the app
+#   fly deploy  --config fly.api.toml
+#
+# Build context is the repo root (this file's directory) so the Dockerfile can
+# reach the npm workspace tree. Secrets (never set here — use `fly secrets
+# set`): DATABASE_URL, R2_ENDPOINT, R2_REGION, R2_BUCKET, R2_ACCESS_KEY_ID,
+# R2_SECRET_ACCESS_KEY, PEXELS_API_KEY,
+# SUPABASE_ISSUER, SUPABASE_AUDIENCE, SUPABASE_JWKS_URL,
+# FENGINE_ACCESS_MODE=invite_only, FENGINE_ALLOWED_USER_IDS=<comma-separated-
+# supabase-user-uuids>. Hosted startup fails if either is missing or invalid.
+# FENGINE_LOCAL_AUTH must stay unset. Never commit real allowed user IDs. See
+# docs/runbooks/hosted-deploy.md.
+
+app = "f-motion-api"            # pick a real, unique Fly app name
+primary_region = "ams"
+
+[build]
+  dockerfile = "apps/api/Dockerfile"
+
+[env]
+  PORT = "3000"
+  FENGINE_ENV = "hosted"
+  PGSSLMODE = "verify-full"
+  PREVIEW_RENDER_WIDTH = "540"
+  PREVIEW_RENDER_HEIGHT = "960"
+  RENDER_WIDTH = "720"
+  RENDER_HEIGHT = "1280"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/healthz"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/readyz"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

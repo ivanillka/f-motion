@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "id": "project-1",
+  "owner_id": "user-1",
+  "revision": 0,
+  "brief": { "purpose": "Launch", "audience": "Customers", "tone": "Warm" },
+  "scenes": [],
+  "additive_field": "clients ignore this"
+}

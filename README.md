@@ -1,30 +1,73 @@
-# F-Motion
+# F-Engine
 
-F-Motion is a standalone, private video-creation product for **f-motion.com**. It reuses Fotium's visual language but has separate customer accounts, database, deployment, and operational boundaries.
+F-Engine is a host-neutral, deterministic vertical-video engine with a small
+reference application. It separates reusable reel contracts and render
+planning from product identity, accounts, persistence, providers, deployment,
+and customer operations.
 
-This repository currently contains only the architecture and frozen design contract. No application scaffold or production code may be added until Gate 0 and the web/Android Gate 1 feasibility proof are accepted. iOS and Linux remain later platform decisions.
+## Start here
 
-## Source-of-truth order
+Choose one path:
 
-1. `docs/architecture/f-motion.drawio`
-2. `docs/design/ACCEPTANCE.md`
-3. `DESIGN.md`
-4. Stitch screenshots
-5. Stitch-generated HTML (reference only; never production code)
+1. **Try it locally with no accounts or personal credentials**
 
-## Gate 0 — launch-policy evidence
+   ```sh
+   npm ci
+   npm run demo
+   ```
 
-- [ ] Written FAL output ownership, training/data-use, retention, and commercial-use terms
-- [ ] Pexels API use, attribution, caching, and media-license requirements
-- [ ] Payment processor, tax/VAT, refunds, chargebacks, receipts, and credit-expiry policy
-- [ ] Privacy notice, consent, data retention, subprocessors, and deletion/recovery schedule
-- [ ] Copyright reporting and takedown workflow
-- [ ] Google Play and future Apple App Store rules for digital credits and external payments
-- [ ] `f-motion.com` trademark, product-name, and brand clearance
-- [ ] Security review for encrypted provider credentials, uploads, sessions, and export URLs
+   Open `http://127.0.0.1:4173`. This disposable demo uses an in-memory API,
+   a session-only test identity, local fixture media, and local FFmpeg. It does
+   not use Supabase, cloud storage, Pexels, or a hosted database.
 
-Beatoven and all generated-music functionality are blocked until licensing, sublicensing, attribution, output-ownership, and data-use terms are verified in writing.
+2. **Self-host with your own services**
 
-## Gate 1 — platform feasibility
+   Follow [Self-host onboarding](docs/getting-started.md). You create and
+   control the Supabase, PostgreSQL, S3-compatible storage, and Pexels
+   accounts. No maintainer credential, customer data, deployment identifier,
+   or private API endpoint is included.
 
-Prove client media feasibility on web and Android before production development using fixtures and mocks: playback and seeking, scene switching and reordering, crop and focal-point controls, text safe areas, approximate audio, mock signed upload, local cache behavior, responsive layouts, and measured device/browser limits. Production server rendering begins only in the later vertical slice.
+Never paste database, storage, Pexels, or service-role credentials into the
+browser. They belong only in protected API/worker environment configuration.
+
+## What is included
+
+The repository contains:
+
+- `@f-engine/contracts`: versioned language-neutral JSON/OpenAPI contracts;
+- `@f-engine/reel-engine`: deterministic commands, cues, crop math, and render
+  planning;
+- a reference API, worker, and React client that exercise the boundary;
+- private release tooling that produces sanitized snapshots.
+
+All npm workspaces remain `"private": true`. The package names are for local
+boundaries and tarball verification; no registry package or hosted customer
+service is implied.
+
+## Host boundary
+
+A host supplies authentication, databases, object storage, provider
+credentials/adapters, UI and branding, operational policy, and a validated
+render profile. The engine does not read environment variables, call provider
+SDKs, persist data, or choose presentation identity.
+
+Private hosts pin reviewed F-Engine releases and adapt at the package/API
+boundary. They do not edit a vendored fork.
+
+The reference journey accepts a short brief, then either user-owned media or
+licensed Pexels footage, and produces an accurate vertical preview. AI
+generation is deliberately not implemented.
+
+## Verify
+
+```sh
+npm run lint
+npm test
+npm run build
+npm run test:package-consumer
+npm run test:e2e:web
+```
+
+Stored project and command payloads remain wire schema version 1. Clients
+consume the HTTP/SSE and JSON/OpenAPI boundary; they do not import the
+TypeScript engine directly.

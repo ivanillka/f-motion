@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountState {
+  active
+  suspended
+  deletion_pending
+}
+
+enum MediaState {
+  admitted
+  inspecting
+  ready
+  quarantined
+  rejected
+}
+
+enum RenderState {
+  queued
+  running
+  cancelled
+  complete
+  failed
+}
+
+enum RenderKind {
+  preview
+  final
+}
+
+model User {
+  id                    String       @id
+  state                 AccountState @default(active)
+  acceptedPolicyVersion String?
+  projects              Project[]
+  media                  MediaAsset[]
+  jobs                   RenderJob[]
+}
+
+model Project {
+  id                String           @id @default(uuid())
+  ownerId           String
+  owner             User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  revision          Int              @default(0)
+  brief             Json
+  concepts          Concept[]
+  scenes            Scene[]
+  media             MediaAsset[]
+  commands          CommandReceipt[]
+  jobs              RenderJob[]
+
+  @@unique([ownerId, id])
+  @@index([ownerId])
+}
+
+model Concept {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  position  Int
+  title     String
+  treatment String
+  selected  Boolean @default(false)
+
+  @@unique([projectId, position])
+}
+
+model Scene {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  position  Int
+  payload   Json
+
+  @@unique([projectId, position])
+}
+
+model MediaAsset {
+  id                  String     @id @default(uuid())
+  ownerId             String
+  owner               User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projectId           String
+  project             Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  quarantineObjectKey String
+  sealedObjectKey     String?    @unique
+  sealedEtag          String?
+  sealedVersionId     String?
+  sealedSha256        String?
+  inspectionEtag      String?
+  inspectionVersionId String?
+  inspectionSha256    String?
+  state               MediaState @default(admitted)
+  declaredType        String
+  maxBytes            Int
+  detected            Json?
+  attribution         Json?
+
+  @@unique([ownerId, projectId, id])
+  @@unique([quarantineObjectKey])
+}
+
+model CommandReceipt {
+  id          String   @id @default(uuid())
+  ownerId     String
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  commandId   String
+  baseRevision Int
+  result      Json
+
+  @@unique([ownerId, projectId, commandId])
+}
+
+model RenderJob {
+  id          String      @id @default(uuid())
+  ownerId     String
+  owner       User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  revision    Int
+  kind        RenderKind @default(preview)
+  renderProfile Json
+  renderInput Json
+  state       RenderState @default(queued)
+  result      RenderResult?
+  events      RenderEvent[]
+
+  @@unique([ownerId, projectId, id])
+}
+
+model RenderEvent {
+  id        BigInt    @id @default(autoincrement())
+  jobId     String
+  job       RenderJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  phase     String
+  percent   Int
+  createdAt DateTime  @default(now())
+
+  @@index([jobId, id])
+}
+
+model RenderResult {
+  id          String    @id @default(uuid())
+  jobId       String    @unique
+  job         RenderJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  objectKey   String    @unique
+  metadata    Json
+  createdAt   DateTime  @default(now())
+}
+
+/// Undispatched polling uses a partial createdAt index defined in SQL migration.
+model WorkOutbox {
+  id           String    @id @default(uuid())
+  kind         String
+  dedupeKey    String    @unique
+  payload      Json
+  createdAt    DateTime  @default(now())
+  dispatchedAt DateTime?
+}
