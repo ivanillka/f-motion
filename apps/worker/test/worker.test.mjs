@@ -379,6 +379,7 @@ test("render job clip uses attached media input when provided", () => {
   }, "/tmp/job");
   const args = job.clips[0].args.join(" ");
   assert.match(args, /\/tmp\/media\.mp4/);
+  assert.match(args, /-stream_loop -1/, "short B-roll must fill the authoritative scene duration");
   assert.doesNotMatch(args, /color=c=#202027/);
   assert.match(args, /force_original_aspect_ratio=increase/);
   assert.match(args, /-map 0:a/);

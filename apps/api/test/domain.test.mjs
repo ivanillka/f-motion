@@ -23,6 +23,52 @@ test("exactly three concepts and one selection", () => {
   assert.equal(service.concepts("owner", project.id).length, 3);
   assert.equal(service.command("owner", { command_id: "c", project_id: project.id, base_revision: 0, client_timestamp: "", kind: "select_concept", payload: { concept_id: "story" } }).selected_concept_id, "story");
 });
+test("multi-scene lifecycle is authoritative, ordered, and idempotent", () => {
+  const service = new ProjectService();
+  const project = service.create("owner", { purpose: "Island mystery", audience: "Viewers", tone: "Tense" });
+  const scene = (id, order) => ({
+    id,
+    order,
+    caption: `Beat ${id}`,
+    visual_prompt: `remote ocean island beat ${id}`,
+    duration_ms: 1500,
+    focal_x: 0.5,
+    focal_y: 0.5,
+    motion: "none",
+    audio_level: 1,
+    ducking: false
+  });
+  const replace = {
+    command_id: "replace-once",
+    project_id: project.id,
+    base_revision: 0,
+    client_timestamp: "diagnostic",
+    kind: "replace_storyboard",
+    payload: { scenes: [scene("s1", 0), scene("s3", 1)] }
+  };
+  const replaced = service.command("owner", replace);
+  assert.deepEqual(service.command("owner", replace), replaced);
+  const added = service.command("owner", {
+    ...replace,
+    command_id: "add-middle",
+    base_revision: 1,
+    kind: "add_scene",
+    payload: { scene: scene("s2", 9), at: 1 }
+  });
+  const removed = service.command("owner", {
+    ...replace,
+    command_id: "remove-first",
+    base_revision: 2,
+    kind: "remove_scene",
+    payload: { scene_id: "s1" }
+  });
+  assert.deepEqual(added.scenes.map(({ id }) => id), ["s1", "s2", "s3"]);
+  assert.deepEqual(removed.scenes.map(({ id, order }) => ({ id, order })), [
+    { id: "s2", order: 0 },
+    { id: "s3", order: 1 }
+  ]);
+  assert.deepEqual(service.get("owner", project.id), removed);
+});
 test("upload uses declared bounds then detected worker facts", () => {
   const media = new MediaService();
   assert.throws(() => media.admit("o", "p", "text/html", 2));

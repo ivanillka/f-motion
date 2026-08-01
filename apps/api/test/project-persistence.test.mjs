@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import pg from "pg";
-import { ConflictError, NotFoundError, PostgresProjectRepository } from "../dist/domain.js";
+import { ConflictError, NotFoundError, PostgresProjectRepository, ValidationError } from "../dist/domain.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl) throw new Error("TEST_DATABASE_URL is required");
@@ -73,6 +73,66 @@ test("PostgreSQL projects are owner-scoped, transactional, and idempotent", asyn
         return true;
       }
     );
+
+    const scene = (id, position) => ({
+      id,
+      order: position,
+      caption: `Beat ${id}`,
+      visual_prompt: `cinematic lonely island scene ${id}`,
+      duration_ms: 1500,
+      focal_x: 0.5,
+      focal_y: 0.5,
+      motion: "none",
+      audio_level: 1,
+      ducking: false
+    });
+    const lifecycle = (command_id, base_revision, kind, payload) => ({
+      command_id,
+      project_id: project.id,
+      base_revision,
+      client_timestamp: "diagnostic",
+      kind,
+      payload
+    });
+    const assertPersisted = async (expected) => {
+      assert.deepEqual(await projects.get("owner", project.id), expected);
+      assert.equal(
+        Number((await pool.query(`SELECT COUNT(*) AS count FROM "Scene" WHERE "projectId" = $1`, [project.id])).rows[0].count),
+        expected.scenes.length
+      );
+    };
+
+    const replace = lifecycle("replace-four", 1, "replace_storyboard", {
+      scenes: Array.from({ length: 4 }, (_, position) => scene(`s${position + 1}`, position))
+    });
+    const replaced = await projects.command("owner", replace);
+    assert.deepEqual(await projects.command("owner", replace), replaced);
+    await assertPersisted(replaced);
+
+    const added = await projects.command("owner", lifecycle("add-middle", 2, "add_scene", {
+      scene: scene("s-new", 8),
+      at: 2
+    }));
+    await assertPersisted(added);
+
+    const reordered = await projects.command("owner", lifecycle("reorder-last", 3, "reorder_scene", {
+      scene_id: "s-new",
+      to: 4
+    }));
+    await assertPersisted(reordered);
+
+    const removed = await projects.command("owner", lifecycle("remove-second", 4, "remove_scene", {
+      scene_id: "s2"
+    }));
+    await assertPersisted(removed);
+
+    await assert.rejects(
+      projects.command("owner", lifecycle("invalid-replace", 5, "replace_storyboard", {
+        scenes: [scene("duplicate", 0), scene("duplicate", 1)]
+      })),
+      ValidationError
+    );
+    await assertPersisted(removed);
   } finally {
     await pool.end();
     await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);

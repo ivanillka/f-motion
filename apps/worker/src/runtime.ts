@@ -96,17 +96,6 @@ export function mediaLimitsFromEnv(env: Record<string, string | undefined>): Med
   };
 }
 
-export function renderProfileFromEnv(
-  env: Record<string, string | undefined>
-): RenderProfile {
-  const watermark = env.RENDER_WATERMARK?.trim();
-  return validateRenderProfile({
-    width: Number(env.RENDER_WIDTH ?? "720"),
-    height: Number(env.RENDER_HEIGHT ?? "1280"),
-    ...(watermark ? { watermark } : {})
-  });
-}
-
 export class S3WorkerObjectStore implements WorkerObjectStore {
   constructor(
     readonly client: S3Client,
@@ -300,12 +289,18 @@ async function markFailed(pool: pg.Pool, jobId: string): Promise<void> {
   }
 }
 
-async function projectSnapshot(pool: pg.Pool, job: PreviewJob): Promise<ProjectSnapshot | undefined> {
+async function storedRender(pool: pg.Pool, job: PreviewJob): Promise<{
+  snapshot: ProjectSnapshot;
+  profile: RenderProfile;
+  kind: "preview" | "final";
+} | undefined> {
   const result = await pool.query<{
     renderInput: unknown;
+    renderProfile: unknown;
+    kind: "preview" | "final";
     state: string;
   }>(
-    `SELECT "renderInput", state FROM "RenderJob"
+    `SELECT "renderInput", "renderProfile", kind, state FROM "RenderJob"
       WHERE id = $1 AND "ownerId" = $2 AND "projectId" = $3 AND revision = $4`,
     [job.jobId, job.ownerId, job.projectId, job.revision]
   );
@@ -317,7 +312,10 @@ async function projectSnapshot(pool: pg.Pool, job: PreviewJob): Promise<ProjectS
     || row.renderInput.revision !== job.revision) {
     throw new Error("invalid stored render input");
   }
-  return row.renderInput;
+  if (!(["preview", "final"] as string[]).includes(row.kind) || (job.kind && row.kind !== job.kind)) {
+    throw new Error("invalid stored render kind");
+  }
+  return { snapshot: row.renderInput, profile: validateRenderProfile(row.renderProfile as RenderProfile), kind: row.kind };
 }
 
 async function mediaInputsFor(
@@ -372,7 +370,7 @@ async function mediaInputsFor(
 export function createQueueHandlers(
   pool: pg.Pool,
   store: WorkerObjectStore,
-  profile: RenderProfile,
+  _legacyProfile?: RenderProfile,
   limits: MediaLimits = defaultMediaLimits
 ): QueueHandlers {
   return {
@@ -476,14 +474,15 @@ export function createQueueHandlers(
       return { state: "ready" };
     },
     async render(job: PreviewJob, signal: AbortSignal) {
-      let snapshot: ProjectSnapshot | undefined;
+      let stored: Awaited<ReturnType<typeof storedRender>>;
       try {
-        snapshot = await projectSnapshot(pool, job);
+        stored = await storedRender(pool, job);
       } catch {
         await markFailed(pool, job.jobId);
         return { state: "failed" };
       }
-      if (!snapshot || !await event(pool, job.jobId, "preparing", 10)) return { state: "cancelled" };
+      if (!stored || !await event(pool, job.jobId, "preparing", 10)) return { state: "cancelled" };
+      const { snapshot, profile, kind } = stored;
       const directory = await mkdtemp(join(tmpdir(), `fengine-${job.jobId}-`));
       const output = join(directory, "preview.mp4");
       let uploadedObjectKey: string | undefined;
@@ -492,6 +491,12 @@ export function createQueueHandlers(
           const mediaInputs = await mediaInputsFor(pool, store, snapshot, directory, signal, limits);
           if (!await event(pool, job.jobId, "rendering", 35)) return { state: "cancelled" };
           await renderPreview(output, snapshot, signal, mediaInputs, profile);
+          const measured = await probeMediaFile(output, signal, limits.probeTimeoutMs);
+          const expectedDuration = snapshot.scenes.reduce((total, scene) => total + scene.duration_ms, 0);
+          if (measured.width !== profile.width || measured.height !== profile.height
+            || !measured.duration_ms || Math.abs(measured.duration_ms - expectedDuration) > 250) {
+            throw new Error("render output does not match immutable profile");
+          }
           if (!await event(pool, job.jobId, "uploading", 85)) return { state: "cancelled" };
           const revisionKey = renderObjectKey(job.projectId, job.revision).replace(/\.mp4$/, "");
           const objectKey = `${revisionKey}/${job.jobId}/${randomUUID()}.mp4`;
@@ -516,9 +521,17 @@ export function createQueueHandlers(
               `INSERT INTO "RenderResult" (id, "jobId", "objectKey", metadata)
                VALUES ($1, $2, $3, $4) ON CONFLICT ("jobId") DO NOTHING`,
               [randomUUID(), job.jobId, objectKey, {
-                width: profile.width,
-                height: profile.height,
-                ...(profile.watermark ? { watermark: profile.watermark } : {}),
+                width: measured.width,
+                height: measured.height,
+                duration_ms: measured.duration_ms,
+                video_codec: measured.video_codec,
+                pixel_format: measured.pixel_format,
+                audio_codec: measured.audio_codec,
+                audio_channels: measured.audio_channels,
+                audio_status: measured.has_audio ? "present" : "silent",
+                scene_count: snapshot.scenes.length,
+                kind,
+                render_profile: profile,
                 revision: job.revision,
                 immutable: true
               }]

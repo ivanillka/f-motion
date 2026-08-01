@@ -20,9 +20,19 @@ export interface Scene {
   audio_level: number;
   ducking: boolean;
   media_id?: string;
+  /** Search/generation intent, separate from viewer-facing caption copy. */
+  visual_prompt?: string;
   /** Optional timed schedule over `caption`; absent/empty means "derive it". */
   caption_cues?: CaptionCue[];
 }
+
+export type CommandKind =
+  | "select_concept"
+  | "update_scene"
+  | "reorder_scene"
+  | "replace_storyboard"
+  | "add_scene"
+  | "remove_scene";
 
 export interface ProjectSnapshot {
   schema_version: 1;
@@ -45,7 +55,7 @@ export interface CommandEnvelope {
   project_id: string;
   base_revision: number;
   client_timestamp: string;
-  kind: "select_concept" | "update_scene" | "reorder_scene";
+  kind: CommandKind;
   payload: Record<string, unknown>;
 }
 
@@ -102,7 +112,11 @@ function isScene(value: unknown, order: number): value is Scene {
     || value.audio_level < 0
     || value.audio_level > 1
     || typeof value.ducking !== "boolean"
-    || ("media_id" in value && (typeof value.media_id !== "string" || !value.media_id))) {
+    || ("media_id" in value && (typeof value.media_id !== "string" || !value.media_id))
+    || ("visual_prompt" in value && (typeof value.visual_prompt !== "string"
+      || !value.visual_prompt
+      || value.visual_prompt !== value.visual_prompt.trim()
+      || value.visual_prompt.length > 240))) {
     return false;
   }
   if (!("caption_cues" in value)) return true;
@@ -113,6 +127,17 @@ function isScene(value: unknown, order: number): value is Scene {
     previousEnd = cue.end_ms;
   }
   return true;
+}
+
+/** Validates an authoritative lifecycle payload, not historical empty projects. */
+export function isStoryboardScenes(value: unknown, requireVisualPrompt = false): value is Scene[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 8) return false;
+  const ids = new Set<string>();
+  return value.every((scene, order) => {
+    if (!isScene(scene, order) || ids.has(scene.id) || (requireVisualPrompt && !scene.visual_prompt)) return false;
+    ids.add(scene.id);
+    return true;
+  });
 }
 
 /** Validates persisted render input at the API/worker trust boundary. */

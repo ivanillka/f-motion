@@ -1,6 +1,22 @@
 import { randomUUID } from "node:crypto";
 import { isProjectSnapshot, type ProjectSnapshot } from "@f-engine/contracts";
+import { validateRenderProfile, type RenderProfile } from "@f-engine/reel-engine";
 import type { Pool, PoolClient } from "pg";
+
+export type RenderKind = "preview" | "final";
+export interface RenderProfiles { preview: RenderProfile; final: RenderProfile }
+
+export function renderProfilesFromEnv(env: Record<string, string | undefined>): RenderProfiles {
+  const profile = (prefix: "PREVIEW_RENDER" | "RENDER", defaults: [number, number]): RenderProfile => {
+    const watermark = env[`${prefix}_WATERMARK`]?.trim();
+    return validateRenderProfile({
+      width: Number(env[`${prefix}_WIDTH`] ?? defaults[0]),
+      height: Number(env[`${prefix}_HEIGHT`] ?? defaults[1]),
+      ...(watermark ? { watermark } : {})
+    });
+  };
+  return { preview: profile("PREVIEW_RENDER", [540, 960]), final: profile("RENDER", [720, 1280]) };
+}
 
 export interface RenderEvent {
   eventId: string;
@@ -13,6 +29,8 @@ export interface RenderJobRecord {
   ownerId: string;
   projectId: string;
   revision: number;
+  kind: RenderKind;
+  renderProfile: RenderProfile;
   state: "queued" | "running" | "cancelled" | "complete" | "failed";
 }
 
@@ -20,6 +38,7 @@ export interface RenderResultRecord {
   jobId: string;
   objectKey: string;
   metadata: Record<string, unknown>;
+  kind: RenderKind;
   stale: boolean;
 }
 
@@ -42,9 +61,12 @@ async function insertEvent(
 }
 
 export class PostgresRenderRepository {
-  constructor(readonly pool: Pool) {}
+  constructor(
+    readonly pool: Pool,
+    readonly profiles: RenderProfiles = renderProfilesFromEnv({})
+  ) {}
 
-  async create(ownerId: string, projectId: string): Promise<RenderJobRecord | undefined> {
+  async create(ownerId: string, projectId: string, kind: RenderKind): Promise<RenderJobRecord | undefined> {
     const client = await this.pool.connect();
     let attemptedRevision: number | undefined;
     try {
@@ -78,14 +100,17 @@ export class PostgresRenderRepository {
         ownerId: string;
         projectId: string;
         revision: number;
+        kind: RenderKind;
+        renderProfile: RenderProfile;
         state: RenderJobRecord["state"];
       }>(
-        `SELECT id, "ownerId", "projectId", revision, state
+        `SELECT id, "ownerId", "projectId", revision, kind, "renderProfile"
            FROM "RenderJob"
           WHERE "ownerId" = $1 AND "projectId" = $2 AND revision = $3
+            AND kind = $4
             AND state IN ('queued', 'running', 'complete')
           LIMIT 1`,
-        [ownerId, projectId, projectRow.revision]
+        [ownerId, projectId, projectRow.revision, kind]
       );
       const existingRow = existing.rows[0];
       if (existingRow) {
@@ -95,6 +120,8 @@ export class PostgresRenderRepository {
           ownerId: existingRow.ownerId,
           projectId: existingRow.projectId,
           revision: existingRow.revision,
+          kind: existingRow.kind,
+          renderProfile: existingRow.renderProfile,
           state: existingRow.state
         };
       }
@@ -136,21 +163,24 @@ export class PostgresRenderRepository {
         ownerId,
         projectId,
         revision: renderInput.revision,
+        kind,
+        renderProfile: structuredClone(this.profiles[kind]),
         state: "queued"
       };
       await client.query(
-        `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, "renderInput", state)
-         VALUES ($1, $2, $3, $4, $5, 'queued')`,
-        [jobId, ownerId, projectId, job.revision, renderInput]
+        `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, kind, "renderProfile", "renderInput", state)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued')`,
+        [jobId, ownerId, projectId, job.revision, job.kind, job.renderProfile, renderInput]
       );
       await client.query(
         `INSERT INTO "WorkOutbox" (id, kind, "dedupeKey", payload)
          VALUES ($1, 'render-preview', $2, $3)`,
-        [randomUUID(), `render-preview:${projectId}:${job.revision}:${jobId}`, {
+        [randomUUID(), `render-preview:${projectId}:${job.revision}:${kind}:${jobId}`, {
           jobId,
           ownerId,
           projectId,
-          revision: job.revision
+          revision: job.revision,
+          kind
         }]
       );
       await insertEvent(client, jobId, "queued", 0);
@@ -159,21 +189,24 @@ export class PostgresRenderRepository {
     } catch (error) {
       await client.query("ROLLBACK");
       if ((error as { code?: string; constraint?: string }).code === "23505"
-        && (error as { constraint?: string }).constraint === "RenderJob_canonical_revision_key"
+        && (error as { constraint?: string }).constraint === "RenderJob_canonical_revision_kind_key"
         && attemptedRevision !== undefined) {
         const canonical = await client.query<{
           id: string;
           ownerId: string;
           projectId: string;
           revision: number;
+          kind: RenderKind;
+          renderProfile: RenderProfile;
           state: RenderJobRecord["state"];
         }>(
-          `SELECT id, "ownerId", "projectId", revision, state
+          `SELECT id, "ownerId", "projectId", revision, kind, "renderProfile", state
              FROM "RenderJob"
             WHERE "ownerId" = $1 AND "projectId" = $2 AND revision = $3
+              AND kind = $4
               AND state IN ('queued', 'running', 'complete')
             LIMIT 1`,
-          [ownerId, projectId, attemptedRevision]
+          [ownerId, projectId, attemptedRevision, kind]
         );
         const row = canonical.rows[0];
         if (row) {
@@ -182,6 +215,8 @@ export class PostgresRenderRepository {
             ownerId: row.ownerId,
             projectId: row.projectId,
             revision: row.revision,
+            kind: row.kind,
+            renderProfile: row.renderProfile,
             state: row.state
           };
         }
@@ -197,11 +232,12 @@ export class PostgresRenderRepository {
     try {
       await client.query("BEGIN");
       const result = await client.query<{
-        id: string; ownerId: string; projectId: string; revision: number; state: RenderJobRecord["state"];
+        id: string; ownerId: string; projectId: string; revision: number;
+        kind: RenderKind; renderProfile: RenderProfile; state: RenderJobRecord["state"];
       }>(
         `UPDATE "RenderJob" SET state = 'cancelled'
           WHERE "ownerId" = $1 AND id = $2 AND state IN ('queued', 'running')
-          RETURNING id, "ownerId", "projectId", revision, state`,
+          RETURNING id, "ownerId", "projectId", revision, kind, "renderProfile", state`,
         [ownerId, jobId]
       );
       const row = result.rows[0];
@@ -212,6 +248,8 @@ export class PostgresRenderRepository {
         ownerId: row.ownerId,
         projectId: row.projectId,
         revision: row.revision,
+        kind: row.kind,
+        renderProfile: row.renderProfile,
         state: row.state
       };
     } catch (error) {
@@ -293,7 +331,7 @@ export class PostgresRenderRepository {
 
   async result(ownerId: string, jobId: string): Promise<RenderResultRecord | undefined> {
     const result = await this.pool.query<RenderResultRecord>(
-      `SELECT r."jobId", r."objectKey", r.metadata, (j.revision <> p.revision) AS stale
+      `SELECT r."jobId", r."objectKey", r.metadata, j.kind, (j.revision <> p.revision) AS stale
          FROM "RenderResult" r
          JOIN "RenderJob" j ON j.id = r."jobId"
          JOIN "Project" p ON p.id = j."projectId"

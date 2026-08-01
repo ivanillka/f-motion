@@ -1,15 +1,123 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:f-engine:contracts:v1",
-  "title": "F-Engine contracts v1",
+  "title": "F-Engine command envelope v1",
   "type": "object",
-  "required": ["schema_version", "command_id", "project_id", "base_revision"],
+  "required": ["schema_version", "command_id", "project_id", "base_revision", "client_timestamp", "kind", "payload"],
   "properties": {
     "schema_version": { "const": 1 },
     "command_id": { "type": "string", "minLength": 1 },
     "project_id": { "type": "string", "minLength": 1 },
     "base_revision": { "type": "integer", "minimum": 0 },
+    "client_timestamp": { "type": "string" },
+    "kind": {
+      "enum": [
+        "select_concept",
+        "update_scene",
+        "reorder_scene",
+        "replace_storyboard",
+        "add_scene",
+        "remove_scene"
+      ]
+    },
+    "payload": { "type": "object" },
     "Last-Event-ID": { "type": "string" }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "oneOf": [
+    {
+      "properties": {
+        "kind": { "const": "select_concept" },
+        "payload": {
+          "type": "object",
+          "required": ["concept_id"],
+          "properties": { "concept_id": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    {
+      "properties": {
+        "kind": { "const": "update_scene" },
+        "payload": {
+          "type": "object",
+          "required": ["scene"],
+          "properties": { "scene": { "$ref": "#/$defs/scene" } }
+        }
+      }
+    },
+    {
+      "properties": {
+        "kind": { "const": "reorder_scene" },
+        "payload": {
+          "type": "object",
+          "required": ["scene_id", "to"],
+          "properties": {
+            "scene_id": { "type": "string", "minLength": 1 },
+            "to": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "kind": { "const": "replace_storyboard" },
+        "payload": {
+          "type": "object",
+          "required": ["scenes"],
+          "properties": {
+            "scenes": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 8,
+              "items": { "$ref": "#/$defs/scene" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "kind": { "const": "add_scene" },
+        "payload": {
+          "type": "object",
+          "required": ["scene", "at"],
+          "properties": {
+            "scene": { "$ref": "#/$defs/scene" },
+            "at": { "type": "integer", "minimum": 0, "maximum": 8 }
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "kind": { "const": "remove_scene" },
+        "payload": {
+          "type": "object",
+          "required": ["scene_id"],
+          "properties": { "scene_id": { "type": "string", "minLength": 1 } }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "scene": {
+      "type": "object",
+      "required": ["id", "order", "caption", "duration_ms", "focal_x", "focal_y", "motion", "audio_level", "ducking"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "order": { "type": "integer", "minimum": 0 },
+        "caption": { "type": "string", "maxLength": 180 },
+        "duration_ms": { "type": "number", "minimum": 500, "maximum": 15000 },
+        "focal_x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "focal_y": { "type": "number", "minimum": 0, "maximum": 1 },
+        "motion": { "enum": ["none", "push", "zoom"] },
+        "audio_level": { "type": "number", "minimum": 0, "maximum": 1 },
+        "ducking": { "type": "boolean" },
+        "media_id": { "type": "string", "minLength": 1 },
+        "visual_prompt": { "type": "string", "minLength": 1, "maxLength": 240, "pattern": "^\\S(?:.*\\S)?$" },
+        "caption_cues": { "type": "array" }
+      },
+      "additionalProperties": true
+    }
+  }
 }

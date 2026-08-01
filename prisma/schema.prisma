@@ -29,6 +29,11 @@ enum RenderState {
   failed
 }
 
+enum RenderKind {
+  preview
+  final
+}
+
 model User {
   id                    String       @id
   state                 AccountState @default(active)
@@ -119,6 +124,8 @@ model RenderJob {
   projectId   String
   project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   revision    Int
+  kind        RenderKind @default(preview)
+  renderProfile Json
   renderInput Json
   state       RenderState @default(queued)
   result      RenderResult?

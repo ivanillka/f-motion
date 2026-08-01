@@ -4,7 +4,7 @@ import { accessPolicyFromEnv } from "./access-policy.js";
 import { PostgresProjectRepository } from "./domain.js";
 import { assertLocalAuthAllowed } from "./local-auth.js";
 import { PexelsClient, PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
-import { PostgresRenderRepository } from "./render-repository.js";
+import { PostgresRenderRepository, renderProfilesFromEnv } from "./render-repository.js";
 import { createApp, createTestApp } from "./server.js";
 
 function required(name: string): string {
@@ -34,7 +34,7 @@ const objectStore = new PrivateObjectStore(new S3Client({
 }), required("R2_BUCKET"));
 
 const projects = new PostgresProjectRepository(pool);
-const renders = new PostgresRenderRepository(pool);
+const renders = new PostgresRenderRepository(pool, renderProfilesFromEnv(process.env));
 const media = {
   repository: new PostgresMediaRepository(pool),
   store: objectStore,

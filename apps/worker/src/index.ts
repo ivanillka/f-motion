@@ -20,6 +20,10 @@ export interface DetectedMedia {
   height?: number;
   duration_ms?: number;
   has_audio?: boolean;
+  video_codec?: string;
+  pixel_format?: string;
+  audio_codec?: string;
+  audio_channels?: number;
 }
 
 export interface MediaInput {
@@ -120,7 +124,7 @@ export async function probeMediaFile(
   const raw = await new Promise<string>((resolve, reject) => {
     const child = spawn("ffprobe", [
       "-v", "error",
-      "-show_entries", "format=duration,format_name:stream=codec_type,width,height,codec_name",
+      "-show_entries", "format=duration,format_name:stream=codec_type,width,height,codec_name,pix_fmt,channels",
       "-of", "json",
       path
     ], { stdio: ["ignore", "pipe", "ignore"] });
@@ -162,7 +166,7 @@ export async function probeMediaFile(
   });
   type ProbeOutput = {
     format?: { duration?: string; format_name?: string };
-    streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number }>;
+    streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number; pix_fmt?: string; channels?: number }>;
   };
   let parsed: ProbeOutput;
   try {
@@ -179,6 +183,7 @@ export async function probeMediaFile(
   }
   const streams = parsed.streams ?? [];
   const video = streams.find((stream) => stream.codec_type === "video");
+  const audio = streams.find((stream) => stream.codec_type === "audio");
   const type = mimeFromProbe(parsed.format?.format_name ?? "", streams);
   const width = video?.width;
   const height = video?.height;
@@ -192,6 +197,10 @@ export async function probeMediaFile(
     detected.duration_ms = Math.round(durationSeconds * 1000);
   }
   detected.has_audio = streams.some((stream) => stream.codec_type === "audio");
+  if (video?.codec_name) detected.video_codec = video.codec_name;
+  if (video?.pix_fmt) detected.pixel_format = video.pix_fmt;
+  if (audio?.codec_name) detected.audio_codec = audio.codec_name;
+  if (Number.isInteger(audio?.channels) && (audio?.channels ?? 0) > 0) detected.audio_channels = audio?.channels;
   return detected;
 }
 
@@ -357,7 +366,7 @@ export function sceneClipArguments(
     const padAudio = still || media.hasAudio === false;
     const input = still
       ? ["-loop", "1", "-framerate", "30", "-t", String(duration), "-i", media.path]
-      : ["-t", String(duration), "-i", media.path];
+      : ["-stream_loop", "-1", "-t", String(duration), "-i", media.path];
     const audioInput = padAudio ? silentAudioInput(duration) : [];
     const audioMap = padAudio ? "1:a" : "0:a";
     return [

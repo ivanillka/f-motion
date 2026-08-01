@@ -30,7 +30,8 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
       "../../../prisma/migrations/20260726001000_media_admission/migration.sql",
       "../../../prisma/migrations/20260726002000_render_events/migration.sql",
       "../../../prisma/migrations/20260731000000_render_job_input/migration.sql",
-      "../../../prisma/migrations/20260801000000_coalesce_render_jobs/migration.sql"
+      "../../../prisma/migrations/20260801000000_coalesce_render_jobs/migration.sql",
+      "../../../prisma/migrations/20260801120000_render_kind_profile/migration.sql"
     ]) {
       await pool.query(await readFile(new URL(path, import.meta.url), "utf8"));
     }
@@ -42,7 +43,9 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
     const origin = await listen(server);
 
     const createResponses = await Promise.all(
-      Array.from({ length: 8 }, () => fetch(`${origin}/api/projects/${project.id}/render`, { method: "POST" }))
+      Array.from({ length: 8 }, () => fetch(`${origin}/api/projects/${project.id}/render`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "preview" })
+      }))
     );
     assert.deepEqual(createResponses.map(({ status }) => status), Array(8).fill(202));
     const createdResponses = await Promise.all(createResponses.map((response) => response.json()));
@@ -55,6 +58,10 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
     assert.equal(Number((await pool.query(
       `SELECT COUNT(*) AS count FROM "WorkOutbox" WHERE kind = 'render-preview'`
     )).rows[0].count), 1);
+    const finalJob = await renders.create("owner", project.id, "final");
+    assert.notEqual(finalJob.jobId, created.job_id);
+    assert.deepEqual(finalJob.renderProfile, { width: 720, height: 1280 });
+    assert.equal((await renders.cancel("owner", finalJob.jobId)).state, "cancelled");
     assert.equal(await renders.events("other", created.job_id), undefined);
     const queued = await renders.events("owner", created.job_id);
     assert.equal(queued.length, 1);
@@ -79,38 +86,40 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
     assert.equal((await renders.result("owner", created.job_id)).stale, false);
     assert.equal(await renders.result("other", created.job_id), undefined);
     assert.equal(await renders.complete(created.job_id, "wrong.mp4", {}), false);
-    assert.equal((await renders.create("owner", project.id)).jobId, created.job_id,
+    assert.equal((await renders.create("owner", project.id, "preview")).jobId, created.job_id,
       "a completed revision remains the canonical response");
 
     await pool.query(`UPDATE "Project" SET revision = 1 WHERE id = $1`, [project.id]);
-    const cancelled = await renders.create("owner", project.id);
+    const cancelled = await renders.create("owner", project.id, "preview");
     assert.equal((await renders.cancel("owner", cancelled.jobId)).state, "cancelled");
     assert.equal(await renders.complete(cancelled.jobId, "cancelled.mp4", {}), false);
     assert.equal(await renders.result("owner", cancelled.jobId), undefined);
-    const retryAfterCancellation = await renders.create("owner", project.id);
+    const retryAfterCancellation = await renders.create("owner", project.id, "preview");
     assert.notEqual(retryAfterCancellation.jobId, cancelled.jobId);
     await pool.query(`UPDATE "RenderJob" SET state = 'failed' WHERE id = $1`, [retryAfterCancellation.jobId]);
-    const retryAfterFailure = await renders.create("owner", project.id);
+    const retryAfterFailure = await renders.create("owner", project.id, "preview");
     assert.notEqual(retryAfterFailure.jobId, retryAfterCancellation.jobId);
     assert.equal((await renders.cancel("owner", retryAfterFailure.jobId)).state, "cancelled");
 
     const capacityProjects = await Promise.all(Array.from({ length: 4 }, (_, index) =>
       projects.create("owner", { purpose: `Capacity ${index}`, audience: "Teams", tone: "Warm" })
     ));
-    const running = await renders.create("owner", capacityProjects[0].id);
+    const running = await renders.create("owner", capacityProjects[0].id, "preview");
     assert.ok(running);
     assert.equal(await renders.progress(running.jobId, "preparing", 10), true);
-    const waitingOne = await renders.create("owner", capacityProjects[1].id);
-    const waitingTwo = await renders.create("owner", capacityProjects[2].id);
+    const waitingOne = await renders.create("owner", capacityProjects[1].id, "preview");
+    const waitingTwo = await renders.create("owner", capacityProjects[2].id, "preview");
     assert.ok(waitingOne);
     assert.ok(waitingTwo);
     await assert.rejects(
-      () => renders.create("owner", capacityProjects[3].id),
+      () => renders.create("owner", capacityProjects[3].id, "preview"),
       /render capacity reached/
     );
-    assert.equal((await fetch(`${origin}/api/projects/${capacityProjects[3].id}/render`, { method: "POST" })).status, 429);
+    assert.equal((await fetch(`${origin}/api/projects/${capacityProjects[3].id}/render`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "preview" })
+    })).status, 429);
     assert.equal((await renders.cancel("owner", waitingOne.jobId)).state, "cancelled");
-    assert.ok(await renders.create("owner", capacityProjects[3].id), "terminal jobs release capacity");
+    assert.ok(await renders.create("owner", capacityProjects[3].id, "preview"), "terminal jobs release capacity");
 
     await pool.query(
       `UPDATE "RenderJob" SET state = 'cancelled'
@@ -119,7 +128,7 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
     const concurrentProjects = await Promise.all(Array.from({ length: 8 }, (_, index) =>
       projects.create("owner", { purpose: `Concurrent ${index}`, audience: "Teams", tone: "Warm" })
     ));
-    const concurrent = await Promise.allSettled(concurrentProjects.map(({ id }) => renders.create("owner", id)));
+    const concurrent = await Promise.allSettled(concurrentProjects.map(({ id }) => renders.create("owner", id, "preview")));
     assert.equal(
       concurrent.filter(({ status }) => status === "fulfilled").length,
       3,
@@ -154,7 +163,7 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
       kind: "update_scene",
       payload: { scene: sceneN }
     });
-    const frozenJob = await renders.create("owner", project.id);
+    const frozenJob = await renders.create("owner", project.id, "preview");
     assert.ok(frozenJob);
     await projects.command("owner", {
       command_id: "mutate-after-enqueue",

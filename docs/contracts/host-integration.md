@@ -18,9 +18,12 @@ Width and height are integers from 16 through 7680. A watermark is optional;
 when present it is already trimmed and at most 120 characters. Invalid
 profiles fail before FFmpeg arguments are created.
 
-The reference worker reads `RENDER_WIDTH` and `RENDER_HEIGHT`, defaulting to
-720×1280, plus optional `RENDER_WATERMARK`. A private host supplies its own
-values from protected configuration.
+The admitting API owns two profiles. `PREVIEW_RENDER_WIDTH` and
+`PREVIEW_RENDER_HEIGHT` default to 540×960; `RENDER_WIDTH` and `RENDER_HEIGHT`
+default to 720×1280. Each supports an optional matching `_WATERMARK`. The API
+validates and snapshots the selected profile with the immutable job. The worker
+revalidates that stored profile and never reads current profile environment
+values, so retries cannot silently change dimensions or watermark.
 
 Private hosts pin a reviewed F-Engine version and use a thin adapter around its
 public package/API boundary. They must not patch or vendor a fork. Shared bugs

@@ -15,6 +15,7 @@ export interface PreviewJob {
   ownerId: string;
   projectId: string;
   revision: number;
+  kind: "preview" | "final";
 }
 
 export interface QueueHandlers {

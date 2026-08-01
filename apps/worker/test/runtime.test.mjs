@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { createQueueHandlers, mediaLimitsFromEnv, renderProfileFromEnv } from "../dist/runtime.js";
+import { createQueueHandlers, mediaLimitsFromEnv } from "../dist/runtime.js";
 
 const profile = { width: 720, height: 1280 };
 
@@ -33,8 +33,8 @@ function createFakePool(initialState, storedInput = renderInput, options = {}) {
   const events = [];
   let runningUpdates = 0;
   const query = async (sql, params = []) => {
-    if (sql.includes(`SELECT "renderInput", state FROM "RenderJob"`)) {
-      return { rows: [{ renderInput: storedInput, state }] };
+    if (sql.includes(`"renderInput"`) && sql.includes(`FROM "RenderJob"`)) {
+      return { rows: [{ renderInput: storedInput, renderProfile: options.profile ?? profile, kind: options.kind ?? "preview", state }] };
     }
     if (sql.includes(`FROM "MediaAsset"`)) {
       return { rows: options.mediaRow ? [options.mediaRow] : [] };
@@ -423,22 +423,6 @@ test("inspection retry cleans quarantine after a DB-success cleanup failure", as
   assert.equal(pool.getRow().state, "ready");
   assert.deepEqual(await handlers.inspect(job, new AbortController().signal), { state: "ready" });
   assert.equal(deletes, 2);
-});
-
-test("reference render profile defaults and rejects invalid startup values", () => {
-  assert.deepEqual(renderProfileFromEnv({}), { width: 720, height: 1280 });
-  assert.deepEqual(
-    renderProfileFromEnv({
-      RENDER_WIDTH: "1080",
-      RENDER_HEIGHT: "1920",
-      RENDER_WATERMARK: "Reference"
-    }),
-    { width: 1080, height: 1920, watermark: "Reference" }
-  );
-  assert.throws(
-    () => renderProfileFromEnv({ RENDER_WIDTH: "wide" }),
-    /dimensions/
-  );
 });
 
 test("media safety limits have conservative defaults and reject invalid startup values", () => {

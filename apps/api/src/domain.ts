@@ -231,19 +231,67 @@ export class PostgresProjectRepository implements ProjectRepository {
       return;
     }
     if (command.kind === "update_scene") {
-      const scene = command.payload.scene as ProjectSnapshot["scenes"][number];
+      const sceneId = (command.payload.scene as { id?: unknown } | undefined)?.id;
+      const scene = updated.scenes.find(({ id }) => id === sceneId);
+      if (!scene) throw new Error("updated scene missing");
       await client.query(
         `UPDATE "Scene" SET payload = $1 WHERE "projectId" = $2 AND id = $3`,
         [scene, command.project_id, scene.id]
       );
       return;
     }
+    if (command.kind === "replace_storyboard") {
+      await this.replaceScenes(client, command.project_id, updated.scenes);
+      return;
+    }
+    if (command.kind === "add_scene" || command.kind === "remove_scene") {
+      await this.syncScenes(client, command.project_id, updated.scenes);
+      return;
+    }
+    if (command.kind !== "reorder_scene") throw new Error("unsupported command persistence");
     await client.query(`UPDATE "Scene" SET position = -position - 1 WHERE "projectId" = $1`, [command.project_id]);
     for (const scene of updated.scenes) {
       await client.query(
         `UPDATE "Scene" SET position = $1, payload = $2 WHERE "projectId" = $3 AND id = $4`,
         [scene.order, scene, command.project_id, scene.id]
       );
+    }
+  }
+
+  private async replaceScenes(
+    client: PoolClient,
+    projectId: string,
+    scenes: ProjectSnapshot["scenes"]
+  ): Promise<void> {
+    await client.query(`DELETE FROM "Scene" WHERE "projectId" = $1`, [projectId]);
+    for (const scene of scenes) {
+      await client.query(
+        `INSERT INTO "Scene" (id, "projectId", position, payload) VALUES ($1, $2, $3, $4)`,
+        [scene.id, projectId, scene.order, scene]
+      );
+    }
+  }
+
+  private async syncScenes(
+    client: PoolClient,
+    projectId: string,
+    scenes: ProjectSnapshot["scenes"]
+  ): Promise<void> {
+    await client.query(`UPDATE "Scene" SET position = -position - 1 WHERE "projectId" = $1`, [projectId]);
+    await client.query(
+      `DELETE FROM "Scene" WHERE "projectId" = $1 AND NOT (id = ANY($2::text[]))`,
+      [projectId, scenes.map(({ id }) => id)]
+    );
+    for (const scene of scenes) {
+      const result = await client.query(
+        `INSERT INTO "Scene" (id, "projectId", position, payload)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (id) DO UPDATE SET position = EXCLUDED.position, payload = EXCLUDED.payload
+         WHERE "Scene"."projectId" = EXCLUDED."projectId"
+         RETURNING id`,
+        [scene.id, projectId, scene.order, scene]
+      );
+      if (result.rowCount !== 1) throw new Error("scene id belongs to another project");
     }
   }
 }

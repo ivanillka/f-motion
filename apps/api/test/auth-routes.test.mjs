@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { ProjectService } from "../dist/domain.js";
+import { renderProfilesFromEnv } from "../dist/render-repository.js";
 import { createApp, createTestApp } from "../dist/server.js";
 
 async function listen(server) {
@@ -11,6 +12,17 @@ async function listen(server) {
   if (!address || typeof address === "string") throw new Error("server did not bind");
   return `http://127.0.0.1:${address.port}`;
 }
+
+test("host-owned preview and final profiles are validated at API startup", () => {
+  assert.deepEqual(renderProfilesFromEnv({}), {
+    preview: { width: 540, height: 960 },
+    final: { width: 720, height: 1280 }
+  });
+  assert.deepEqual(renderProfilesFromEnv({ PREVIEW_RENDER_WIDTH: "360", PREVIEW_RENDER_HEIGHT: "640", PREVIEW_RENDER_WATERMARK: "Preview" }).preview, {
+    width: 360, height: 640, watermark: "Preview"
+  });
+  assert.throws(() => renderProfilesFromEnv({ PREVIEW_RENDER_WIDTH: "wide" }), /dimensions/);
+});
 
 async function fixture({ provision = false, accessPolicy } = {}) {
   const { privateKey, publicKey } = await generateKeyPair("RS256");
@@ -508,7 +520,54 @@ test("test app rejects invalid command kinds with validation errors", async () =
   }
 });
 
-test("update_scene media_id must be owner-scoped and ready", async () => {
+test("render routes accept only a trusted kind and allowlist playback metadata", async () => {
+  const admittedKinds = [];
+  const server = createServer(createTestApp({
+    renders: {
+      async create(ownerId, projectId, kind) {
+        admittedKinds.push(kind);
+        return { jobId: "job", ownerId, projectId, revision: 0, kind, renderProfile: { width: 540, height: 960 }, state: "queued" };
+      },
+      async result() {
+        return {
+          jobId: "job", objectKey: "private/job.mp4", kind: "preview", stale: false,
+          metadata: { width: 540, height: 960, duration_ms: 12000, secret: "never expose" }
+        };
+      }
+    },
+    media: {
+      repository: {},
+      store: { async signedGet() { return "https://signed.example/job"; } },
+      pexels: {}
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const { project } = await (await fetch(`${origin}/api/projects`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ purpose: "Preview" })
+    })).json();
+    for (const body of [{}, { kind: "proxy" }, { kind: "preview", width: 999 }]) {
+      const rejected = await fetch(`${origin}/api/projects/${project.id}/render`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
+      });
+      assert.equal(rejected.status, 422);
+    }
+    const accepted = await fetch(`${origin}/api/projects/${project.id}/render`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "preview" })
+    });
+    assert.equal(accepted.status, 202);
+    assert.deepEqual(admittedKinds, ["preview"]);
+    const playback = await (await fetch(`${origin}/api/render-jobs/job/download`)).json();
+    assert.equal(playback.kind, "preview");
+    assert.equal(playback.stale, false);
+    assert.deepEqual(playback.metadata, { width: 540, height: 960, duration_ms: 12000 });
+    assert.equal("secret" in playback.metadata, false);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("scene lifecycle media_id values must be owner-scoped and ready", async () => {
   const assets = new Map();
   const server = createServer(createTestApp({
     media: {
@@ -593,7 +652,58 @@ test("update_scene media_id must be owner-scoped and ready", async () => {
       })
     });
     assert.equal(ready.status, 200);
-    assert.equal((await ready.json()).scenes[0].media_id, "ready-asset");
+    const afterReady = await ready.json();
+    assert.equal(afterReady.scenes[0].media_id, "ready-asset");
+
+    assets.set(`authenticated-user:${project.id}:ready-second`, {
+      id: "ready-second",
+      ownerId: "authenticated-user",
+      projectId: project.id,
+      state: "ready"
+    });
+    const added = await fetch(`${origin}/api/projects/${project.id}/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command_id: "add-ready",
+        base_revision: afterReady.revision,
+        client_timestamp: "",
+        kind: "add_scene",
+        payload: {
+          at: 1,
+          scene: {
+            ...scene,
+            id: "second-scene",
+            order: 7,
+            visual_prompt: "remote island coastline at dusk",
+            media_id: "ready-second"
+          }
+        }
+      })
+    });
+    assert.equal(added.status, 200);
+    const afterAdd = await added.json();
+    assert.deepEqual(afterAdd.scenes.map(({ media_id }) => media_id), ["ready-asset", "ready-second"]);
+
+    const replaceMissing = await fetch(`${origin}/api/projects/${project.id}/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command_id: "replace-missing",
+        base_revision: afterAdd.revision,
+        client_timestamp: "",
+        kind: "replace_storyboard",
+        payload: {
+          scenes: [{
+            ...scene,
+            order: 0,
+            visual_prompt: "uninhabited island in ocean fog",
+            media_id: "missing"
+          }]
+        }
+      })
+    });
+    assert.equal(replaceMissing.status, 422);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

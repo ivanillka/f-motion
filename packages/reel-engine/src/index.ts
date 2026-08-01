@@ -1,4 +1,6 @@
-import type { CaptionCue, CommandEnvelope, ProjectSnapshot, Scene } from "@f-engine/contracts";
+import { isStoryboardScenes, type CaptionCue, type CommandEnvelope, type ProjectSnapshot, type Scene } from "@f-engine/contracts";
+
+const MAX_STORYBOARD_SCENES = 8;
 
 export interface Concept {
   id: string;
@@ -37,6 +39,11 @@ function boundedScene(scene: Scene): Scene {
   if (![scene.focal_x, scene.focal_y, scene.audio_level].every((value) => Number.isFinite(value) && value >= 0 && value <= 1)) {
     throw new Error("normalized value out of bounds");
   }
+  if (scene.visual_prompt !== undefined && (
+    !scene.visual_prompt
+    || scene.visual_prompt !== scene.visual_prompt.trim()
+    || scene.visual_prompt.length > 240
+  )) throw new Error("invalid visual prompt");
   if (scene.caption_cues && scene.caption_cues.length) validateCues(scene.caption_cues, scene.duration_ms);
   return scene;
 }
@@ -156,7 +163,9 @@ function validatedScene(value: unknown): Scene {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid scene");
   const scene = value as Record<string, unknown>;
   if (typeof scene.id !== "string"
+    || !scene.id
     || !Number.isInteger(scene.order)
+    || (scene.order as number) < 0
     || typeof scene.caption !== "string"
     || typeof scene.duration_ms !== "number"
     || typeof scene.focal_x !== "number"
@@ -164,11 +173,28 @@ function validatedScene(value: unknown): Scene {
     || !["none", "push", "zoom"].includes(String(scene.motion))
     || typeof scene.audio_level !== "number"
     || typeof scene.ducking !== "boolean"
-    || ("media_id" in scene && typeof scene.media_id !== "string")
+    || ("media_id" in scene && (typeof scene.media_id !== "string" || !scene.media_id))
+    || ("visual_prompt" in scene && typeof scene.visual_prompt !== "string")
     || ("caption_cues" in scene && !isValidCueShape(scene.caption_cues))) {
     throw new Error("invalid scene");
   }
   return boundedScene(scene as unknown as Scene);
+}
+
+function copyScene(scene: Scene): Scene {
+  return {
+    ...scene,
+    ...(scene.caption_cues ? { caption_cues: scene.caption_cues.map((cue) => ({ ...cue })) } : {})
+  };
+}
+
+function validatedStoryboard(value: unknown, requireVisualPrompt: boolean): Scene[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > MAX_STORYBOARD_SCENES) {
+    throw new Error("storyboard must contain 1 to 8 scenes");
+  }
+  const scenes = value.map(validatedScene);
+  if (!isStoryboardScenes(scenes, requireVisualPrompt)) throw new Error("invalid storyboard scenes");
+  return scenes.map(copyScene);
 }
 
 export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope): ProjectSnapshot {
@@ -204,6 +230,43 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
     if (!moved) throw new Error("unknown scene");
     scenes.splice(to, 0, moved);
     return { ...snapshot, scenes: scenes.map((scene, order) => ({ ...scene, order })), revision: snapshot.revision + 1 };
+  }
+  if (command.kind === "replace_storyboard") {
+    return {
+      ...snapshot,
+      scenes: validatedStoryboard(command.payload.scenes, true),
+      revision: snapshot.revision + 1
+    };
+  }
+  if (command.kind === "add_scene") {
+    if (snapshot.scenes.length >= MAX_STORYBOARD_SCENES) throw new Error("storyboard already has 8 scenes");
+    const at = command.payload.at;
+    if (!Number.isInteger(at) || (at as number) < 0 || (at as number) > snapshot.scenes.length) {
+      throw new Error("invalid insertion order");
+    }
+    const scene = validatedScene(command.payload.scene);
+    if (!scene.visual_prompt) throw new Error("visual prompt required");
+    if (snapshot.scenes.some(({ id }) => id === scene.id)) throw new Error("duplicate scene id");
+    const scenes = snapshot.scenes.map(copyScene);
+    scenes.splice(at as number, 0, copyScene(scene));
+    return {
+      ...snapshot,
+      scenes: scenes.map((item, order) => ({ ...item, order })),
+      revision: snapshot.revision + 1
+    };
+  }
+  if (command.kind === "remove_scene") {
+    if (snapshot.scenes.length <= 1) throw new Error("storyboard must retain one scene");
+    const sceneId = command.payload.scene_id;
+    if (typeof sceneId !== "string" || !sceneId) throw new Error("invalid scene id");
+    if (!snapshot.scenes.some(({ id }) => id === sceneId)) throw new Error("unknown scene");
+    return {
+      ...snapshot,
+      scenes: snapshot.scenes
+        .filter(({ id }) => id !== sceneId)
+        .map((scene, order) => ({ ...copyScene(scene), order })),
+      revision: snapshot.revision + 1
+    };
   }
   throw new Error("unknown command");
 }

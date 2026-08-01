@@ -42,7 +42,8 @@ test("worker probes stored media and renders an immutable project result", async
       "../../../prisma/migrations/20260726002000_render_events/migration.sql",
       "../../../prisma/migrations/20260731000000_render_job_input/migration.sql",
       "../../../prisma/migrations/20260731000000_seal_inspected_media/migration.sql",
-      "../../../prisma/migrations/20260801000000_coalesce_render_jobs/migration.sql"
+      "../../../prisma/migrations/20260801000000_coalesce_render_jobs/migration.sql",
+      "../../../prisma/migrations/20260801120000_render_kind_profile/migration.sql"
     ]) {
       await pool.query(await readFile(new URL(path, import.meta.url), "utf8"));
     }
@@ -96,9 +97,9 @@ test("worker probes stored media and renders an immutable project result", async
       ContentType: "video/mp4"
     }));
     await pool.query(
-      `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, "renderInput", state)
-       VALUES ('job', 'owner', 'project', 0, $1, 'queued'),
-              ('cancelled-job', 'owner', 'project', 0, $1, 'cancelled')`,
+      `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, kind, "renderProfile", "renderInput", state)
+       VALUES ('job', 'owner', 'project', 0, 'preview', '{"width":720,"height":1280}', $1, 'queued'),
+              ('cancelled-job', 'owner', 'project', 0, 'preview', '{"width":720,"height":1280}', $1, 'cancelled')`,
       [{
         schema_version: 1,
         id: "project",
@@ -249,8 +250,8 @@ test("worker probes stored media and renders an immutable project result", async
       scenes: [scene]
     };
     await pool.query(
-      `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, "renderInput", state)
-       VALUES ('race-job', 'owner', 'project', 1, $1, 'queued')`,
+      `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, kind, "renderProfile", "renderInput", state)
+       VALUES ('race-job', 'owner', 'project', 1, 'preview', '{"width":720,"height":1280}', $1, 'queued')`,
       [snapshot]
     );
     const uploaded = [];
@@ -287,9 +288,9 @@ test("worker probes stored media and renders an immutable project result", async
     await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: raceResult.objectKey }));
 
     await pool.query(
-      `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, "renderInput", state)
-       VALUES ('failed-attempt', 'owner', 'project', 2, $1, 'failed'),
-              ('retry-job', 'owner', 'project', 2, $1, 'queued')`,
+      `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, kind, "renderProfile", "renderInput", state)
+       VALUES ('failed-attempt', 'owner', 'project', 2, 'preview', '{"width":720,"height":1280}', $1, 'failed'),
+              ('retry-job', 'owner', 'project', 2, 'preview', '{"width":720,"height":1280}', $1, 'queued')`,
       [{ ...snapshot, revision: 2 }]
     );
     assert.equal((await handlers.render({
@@ -300,8 +301,8 @@ test("worker probes stored media and renders an immutable project result", async
     }, new AbortController().signal)).state, "complete");
 
     await pool.query(
-      `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, "renderInput", state)
-       VALUES ('cancel-during-upload', 'owner', 'project', 3, $1, 'queued')`,
+      `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, kind, "renderProfile", "renderInput", state)
+       VALUES ('cancel-during-upload', 'owner', 'project', 3, 'preview', '{"width":720,"height":1280}', $1, 'queued')`,
       [{ ...snapshot, revision: 3 }]
     );
     const cancelledUploads = [];

@@ -27,7 +27,7 @@ import {
   type PostgresMediaRepository,
   type PrivateObjectStore
 } from "./media-storage.js";
-import { PostgresRenderRepository, RenderCapacityError } from "./render-repository.js";
+import { PostgresRenderRepository, RenderCapacityError, type RenderKind } from "./render-repository.js";
 import type { AccessPolicy } from "./access-policy.js";
 
 export interface MediaDependencies {
@@ -64,15 +64,21 @@ async function assertReadySceneMedia(
   command: CommandEnvelope,
   media: MediaDependencies | undefined
 ): Promise<void> {
-  if (command.kind !== "update_scene") return;
-  const scene = command.payload.scene;
-  if (!scene || typeof scene !== "object" || Array.isArray(scene)) return;
-  const mediaId = (scene as { media_id?: unknown }).media_id;
-  if (mediaId === undefined || mediaId === null) return;
-  if (typeof mediaId !== "string" || !mediaId) throw new ValidationError("media_id invalid");
-  if (!media?.repository) throw new ValidationError("media_id not ready");
-  const asset = await media.repository.get(ownerId, command.project_id, mediaId);
-  if (!asset || asset.state !== "ready") throw new ValidationError("media_id not ready");
+  const candidates = command.kind === "replace_storyboard"
+    ? command.payload.scenes
+    : ["update_scene", "add_scene"].includes(command.kind)
+      ? [command.payload.scene]
+      : [];
+  if (!Array.isArray(candidates)) return;
+  for (const scene of candidates) {
+    if (!scene || typeof scene !== "object" || Array.isArray(scene)) continue;
+    const mediaId = (scene as { media_id?: unknown }).media_id;
+    if (mediaId === undefined || mediaId === null) continue;
+    if (typeof mediaId !== "string" || !mediaId) throw new ValidationError("media_id invalid");
+    if (!media?.repository) throw new ValidationError("media_id not ready");
+    const asset = await media.repository.get(ownerId, command.project_id, mediaId);
+    if (!asset || asset.state !== "ready") throw new ValidationError("media_id not ready");
+  }
 }
 
 function commandEnvelope(value: unknown, projectId: string): CommandEnvelope {
@@ -82,7 +88,7 @@ function commandEnvelope(value: unknown, projectId: string): CommandEnvelope {
     || !command.command_id
     || !Number.isInteger(command.base_revision)
     || typeof command.client_timestamp !== "string"
-    || !["select_concept", "update_scene", "reorder_scene"].includes(String(command.kind))
+    || !["select_concept", "update_scene", "reorder_scene", "replace_storyboard", "add_scene", "remove_scene"].includes(String(command.kind))
     || !command.payload
     || typeof command.payload !== "object"
     || Array.isArray(command.payload)) {
@@ -364,12 +370,18 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     try {
       const ownerId = String(response.locals.ownerId);
       if (!options.renders) return response.status(503).json({ type: "unavailable" });
-      const job = await options.renders.create(ownerId, request.params.projectId);
+      if (!request.body || typeof request.body !== "object" || Array.isArray(request.body)
+        || !["preview", "final"].includes(String(request.body.kind))
+        || Object.keys(request.body).some((key) => key !== "kind")) {
+        return response.status(422).json({ type: "validation", message: "invalid render kind" });
+      }
+      const job = await options.renders.create(ownerId, request.params.projectId, request.body.kind as RenderKind);
       if (!job) return response.status(404).json({ type: "not_found", message: "not found" });
       response.status(202).json({
         job_id: job.jobId,
         project_id: job.projectId,
         revision: job.revision,
+        kind: job.kind,
         state: job.state
       });
     } catch (error) {
@@ -454,7 +466,12 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       if (!result) return response.status(404).json({ type: "not_found", message: "not found" });
       response.json({
         url: await options.media.store.signedGet(result.objectKey),
-        expires_at: new Date(Date.now() + 300_000).toISOString()
+        expires_at: new Date(Date.now() + 300_000).toISOString(),
+        kind: result.kind,
+        stale: result.stale,
+        metadata: Object.fromEntries(Object.entries(result.metadata).filter(([key, value]) =>
+          ["width", "height", "duration_ms", "video_codec", "pixel_format", "audio_codec", "audio_channels", "audio_status", "scene_count", "revision"].includes(key)
+          && (["string", "number", "boolean"].includes(typeof value) || value === null)))
       });
     } catch (error) {
       next(error);

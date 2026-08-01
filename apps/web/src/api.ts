@@ -9,6 +9,7 @@ export interface Scene {
   audio_level: number;
   ducking: boolean;
   media_id?: string;
+  visual_prompt?: string;
 }
 
 export interface ProjectSnapshot {
@@ -53,6 +54,89 @@ export interface SceneMediaView {
 export function sceneDurationForMedia(detectedDurationMs: unknown, fallbackMs: number): number {
   if (typeof detectedDurationMs !== "number" || !Number.isFinite(detectedDurationMs)) return fallbackMs;
   return Math.min(15_000, Math.max(500, Math.round(detectedDurationMs)));
+}
+
+const STORY_ROLES = [
+  "wide establishing view",
+  "closer environmental detail",
+  "key reveal or change",
+  "closing wide shot"
+] as const;
+
+export interface VideoArchitecture {
+  goal: "story" | "explain" | "promote" | "educate";
+  audience: "general" | "social" | "customers" | "internal";
+  structure: "story_arc" | "mystery" | "problem_solution" | "chronological";
+  tone: "cinematic" | "documentary" | "energetic" | "calm";
+  pace: "slow" | "balanced" | "fast";
+  durationSeconds: 15 | 30 | 45;
+  media: "stock" | "own" | "mixed";
+}
+
+export const defaultVideoArchitecture: VideoArchitecture = {
+  goal: "story",
+  audience: "general",
+  structure: "story_arc",
+  tone: "cinematic",
+  pace: "balanced",
+  durationSeconds: 15,
+  media: "stock"
+};
+
+const ARCHITECTURE_ROLES: Record<VideoArchitecture["structure"], string[]> = {
+  story_arc: ["opening context", "inciting detail", "development", "key turn", "resolution", "memorable closing image"],
+  mystery: ["unanswered opening", "first clue", "growing unease", "key discovery", "reveal", "haunting closing image"],
+  problem_solution: ["problem in context", "human impact", "failed or difficult moment", "solution introduced", "proof of change", "clear outcome"],
+  chronological: ["earliest moment", "next development", "progression", "turning point", "result", "present-day closing view"]
+};
+
+function promptWithRole(brief: string, role: string): string {
+  const subject = brief.trim() || "Untitled subject";
+  const suffix = ` — ${role}`;
+  return `${subject.slice(0, 240 - suffix.length).trim()}${suffix}`;
+}
+
+/** Deterministic reference-host draft; it deliberately makes no semantic-AI claim. */
+export function buildStoryboardDraft(
+  brief: string,
+  makeId: () => string = () => crypto.randomUUID(),
+  architecture?: VideoArchitecture
+): Scene[] {
+  const fragments = brief
+    .split(/(?:[.!?]+(?:\s+|$)|[,;]\s*)/u)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 12)
+    .slice(0, 6);
+  const sceneCount = architecture ? (architecture.durationSeconds === 15 ? 4 : architecture.durationSeconds === 30 ? 5 : 6) : undefined;
+  const roles = architecture ? ARCHITECTURE_ROLES[architecture.structure].slice(0, sceneCount) : STORY_ROLES;
+  const visualPrompts = architecture
+    ? roles.map((role, index) => promptWithRole(fragments[index] ?? brief, `${role}, ${architecture.tone} ${architecture.pace} pacing`))
+    : fragments.length >= 3
+      ? fragments.map((fragment) => fragment.slice(0, 240).trim())
+      : STORY_ROLES.map((role) => promptWithRole(brief, role));
+  const words = brief.trim() ? brief.trim().split(/\s+/u) : [];
+  const base = Math.floor(words.length / visualPrompts.length);
+  let remainder = words.length % visualPrompts.length;
+  let cursor = 0;
+  const totalDurationMs = (architecture?.durationSeconds ?? visualPrompts.length * 3) * 1000;
+  const durationBase = Math.floor(totalDurationMs / visualPrompts.length);
+  return visualPrompts.map((visual_prompt, order) => {
+    const count = base + (remainder-- > 0 ? 1 : 0);
+    const caption = words.slice(cursor, cursor + count).join(" ").slice(0, 180);
+    cursor += count;
+    return {
+      id: makeId(),
+      order,
+      caption,
+      visual_prompt,
+      duration_ms: durationBase + (order < totalDurationMs % visualPrompts.length ? 1 : 0),
+      focal_x: 0.5,
+      focal_y: 0.5,
+      motion: "none",
+      audio_level: 1,
+      ducking: false
+    };
+  });
 }
 
 export class ApiResponseError extends Error {

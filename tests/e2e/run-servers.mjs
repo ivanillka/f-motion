@@ -1,8 +1,11 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { ProjectService } from "../../apps/api/dist/domain.js";
 import { createTestApp } from "../../apps/api/dist/server.js";
 
+const videoFixture = fileURLToPath(new URL("../../apps/worker/test/fixtures/scene_one.mp4", import.meta.url));
+const imageFixture = fileURLToPath(new URL("../../apps/worker/test/fixtures/still.jpg", import.meta.url));
 const worker = spawn(process.execPath, ["tests/e2e/worker-server.mjs"], { stdio: "inherit" });
 const projects = new ProjectService();
 const completed = new Map();
@@ -10,19 +13,35 @@ const events = new Map();
 const mediaAssets = new Map();
 const inspectionPolls = new Map();
 const renders = {
-  async create(ownerId, projectId) {
+  async create(ownerId, projectId, kind) {
     const project = projects.get(ownerId, projectId);
     if (!project) return undefined;
+    const mediaInputs = {};
+    for (const scene of project.scenes) {
+      if (!scene.media_id) continue;
+      const asset = mediaAssets.get(scene.media_id);
+      if (!asset || asset.ownerId !== ownerId || asset.projectId !== projectId || asset.state !== "ready") {
+        throw new Error(`test fixture unavailable for scene ${scene.id}`);
+      }
+      if (asset.declaredType === "video/mp4") {
+        mediaInputs[asset.id] = { path: videoFixture, type: asset.declaredType, hasAudio: true };
+      } else if (asset.declaredType === "image/jpeg") {
+        mediaInputs[asset.id] = { path: imageFixture, type: asset.declaredType };
+      } else {
+        throw new Error(`unsupported test fixture type ${asset.declaredType}`);
+      }
+    }
     const jobId = randomUUID();
+    const renderProfile = kind === "final" ? { width: 720, height: 1280 } : { width: 540, height: 960, watermark: "Reference preview" };
     events.set(jobId, true);
     const response = await fetch("http://127.0.0.1:43141/jobs", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jobId, projectId, revision: project.revision })
+      body: JSON.stringify({ jobId, projectId, revision: project.revision, kind, renderProfile, snapshot: project, mediaInputs })
     });
     if (!response.ok) throw new Error("test worker unavailable");
-    completed.set(jobId, { jobId, objectKey: jobId, metadata: { immutable: true }, stale: false });
-    return { jobId, ownerId, projectId, revision: project.revision, state: "complete" };
+    completed.set(jobId, { jobId, objectKey: jobId, kind, metadata: { ...renderProfile, duration_ms: project.scenes.reduce((sum, scene) => sum + scene.duration_ms, 0) }, stale: false });
+    return { jobId, ownerId, projectId, revision: project.revision, kind, renderProfile, state: "complete" };
   },
   async cancel(ownerId, jobId) {
     if (!events.has(jobId)) return undefined;

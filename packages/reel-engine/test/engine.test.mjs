@@ -8,6 +8,21 @@ const snapshot = {
   scenes: [{ id: "s1", order: 0, caption: "Hello", duration_ms: 1000, focal_x: .5, focal_y: .5, motion: "none", audio_level: 1, ducking: Boolean(0) }]
 };
 const referenceProfile = { width: 720, height: 1280, watermark: "Reference preview" };
+const lifecycleScene = (id, order) => ({
+  ...snapshot.scenes[0],
+  id,
+  order,
+  caption: `Caption ${id}`,
+  visual_prompt: `cinematic ocean detail ${id}`
+});
+const command = (kind, payload, base_revision = 0) => ({
+  command_id: `${kind}-${base_revision}`,
+  project_id: "p1",
+  base_revision,
+  client_timestamp: "diagnostic",
+  kind,
+  payload
+});
 
 test("concept construction is deterministic and exactly three", () => {
   assert.equal(conceptsFor(snapshot.brief).length, 3);
@@ -35,6 +50,71 @@ test("update_scene rejects captions over 180 characters", () => assert.throws(
   () => applyCommand(snapshot, { command_id: "c6", project_id: "p1", base_revision: 0, client_timestamp: "", kind: "update_scene", payload: { scene: { ...snapshot.scenes[0], caption: "x".repeat(181) } } }),
   /caption exceeds/
 ));
+test("replace_storyboard accepts one, four, and eight ordered scenes", () => {
+  for (const count of [1, 4, 8]) {
+    const scenes = Array.from({ length: count }, (_, order) => lifecycleScene(`s${order + 1}`, order));
+    const result = applyCommand(snapshot, command("replace_storyboard", { scenes }));
+    assert.equal(result.scenes.length, count);
+    assert.equal(result.revision, 1);
+  }
+});
+test("replace_storyboard enforces size, unique IDs, contiguous order, and visual prompts", () => {
+  for (const scenes of [
+    [],
+    Array.from({ length: 9 }, (_, order) => lifecycleScene(`s${order}`, order)),
+    [lifecycleScene("same", 0), lifecycleScene("same", 1)],
+    [lifecycleScene("s1", 0), lifecycleScene("s2", 2)],
+    [{ ...lifecycleScene("s1", 0), visual_prompt: undefined }]
+  ]) {
+    assert.throws(() => applyCommand(snapshot, command("replace_storyboard", { scenes })));
+  }
+});
+test("scene visual prompts must be trimmed and no longer than 240 characters", () => {
+  for (const visual_prompt of ["", " padded ", "x".repeat(241)]) {
+    assert.throws(() => applyCommand(snapshot, command("replace_storyboard", {
+      scenes: [{ ...lifecycleScene("s1", 0), visual_prompt }]
+    })), /visual prompt/);
+  }
+});
+test("add_scene inserts at the beginning, middle, and end and normalizes order", () => {
+  let current = applyCommand(snapshot, command("replace_storyboard", {
+    scenes: [lifecycleScene("s1", 0), lifecycleScene("s3", 1)]
+  }));
+  current = applyCommand(current, command("add_scene", { scene: lifecycleScene("s0", 9), at: 0 }, 1));
+  current = applyCommand(current, command("add_scene", { scene: lifecycleScene("s2", 9), at: 2 }, 2));
+  current = applyCommand(current, command("add_scene", { scene: lifecycleScene("s4", 9), at: 4 }, 3));
+  assert.deepEqual(current.scenes.map(({ id, order }) => ({ id, order })), [
+    { id: "s0", order: 0 },
+    { id: "s1", order: 1 },
+    { id: "s2", order: 2 },
+    { id: "s3", order: 3 },
+    { id: "s4", order: 4 }
+  ]);
+});
+test("add_scene rejects a ninth scene and duplicate IDs", () => {
+  const full = { ...snapshot, scenes: Array.from({ length: 8 }, (_, order) => lifecycleScene(`s${order}`, order)) };
+  assert.throws(() => applyCommand(full, command("add_scene", { scene: lifecycleScene("s8", 8), at: 8 })), /8 scenes/);
+  assert.throws(() => applyCommand(snapshot, command("add_scene", { scene: lifecycleScene("s1", 1), at: 1 })), /duplicate/);
+});
+test("remove_scene normalizes order and retains at least one scene", () => {
+  const multiple = { ...snapshot, scenes: [lifecycleScene("s1", 0), lifecycleScene("s2", 1), lifecycleScene("s3", 2)] };
+  const result = applyCommand(multiple, command("remove_scene", { scene_id: "s2" }));
+  assert.deepEqual(result.scenes.map(({ id, order }) => ({ id, order })), [
+    { id: "s1", order: 0 },
+    { id: "s3", order: 1 }
+  ]);
+  assert.throws(() => applyCommand(snapshot, command("remove_scene", { scene_id: "s1" })), /retain one/);
+  assert.throws(() => applyCommand(multiple, command("remove_scene", { scene_id: "missing" })), /unknown scene/);
+});
+test("storyboard lifecycle commands do not mutate snapshots or command payloads", () => {
+  const original = { ...snapshot, scenes: [lifecycleScene("s1", 0), lifecycleScene("s2", 1)] };
+  const payload = { scene: lifecycleScene("s3", 99), at: 1 };
+  const beforeSnapshot = structuredClone(original);
+  const beforePayload = structuredClone(payload);
+  applyCommand(original, command("add_scene", payload));
+  assert.deepEqual(original, beforeSnapshot);
+  assert.deepEqual(payload, beforePayload);
+});
 test("render presentation is required host input without changing resolved scenes", () => {
   const reference = renderPlan(snapshot, referenceProfile);
   const alternate = renderPlan(snapshot, { width: 1080, height: 1920 });

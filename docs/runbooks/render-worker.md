@@ -34,3 +34,12 @@ is deliberately invalid, so it cannot render current content under an older
 revision. Revision-equal jobs receive the current revision's snapshot, which the
 updated worker validates before any media work, and remain eligible to render.
 Deploy the updated API and worker before resuming admission or dispatch.
+
+## Render-kind/profile migration rollout
+
+The render-kind migration fails while any job is `queued` or `running`.
+Pause API render admission, let workers and outbox delivery drain, then pause
+workers. Apply migrations, deploy the API that snapshots host-owned preview and
+final profiles, deploy the worker that reads those stored profiles, and resume
+workers and admission in that order. Do not deploy the new worker against the
+old schema or resume admission between migration and both deploys.
