@@ -62,6 +62,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:web
       - run: npx prisma validate
+      - run: cd apps/mobile && flutter pub get
       - run: flutter analyze apps/mobile
       - run: cd apps/mobile && flutter test
       - run: cd apps/mobile && flutter build apk --debug
