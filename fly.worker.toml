@@ -14,6 +14,7 @@ primary_region = "ams"
 
 [env]
   PGSSLMODE = "verify-full"
+  OUTBOX_RETENTION_HOURS = "168"
 
 [build]
   dockerfile = "apps/worker/Dockerfile"

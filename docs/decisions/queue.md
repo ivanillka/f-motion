@@ -11,3 +11,15 @@ production because listeners and long leases need stable connections.
 through npm/GitHub release activity when upgrading. A killed worker's expired
 lease is recovered by a replacement; immutable render object keys make completion
 idempotent. API transactions use an outbox row so enqueue cannot race commit.
+
+Outbox dispatch sends to pg-boss before recording `dispatchedAt`, using the
+immutable UUID `WorkOutbox.id` as the pg-boss job ID. If that mark fails, the
+next pass sends the same ID: its primary-key conflict returns no new job, and
+the dispatcher records the existing job as dispatched. A send error leaves the
+row undispatched. `dedupeKey` remains correlation metadata; the intentional
+standard queue policy does not make `singletonKey` unique.
+
+`WorkOutbox` is a delivery mechanism, not an analytics system of record. Its
+undispatched polling predicate has a partial `createdAt` index. Undispatched
+rows are never removed by cleanup. Dispatched rows older than
+`OUTBOX_RETENTION_HOURS` (seven days by default) are deleted in bounded batches.

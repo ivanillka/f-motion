@@ -140,6 +140,7 @@ model RenderResult {
   createdAt   DateTime  @default(now())
 }
 
+/// Undispatched polling uses a partial createdAt index defined in SQL migration.
 model WorkOutbox {
   id           String    @id @default(uuid())
   kind         String

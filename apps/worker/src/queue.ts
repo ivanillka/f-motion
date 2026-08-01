@@ -29,6 +29,21 @@ interface OutboxRow {
   payload: object;
 }
 
+const defaultOutboxRetentionHours = 7 * 24;
+const outboxCleanupIntervalMs = 60 * 60 * 1000;
+
+export function outboxRetentionHoursFromEnv(
+  env: Record<string, string | undefined>
+): number {
+  const configured = env.OUTBOX_RETENTION_HOURS;
+  if (configured === undefined) return defaultOutboxRetentionHours;
+  const raw = configured.trim();
+  if (!/^\d+(?:\.\d+)?$/.test(raw)) throw new Error("invalid OUTBOX_RETENTION_HOURS");
+  const hours = Number(raw);
+  if (!Number.isFinite(hours) || hours <= 0) throw new Error("invalid OUTBOX_RETENTION_HOURS");
+  return hours;
+}
+
 export async function dispatchOutbox(pool: pg.Pool, boss: PgBoss): Promise<number> {
   const rows = await pool.query<OutboxRow>(
     `SELECT id, kind, "dedupeKey", payload
@@ -37,14 +52,16 @@ export async function dispatchOutbox(pool: pg.Pool, boss: PgBoss): Promise<numbe
   );
   let dispatched = 0;
   for (const row of rows.rows) {
-    const jobId = await boss.send(row.kind, row.payload, {
+    await boss.send(row.kind, row.payload, {
+      id: row.id,
       singletonKey: row.dedupeKey,
       retryLimit: 2,
       retryDelay: 1,
       retryBackoff: true,
       expireInSeconds: row.kind === renderQueue ? 300 : 60
     });
-    if (!jobId) continue;
+    // A null id means pg-boss already has this immutable outbox UUID. The send
+    // still succeeded, so a retry after a mark failure can close the crash window.
     const updated = await pool.query(
       `UPDATE "WorkOutbox" SET "dispatchedAt" = NOW()
         WHERE id = $1 AND "dispatchedAt" IS NULL`,
@@ -55,10 +72,32 @@ export async function dispatchOutbox(pool: pg.Pool, boss: PgBoss): Promise<numbe
   return dispatched;
 }
 
+export async function cleanupDispatchedOutbox(
+  pool: pg.Pool,
+  retentionHours: number
+): Promise<number> {
+  const deleted = await pool.query(
+    `WITH expired AS (
+       SELECT id FROM "WorkOutbox"
+        WHERE "dispatchedAt" IS NOT NULL
+          AND "dispatchedAt" < NOW() - ($1::double precision * INTERVAL '1 hour')
+        ORDER BY "dispatchedAt", id
+        FOR UPDATE SKIP LOCKED
+        LIMIT 250
+     )
+     DELETE FROM "WorkOutbox" AS outbox
+      USING expired
+      WHERE outbox.id = expired.id`,
+    [retentionHours]
+  );
+  return deleted.rowCount ?? 0;
+}
+
 export async function startQueueRuntime(
   connectionString: string,
   handlers: QueueHandlers,
-  pool = new pg.Pool({ connectionString })
+  pool = new pg.Pool({ connectionString }),
+  outboxRetentionHours = defaultOutboxRetentionHours
 ) {
   const boss = await new PgBoss({
     connectionString,
@@ -78,13 +117,26 @@ export async function startQueueRuntime(
     return handlers.render(job.data, job.signal);
   });
   await dispatchOutbox(pool, boss);
-  const timer = setInterval(() => void dispatchOutbox(pool, boss).catch((error) => boss.emit("error", error)), 1000);
-  timer.unref();
+  await cleanupDispatchedOutbox(pool, outboxRetentionHours);
+  const dispatchTimer = setInterval(
+    () => void dispatchOutbox(pool, boss).catch((error) => boss.emit("error", error)),
+    1000
+  );
+  // ponytail: one 250-row batch per hour caps cleanup work but may lag a large
+  // backlog. Upgrade after measuring cleanup count and oldest-undispatched age.
+  const cleanupTimer = setInterval(
+    () => void cleanupDispatchedOutbox(pool, outboxRetentionHours)
+      .catch((error) => boss.emit("error", error)),
+    outboxCleanupIntervalMs
+  );
+  dispatchTimer.unref();
+  cleanupTimer.unref();
   return {
     boss,
     pool,
     stop: async () => {
-      clearInterval(timer);
+      clearInterval(dispatchTimer);
+      clearInterval(cleanupTimer);
       await boss.stop();
       await pool.end();
     }

@@ -10,6 +10,15 @@ heartbeat, retry, and cancellation state. Do not run FFmpeg in the API as a
 fallback. Cancellation must remove a partial local file. An expired worker
 lease is recovered by another worker.
 
+## Outbox retention
+
+Set `OUTBOX_RETENTION_HOURS` to a positive number of hours; the default is 168
+(seven days), and invalid values stop worker startup. After its startup dispatch,
+the worker deletes at most 250 old dispatched outbox rows, then repeats at most
+hourly. Cleanup never deletes an undispatched row. A growing undispatched count
+or oldest-undispatched age indicates delivery trouble and must be investigated;
+do not shorten retention to hide it.
+
 ## Render-input migration rollout
 
 Choose the rollout path before applying the render-input migration. Prefer to
