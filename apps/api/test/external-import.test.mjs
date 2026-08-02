@@ -161,13 +161,15 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
       ...baseBody,
       caption: "One final look. Open the gallery: https://fotium.vip/galleries/portrait"
     })).status, 201);
-    const repaired = await request({
+    const mediaBody = {
       ...baseBody,
+      caption: "One final look. Open the gallery: https://fotium.vip/galleries/portrait",
       media_urls: [
         "https://media.fotium.vip/galleries/portrait/full/1.jpg",
         "https://media.fotium.vip/galleries/portrait/full/2.jpg"
       ]
-    });
+    };
+    const repaired = await request(mediaBody);
     assert.equal(repaired.status, 200);
     const projectId = (await repaired.json()).project_id;
     const project = projects.get(ownerId, projectId);
@@ -176,16 +178,16 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     assert.ok(project.scenes.every((scene) => scene.media_id));
     assert.notEqual(project.scenes[0].media_id, project.scenes[1].media_id);
     assert.equal(project.scenes[0].media_id, project.scenes[2].media_id);
-    assert.doesNotMatch(project.scenes.map(({ caption }) => caption).join(" "), /https:\/\//);
+    assert.match(project.scenes.map(({ caption }) => caption).join(" "), /https:\/\//);
     assert.deepEqual(requested.map(({ redirect }) => redirect), ["error", "error"]);
     assert.equal(stored.length, 2);
 
-    const retry = await request({ ...baseBody, media_urls: [
-      "https://media.fotium.vip/galleries/portrait/full/1.jpg",
-      "https://media.fotium.vip/galleries/portrait/full/2.jpg"
-    ] });
+    const retry = await request({ ...mediaBody, caption: baseBody.caption });
     assert.equal(retry.status, 200);
-    assert.equal(projects.get(ownerId, projectId).revision, 2);
+    const cleaned = projects.get(ownerId, projectId);
+    assert.equal(cleaned.revision, 3);
+    assert.doesNotMatch(cleaned.scenes.map(({ caption }) => caption).join(" "), /https:\/\//);
+    assert.equal(stored.length, 2);
 
     const rejected = await request({ ...baseBody, external_id: "followup:blocked", media_urls: ["https://example.com/private.jpg"] });
     assert.equal(rejected.status, 422);

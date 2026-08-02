@@ -212,10 +212,14 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         }
       }
       const textOnlyImportedDraft = project.scenes.length > 0 && project.scenes.every((scene) => !scene.media_id);
-      const currentScenes = textOnlyImportedDraft
+      const legacyMediaRepair = project.scenes.length > 0
+        && project.scenes.every((scene) => scene.visual_prompt === "Selected gallery media")
+        && project.scenes.some((scene) => scene.caption.includes("https://"));
+      const currentScenes = textOnlyImportedDraft || legacyMediaRepair
         ? generatedScenes.map((scene, index) => ({
             ...scene,
-            ...(project.scenes[index]?.id ? { id: project.scenes[index].id } : {})
+            ...(project.scenes[index]?.id ? { id: project.scenes[index].id } : {}),
+            ...(project.scenes[index]?.media_id ? { media_id: project.scenes[index].media_id } : {})
           }))
         : project.scenes.length ? project.scenes : generatedScenes;
       const scenes = currentScenes.map((scene, index) => {
@@ -224,8 +228,13 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           ? { ...scene, media_id: mediaId, visual_prompt: "Selected gallery media" }
           : scene;
       });
-      const mediaChanged = scenes.some((scene, index) => scene.media_id !== project.scenes[index]?.media_id);
-      if (!project.scenes.length || mediaChanged) {
+      const storyboardChanged = scenes.length !== project.scenes.length || scenes.some((scene, index) => {
+        const priorScene = project.scenes[index];
+        return scene.media_id !== priorScene?.media_id
+          || scene.caption !== priorScene?.caption
+          || scene.visual_prompt !== priorScene?.visual_prompt;
+      });
+      if (!project.scenes.length || storyboardChanged) {
         project = await projects.command(integration.ownerId, {
           command_id: randomUUID(),
           project_id: project.id,
