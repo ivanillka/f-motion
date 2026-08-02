@@ -43,7 +43,7 @@ const architectureLabels = {
   structure: { story_arc: "Beginning → turn → resolution", mystery: "Clues → tension → reveal", problem_solution: "Problem → solution → result", chronological: "Chronological journey" },
   tone: { cinematic: "Cinematic", documentary: "Documentary", energetic: "Energetic", calm: "Calm" },
   pace: { slow: "Slow and atmospheric", balanced: "Balanced", fast: "Fast and punchy" },
-  media: { stock: "Licensed open stock", own: "My own media", mixed: "Mix stock and my media" }
+  media: { stock: "Pexels real stock video", own: "My own media", mixed: "Pexels stock + my media" }
 } as const;
 
 function App() {
@@ -818,8 +818,13 @@ function App() {
     {authReady && step === "drafts" && <section>
       <h1>Drafts</h1>
       <p>Pick up where you left off or start a new video.</p>
+      <aside className="provider-preview" aria-label="Creation sources">
+        <div><strong>Pexels</strong><span>Real stock video · available now</span></div>
+        <div><strong>FAL</strong><span>AI video + voice · workflow coming soon</span></div>
+        <div><strong>More</strong><span>New providers coming soon</span></div>
+        <button className="secondary" onClick={() => setStep("settings")}>Choose video sources</button>
+      </aside>
       <button onClick={startCreate}>Create new video</button>
-      <button className="secondary" onClick={() => setStep("settings")}>Settings</button>
       {draftsLoading && <p role="status">Loading drafts…</p>}
       {!draftsLoading && drafts.length === 0 && <p role="status">No drafts yet.</p>}
       <div className="concepts">{drafts.map((item) =>
@@ -871,7 +876,7 @@ function App() {
           <option value="15">About 15 seconds · 4 scenes</option><option value="30">About 30 seconds · 5 scenes</option><option value="45">About 45 seconds · 6 scenes</option>
         </select></label>
         <label>Where should visuals come from?<select value={architecture.media} onChange={(event) => setArchitecture({ ...architecture, media: event.target.value as VideoArchitecture["media"] })}>
-          <option value="stock">Licensed open stock</option><option value="own">My own media</option><option value="mixed">Mix stock and my media</option>
+          <option value="stock">Pexels real stock video</option><option value="own">My own media</option><option value="mixed">Mix Pexels stock and my media</option>
         </select></label>
         </div>
       </details>
@@ -1008,7 +1013,30 @@ function App() {
       <button className="secondary" onClick={() => setStep("editor")}>Keep editing</button>
     </section>}
     {authReady && step === "settings" && <section>
-      <h1>Settings</h1>
+      <h1>Choose your video sources</h1>
+      <p>Connect only the services you want to use. Each provider stays under your account and uses your own API key.</p>
+      <div className="provider-onboarding" aria-label="Video source options">
+        <article className="provider-card provider-live">
+          <span className="provider-status">{pexelsCredential?.connected ? "Connected" : "Available now"}</span>
+          <h2>Pexels</h2>
+          <strong>Real stock video</strong>
+          <p>Search licensed footage from real creators and select it scene by scene.</p>
+          <a href="#pexels-settings-title">{pexelsCredential?.connected ? "Manage Pexels" : "Connect Pexels"}</a>
+        </article>
+        <article className="provider-card">
+          <span className="provider-status provider-soon">Workflow coming soon</span>
+          <h2>FAL</h2>
+          <strong>AI video + voice</strong>
+          <p>Connect your key now. AI video and voice generation will appear here after the generation workflow and cost confirmation are enabled.</p>
+          <a href="#fal-settings-title">{falCredential?.connected ? "Manage FAL" : "Connect FAL"}</a>
+        </article>
+        <article className="provider-card provider-future">
+          <span className="provider-status provider-soon">Coming soon</span>
+          <h2>More providers</h2>
+          <strong>More ways to create</strong>
+          <p>Additional stock, AI video, voice, and media services can join the same provider flow.</p>
+        </article>
+      </div>
       <p>Pexels videos require on-product attribution — see “Use video by … · Pexels” in the editor when you add stock footage.</p>
       <article className="settings-card" aria-labelledby="pexels-settings-title">
         <h2 id="pexels-settings-title">Pexels licensed media</h2>
@@ -1032,7 +1060,7 @@ function App() {
       </article>
       <article className="settings-card" aria-labelledby="fal-settings-title">
         <h2 id="fal-settings-title">FAL generation</h2>
-        <p>Connect your own FAL API-scope key. Generation will be charged directly to your FAL account. F-Motion does not supply or share a FAL key.</p>
+        <p>Connect your own FAL API-scope key for the planned AI video and voice workflow. Future generation will be charged directly to your FAL account after you see the estimated cost and confirm it. Generation is not live yet, and F-Motion does not supply or share a FAL key.</p>
         {falUnavailable && <p className="notice">FAL connection is unavailable here. Uploads, Pexels, editing, and rendering still work.</p>}
         {!falUnavailable && falCredential?.connected && <p>
           Connected · key ending …{falCredential.hint}
