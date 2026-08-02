@@ -107,6 +107,7 @@ function App() {
     }
   ), [authSetup.gateway]);
   const [conflict, setConflict] = useState<ProjectSnapshot>();
+  const [conflictNotice, setConflictNotice] = useState<{ sceneId?: string; operation: string }>();
   const [jobId, setJobId] = useState("");
   const [progress, setProgress] = useState({ phase: "queued", percent: 0 });
   const [downloadUrl, setDownloadUrl] = useState("");
@@ -115,6 +116,16 @@ function App() {
   const upload = useRef<HTMLInputElement>(null);
   const importedProjectRef = useRef("");
   const renderLabel = import.meta.env.VITE_RENDER_LABEL?.trim() || "720p preview";
+
+  function openConflict(snapshot: ProjectSnapshot, notice: { sceneId?: string; operation: string }) {
+    setConflict(snapshot);
+    setConflictNotice(notice);
+  }
+
+  function dismissConflict() {
+    setConflict(undefined);
+    setConflictNotice(undefined);
+  }
 
   function clearSessionState() {
     tokenRef.current = "";
@@ -127,7 +138,7 @@ function App() {
     setSceneProgress({});
     searchAbort.current?.abort();
     setCandidates([]);
-    setConflict(undefined);
+    dismissConflict();
     setJobId("");
     setDownloadUrl("");
     setPreviewRevision(undefined);
@@ -397,7 +408,10 @@ function App() {
       setStatus("✓ All changes saved");
     } catch (error) {
       if (error instanceof ApiResponseError && error.status === 409) {
-        setConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot);
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          sceneId,
+          operation: "scene edits"
+        });
         return;
       }
       setStatus("Scene changes could not be saved.");
@@ -418,17 +432,28 @@ function App() {
         const { project: latest } = await api.getProject(projectId);
         const scene = latest.scenes.find(({ id }) => id === intendedSceneId);
         if (!scene) return false;
-        const updated = await api.command(projectId, latest.revision, "update_scene", {
-          scene: {
-            ...scene,
-            duration_ms: sceneDurationForMedia(media.detected?.duration_ms, scene.duration_ms),
-            media_id: assetId
+        try {
+          const updated = await api.command(projectId, latest.revision, "update_scene", {
+            scene: {
+              ...scene,
+              duration_ms: sceneDurationForMedia(media.detected?.duration_ms, scene.duration_ms),
+              media_id: assetId
+            }
+          });
+          setProject(updated);
+          setSceneMedia((current) => ({ ...current, [media.id]: media }));
+          setSceneProgress((current) => ({ ...current, [intendedSceneId]: "ready" }));
+          return true;
+        } catch (error) {
+          if (error instanceof ApiResponseError && error.status === 409) {
+            openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+              sceneId: intendedSceneId,
+              operation: "media replacement"
+            });
+            return false;
           }
-        });
-        setProject(updated);
-        setSceneMedia((current) => ({ ...current, [media.id]: media }));
-        setSceneProgress((current) => ({ ...current, [intendedSceneId]: "ready" }));
-        return true;
+          throw error;
+        }
       }
       if (media.state !== "admitted" && media.state !== "inspecting") return false;
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -479,7 +504,10 @@ function App() {
       setStatus("✓ All changes saved");
     } catch (error) {
       if (error instanceof ApiResponseError && error.status === 409) {
-        setConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot);
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          sceneId,
+          operation: "scene reorder"
+        });
         return;
       }
       setStatus("Scene order could not be saved.");
@@ -500,8 +528,9 @@ function App() {
       setActiveSceneId(scene.id);
       setStatus("Scene added.");
     } catch (error) {
-      if (error instanceof ApiResponseError && error.status === 409) setConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot);
-      else setStatus("Scene could not be added.");
+      if (error instanceof ApiResponseError && error.status === 409) {
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, { operation: "adding a scene" });
+      } else setStatus("Scene could not be added.");
     }
   }
 
@@ -514,8 +543,12 @@ function App() {
       if (activeSceneId === sceneId) setActiveSceneId(updated.scenes[Math.min(index, updated.scenes.length - 1)]?.id ?? "");
       setStatus("Scene removed.");
     } catch (error) {
-      if (error instanceof ApiResponseError && error.status === 409) setConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot);
-      else setStatus("Scene could not be removed.");
+      if (error instanceof ApiResponseError && error.status === 409) {
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          sceneId,
+          operation: "removing a scene"
+        });
+      } else setStatus("Scene could not be removed.");
     }
   }
 
@@ -625,7 +658,7 @@ function App() {
     setProject(updated);
     setActiveSceneId(updated.scenes[0]?.id ?? "");
     localStorage.setItem("fengine-project", updated.id);
-    setConflict(undefined);
+    dismissConflict();
     setStep("editor");
     setStatus("Saved as a new project (media not copied).");
   }
@@ -1086,7 +1119,9 @@ function App() {
           <button className={!pexelsCredential?.connected ? "locked-feature" : undefined}
             disabled={busy || (Boolean(pexelsCredential?.connected) && !activeScene.visual_prompt)}
             onClick={() => pexelsCredential?.connected ? void searchStock(activeScene.id) : showPexelsLock()}>
-            {!pexelsCredential?.connected ? "🔒 " : ""}Find licensed media for scene {activeSceneNumber}
+            {!pexelsCredential?.connected ? "🔒 " : ""}{activeMedia
+              ? `Find another licensed video for scene ${activeSceneNumber}`
+              : `Find licensed media for scene ${activeSceneNumber}`}
           </button>
         </div>
       </div>
@@ -1117,8 +1152,21 @@ function App() {
       {downloadUrl && <button className="secondary" onClick={() => setStep("render")}>View accurate preview{previewRevision !== project.revision ? " · older" : ""}</button>}
       <button className="secondary" onClick={() => setStep("brief")}>Start a different description</button>
       <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
-      {conflict && <dialog open><h2>Newer changes exist</h2><p>Your changes were not merged.</p>
-        <button onClick={() => { setProject(conflict); setActiveSceneId(conflict.scenes.some(({ id }) => id === activeScene.id) ? activeScene.id : (conflict.scenes[0]?.id ?? "")); setConflict(undefined); }}>Reload latest</button>
+      {conflict && <dialog open><h2>Newer changes exist</h2>
+        <p>{(() => {
+          const scene = conflictNotice?.sceneId
+            ? (project?.scenes.find(({ id }) => id === conflictNotice.sceneId)
+              ?? conflict.scenes.find(({ id }) => id === conflictNotice.sceneId))
+            : undefined;
+          const where = scene ? ` on scene ${scene.order + 1}` : "";
+          const what = conflictNotice?.operation ?? "edits";
+          return `Your pending ${what}${where} was not merged. Reload the latest storyboard, or save your local scene edits as a new project.`;
+        })()}</p>
+        <button onClick={() => {
+          setProject(conflict);
+          setActiveSceneId(conflict.scenes.some(({ id }) => id === activeScene.id) ? activeScene.id : (conflict.scenes[0]?.id ?? ""));
+          dismissConflict();
+        }}>Reload latest</button>
         <button onClick={() => void saveAsNewProject()}>Save as new project</button>
       </dialog>}
     </section>}

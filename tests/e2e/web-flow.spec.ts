@@ -167,6 +167,8 @@ test("upload journey, natural conflict recovery, render, and download", async ({
     if (!response.ok) throw new Error(`conflict setup failed: ${response.status}`);
   }, projectId);
   await page.getByLabel("Scene 4 motion").selectOption("push");
+  await expect(page.getByRole("heading", { name: "Newer changes exist" })).toBeVisible();
+  await expect(page.getByText(/pending scene edits on scene 4 was not merged/i)).toBeVisible();
   await expect(page.getByRole("button", { name: "Reload latest" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save as new project" })).toBeVisible();
   await page.getByRole("button", { name: "Reload latest" }).click();
@@ -221,14 +223,18 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   expect(new Set(attached.creators).size).toBeGreaterThanOrEqual(1);
 
   await page.getByRole("button", { name: "Edit scene 1" }).click();
-  await page.getByRole("button", { name: "Find licensed media for scene 1" }).click();
+  await page.getByRole("button", { name: "Find another licensed video for scene 1" }).click();
   await expect(page.getByRole("button", { name: "Select for scene 1" })).toHaveCount(2);
   await page.getByRole("article").filter({ hasText: "Fixture Two With A Long Name" })
     .getByRole("button", { name: "Select for scene 1" }).click();
   await expect(page.getByRole("status").filter({ hasText: "video by Fixture Two With A Long Name on Pexels" })).toBeVisible();
 
+  await page.getByRole("button", { name: "Edit scene 5" }).click();
+  await page.getByLabel("Scene 5 caption").fill("Closing beat for the guided editor");
+  await page.getByLabel("Scene 5 caption").press("Tab");
   await page.getByRole("button", { name: "Edit scene 2" }).click();
   await page.getByRole("button", { name: "Move scene 2 earlier" }).click();
+  await expect(page.getByRole("button", { name: "Edit scene 1", pressed: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Generate accurate preview" }).click();
   await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 30_000 });
