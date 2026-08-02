@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 import { acceptsFixture, isProjectSnapshot, isStoryboardScenes } from "../dist/index.js";
 
 const fixture = async (name) => JSON.parse(await readFile(new URL(`../fixtures/${name}`, import.meta.url)));
+const inventory = JSON.parse(await readFile(new URL("../route-inventory.json", import.meta.url), "utf8"));
+const openapi = await readFile(new URL("../openapi.yaml", import.meta.url), "utf8");
 
 const snapshotWithPrompt = (visual_prompt) => ({
   schema_version: 1,
@@ -67,4 +69,35 @@ test("storyboard lifecycle validation enforces scene count, IDs, order, and prom
   assert.equal(isStoryboardScenes([scene, { ...scene, order: 1 }], true), false);
   assert.equal(isStoryboardScenes([scene, { ...scene, id: "scene-2", order: 2 }], true), false);
   assert.equal(isStoryboardScenes([{ ...scene, visual_prompt: undefined }], true), false);
+});
+
+test("openapi documents every inventoried versioned path and typed error", () => {
+  assert.match(openapi, /^openapi: 3\.1\.0/m);
+  for (const route of inventory.versioned) {
+    assert.match(openapi, new RegExp(`^  ${route.path.replaceAll("/", "\\/")}:`, "m"), route.path);
+  }
+  for (const type of inventory.error_types) {
+    assert.match(openapi, new RegExp(`- ${type}\\b`));
+  }
+  for (const phase of inventory.sse_phases) {
+    assert.match(openapi, new RegExp(`\\b${phase}\\b`));
+  }
+  assert.match(openapi, /url: \/api/);
+  assert.match(openapi, /url: \/v1/);
+});
+
+test("shared error and media fixtures stay additive and typed", async () => {
+  const incomplete = await fixture("error-render-input-incomplete.json");
+  assert.equal(incomplete.type, "render_input_incomplete");
+  assert.equal(typeof incomplete.message, "string");
+  const capacity = await fixture("error-render-capacity.json");
+  assert.equal(capacity.type, "render_capacity");
+  const unauthorized = await fixture("error-unauthorized.json");
+  assert.equal(unauthorized.type, "unauthorized");
+  const media = await fixture("scene-media-ready.json");
+  assert.equal(media.state, "ready");
+  assert.equal(media.additive_client_field, true);
+  const progress = await fixture("sse-progress.json");
+  assert.equal(progress.phase, "preparing");
+  assert.equal(progress.additive_field, "ok");
 });

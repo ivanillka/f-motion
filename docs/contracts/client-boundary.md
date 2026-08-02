@@ -61,5 +61,8 @@ version when clients tolerate unknown fields. Breaking semantic or structural
 changes require an explicit new version and migration window.
 
 Checked-in request, response, error, and event fixtures plus contract tests
-must exercise both TypeScript and Dart consumers. Generated clients may follow
+must exercise both TypeScript and Dart consumers. The inventory in
+`packages/contracts/route-inventory.json` and `packages/contracts/openapi.yaml`
+must stay aligned with Express registration. `/api` remains the production
+prefix; `/v1` is an identical compatibility alias. Generated clients may follow
 in a production plan; this document freezes ownership and wire semantics only.

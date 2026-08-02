@@ -179,6 +179,14 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     response.setHeader("x-request-id", requestId);
     next();
   });
+  // Compatibility: /v1/* executes the same handlers as /api/* (auth + routes).
+  app.use((request, _response, next) => {
+    const url = request.url;
+    if (url === "/v1" || url.startsWith("/v1/") || url.startsWith("/v1?")) {
+      request.url = `/api${url.slice(3)}`;
+    }
+    next();
+  });
   app.get("/healthz", (_request, response) => response.json({ status: "ok" }));
   app.get("/readyz", async (_request, response) => {
     const isReady = await Promise.resolve(ready()).catch(() => false);

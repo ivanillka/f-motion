@@ -7,6 +7,11 @@ class ApiFailure implements Exception {
   ApiFailure(this.status, this.body);
   final int status;
   final JsonMap body;
+
+  String? get type {
+    final value = body['type'];
+    return value is String ? value : null;
+  }
 }
 
 class ProjectSnapshot {

@@ -135,6 +135,11 @@ export class ApiResponseError extends Error {
     this.status = status;
     this.body = body;
   }
+
+  /** Stable wire `type` when the API returned a typed error body. */
+  get type(): string | undefined {
+    return typeof this.body.type === "string" ? this.body.type : undefined;
+  }
 }
 
 export class ApiClient {

@@ -1,6 +1,7 @@
 // ponytail: npm's trailing focus words are reporting labels until tests split.
 await import("./domain.test.mjs");
 await import("./auth-routes.test.mjs");
+await import("./contract-routes.test.mjs");
 await import("./projects-list.test.mjs");
 await import("./local-auth.test.mjs");
 await import("./access-policy.test.mjs");
