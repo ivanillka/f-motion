@@ -41,6 +41,19 @@ interface FeatureLock {
   message: string;
   action?: "settings";
 }
+interface HostUsageView {
+  unit: "render_unit";
+  balance: number;
+  free_grant: number;
+  costs: { preview: number; final: number };
+}
+interface ApiKeyView {
+  id: string;
+  label: string;
+  hint: string;
+  created_at: string;
+  revoked_at?: string;
+}
 
 const architectureLabels = {
   goal: { story: "Tell a story", explain: "Explain something", promote: "Promote an idea or product", educate: "Teach the viewer" },
@@ -97,6 +110,11 @@ function App() {
   const [pexelsKey, setPexelsKey] = useState("");
   const [pexelsBusy, setPexelsBusy] = useState(false);
   const [featureLock, setFeatureLock] = useState<FeatureLock>();
+  const [hostUsage, setHostUsage] = useState<HostUsageView>();
+  const [apiKeys, setApiKeys] = useState<ApiKeyView[]>([]);
+  const [apiKeyLabel, setApiKeyLabel] = useState("agent");
+  const [createdApiToken, setCreatedApiToken] = useState("");
+  const [apiKeysBusy, setApiKeysBusy] = useState(false);
   const api = useMemo(() => new ApiClient(
     () => tokenRef.current,
     () => {
@@ -141,6 +159,11 @@ function App() {
     setPexelsKey("");
     setPexelsBusy(false);
     setFeatureLock(undefined);
+    setHostUsage(undefined);
+    setApiKeys([]);
+    setApiKeyLabel("agent");
+    setCreatedApiToken("");
+    setApiKeysBusy(false);
     setStep("sign-in");
   }
 
@@ -183,12 +206,15 @@ function App() {
     if (!token) return;
     void loadFalCredential();
     void loadPexelsCredential();
+    void loadHostUsage();
+    void loadApiKeys();
   }, [token]);
 
   useEffect(() => {
     if (step !== "settings") {
       setFalKey("");
       setPexelsKey("");
+      setCreatedApiToken("");
     }
   }, [step]);
 
@@ -677,6 +703,55 @@ function App() {
     }
   }
 
+  async function loadHostUsage() {
+    try {
+      setHostUsage(await api.request<HostUsageView>("/api/me/usage"));
+    } catch {
+      setHostUsage(undefined);
+    }
+  }
+
+  async function loadApiKeys() {
+    try {
+      const view = await api.request<{ keys: ApiKeyView[] }>("/api/me/api-keys");
+      setApiKeys(view.keys.filter((key) => !key.revoked_at));
+    } catch {
+      setApiKeys([]);
+    }
+  }
+
+  async function createApiKey() {
+    setApiKeysBusy(true);
+    try {
+      const created = await api.request<ApiKeyView & { token: string }>("/api/me/api-keys", {
+        method: "POST",
+        body: JSON.stringify({ label: apiKeyLabel.trim() || "agent" })
+      });
+      setCreatedApiToken(created.token);
+      setStatus("API key created. Copy it now — it will not be shown again.");
+      await loadApiKeys();
+    } catch {
+      setStatus("API key could not be created.");
+    } finally {
+      setApiKeysBusy(false);
+    }
+  }
+
+  async function revokeApiKey(keyId: string) {
+    if (!window.confirm("Revoke this API key? Agents using it will stop working.")) return;
+    setApiKeysBusy(true);
+    try {
+      await api.request(`/api/me/api-keys/${keyId}`, { method: "DELETE" });
+      if (createdApiToken) setCreatedApiToken("");
+      setStatus("API key revoked.");
+      await loadApiKeys();
+    } catch {
+      setStatus("API key could not be revoked.");
+    } finally {
+      setApiKeysBusy(false);
+    }
+  }
+
   async function loadFalCredential() {
     setFalBusy(true);
     try {
@@ -1079,6 +1154,33 @@ function App() {
     {authReady && step === "settings" && <section>
       <h1>Choose your video sources</h1>
       <p>Connect only the services you want to use. Each provider stays under your account and uses your own API key.</p>
+      <article className="settings-card" aria-labelledby="usage-settings-title">
+        <h2 id="usage-settings-title">Host API usage</h2>
+        <p>Renders consume free starter units on your F-Motion account, then paid top-ups. This meters host work only — FAL and Pexels stay on your own keys.</p>
+        {hostUsage
+          ? <p>{hostUsage.balance} {hostUsage.unit}s remaining · preview costs {hostUsage.costs.preview}, final costs {hostUsage.costs.final} · starter grant {hostUsage.free_grant}</p>
+          : <p className="notice">Usage balance is unavailable on this deployment.</p>}
+        <p><small>Paid top-up checkout is not wired yet; operators can credit balances server-side.</small></p>
+      </article>
+      <article className="settings-card" aria-labelledby="api-keys-settings-title">
+        <h2 id="api-keys-settings-title">Machine API keys</h2>
+        <p>Create a key for CLI, MCP, or agent tools. Send it as <code>Authorization: Bearer fm_…</code>. The secret is shown once.</p>
+        <label htmlFor="api-key-label">Label
+          <input id="api-key-label" value={apiKeyLabel} onChange={(event) => setApiKeyLabel(event.target.value)} maxLength={64} />
+        </label>
+        <div className="settings-actions">
+          <button disabled={apiKeysBusy} onClick={() => void createApiKey()}>Create API key</button>
+        </div>
+        {createdApiToken && <p role="status"><code>{createdApiToken}</code></p>}
+        {apiKeys.length === 0
+          ? <p role="status">No active API keys.</p>
+          : <ul>{apiKeys.map((key) =>
+            <li key={key.id}>
+              {key.label} · …{key.hint} · created {new Date(key.created_at).toLocaleString()}
+              {" "}
+              <button className="secondary" disabled={apiKeysBusy} onClick={() => void revokeApiKey(key.id)}>Revoke</button>
+            </li>)}</ul>}
+      </article>
       <div className="provider-onboarding" aria-label="Video source options">
         <article className={`provider-card ${pexelsCredential?.connected ? "provider-live" : "provider-locked"}`}>
           <span className={`provider-status ${pexelsCredential?.connected ? "" : "provider-soon"}`}>{pexelsCredential?.connected ? "Unlocked" : "Locked"}</span>

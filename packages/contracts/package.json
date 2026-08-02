@@ -14,7 +14,7 @@
     "./schema/f-engine-v1.schema.json": "./schema/f-engine-v1.schema.json",
     "./openapi.yaml": "./openapi.yaml"
   },
-  "files": ["dist", "schema", "openapi.yaml"],
+  "files": ["dist", "schema", "openapi.yaml", "route-inventory.json"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test test/*.test.mjs"
