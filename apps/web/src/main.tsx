@@ -142,13 +142,23 @@ function App() {
   const [conflict, setConflict] = useState<ProjectSnapshot>();
   const [conflictNotice, setConflictNotice] = useState<{ sceneId?: string; operation: string }>();
   const [jobId, setJobId] = useState("");
+  const [renderKind, setRenderKind] = useState<"preview" | "final">("preview");
   const [progress, setProgress] = useState({ phase: "queued", percent: 0 });
   const [downloadUrl, setDownloadUrl] = useState("");
   const [previewRevision, setPreviewRevision] = useState<number>();
   const [previewMetadata, setPreviewMetadata] = useState<Record<string, string | number | boolean | null>>({});
   const upload = useRef<HTMLInputElement>(null);
   const importedProjectRef = useRef("");
-  const renderLabel = import.meta.env.VITE_RENDER_LABEL?.trim() || "720p preview";
+  const previewRenderLabel = import.meta.env.VITE_RENDER_LABEL?.trim() || "720p preview";
+  const renderLabel = renderKind === "final" ? "final export" : previewRenderLabel;
+  const renderHeading = renderKind === "final" ? "Final export" : "Accurate preview";
+  const downloadLabel = renderKind === "final" ? "Download export" : "Download preview";
+  const renderFailedLabel = renderKind === "final"
+    ? "Final export failed — try again or keep editing."
+    : "Accurate preview failed — try again or keep editing.";
+  const olderRenderNotice = renderKind === "final"
+    ? "Older export — regenerate after your edits."
+    : "Older preview — regenerate after your edits.";
 
   function openConflict(snapshot: ProjectSnapshot, notice: { sceneId?: string; operation: string }) {
     setConflict(snapshot);
@@ -173,6 +183,7 @@ function App() {
     setCandidates([]);
     dismissConflict();
     setJobId("");
+    setRenderKind("preview");
     setDownloadUrl("");
     setPreviewRevision(undefined);
     setPreviewMetadata({});
@@ -780,11 +791,14 @@ function App() {
     }
   }
 
-  async function requestRender() {
+  async function requestRender(kind: "preview" | "final" = "preview") {
     if (!project) return;
+    setRenderKind(kind);
+    setDownloadUrl("");
+    setProgress({ phase: "queued", percent: 0 });
     const job = await api.request<{ job_id: string }>(`/api/projects/${project.id}/render`, {
       method: "POST",
-      body: JSON.stringify({ kind: "preview" })
+      body: JSON.stringify({ kind })
     });
     setJobId(job.job_id);
     setStep("render");
@@ -794,7 +808,7 @@ function App() {
   async function retryRender() {
     setDownloadUrl("");
     setProgress({ phase: "queued", percent: 0 });
-    await requestRender();
+    await requestRender(renderKind);
   }
 
   async function refreshPreviewUrl() {
@@ -803,7 +817,9 @@ function App() {
       const result = await api.request<{ url: string }>(`/api/render-jobs/${jobId}/download`);
       setDownloadUrl(result.url);
     } catch {
-      setStatus("Preview link expired and could not be refreshed.");
+      setStatus(renderKind === "final"
+        ? "Export link expired and could not be refreshed."
+        : "Preview link expired and could not be refreshed.");
     }
   }
 
@@ -1588,11 +1604,12 @@ function App() {
       }} />
       <button className="secondary" disabled={busy} onClick={() => upload.current?.click()}>Upload media for scene {activeSceneNumber}</button>
       <p role="status">{status || "✓ All changes saved"}</p>
-      <button disabled={!allScenesHaveMedia} onClick={() => void requestRender()}>Generate accurate preview</button>
+      <button disabled={!allScenesHaveMedia} onClick={() => void requestRender("preview")}>Generate accurate preview</button>
+      <button className="secondary" disabled={!allScenesHaveMedia} onClick={() => void requestRender("final")}>Export final</button>
       {!allScenesHaveMedia && <p>{project.scenes.every(({ media_id }) => media_id)
         ? "Media is processing. Preview unlocks automatically when every scene is ready."
         : "Add media to every scene before rendering."}</p>}
-      {downloadUrl && <button className="secondary" onClick={() => setStep("render")}>View accurate preview{previewRevision !== project.revision ? " · older" : ""}</button>}
+      {downloadUrl && <button className="secondary" onClick={() => setStep("render")}>{renderKind === "final" ? "View final export" : "View accurate preview"}{previewRevision !== project.revision ? " · older" : ""}</button>}
       <button className="secondary" onClick={() => setStep("brief")}>Start a different description</button>
       <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
       {falGenOpen && activeScene && <dialog open aria-labelledby="fal-gen-title">
@@ -1711,20 +1728,20 @@ function App() {
       </dialog>}
     </section>}
     {authReady && step === "render" && <section>
-      <h1>Accurate preview</h1>
-      <p role="status">{progress.phase === "failed" ? "Accurate preview failed — try again or keep editing." : `${progress.phase} · ${renderLabel}`}</p>
+      <h1>{renderHeading}</h1>
+      <p role="status">{progress.phase === "failed" ? renderFailedLabel : `${progress.phase} · ${renderLabel}`}</p>
       <progress value={progress.percent} max="100">{progress.percent}%</progress>
       {downloadUrl && <video controls playsInline preload="metadata" src={downloadUrl} onError={() => void refreshPreviewUrl()}>
-        Your browser cannot play this MP4 preview. Use the download link instead.
+        Your browser cannot play this MP4. Use the download link instead.
       </video>}
       {downloadUrl && <p>{previewMetadata.width && previewMetadata.height ? `${previewMetadata.width}×${previewMetadata.height}` : "Rendered MP4"}
         {previewMetadata.duration_ms ? ` · ${(Number(previewMetadata.duration_ms) / 1000).toFixed(1)} seconds` : ""}
         {previewMetadata.audio_status ? ` · audio ${previewMetadata.audio_status}` : ""}</p>}
-      {previewRevision !== undefined && project && previewRevision !== project.revision && <p className="notice">Older preview — regenerate after your edits.</p>}
+      {previewRevision !== undefined && project && previewRevision !== project.revision && <p className="notice">{olderRenderNotice}</p>}
       <div>
         <button disabled={progress.phase === "complete" || progress.phase === "cancelled" || progress.phase === "failed"} onClick={() => void cancelRender()}>Cancel render</button>
         {(progress.phase === "failed" || progress.phase === "cancelled") && <button onClick={() => void retryRender()}>Retry</button>}
-        <a href={downloadUrl} download><button disabled={!downloadUrl || progress.phase === "failed"}>Download preview</button></a>
+        <a href={downloadUrl} download><button disabled={!downloadUrl || progress.phase === "failed"}>{downloadLabel}</button></a>
       </div>
       <button className="secondary" onClick={() => setStep("editor")}>Keep editing</button>
     </section>}

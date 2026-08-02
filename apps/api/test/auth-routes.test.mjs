@@ -658,7 +658,13 @@ test("render routes accept only a trusted kind and allowlist playback metadata",
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "preview" })
     });
     assert.equal(accepted.status, 202);
-    assert.deepEqual(admittedKinds, ["preview"]);
+    const acceptedFinal = await fetch(`${origin}/api/projects/${project.id}/render`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "final" })
+    });
+    assert.equal(acceptedFinal.status, 202);
+    assert.deepEqual(admittedKinds, ["preview", "final"]);
+    const profiles = renderProfilesFromEnv({});
+    assert.deepEqual(profiles.final, { width: 720, height: 1280 });
     const playback = await (await fetch(`${origin}/api/render-jobs/job/download`)).json();
     assert.equal(playback.kind, "preview");
     assert.equal(playback.stale, false);

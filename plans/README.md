@@ -80,7 +80,7 @@ your row when done.
 | 051 | Harden FAL generation lifecycle (poll, inspect, cancel) | P1 | S | 049, 050 | DONE (branch `advisor/051-harden-fal-generation-lifecycle` @ `150e340`) |
 | 052 | Unblock FAL credential disconnect after generation jobs exist | P1 | M | 048–050; 051 preferred | DONE (branch `advisor/052-unblock-fal-credential-disconnect` @ `40c9a7c`) |
 | 053 | Promote product tip `6287cce` as the sole ship tip | P1 | M | 6287cce; 051–052 preferred | DONE (branch `advisor/053-product-tip`; gate green) |
-| 054 | Wire `final` export and honest download UX | P1 | M | 053 | TODO |
+| 054 | Wire `final` export and honest download UX | P1 | M | 053 | DONE (branch `advisor/054-wire-final-export`) |
 | 055 | Sync docs and generation routes in the contract inventory | P2 | S | 053 preferred | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (reason)
@@ -88,10 +88,11 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (reason)
 ## Round 10 — ship tip + FAL ops + final export (@ `6287cce`)
 
 **Audited tip**: `6287cce` (`.worktrees/050-fal-scene-image-to-video`).
-**Ship tip (round 10)**: `advisor/053-product-tip` (= `6287cce` + 051 + 052 +
-gate fix for BYOK web assertion vs job-id resume). Worktree
-`.worktrees/053-product-tip`. Full `lint`/`test`/`build`/`test:package-consumer`
-exit 0. Web e2e not re-run here (env deferred).
+**Ship tip (round 10)**: `advisor/054-wire-final-export` (from `advisor/053-product-tip`
+= `6287cce` + 051 + 052 + gate fix + final export). Worktree
+`.worktrees/053-product-tip`. Full `lint`/`test`/`build` exit 0. Web e2e
+**BLOCKED** here (Playwright Chromium not installed in this environment;
+coverage added in `tests/e2e/web-flow.spec.ts`).
 **Superseded divergent checkout**: `advisor/export-quality-merge` @ `8125787`
 (merge-base `20365f9` with tip; lacks `packages/fal-host`). Do **not** execute
 new plans against `8125787`. Do **not** merge its alternate history onto tip.
@@ -101,7 +102,7 @@ Recommended execution:
 1. **051** — DONE.
 2. **052** — DONE.
 3. **053** — DONE (this ship tip).
-4. **054** — web `kind: "final"` + download labeling on the ship tip.
+4. **054** — DONE (web `kind: "final"` + download labeling).
 5. **055** — README/getting-started honesty + generation routes in
    `route-inventory.json` / OpenAPI.
 

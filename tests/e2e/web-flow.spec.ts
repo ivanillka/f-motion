@@ -20,7 +20,11 @@ async function projectDurationMs(page: Page): Promise<number> {
   });
 }
 
-async function expectRenderedProject(rendered: APIResponse, expectedDurationMs: number): Promise<void> {
+async function expectRenderedProject(
+  rendered: APIResponse,
+  expectedDurationMs: number,
+  size: { width: number; height: number } = { width: 540, height: 960 }
+): Promise<void> {
   expect(rendered.ok()).toBeTruthy();
   expect(rendered.headers()["content-type"]).toContain("video/mp4");
   const body = await rendered.body();
@@ -38,7 +42,7 @@ async function expectRenderedProject(rendered: APIResponse, expectedDurationMs: 
     const video = probe.streams?.find(({ codec_type: type }) => type === "video");
     const audio = probe.streams?.find(({ codec_type: type }) => type === "audio");
     const durationMs = Number(probe.format?.duration) * 1000;
-    expect(video).toMatchObject({ codec_name: "h264", width: 540, height: 960 });
+    expect(video).toMatchObject({ codec_name: "h264", width: size.width, height: size.height });
     expect(audio).toMatchObject({ codec_name: "aac" });
     expect(durationMs).toBeGreaterThan(500);
     expect(Math.abs(durationMs - expectedDurationMs)).toBeLessThan(250);
@@ -194,6 +198,18 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   expect(href).toMatch(/^http:\/\/127\.0\.0\.1:43141\/downloads\//);
   const rendered = await page.request.get(href!);
   await expectRenderedProject(rendered, await projectDurationMs(page));
+
+  await page.getByRole("button", { name: "Keep editing" }).click();
+  await page.getByRole("button", { name: "Export final" }).click();
+  await expect(page.getByRole("heading", { name: "Final export" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "complete · final export" })).toBeVisible({ timeout: 30_000 });
+  const finalDownload = page.getByRole("link").filter({ has: page.getByRole("button", { name: "Download export" }) });
+  await expect(page.getByRole("button", { name: "Download export" })).toBeEnabled();
+  await expect(page.getByText("720×1280")).toBeVisible();
+  const finalHref = await finalDownload.getAttribute("href");
+  expect(finalHref).toMatch(/^http:\/\/127\.0\.0\.1:43141\/downloads\//);
+  const finalRendered = await page.request.get(finalHref!);
+  await expectRenderedProject(finalRendered, await projectDurationMs(page), { width: 720, height: 1280 });
 });
 
 test("licensed stock journey auto-matches distinct scenes then renders", async ({ page }) => {

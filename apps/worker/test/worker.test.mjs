@@ -205,13 +205,15 @@ test("ffprobe abort terminates once, awaits exit, and returns a typed non-sensit
 
 test("ffprobe deadline terminates and awaits a controllable process", async () => {
   await withControllableProbe(async (pidPath) => {
-    const pending = probeMediaFile(pidPath, undefined, 100);
-    const pid = Number(await waitForText(pidPath));
-    await assert.rejects(pending, (error) => {
+    // Keep timeout short, but long enough for the stub process to write its pid.
+    const pending = probeMediaFile(pidPath, undefined, 250);
+    const rejected = assert.rejects(pending, (error) => {
       assert.ok(error instanceof MediaProbeError);
       assert.equal(error.code, "timeout");
       return true;
     });
+    const pid = Number(await waitForText(pidPath));
+    await rejected;
     assert.equal(await readFile(`${pidPath}.signals`, "utf8"), "term\n");
     assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
   });
@@ -221,18 +223,19 @@ test("ffprobe deadline forcibly kills a process that ignores graceful terminatio
   await withControllableProbe(async (pidPath) => {
     const startedAt = Date.now();
     const pending = probeMediaFile(pidPath, undefined, 100);
+    const rejected = assert.rejects(pending, (error) => {
+      assert.ok(error instanceof MediaProbeError);
+      assert.equal(error.code, "timeout");
+      return true;
+    });
     const pid = Number(await waitForText(pidPath));
     let settlementTimer;
     const bounded = new Promise((resolve, reject) => {
       settlementTimer = setTimeout(() => reject(new Error("forced probe termination did not settle")), 2500);
-      pending.then(resolve, reject);
+      rejected.then(resolve, reject);
     });
     try {
-      await assert.rejects(bounded, (error) => {
-        assert.ok(error instanceof MediaProbeError);
-        assert.equal(error.code, "timeout");
-        return true;
-      });
+      await bounded;
     } finally {
       clearTimeout(settlementTimer);
     }
