@@ -23,7 +23,12 @@ test("required recovery, accessibility, and preview language is present", async 
   for (const unsafe of ["fengine-access-token", "/auth/v1/otp", "/authorize", "location.hash"]) {
     assert.doesNotMatch(source, new RegExp(unsafe.replace("/", "\\/")));
   }
-  assert.doesNotMatch(source, /localStorage[^\n]*fal|sessionStorage[^\n]*fal|VITE_.*FAL/);
+  // BYOK: never persist provider API keys or expose them via Vite env.
+  // Job-id resume keys (falJobStorageKey) are allowed; credentials are not.
+  assert.doesNotMatch(source, /(?:localStorage|sessionStorage)\.[^\n]*\bfalKey\b/);
+  assert.doesNotMatch(source, /(?:localStorage|sessionStorage)\.[^\n]*["'`][^"'`]*FAL_KEY/);
+  assert.doesNotMatch(source, /VITE_.*FAL/);
+  assert.match(source, /falJobStorageKey/);
   assert.match(source, /openFalGenerate\(/);
   assert.match(source, /confirmFalImage\(/);
   assert.match(source, /useFalGeneratedMedia\(/);
@@ -32,7 +37,9 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.doesNotMatch(source, /useFalGeneratedMedia[\s\S]{0,80}pollFalGeneration/);
   assert.doesNotMatch(source, /Generation is not live yet/);
 
-  assert.doesNotMatch(source, /localStorage[^\n]*pexels|sessionStorage[^\n]*pexels|VITE_.*PEXELS/);
+  assert.doesNotMatch(source, /(?:localStorage|sessionStorage)\.[^\n]*\bpexelsKey\b/);
+  assert.doesNotMatch(source, /(?:localStorage|sessionStorage)\.[^\n]*["'`][^"'`]*PEXELS/);
+  assert.doesNotMatch(source, /VITE_.*PEXELS/);
 });
 
 test("draft media hydration replaces project-scoped stock, upload, reopen, and failure state", async () => {
