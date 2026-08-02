@@ -100,6 +100,7 @@ interface JobRow {
   failureCode: string | null;
   resultMediaId: string | null;
   sourceMediaId: string | null;
+  providerRequestId: string | null;
   idempotencyKey: string;
 }
 
@@ -231,7 +232,7 @@ export class PostgresFalGenerationService implements FalGenerationService {
     const result = await client.query<JobRow>(
       `SELECT id, "ownerId", "projectId", "sceneId", kind, "endpointId", prompt, "inputJson", "quoteJson",
               "quoteExpiresAt", state, "cancelRequested", "failureCode", "resultMediaId", "sourceMediaId",
-              "idempotencyKey"
+              "providerRequestId", "idempotencyKey"
          FROM "GenerationJob" WHERE id = $1 AND "ownerId" = $2`,
       [jobId, ownerId]
     );
@@ -369,7 +370,7 @@ export class PostgresFalGenerationService implements FalGenerationService {
       const locked = await client.query<JobRow>(
         `SELECT id, "ownerId", "projectId", "sceneId", kind, "endpointId", prompt, "inputJson", "quoteJson",
                 "quoteExpiresAt", state, "cancelRequested", "failureCode", "resultMediaId", "sourceMediaId",
-                "idempotencyKey"
+                "providerRequestId", "idempotencyKey"
            FROM "GenerationJob" WHERE id = $1 AND "ownerId" = $2 FOR UPDATE`,
         [jobId, ownerId]
       );
@@ -448,7 +449,7 @@ export class PostgresFalGenerationService implements FalGenerationService {
       const locked = await client.query<JobRow>(
         `SELECT id, "ownerId", "projectId", "sceneId", kind, "endpointId", prompt, "inputJson", "quoteJson",
                 "quoteExpiresAt", state, "cancelRequested", "failureCode", "resultMediaId", "sourceMediaId",
-                "idempotencyKey"
+                "providerRequestId", "idempotencyKey"
            FROM "GenerationJob" WHERE id = $1 AND "ownerId" = $2 FOR UPDATE`,
         [jobId, ownerId]
       );
@@ -458,7 +459,19 @@ export class PostgresFalGenerationService implements FalGenerationService {
         await client.query("COMMIT");
         return this.viewFromRow(row);
       }
-      const nextState = row.state === "quoted" || row.state === "queued" ? "cancelled" : row.state;
+      let nextState: GenerationJobState;
+      if (row.state === "quoted" || row.state === "queued") {
+        nextState = "cancelled";
+      } else if (!row.providerRequestId) {
+        // Nothing useful for the worker to cancel at FAL — free the slot now.
+        nextState = "cancelled";
+      } else if (row.cancelRequested) {
+        // Second cancel on a stuck cooperative cancel: force terminal so activeJobCount
+        // clears. Worker still best-efforts provider cancel when it next runs.
+        nextState = "cancelled";
+      } else {
+        nextState = row.state;
+      }
       await client.query(
         `UPDATE "GenerationJob"
             SET "cancelRequested" = TRUE, state = $1::"GenerationState", "updatedAt" = NOW()

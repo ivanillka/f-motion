@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import {
+  FalGenerationBusyError,
+  PostgresFalGenerationService
+} from "../dist/fal-generation.js";
 import { createTestApp } from "../dist/server.js";
 
 function listen(server) {
@@ -9,6 +13,105 @@ function listen(server) {
     resolve(`http://127.0.0.1:${port}`);
   }));
 }
+
+const ACTIVE_STATES = ["queued", "submitting", "running", "downloading", "inspecting"];
+
+function baseJob(overrides = {}) {
+  return {
+    id: "job-1",
+    ownerId: "owner",
+    projectId: "project",
+    sceneId: "scene",
+    kind: "image",
+    endpointId: "fal-ai/flux/schnell",
+    prompt: "quiet lighthouse",
+    inputJson: { prompt: "quiet lighthouse" },
+    quoteJson: {
+      endpoint_id: "fal-ai/flux/schnell",
+      unit_price: 0.02,
+      unit: "image",
+      currency: "USD",
+      estimated_total: 0.02
+    },
+    quoteExpiresAt: new Date(Date.now() + 60_000),
+    state: "queued",
+    cancelRequested: false,
+    failureCode: null,
+    resultMediaId: null,
+    sourceMediaId: null,
+    providerRequestId: null,
+    idempotencyKey: "11111111-1111-4111-8111-111111111111",
+    ...overrides
+  };
+}
+
+function generationFakePool(initialJobs) {
+  const jobs = new Map(initialJobs.map((job) => [job.id, structuredClone(job)]));
+
+  function isActive(job) {
+    return ACTIVE_STATES.includes(job.state)
+      || (job.cancelRequested && !["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state));
+  }
+
+  async function query(sql, params = []) {
+    if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [], rowCount: 0 };
+    if (sql.includes("COUNT(*)") && sql.includes("FROM \"GenerationJob\"")) {
+      const ownerId = params[0];
+      const sceneId = sql.includes("\"sceneId\"") ? params[1] : undefined;
+      let count = 0;
+      for (const job of jobs.values()) {
+        if (job.ownerId !== ownerId) continue;
+        if (sceneId && job.sceneId !== sceneId) continue;
+        if (isActive(job)) count += 1;
+      }
+      return { rows: [{ count }], rowCount: 1 };
+    }
+    if (sql.includes("FROM \"GenerationJob\"") && sql.includes("FOR UPDATE")) {
+      const job = jobs.get(params[0]);
+      if (!job || job.ownerId !== params[1]) return { rows: [], rowCount: 0 };
+      return { rows: [structuredClone(job)], rowCount: 1 };
+    }
+    if (sql.includes("FROM \"GenerationJob\"") && sql.includes("WHERE id = $1 AND \"ownerId\" = $2")
+      && !sql.includes("FOR UPDATE") && !sql.includes("COUNT")) {
+      const job = jobs.get(params[0]);
+      if (!job || job.ownerId !== params[1]) return { rows: [], rowCount: 0 };
+      return { rows: [structuredClone(job)], rowCount: 1 };
+    }
+    if (sql.includes("SET \"cancelRequested\" = TRUE")) {
+      const job = jobs.get(params[1]);
+      if (!job || job.ownerId !== params[2]) return { rowCount: 0 };
+      job.cancelRequested = true;
+      job.state = params[0];
+      return { rowCount: 1 };
+    }
+    if (sql.includes("SET state = 'queued'") && sql.includes("\"idempotencyKey\"")) {
+      const job = jobs.get(params[1]);
+      if (!job || job.ownerId !== params[2] || job.state !== "quoted") return { rowCount: 0 };
+      job.idempotencyKey = params[0];
+      job.state = "queued";
+      return { rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO \"WorkOutbox\"")) return { rowCount: 1 };
+    if (sql.includes("FROM \"MediaAsset\"")) return { rows: [], rowCount: 0 };
+    throw new Error(`unexpected sql: ${sql.slice(0, 140)}`);
+  }
+
+  return {
+    jobs,
+    async query(sql, params = []) { return query(sql, params); },
+    async connect() {
+      return { async query(sql, params = []) { return query(sql, params); }, release() {} };
+    }
+  };
+}
+
+const stubCredentials = {
+  async decryptForOwner() { return { id: "cred", apiKey: "key" }; },
+  async status() { return { provider: "fal", connected: true }; },
+  async connect() { throw new Error("unused"); },
+  async test() { throw new Error("unused"); },
+  async disconnect() { throw new Error("unused"); }
+};
 
 test("FAL image quote/confirm/get/cancel routes are owner-scoped and body-exact", async () => {
   const jobs = new Map();
@@ -160,4 +263,85 @@ test("FAL video quote route is body-exact and owner-scoped", async () => {
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
+});
+
+test("cancel queued frees the active slot", async () => {
+  const pool = generationFakePool([baseJob({ state: "queued" })]);
+  const service = new PostgresFalGenerationService(pool, stubCredentials);
+  const cancelled = await service.cancel("owner", "job-1");
+  assert.equal(cancelled.state, "cancelled");
+  assert.equal(cancelled.cancel_requested, true);
+  assert.equal(pool.jobs.get("job-1").state, "cancelled");
+
+  const quoted = baseJob({
+    id: "job-2",
+    state: "quoted",
+    idempotencyKey: "22222222-2222-4222-8222-222222222222"
+  });
+  pool.jobs.set(quoted.id, quoted);
+  const confirmed = await service.confirm(
+    "owner",
+    "job-2",
+    "22222222-2222-4222-8222-222222222222"
+  );
+  assert.equal(confirmed.state, "queued");
+});
+
+test("cancel running with no providerRequestId cancels immediately", async () => {
+  const pool = generationFakePool([baseJob({
+    state: "running",
+    providerRequestId: null
+  })]);
+  const service = new PostgresFalGenerationService(pool, stubCredentials);
+  const cancelled = await service.cancel("owner", "job-1");
+  assert.equal(cancelled.state, "cancelled");
+  assert.equal(cancelled.cancel_requested, true);
+
+  const quoted = baseJob({
+    id: "job-2",
+    state: "quoted",
+    idempotencyKey: "33333333-3333-4333-8333-333333333333"
+  });
+  pool.jobs.set(quoted.id, quoted);
+  const confirmed = await service.confirm(
+    "owner",
+    "job-2",
+    "33333333-3333-4333-8333-333333333333"
+  );
+  assert.equal(confirmed.state, "queued");
+});
+
+test("second cancel on stuck running with providerRequestId forces cancelled", async () => {
+  const pool = generationFakePool([baseJob({
+    state: "running",
+    providerRequestId: "req-1",
+    cancelRequested: false
+  })]);
+  const service = new PostgresFalGenerationService(pool, stubCredentials);
+
+  const first = await service.cancel("owner", "job-1");
+  assert.equal(first.state, "running");
+  assert.equal(first.cancel_requested, true);
+
+  const quoted = baseJob({
+    id: "job-2",
+    state: "quoted",
+    idempotencyKey: "44444444-4444-4444-8444-444444444444"
+  });
+  pool.jobs.set(quoted.id, quoted);
+  await assert.rejects(
+    () => service.confirm("owner", "job-2", "44444444-4444-4444-8444-444444444444"),
+    FalGenerationBusyError
+  );
+
+  const second = await service.cancel("owner", "job-1");
+  assert.equal(second.state, "cancelled");
+  assert.equal(second.cancel_requested, true);
+
+  const confirmed = await service.confirm(
+    "owner",
+    "job-2",
+    "44444444-4444-4444-8444-444444444444"
+  );
+  assert.equal(confirmed.state, "queued");
 });

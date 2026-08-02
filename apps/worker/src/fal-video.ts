@@ -121,13 +121,16 @@ export async function processFalVideoJob(
   job: FalVideoJob,
   signal: AbortSignal,
   env: Record<string, string | undefined> = process.env,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  pollCeilingMs: number = POLL_CEILING_MS
 ): Promise<Record<string, unknown>> {
   let row = await loadJob(pool, job);
   if (!row) return { state: "ignored" };
-  if (["ready", "cancelled", "failed", "submission_uncertain"].includes(row.state)) {
+  if (["ready", "cancelled", "failed", "submission_uncertain", "inspecting"].includes(row.state)) {
     return { state: row.state };
   }
+  // Media already quarantined — do not re-poll or re-download on worker retry.
+  if (row.resultMediaId) return { state: row.state };
 
   if (row.state === "submitting" && !row.providerRequestId) {
     // ponytail: crash after provider accept / before ID persist. Ceiling is manual
@@ -201,7 +204,8 @@ export async function processFalVideoJob(
 
   if (!row.providerRequestId) return { state: row.state };
   const key = apiKey(row, env);
-  const deadline = Date.now() + POLL_CEILING_MS;
+  let completed = false;
+  const deadline = Date.now() + pollCeilingMs;
   while (Date.now() < deadline) {
     if (signal.aborted) throw new Error("aborted");
     row = (await loadJob(pool, job))!;
@@ -224,8 +228,20 @@ export async function processFalVideoJob(
       );
       return { state: "failed" };
     }
-    if (status.status === "COMPLETED") break;
+    if (status.status === "COMPLETED") {
+      completed = true;
+      break;
+    }
     await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+
+  if (!completed) {
+    await pool.query(
+      `UPDATE "GenerationJob" SET state = 'failed', "failureCode" = $1, "updatedAt" = NOW()
+        WHERE id = $2 AND "ownerId" = $3 AND state IN ('running', 'submitting', 'downloading')`,
+      ["poll_timeout", job.generationJobId, job.ownerId]
+    );
+    return { state: "failed" };
   }
 
   row = (await loadJob(pool, job))!;
