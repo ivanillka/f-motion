@@ -300,8 +300,10 @@ npm run deploy:pages -- --project-name <pages-project-name>
 ```
 
 The wrapper builds and verifies first, then invokes Wrangler from `apps/web`
-with both `dist` and the adjacent `functions` directory discoverable. It does
-not store an account ID, inspect credentials, or run from CI.
+with both `dist` and the adjacent `functions` directory discoverable. It
+requires both Supabase browser variables in its environment, refuses demo auth,
+and deploys the production `main` branch. It does not store an account ID,
+inspect credentials, or run from CI.
 
 Cloudflare may buffer SSE by default on proxied routes; if render progress
 stalls until the job finishes, move `/api/render-jobs/*/events` to a Worker or

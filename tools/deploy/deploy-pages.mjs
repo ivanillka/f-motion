@@ -28,6 +28,30 @@ export function parseDeployArgs(args) {
   return { dryRun, projectName };
 }
 
+export function assertHostedWebEnvironment(env) {
+  const url = env.VITE_SUPABASE_URL?.trim();
+  const publicKey = env.VITE_SUPABASE_ANON_KEY?.trim();
+  if (!url || !publicKey) {
+    throw new Error("VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are required for a Pages deployment");
+  }
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("VITE_SUPABASE_URL must be a valid HTTPS origin");
+  }
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password
+    || parsed.pathname !== "/" || parsed.search || parsed.hash) {
+    throw new Error("VITE_SUPABASE_URL must be a valid HTTPS origin");
+  }
+  if (publicKey.length < 20 || /\s/.test(publicKey)) {
+    throw new Error("VITE_SUPABASE_ANON_KEY is invalid");
+  }
+  if (env.VITE_ALLOW_DEMO_AUTH !== undefined) {
+    throw new Error("VITE_ALLOW_DEMO_AUTH must stay unset for a Pages deployment");
+  }
+}
+
 function run(command, args, cwd) {
   const result = spawnSync(command, args, { cwd, stdio: "inherit" });
   if (result.error) throw result.error;
@@ -35,12 +59,12 @@ function run(command, args, cwd) {
   if (result.status !== 0) throw new Error(`${command} exited with status ${result.status}`);
 }
 
-export function deployPages({ dryRun, projectName }, execute = run, root = repositoryRoot) {
+export function deployPages({ dryRun, projectName }, execute = run, root = repositoryRoot, env = process.env) {
   const appDirectory = resolve(root, "apps/web");
   const build = { command: "npm", args: ["run", "build:pages"], cwd: root };
   const deploy = {
     command: "npx",
-    args: ["--yes", "wrangler", "pages", "deploy", "dist", "--project-name", projectName],
+    args: ["--yes", "wrangler", "pages", "deploy", "dist", "--project-name", projectName, "--branch", "main"],
     cwd: appDirectory
   };
 
@@ -53,6 +77,7 @@ export function deployPages({ dryRun, projectName }, execute = run, root = repos
     return;
   }
 
+  assertHostedWebEnvironment(env);
   execute(build.command, build.args, build.cwd);
   execute(deploy.command, deploy.args, deploy.cwd);
 }
