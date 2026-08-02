@@ -5,17 +5,74 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import pg from "pg";
 import { PostgresProjectRepository } from "../dist/domain.js";
-import { PostgresRenderRepository } from "../dist/render-repository.js";
+import { PostgresRenderRepository, RenderInputIncompleteError } from "../dist/render-repository.js";
 import { createTestApp } from "../dist/server.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl) throw new Error("TEST_DATABASE_URL is required");
+
+const renderMigrations = [
+  "../../../prisma/migrations/20260726000000_initial/migration.sql",
+  "../../../prisma/migrations/20260726001000_media_admission/migration.sql",
+  "../../../prisma/migrations/20260726002000_render_events/migration.sql",
+  "../../../prisma/migrations/20260731000000_render_job_input/migration.sql",
+  "../../../prisma/migrations/20260731000000_seal_inspected_media/migration.sql",
+  "../../../prisma/migrations/20260801000000_coalesce_render_jobs/migration.sql",
+  "../../../prisma/migrations/20260801120000_render_kind_profile/migration.sql"
+];
 
 async function listen(server) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("server did not bind");
   return `http://127.0.0.1:${address.port}`;
+}
+
+async function applyMigrations(pool, paths) {
+  for (const path of paths) {
+    await pool.query(await readFile(new URL(path, import.meta.url), "utf8"));
+  }
+}
+
+async function insertReadySealedMedia(pool, { id, ownerId, projectId }) {
+  await pool.query(
+    `INSERT INTO "MediaAsset" (
+       id, "ownerId", "projectId", "quarantineObjectKey", "sealedObjectKey",
+       "sealedEtag", "sealedSha256", state, "declaredType", "maxBytes"
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'ready', 'video/mp4', 1000000)`,
+    [
+      id,
+      ownerId,
+      projectId,
+      `projects/${projectId}/media-quarantine/${id}`,
+      `projects/${projectId}/media-sealed/${id}`,
+      `"etag-${id}"`,
+      "a".repeat(64)
+    ]
+  );
+}
+
+/** Project with one scene attached to owned ready sealed media — eligible to enqueue. */
+async function seedRenderableProject(projects, pool, ownerId, brief, commandPrefix = randomUUID()) {
+  const project = await projects.create(ownerId, brief);
+  const selected = await projects.command(ownerId, {
+    command_id: `${commandPrefix}-select`,
+    project_id: project.id,
+    base_revision: 0,
+    client_timestamp: "diagnostic",
+    kind: "select_concept",
+    payload: { concept_id: "direct" }
+  });
+  const mediaId = `${commandPrefix}-media`;
+  await insertReadySealedMedia(pool, { id: mediaId, ownerId, projectId: project.id });
+  return projects.command(ownerId, {
+    command_id: `${commandPrefix}-attach`,
+    project_id: project.id,
+    base_revision: selected.revision,
+    client_timestamp: "diagnostic",
+    kind: "update_scene",
+    payload: { scene: { ...selected.scenes[0], media_id: mediaId } }
+  });
 }
 
 test("render state, SSE recovery, cancellation, and immutable result are owner-scoped", async () => {
@@ -25,19 +82,16 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
   const pool = new pg.Pool({ connectionString: databaseUrl, options: `-c search_path=${schema}` });
   const server = createServer();
   try {
-    for (const path of [
-      "../../../prisma/migrations/20260726000000_initial/migration.sql",
-      "../../../prisma/migrations/20260726001000_media_admission/migration.sql",
-      "../../../prisma/migrations/20260726002000_render_events/migration.sql",
-      "../../../prisma/migrations/20260731000000_render_job_input/migration.sql",
-      "../../../prisma/migrations/20260801000000_coalesce_render_jobs/migration.sql",
-      "../../../prisma/migrations/20260801120000_render_kind_profile/migration.sql"
-    ]) {
-      await pool.query(await readFile(new URL(path, import.meta.url), "utf8"));
-    }
+    await applyMigrations(pool, renderMigrations);
     await pool.query(`INSERT INTO "User" (id, state) VALUES ('owner', 'active'), ('other', 'active')`);
     const projects = new PostgresProjectRepository(pool);
-    const project = await projects.create("owner", { purpose: "Render", audience: "Teams", tone: "Warm" });
+    const project = await seedRenderableProject(
+      projects,
+      pool,
+      "owner",
+      { purpose: "Render", audience: "Teams", tone: "Warm" },
+      "main"
+    );
     const renders = new PostgresRenderRepository(pool);
     server.on("request", createTestApp({ ownerId: "owner", projects, renders }));
     const origin = await listen(server);
@@ -53,8 +107,8 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
     const created = createdResponses[0];
     assert.equal(created.state, "queued");
     assert.equal(Number((await pool.query(
-      `SELECT COUNT(*) AS count FROM "RenderJob" WHERE "projectId" = $1 AND revision = 0`
-    , [project.id])).rows[0].count), 1);
+      `SELECT COUNT(*) AS count FROM "RenderJob" WHERE "projectId" = $1 AND revision = $2`
+    , [project.id, project.revision])).rows[0].count), 1);
     assert.equal(Number((await pool.query(
       `SELECT COUNT(*) AS count FROM "WorkOutbox" WHERE kind = 'render-preview'`
     )).rows[0].count), 1);
@@ -71,7 +125,7 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
       headers: { "last-event-id": queued[0].eventId }
     });
     await new Promise((resolve) => setTimeout(resolve, 200));
-    assert.equal(await renders.complete(created.job_id, `projects/${project.id}/renders/0.mp4`, {
+    assert.equal(await renders.complete(created.job_id, `projects/${project.id}/renders/${project.revision}.mp4`, {
       width: 720,
       height: 1280,
       immutable: true
@@ -89,7 +143,14 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
     assert.equal((await renders.create("owner", project.id, "preview")).jobId, created.job_id,
       "a completed revision remains the canonical response");
 
-    await pool.query(`UPDATE "Project" SET revision = 1 WHERE id = $1`, [project.id]);
+    const bumped = await projects.command("owner", {
+      command_id: "bump-revision",
+      project_id: project.id,
+      base_revision: project.revision,
+      client_timestamp: "diagnostic",
+      kind: "update_scene",
+      payload: { scene: { ...project.scenes[0], caption: "Revision bump" } }
+    });
     const cancelled = await renders.create("owner", project.id, "preview");
     assert.equal((await renders.cancel("owner", cancelled.jobId)).state, "cancelled");
     assert.equal(await renders.complete(cancelled.jobId, "cancelled.mp4", {}), false);
@@ -102,7 +163,13 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
     assert.equal((await renders.cancel("owner", retryAfterFailure.jobId)).state, "cancelled");
 
     const capacityProjects = await Promise.all(Array.from({ length: 4 }, (_, index) =>
-      projects.create("owner", { purpose: `Capacity ${index}`, audience: "Teams", tone: "Warm" })
+      seedRenderableProject(
+        projects,
+        pool,
+        "owner",
+        { purpose: `Capacity ${index}`, audience: "Teams", tone: "Warm" },
+        `cap-${index}`
+      )
     ));
     const running = await renders.create("owner", capacityProjects[0].id, "preview");
     assert.ok(running);
@@ -126,7 +193,13 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
         WHERE "ownerId" = 'owner' AND state IN ('queued', 'running')`
     );
     const concurrentProjects = await Promise.all(Array.from({ length: 8 }, (_, index) =>
-      projects.create("owner", { purpose: `Concurrent ${index}`, audience: "Teams", tone: "Warm" })
+      seedRenderableProject(
+        projects,
+        pool,
+        "owner",
+        { purpose: `Concurrent ${index}`, audience: "Teams", tone: "Warm" },
+        `conc-${index}`
+      )
     ));
     const concurrent = await Promise.allSettled(concurrentProjects.map(({ id }) => renders.create("owner", id, "preview")));
     assert.equal(
@@ -146,19 +219,13 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
       `UPDATE "RenderJob" SET state = 'cancelled'
         WHERE "ownerId" = 'owner' AND state IN ('queued', 'running')`
     );
-    const selected = await projects.command("owner", {
-      command_id: "after-render",
-      project_id: project.id,
-      base_revision: 1,
-      client_timestamp: "diagnostic",
-      kind: "select_concept",
-      payload: { concept_id: "direct" }
-    });
-    const sceneN = { ...selected.scenes[0], caption: "Frozen revision N", media_id: "media-n" };
+    await insertReadySealedMedia(pool, { id: "media-n", ownerId: "owner", projectId: project.id });
+    await insertReadySealedMedia(pool, { id: "media-n-plus-1", ownerId: "owner", projectId: project.id });
+    const sceneN = { ...bumped.scenes[0], caption: "Frozen revision N", media_id: "media-n" };
     const revisionN = await projects.command("owner", {
       command_id: "freeze-scene",
       project_id: project.id,
-      base_revision: selected.revision,
+      base_revision: bumped.revision,
       client_timestamp: "diagnostic",
       kind: "update_scene",
       payload: { scene: sceneN }
@@ -193,6 +260,132 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
       Number((await pool.query(`SELECT COUNT(*) AS count FROM "RenderJob"`)).rows[0].count),
       "every admitted job has one outbox row"
     );
+  } finally {
+    if (server.listening) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await pool.end();
+    await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    await admin.end();
+  }
+});
+
+test("render enqueue rejects empty, missing, foreign, and non-ready media", async () => {
+  const schema = `render_incomplete_${randomUUID().replaceAll("-", "_")}`;
+  const admin = new pg.Pool({ connectionString: databaseUrl });
+  await admin.query(`CREATE SCHEMA "${schema}"`);
+  const pool = new pg.Pool({ connectionString: databaseUrl, options: `-c search_path=${schema}` });
+  const server = createServer();
+  try {
+    await applyMigrations(pool, renderMigrations);
+    await pool.query(
+      `INSERT INTO "User" (id, state) VALUES ('owner', 'active'), ('other', 'active')`
+    );
+    const projects = new PostgresProjectRepository(pool);
+    const renders = new PostgresRenderRepository(pool);
+    server.on("request", createTestApp({ ownerId: "owner", projects, renders }));
+    const origin = await listen(server);
+
+    const empty = await projects.create("owner", { purpose: "Empty", audience: "Teams", tone: "Warm" });
+    await assert.rejects(
+      () => renders.create("owner", empty.id, "preview"),
+      (error) => error instanceof RenderInputIncompleteError
+    );
+    assert.equal((await fetch(`${origin}/api/projects/${empty.id}/render`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "preview" })
+    })).status, 422);
+
+    const selected = await projects.command("owner", {
+      command_id: "select-no-media",
+      project_id: empty.id,
+      base_revision: 0,
+      client_timestamp: "diagnostic",
+      kind: "select_concept",
+      payload: { concept_id: "direct" }
+    });
+    const noMediaResponse = await fetch(`${origin}/api/projects/${empty.id}/render`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "preview" })
+    });
+    assert.equal(noMediaResponse.status, 422);
+    assert.equal((await noMediaResponse.json()).type, "render_input_incomplete");
+
+    const foreignProject = await projects.create("other", {
+      purpose: "Other",
+      audience: "Teams",
+      tone: "Warm"
+    });
+    await insertReadySealedMedia(pool, {
+      id: "foreign-media",
+      ownerId: "other",
+      projectId: foreignProject.id
+    });
+    await projects.command("owner", {
+      command_id: "attach-foreign",
+      project_id: empty.id,
+      base_revision: selected.revision,
+      client_timestamp: "diagnostic",
+      kind: "update_scene",
+      payload: { scene: { ...selected.scenes[0], media_id: "foreign-media" } }
+    });
+    await assert.rejects(
+      () => renders.create("owner", empty.id, "preview"),
+      (error) => error instanceof RenderInputIncompleteError
+    );
+
+    const missing = await projects.command("owner", {
+      command_id: "attach-missing",
+      project_id: empty.id,
+      base_revision: selected.revision + 1,
+      client_timestamp: "diagnostic",
+      kind: "update_scene",
+      payload: { scene: { ...selected.scenes[0], media_id: "does-not-exist" } }
+    });
+    await assert.rejects(
+      () => renders.create("owner", empty.id, "preview"),
+      (error) => error instanceof RenderInputIncompleteError
+    );
+
+    await insertReadySealedMedia(pool, {
+      id: "inspecting-media",
+      ownerId: "owner",
+      projectId: empty.id
+    });
+    await pool.query(`UPDATE "MediaAsset" SET state = 'inspecting',
+      "sealedObjectKey" = NULL, "sealedEtag" = NULL, "sealedSha256" = NULL
+      WHERE id = 'inspecting-media'`);
+    const inspecting = await projects.command("owner", {
+      command_id: "attach-inspecting",
+      project_id: empty.id,
+      base_revision: missing.revision,
+      client_timestamp: "diagnostic",
+      kind: "update_scene",
+      payload: { scene: { ...selected.scenes[0], media_id: "inspecting-media" } }
+    });
+    await assert.rejects(
+      () => renders.create("owner", empty.id, "preview"),
+      (error) => error instanceof RenderInputIncompleteError
+    );
+
+    await pool.query(
+      `UPDATE "MediaAsset" SET state = 'rejected',
+         "sealedObjectKey" = NULL, "sealedEtag" = NULL, "sealedSha256" = NULL
+       WHERE id = 'inspecting-media'`
+    );
+    await assert.rejects(
+      () => renders.create("owner", empty.id, "preview"),
+      (error) => error instanceof RenderInputIncompleteError
+    );
+
+    await insertReadySealedMedia(pool, { id: "ready-media", ownerId: "owner", projectId: empty.id });
+    await projects.command("owner", {
+      command_id: "attach-ready",
+      project_id: empty.id,
+      base_revision: inspecting.revision,
+      client_timestamp: "diagnostic",
+      kind: "update_scene",
+      payload: { scene: { ...selected.scenes[0], media_id: "ready-media" } }
+    });
+    const ok = await renders.create("owner", empty.id, "preview");
+    assert.equal(ok.state, "queued");
+    assert.equal(Number((await pool.query(`SELECT COUNT(*) AS count FROM "RenderJob"`)).rows[0].count), 1);
   } finally {
     if (server.listening) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     await pool.end();

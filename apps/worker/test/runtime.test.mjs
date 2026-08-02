@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { stat, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { copyFile, stat, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createQueueHandlers, mediaLimitsFromEnv } from "../dist/runtime.js";
 
 const profile = { width: 720, height: 1280 };
+const fixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
 const brief = { purpose: "Demo", audience: "Teams", tone: "Warm" };
 const scenePayload = {
@@ -26,6 +28,32 @@ const renderInput = {
   brief,
   scenes: [scenePayload]
 };
+const sealedInput = {
+  ...renderInput,
+  scenes: [{ ...scenePayload, media_id: "asset" }]
+};
+const sealedMediaRow = {
+  sealedObjectKey: "projects/project/media-sealed/asset",
+  sealedEtag: "etag-a",
+  sealedVersionId: null,
+  sealedSha256: "a".repeat(64),
+  declaredType: "video/mp4",
+  maxBytes: 10_000_000,
+  detected: { type: "video/mp4", bytes: 1000, has_audio: true }
+};
+
+function fixtureStore(overrides = {}) {
+  return {
+    async inspect() { throw new Error("not used"); },
+    async seal() { throw new Error("not used"); },
+    async downloadSealed(_key, path) {
+      await copyFile(join(fixtures, "scene_one.mp4"), path);
+    },
+    async delete() {},
+    async put() { throw new Error("not used"); },
+    ...overrides
+  };
+}
 
 /** Fake pool that answers only the queries `handlers.render` issues, tracking `RenderJob.state`. */
 function createFakePool(initialState, storedInput = renderInput, options = {}) {
@@ -96,12 +124,10 @@ test("invalid stored render input fails before media or FFmpeg work starts", asy
 });
 
 test("render persists a failed state and event when upload fails after rendering starts", async () => {
-  const pool = createFakePool("queued");
-  const store = {
-    async inspect() { throw new Error("not used"); },
-    async download() { throw new Error("not used"); },
+  const pool = createFakePool("queued", sealedInput, { mediaRow: sealedMediaRow });
+  const store = fixtureStore({
     async put() { throw new Error("upload failed"); }
-  };
+  });
   const handlers = createQueueHandlers(pool, store, profile);
   const result = await handlers.render(
     { jobId: "job-1", ownerId: "owner", projectId: "project", revision: 0 },
@@ -113,16 +139,14 @@ test("render persists a failed state and event when upload fails after rendering
 });
 
 test("render does not overwrite a job already cancelled by the time the failure is persisted", async () => {
-  const pool = createFakePool("queued");
-  const store = {
-    async inspect() { throw new Error("not used"); },
-    async download() { throw new Error("not used"); },
+  const pool = createFakePool("queued", sealedInput, { mediaRow: sealedMediaRow });
+  const store = fixtureStore({
     async put() {
       // simulate a concurrent /cancel landing between "uploading" and the upload throwing
       pool.forceState("cancelled");
       throw new Error("upload failed");
     }
-  };
+  });
   const handlers = createQueueHandlers(pool, store, profile);
   const result = await handlers.render(
     { jobId: "job-1", ownerId: "owner", projectId: "project", revision: 0 },
@@ -182,14 +206,15 @@ test("render cancellation aborts a sealed download and removes its temp director
 });
 
 test("cancellation before upload does not create an object", async () => {
-  const pool = createFakePool("queued", renderInput, { cancelOnRunningUpdate: 3 });
+  const pool = createFakePool("queued", sealedInput, {
+    mediaRow: sealedMediaRow,
+    cancelOnRunningUpdate: 3
+  });
   let uploads = 0;
-  const store = {
-    async inspect() { throw new Error("not used"); },
-    async download() { throw new Error("not used"); },
+  const store = fixtureStore({
     async put() { uploads += 1; },
     async delete() { throw new Error("nothing was uploaded"); }
-  };
+  });
   const handlers = createQueueHandlers(pool, store, profile);
   assert.deepEqual(await handlers.render(
     { jobId: "cancel-before-upload", ownerId: "owner", projectId: "project", revision: 0 },
@@ -200,18 +225,16 @@ test("cancellation before upload does not create an object", async () => {
 });
 
 test("cancellation during upload removes only that execution's object", async () => {
-  const pool = createFakePool("queued");
+  const pool = createFakePool("queued", sealedInput, { mediaRow: sealedMediaRow });
   const uploaded = [];
   const removed = [];
-  const store = {
-    async inspect() { throw new Error("not used"); },
-    async download() { throw new Error("not used"); },
+  const store = fixtureStore({
     async put(objectKey) {
       uploaded.push(objectKey);
       pool.forceState("cancelled");
     },
     async delete(objectKey) { removed.push(objectKey); }
-  };
+  });
   const handlers = createQueueHandlers(pool, store, profile);
   assert.deepEqual(await handlers.render(
     { jobId: "cancel-during-upload", ownerId: "owner", projectId: "project", revision: 0 },
@@ -224,14 +247,12 @@ test("cancellation during upload removes only that execution's object", async ()
 });
 
 test("cleanup rejection remains observable after a losing upload is terminal", async () => {
-  const pool = createFakePool("queued");
+  const pool = createFakePool("queued", sealedInput, { mediaRow: sealedMediaRow });
   const cleanupError = new Error("render object cleanup failed");
-  const store = {
-    async inspect() { throw new Error("not used"); },
-    async download() { throw new Error("not used"); },
+  const store = fixtureStore({
     async put() { pool.forceState("cancelled"); },
     async delete() { throw cleanupError; }
-  };
+  });
   const handlers = createQueueHandlers(pool, store, profile);
   await assert.rejects(
     () => handlers.render(
@@ -245,13 +266,11 @@ test("cleanup rejection remains observable after a losing upload is terminal", a
 });
 
 test("render streams its job-scoped output and removes the upload if completion is refused", async () => {
-  const pool = createFakePool("queued");
+  const pool = createFakePool("queued", sealedInput, { mediaRow: sealedMediaRow });
   let uploadedBytes = 0;
   let uploadedKey;
   let deleted;
-  const store = {
-    async inspect() { throw new Error("not used"); },
-    async downloadSealed() { throw new Error("not used"); },
+  const store = fixtureStore({
     async put(objectKey, body, _contentType, contentLength) {
       uploadedKey = objectKey;
       assert.equal(body instanceof Uint8Array, false);
@@ -260,7 +279,7 @@ test("render streams its job-scoped output and removes the upload if completion 
       pool.forceState("cancelled");
     },
     async delete(objectKey) { deleted = objectKey; }
-  };
+  });
   const handlers = createQueueHandlers(pool, store, profile);
   assert.deepEqual(await handlers.render(
     { jobId: "job-1", ownerId: "owner", projectId: "project", revision: 0 },
@@ -289,6 +308,34 @@ test("render fails closed when attached media is missing instead of falling back
     new AbortController().signal
   ), { state: "failed" });
   assert.equal(uploaded, false);
+});
+
+test("render fails closed when a scene omits media_id instead of substituting gray", async () => {
+  const pool = createFakePool("queued", renderInput);
+  let uploaded = false;
+  const handlers = createQueueHandlers(pool, fixtureStore({
+    async put() { uploaded = true; }
+  }), profile);
+  assert.deepEqual(await handlers.render(
+    { jobId: "job-1", ownerId: "owner", projectId: "project", revision: 0 },
+    new AbortController().signal
+  ), { state: "failed" });
+  assert.equal(uploaded, false);
+  assert.equal(pool.getState(), "failed");
+});
+
+test("buildRenderJob refuses a declared media_id without a resolved input", async () => {
+  const { buildRenderJob } = await import("../dist/index.js");
+  assert.throws(
+    () => buildRenderJob(
+      sealedInput,
+      "preview.mp4",
+      {},
+      "/tmp/job",
+      profile
+    ),
+    /scene media input missing/
+  );
 });
 
 test("render rejects a sealed-object identity mismatch", async () => {

@@ -30,7 +30,12 @@ import {
   type PostgresMediaRepository,
   type PrivateObjectStore
 } from "./media-storage.js";
-import { PostgresRenderRepository, RenderCapacityError, type RenderKind } from "./render-repository.js";
+import {
+  PostgresRenderRepository,
+  RenderCapacityError,
+  RenderInputIncompleteError,
+  type RenderKind
+} from "./render-repository.js";
 import type { AccessPolicy } from "./access-policy.js";
 import {
   falCredentialHttpError,
@@ -628,6 +633,12 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         return response.status(429).json({
           type: "render_capacity",
           message: "Finish or cancel an existing render before starting another."
+        });
+      }
+      if (error instanceof RenderInputIncompleteError) {
+        return response.status(422).json({
+          type: "render_input_incomplete",
+          message: error.message
         });
       }
       next(error);

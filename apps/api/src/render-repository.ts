@@ -48,6 +48,13 @@ export class RenderCapacityError extends Error {
   }
 }
 
+/** Non-retryable: every scene must reference owned ready sealed media before enqueue. */
+export class RenderInputIncompleteError extends Error {
+  constructor(message = "Every scene needs ready media before rendering.") {
+    super(message);
+  }
+}
+
 async function insertEvent(
   client: PoolClient,
   jobId: string,
@@ -157,6 +164,26 @@ export class PostgresRenderRepository {
       const selectedConceptId = selected.rows[0]?.conceptId;
       if (selectedConceptId) renderInput.selected_concept_id = selectedConceptId;
       if (!isProjectSnapshot(renderInput)) throw new Error("invalid project snapshot");
+      if (!renderInput.scenes.length) {
+        throw new RenderInputIncompleteError("Add at least one scene with ready media before rendering.");
+      }
+      for (const scene of renderInput.scenes) {
+        if (!scene.media_id) {
+          throw new RenderInputIncompleteError("Every scene needs ready media before rendering.");
+        }
+        const asset = await client.query<{ id: string }>(
+          `SELECT id FROM "MediaAsset"
+            WHERE id = $1 AND "ownerId" = $2 AND "projectId" = $3
+              AND state = 'ready'
+              AND "sealedObjectKey" IS NOT NULL
+              AND "sealedEtag" IS NOT NULL
+              AND "sealedSha256" IS NOT NULL`,
+          [scene.media_id, ownerId, projectId]
+        );
+        if (!asset.rowCount) {
+          throw new RenderInputIncompleteError("Every scene needs ready media before rendering.");
+        }
+      }
       const jobId = randomUUID();
       const job: RenderJobRecord = {
         jobId,

@@ -326,9 +326,11 @@ async function mediaInputsFor(
   signal: AbortSignal,
   limits: MediaLimits
 ): Promise<Record<string, MediaInput>> {
+  if (!snapshot.scenes.length) throw new Error("render input has no scenes");
   const inputs: Record<string, MediaInput> = {};
   for (const scene of snapshot.scenes) {
-    if (!scene.media_id || inputs[scene.media_id]) continue;
+    if (!scene.media_id) throw new Error("scene media is missing");
+    if (inputs[scene.media_id]) continue;
     const result = await pool.query<{
       sealedObjectKey: string;
       sealedEtag: string;
