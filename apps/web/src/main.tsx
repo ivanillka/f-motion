@@ -76,6 +76,7 @@ function App() {
   const [previewRevision, setPreviewRevision] = useState<number>();
   const [previewMetadata, setPreviewMetadata] = useState<Record<string, string | number | boolean | null>>({});
   const upload = useRef<HTMLInputElement>(null);
+  const importedProjectRef = useRef("");
   const renderLabel = import.meta.env.VITE_RENDER_LABEL?.trim() || "720p preview";
 
   function clearSessionState() {
@@ -132,6 +133,19 @@ function App() {
     };
   }, []);
   useEffect(() => localStorage.setItem("fengine-draft", draft), [draft]);
+
+  useEffect(() => {
+    if (!token) return;
+    const url = new URL(location.href);
+    const projectId = url.searchParams.get("project") ?? "";
+    if (!/^[0-9a-f-]{36}$/i.test(projectId) || importedProjectRef.current === projectId) return;
+    importedProjectRef.current = projectId;
+    void openDraft(projectId).then((opened) => {
+      if (!opened) return;
+      url.searchParams.delete("project");
+      history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    });
+  }, [token]);
 
   useEffect(() => {
     if (step !== "drafts" || !token) return;
@@ -230,14 +244,14 @@ function App() {
     }
   }
 
-  async function openDraft(projectId: string) {
+  async function openDraft(projectId: string): Promise<boolean> {
     const transition = ++mediaTransition.current;
     setSceneMedia({});
     setStatus("Opening draft…");
     try {
       const { project: opened } = await api.getProject(projectId);
       const initialized = await initializeScene(opened);
-      if (transition !== mediaTransition.current) return;
+      if (transition !== mediaTransition.current) return false;
       setProject(initialized);
       setActiveSceneId(initialized.scenes[0]?.id ?? "");
       localStorage.setItem("fengine-project", initialized.id);
@@ -245,16 +259,18 @@ function App() {
       let hydrationFailed = false;
       try {
         const views = await loadSceneMediaViews(api, initialized);
-        if (transition !== mediaTransition.current) return;
+        if (transition !== mediaTransition.current) return false;
         setSceneMedia(views);
       } catch {
         hydrationFailed = true;
       }
-      if (transition !== mediaTransition.current) return;
+      if (transition !== mediaTransition.current) return false;
       setStep("editor");
       setStatus(hydrationFailed ? "Draft media details could not be loaded." : "");
+      return true;
     } catch {
       if (transition === mediaTransition.current) setStatus("Draft could not be opened.");
+      return false;
     }
   }
 
@@ -452,7 +468,7 @@ function App() {
     });
     let updated = body.project;
     updated = await api.command(updated.id, updated.revision, "select_concept", { concept_id: "direct" });
-    const scenes = (source.scenes.length ? source.scenes : buildStoryboardDraft(brief.purpose)).map((scene, order) => {
+    const scenes = (source.scenes.length ? source.scenes : buildStoryboardDraft(brief.purpose, () => crypto.randomUUID())).map((scene, order) => {
       const { media_id: _mediaId, ...withoutMedia } = scene;
       return {
         ...withoutMedia,

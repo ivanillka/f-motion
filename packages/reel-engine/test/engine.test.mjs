@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { conceptsFor, applyCommand, renderPlan, cuesForScene, validateCues, coverCropFilter } from "../dist/index.js";
+import { conceptsFor, applyCommand, buildStoryboardDraft, renderPlan, cuesForScene, validateCues, coverCropFilter } from "../dist/index.js";
 
 const snapshot = {
   schema_version: 1, id: "p1", owner_id: "u1", revision: 0,
@@ -27,6 +27,19 @@ const command = (kind, payload, base_revision = 0) => ({
 test("concept construction is deterministic and exactly three", () => {
   assert.equal(conceptsFor(snapshot.brief).length, 3);
   assert.deepEqual(conceptsFor(snapshot.brief), conceptsFor(snapshot.brief));
+});
+test("shared storyboard planning separates footage intent from copy and closes with the CTA", () => {
+  let id = 0;
+  const scenes = buildStoryboardDraft("Portrait campaign", () => `scene-${++id}`, {
+    goal: "promote", audience: "social", structure: "story_arc", tone: "cinematic", pace: "balanced", durationSeconds: 15, media: "stock"
+  }, {
+    caption: "A quiet portrait story unfolds. Small details reveal the setting.",
+    visualHint: "editorial portrait photography Prague",
+    callToAction: "Open the full gallery."
+  });
+  assert.equal(scenes.length, 4);
+  assert.match(scenes[0].visual_prompt, /editorial portrait photography/i);
+  assert.equal(scenes.at(-1).caption, "Open the full gallery.");
 });
 test("command increments revision exactly once", () => {
   const result = applyCommand(snapshot, { command_id: "c1", project_id: "p1", base_revision: 0, client_timestamp: "diagnostic", kind: "select_concept", payload: { concept_id: "direct" } });

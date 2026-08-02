@@ -1,6 +1,7 @@
 import { S3Client } from "@aws-sdk/client-s3";
 import pg from "pg";
 import { accessPolicyFromEnv } from "./access-policy.js";
+import { externalImportConfigFromEnv } from "./external-import.js";
 import { PostgresProjectRepository } from "./domain.js";
 import { assertLocalAuthAllowed } from "./local-auth.js";
 import { PexelsClient, PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
@@ -15,6 +16,7 @@ function required(name: string): string {
 
 assertLocalAuthAllowed(process.env);
 const accessPolicy = accessPolicyFromEnv(process.env);
+const externalImports = externalImportConfigFromEnv(process.env);
 
 const pool = new pg.Pool({ connectionString: required("DATABASE_URL") });
 // pg.Pool emits "error" for idle-client connection drops (DB restart, network
@@ -81,6 +83,7 @@ if (process.env.FENGINE_LOCAL_AUTH === "1") {
         [ownerId]
       );
     },
-    accessPolicy
+    accessPolicy,
+    externalImports
   }).listen(port);
 }

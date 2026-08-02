@@ -11,6 +11,8 @@
 # supabase-user-uuids>. Hosted startup fails if either is missing or invalid.
 # FENGINE_LOCAL_AUTH must stay unset. Never commit real allowed user IDs. See
 # docs/runbooks/hosted-deploy.md.
+# Optional trusted imports also require protected FENGINE_IMPORT_TOKEN,
+# FENGINE_IMPORT_OWNER_ID, and FENGINE_WEB_ORIGIN secrets.
 
 app = "f-motion-api"            # pick a real, unique Fly app name
 primary_region = "ams"

@@ -1,6 +1,6 @@
 import express from "express";
 import { randomUUID } from "node:crypto";
-import { conceptsFor } from "@f-engine/reel-engine";
+import { buildStoryboardDraft, conceptsFor } from "@f-engine/reel-engine";
 import type { CommandEnvelope } from "@f-engine/contracts";
 import {
   AccountUnavailableError,
@@ -29,6 +29,13 @@ import {
 } from "./media-storage.js";
 import { PostgresRenderRepository, RenderCapacityError, type RenderKind } from "./render-repository.js";
 import type { AccessPolicy } from "./access-policy.js";
+import {
+  authenticatesExternalImport,
+  externalProjectUrl,
+  parseExternalDraft,
+  projectIdForExternalImport,
+  type ExternalImportConfig
+} from "./external-import.js";
 
 export interface MediaDependencies {
   repository: PostgresMediaRepository;
@@ -42,6 +49,7 @@ interface AppBaseOptions {
   renders?: PostgresRenderRepository;
   ready?: () => boolean | Promise<boolean>;
   workerOrigin?: string;
+  externalImports?: ExternalImportConfig;
 }
 
 export interface AppOptions extends AppBaseOptions {
@@ -151,6 +159,39 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     const isReady = await Promise.resolve(ready()).catch(() => false);
     if (isReady) return response.json({ status: "ready" });
     response.status(503).json({ status: "unavailable" });
+  });
+  const integration = options.externalImports;
+  if (integration) app.post("/api/integrations/project-imports", async (request, response, next) => {
+    if (!authenticatesExternalImport(request.header("authorization"), integration.token)) {
+      return response.status(401).json({ type: "unauthorized", message: "authentication required" });
+    }
+    try {
+      const draft = parseExternalDraft(request.body);
+      const projectId = projectIdForExternalImport(integration.ownerId, draft.externalId);
+      const prior = await projects.get(integration.ownerId, projectId);
+      let project = await projects.create(integration.ownerId, draft.brief, projectId);
+      if (!project.scenes.length) {
+        project = await projects.command(integration.ownerId, {
+          command_id: "external-import-v1",
+          project_id: project.id,
+          base_revision: project.revision,
+          client_timestamp: new Date().toISOString(),
+          kind: "replace_storyboard",
+          payload: { scenes: buildStoryboardDraft(draft.brief.purpose, randomUUID, draft.architecture, draft.source) }
+        });
+      }
+      response.status(prior ? 200 : 201).json({
+        created: !prior,
+        project_id: project.id,
+        project_url: externalProjectUrl(integration.webOrigin, project.id),
+        revision: project.revision
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("invalid ")) {
+        return response.status(422).json({ type: "validation", message: error.message });
+      }
+      next(error);
+    }
   });
   app.use("/api", async (request, response, next) => {
     try {

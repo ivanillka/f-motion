@@ -14,7 +14,7 @@ export class NotFoundError extends Error {
 export class ValidationError extends Error {}
 
 export interface ProjectRepository {
-  create(ownerId: string, brief: ProjectSnapshot["brief"]): ProjectSnapshot | Promise<ProjectSnapshot>;
+  create(ownerId: string, brief: ProjectSnapshot["brief"], projectId?: string): ProjectSnapshot | Promise<ProjectSnapshot>;
   list(ownerId: string): ProjectSummary[] | Promise<ProjectSummary[]>;
   get(ownerId: string, projectId: string): ProjectSnapshot | undefined | Promise<ProjectSnapshot | undefined>;
   command(ownerId: string, command: CommandEnvelope): ProjectSnapshot | Promise<ProjectSnapshot>;
@@ -24,8 +24,10 @@ export class ProjectService implements ProjectRepository {
   readonly #projects = new Map<string, ProjectSnapshot>();
   readonly #receipts = new Map<string, ProjectSnapshot>();
 
-  create(ownerId: string, brief: ProjectSnapshot["brief"]): ProjectSnapshot {
-    const project: ProjectSnapshot = { schema_version: 1, id: randomUUID(), owner_id: ownerId, revision: 0, brief, scenes: [] };
+  create(ownerId: string, brief: ProjectSnapshot["brief"], projectId = randomUUID()): ProjectSnapshot {
+    const existing = this.get(ownerId, projectId);
+    if (existing) return existing;
+    const project: ProjectSnapshot = { schema_version: 1, id: projectId, owner_id: ownerId, revision: 0, brief, scenes: [] };
     this.#projects.set(`${ownerId}:${project.id}`, project);
     return structuredClone(project);
   }
@@ -109,15 +111,27 @@ async function projectSnapshot(
 export class PostgresProjectRepository implements ProjectRepository {
   constructor(readonly pool: Pool) {}
 
-  async create(ownerId: string, brief: ProjectSnapshot["brief"]): Promise<ProjectSnapshot> {
+  async create(ownerId: string, brief: ProjectSnapshot["brief"], projectId = randomUUID()): Promise<ProjectSnapshot> {
     const client = await this.pool.connect();
-    const id = randomUUID();
+    const id = projectId;
     try {
       await client.query("BEGIN");
-      await client.query(
-        `INSERT INTO "Project" (id, "ownerId", revision, brief) VALUES ($1, $2, 0, $3)`,
+      const inserted = await client.query(
+        `INSERT INTO "Project" (id, "ownerId", revision, brief) VALUES ($1, $2, 0, $3)
+         ON CONFLICT (id) DO NOTHING RETURNING id`,
         [id, ownerId, brief]
       );
+      if (!inserted.rowCount) {
+        const existing = await client.query<ProjectRow>(
+          `SELECT id, "ownerId", revision, brief FROM "Project" WHERE "ownerId" = $1 AND id = $2`,
+          [ownerId, id]
+        );
+        const row = existing.rows[0];
+        if (!row) throw new Error("project id collision");
+        const snapshot = await projectSnapshot(client, row);
+        await client.query("COMMIT");
+        return snapshot;
+      }
       const concepts = conceptsFor(brief);
       for (const [position, concept] of concepts.entries()) {
         await client.query(
