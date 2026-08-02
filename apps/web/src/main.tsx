@@ -224,6 +224,29 @@ function App() {
     };
   }, [api, step, token]);
 
+  useEffect(() => {
+    if (step !== "editor" || !project || !Object.values(sceneMedia).some(({ state }) => state === "admitted" || state === "inspecting")) return;
+    let cancelled = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async () => {
+      try {
+        const views = await loadSceneMediaViews(api, project);
+        if (cancelled) return;
+        setSceneMedia(views);
+        if (Object.values(views).some(({ state }) => state === "admitted" || state === "inspecting")) {
+          timeout = setTimeout(() => void refresh(), 1_000);
+        }
+      } catch {
+        if (!cancelled) setStatus("Media processing status could not be refreshed.");
+      }
+    };
+    timeout = setTimeout(() => void refresh(), 1_000);
+    return () => {
+      cancelled = true;
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [api, project, sceneMedia, step]);
+
   async function magicLink() {
     if (!authSetup.gateway) return;
     setAuthBusy(true);
@@ -815,7 +838,9 @@ function App() {
   const activeSceneNumber = activeScene ? activeScene.order + 1 : 0;
   const activeMediaId = activeScene?.media_id;
   const activeMedia = activeMediaId ? sceneMedia[activeMediaId] : undefined;
-  const allScenesHaveMedia = Boolean(project?.scenes.length && project.scenes.every(({ media_id }) => media_id));
+  const activePreviewUrl = activeMedia?.previewUrl ?? activeMedia?.attribution?.previewUrl;
+  const allScenesHaveMedia = Boolean(project?.scenes.length && project.scenes.every(({ media_id }) =>
+    media_id && sceneMedia[media_id]?.state === "ready"));
 
   return <main>
     <header><strong>F-Engine Reference</strong>
@@ -923,9 +948,10 @@ function App() {
     </section>}
     {authReady && step === "editor" && project && activeScene && <section className="editor">
       <h1>Storyboard</h1>
-      <p>Review each beat, then search for concrete footage by subject, place, action, and shot.</p>
+      <p>Review each beat and its selected media. Replace it only when another visual fits better.</p>
       <nav className="scene-strip" aria-label="Storyboard scenes">{project.scenes.map((scene) => {
         const media = scene.media_id ? sceneMedia[scene.media_id] : undefined;
+        const previewUrl = media?.previewUrl ?? media?.attribution?.previewUrl;
         return <button
           key={scene.id}
           className="scene-card"
@@ -938,9 +964,11 @@ function App() {
             setActiveSceneId(scene.id);
           }}
         >
-          {media?.attribution?.previewUrl
-            ? <img src={media.attribution.previewUrl} alt="" />
-            : <span className="scene-empty">No media</span>}
+          {previewUrl
+            ? media?.detected?.type === "video/mp4"
+              ? <video src={previewUrl} muted playsInline preload="metadata" />
+              : <img src={previewUrl} alt="" />
+            : <span className="scene-empty">{media ? "Media processing" : "No media"}</span>}
           <strong>Scene {scene.order + 1}</strong>
           <span>{scene.caption || scene.visual_prompt}</span>
         </button>;
@@ -950,8 +978,10 @@ function App() {
         <div>
           <p className="notice">Approximate composition — accurate rendered preview comes next.</p>
           <div className="preview" aria-label={`Approximate preview for scene ${activeSceneNumber}`}>
-        {activeMedia?.attribution?.previewUrl && <img src={activeMedia.attribution.previewUrl} alt={`Selected stock video by ${activeMedia.attribution.creator}`} />}
-        {activeMedia?.attribution && !activeMedia.attribution.previewUrl && <span>Preview unavailable</span>}
+        {activePreviewUrl && (activeMedia?.detected?.type === "video/mp4"
+          ? <video src={activePreviewUrl} muted loop playsInline controls preload="metadata" />
+          : <img src={activePreviewUrl} alt={activeMedia?.attribution ? `Selected stock video by ${activeMedia.attribution.creator}` : "Selected gallery media"} />)}
+        {activeMedia && !activePreviewUrl && <span>{activeMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
             {!activeMedia && <span>Choose stock or upload media</span>}
             <span>{activeScene.caption}</span>
           </div>
@@ -962,9 +992,11 @@ function App() {
         </div>
 
         <div className="scene-controls">
-          <label htmlFor={`prompt-${activeScene.id}`}>Scene {activeSceneNumber} footage search
+          <label htmlFor={`prompt-${activeScene.id}`}>Scene {activeSceneNumber} {activeMedia ? "visual note" : "footage search"}
             <textarea id={`prompt-${activeScene.id}`} maxLength={100} defaultValue={activeScene.visual_prompt ?? ""} onBlur={(event) => void saveScenePatch(activeScene.id, { visual_prompt: event.currentTarget.value.trim() })} />
-            <small>Use concrete terms Pexels can match: subject, location, action, shot type, and mood. Maximum 100 characters.</small>
+            <small>{activeMedia
+              ? "Existing media is selected. This note is only used if you search for a replacement."
+              : "Use concrete terms Pexels can match: subject, location, action, shot type, and mood. Maximum 100 characters."}</small>
           </label>
           <label htmlFor={`caption-${activeScene.id}`}>Scene {activeSceneNumber} caption
             <input id={`caption-${activeScene.id}`} maxLength={180} defaultValue={activeScene.caption} onBlur={(event) => void saveScenePatch(activeScene.id, { caption: event.currentTarget.value })} />
@@ -1015,7 +1047,9 @@ function App() {
       <button className="secondary" disabled={busy} onClick={() => upload.current?.click()}>Upload media for scene {activeSceneNumber}</button>
       <p role="status">{status || "✓ All changes saved"}</p>
       <button disabled={!allScenesHaveMedia} onClick={() => void requestRender()}>Generate accurate preview</button>
-      {!allScenesHaveMedia && <p>Add media to every scene before rendering.</p>}
+      {!allScenesHaveMedia && <p>{project.scenes.every(({ media_id }) => media_id)
+        ? "Media is processing. Preview unlocks automatically when every scene is ready."
+        : "Add media to every scene before rendering."}</p>}
       {downloadUrl && <button className="secondary" onClick={() => setStep("render")}>View accurate preview{previewRevision !== project.revision ? " · older" : ""}</button>}
       <button className="secondary" onClick={() => setStep("brief")}>Start a different description</button>
       <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>

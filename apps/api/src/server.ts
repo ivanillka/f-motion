@@ -20,6 +20,8 @@ import {
 } from "./domain.js";
 import {
   allowedMediaTypes,
+  ExternalMediaImportError,
+  importExternalMedia,
   maximumMediaBytes,
   pexelsQueriesForBrief,
   sceneMediaView,
@@ -41,7 +43,9 @@ import {
 } from "./pexels-credentials.js";
 import {
   authenticatesExternalImport,
+  externalMediaUrlAllowed,
   externalProjectUrl,
+  mediaIdForExternalImport,
   parseExternalDraft,
   projectIdForExternalImport,
   type ExternalImportConfig
@@ -62,6 +66,8 @@ interface AppBaseOptions {
   ready?: () => boolean | Promise<boolean>;
   workerOrigin?: string;
   externalImports?: ExternalImportConfig;
+  /** Test adapter for trusted remote-media imports. */
+  externalMediaRequest?: typeof fetch;
   falCredentials?: FalCredentialService;
   pexelsCredentials?: PexelsCredentialService;
 }
@@ -184,14 +190,43 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const projectId = projectIdForExternalImport(integration.ownerId, draft.externalId);
       const prior = await projects.get(integration.ownerId, projectId);
       let project = await projects.create(integration.ownerId, draft.brief, projectId);
-      if (!project.scenes.length) {
+      const generatedScenes = buildStoryboardDraft(draft.brief.purpose, randomUUID, draft.architecture, draft.source);
+      const importedMediaIds: string[] = [];
+      if (draft.mediaUrls.length) {
+        if (!options.media) return response.status(503).json({ type: "unavailable", message: "media import unavailable" });
+        if (draft.mediaUrls.some((url) => !externalMediaUrlAllowed(url, integration.mediaOrigins))) {
+          return response.status(422).json({ type: "validation", message: "media origin is not allowed" });
+        }
+        for (const url of draft.mediaUrls.slice(0, generatedScenes.length)) {
+          const id = mediaIdForExternalImport(projectId, url);
+          await importExternalMedia(
+            integration.ownerId,
+            projectId,
+            id,
+            url,
+            options.media.repository,
+            options.media.store,
+            options.externalMediaRequest
+          );
+          importedMediaIds.push(id);
+        }
+      }
+      const currentScenes = project.scenes.length ? project.scenes : generatedScenes;
+      const scenes = currentScenes.map((scene, index) => {
+        const mediaId = importedMediaIds[index % importedMediaIds.length];
+        return mediaId && !scene.media_id
+          ? { ...scene, media_id: mediaId, visual_prompt: "Selected gallery media" }
+          : scene;
+      });
+      const mediaChanged = scenes.some((scene, index) => scene.media_id !== project.scenes[index]?.media_id);
+      if (!project.scenes.length || mediaChanged) {
         project = await projects.command(integration.ownerId, {
-          command_id: "external-import-v1",
+          command_id: randomUUID(),
           project_id: project.id,
           base_revision: project.revision,
           client_timestamp: new Date().toISOString(),
           kind: "replace_storyboard",
-          payload: { scenes: buildStoryboardDraft(draft.brief.purpose, randomUUID, draft.architecture, draft.source) }
+          payload: { scenes }
         });
       }
       response.status(prior ? 200 : 201).json({
@@ -203,6 +238,9 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("invalid ")) {
         return response.status(422).json({ type: "validation", message: error.message });
+      }
+      if (error instanceof ExternalMediaImportError) {
+        return response.status(502).json({ type: "upstream", message: "existing media could not be imported" });
       }
       next(error);
     }
@@ -439,7 +477,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const ownerId = String(response.locals.ownerId);
       const asset = await options.media.repository.get(ownerId, request.params.projectId, request.params.assetId);
       if (!asset) return response.status(404).json({ type: "not_found", message: "not found" });
-      response.json(sceneMediaView(asset));
+      const previewUrl = asset.state === "ready" && asset.sealedObjectKey
+        ? await options.media.store.signedGet(asset.sealedObjectKey)
+        : undefined;
+      response.json(sceneMediaView(asset, previewUrl));
     } catch (error) {
       next(error);
     }

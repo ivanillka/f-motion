@@ -12,7 +12,8 @@
 # FENGINE_LOCAL_AUTH must stay unset. Never commit real allowed user IDs. See
 # docs/runbooks/hosted-deploy.md.
 # Optional trusted imports also require protected FENGINE_IMPORT_TOKEN,
-# FENGINE_IMPORT_OWNER_ID, and FENGINE_WEB_ORIGIN secrets.
+# FENGINE_IMPORT_OWNER_ID, FENGINE_WEB_ORIGIN, and an allowlist in
+# FENGINE_IMPORT_MEDIA_ORIGINS when importing existing media.
 # Optional user-owned Pexels/FAL credential connections require their BYOK flag,
 # FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION=1, and a
 # protected FENGINE_CREDENTIAL_KEY_V1 generated with `openssl rand -base64 32`.

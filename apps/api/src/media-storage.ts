@@ -50,6 +50,7 @@ export interface SceneMediaView {
     attributionUrl: string;
     previewUrl?: string;
   };
+  previewUrl?: string;
 }
 
 function safeHttpsUrl(value: unknown): string | undefined {
@@ -78,7 +79,7 @@ function safePexelsAttribution(value: unknown): SceneMediaView["attribution"] {
 }
 
 /** Builds the complete client-safe projection; storage keys never cross this boundary. */
-export function sceneMediaView(asset: StoredMedia): SceneMediaView {
+export function sceneMediaView(asset: StoredMedia, previewUrl?: string): SceneMediaView {
   const detected = asset.detected && typeof asset.detected === "object"
     ? {
         ...(allowedMediaTypes.has(asset.detected.type) ? { type: asset.detected.type } : {}),
@@ -95,7 +96,8 @@ export function sceneMediaView(asset: StoredMedia): SceneMediaView {
     id: asset.id,
     state: asset.state,
     ...(detected && Object.keys(detected).length ? { detected } : {}),
-    ...(attribution ? { attribution } : {})
+    ...(attribution ? { attribution } : {}),
+    ...(safeHttpsUrl(previewUrl) ? { previewUrl } : {})
   };
 }
 
@@ -403,6 +405,77 @@ export class PexelsClient {
 export class PexelsRequestError extends Error {
   readonly name = "PexelsRequestError";
   constructor() { super("Pexels unavailable"); }
+}
+
+export class ExternalMediaImportError extends Error {
+  readonly name = "ExternalMediaImportError";
+  constructor(message = "external media import failed") { super(message); }
+}
+
+/** Copies a trusted integration's allowlisted URL into the normal quarantine and inspection path. */
+export async function importExternalMedia(
+  ownerId: string,
+  projectId: string,
+  id: string,
+  sourceUrl: string,
+  repository: PostgresMediaRepository,
+  store: PrivateObjectStore,
+  request: typeof fetch = fetch,
+  temporaryRoot = tmpdir()
+): Promise<StoredMedia> {
+  const existing = await repository.get(ownerId, projectId, id);
+  if (existing) {
+    if (existing.state === "admitted" && await repository.completeAdmission(ownerId, projectId, id)) {
+      return { ...existing, state: "inspecting" };
+    }
+    if (existing.state === "inspecting" || existing.state === "ready") return existing;
+    throw new ExternalMediaImportError("external media is not reusable");
+  }
+
+  const directory = await mkdtemp(join(temporaryRoot, "fengine-import-"));
+  const path = join(directory, "media");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  timeout.unref();
+  let response: Response | undefined;
+  try {
+    response = await request(sourceUrl, { redirect: "error", signal: controller.signal });
+    if (!response.ok) throw new ExternalMediaImportError();
+    const declaredType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+    if (!allowedMediaTypes.has(declaredType)) throw new ExternalMediaImportError("external media type rejected");
+    const bytes = await spoolBoundedBody(response, path, maximumMediaBytes, controller.signal)
+      .catch(() => { throw new ExternalMediaImportError("external media body rejected"); });
+    const asset: StoredMedia = {
+      id,
+      ownerId,
+      projectId,
+      quarantineObjectKey: `projects/${projectId}/media-quarantine/${id}`,
+      state: "admitted",
+      declaredType,
+      maxBytes: bytes
+    };
+    const upload = createReadStream(path);
+    try {
+      await store.put(asset.quarantineObjectKey, upload, declaredType, bytes);
+    } finally {
+      upload.destroy();
+      await finished(upload).catch(() => undefined);
+    }
+    await repository.insert(asset);
+    if (!await repository.completeAdmission(ownerId, projectId, id)) throw new ExternalMediaImportError();
+    return { ...asset, state: "inspecting" };
+  } catch (error) {
+    if (error instanceof ExternalMediaImportError) throw error;
+    if (error instanceof TypeError || (error instanceof Error && error.name === "AbortError")) {
+      throw new ExternalMediaImportError();
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    controller.abort();
+    if (response?.body && !response.body.locked) await response.body.cancel().catch(() => undefined);
+    await rm(directory, { recursive: true, force: true });
+  }
 }
 
 /** Spool a response to a private file while enforcing a hard byte ceiling. */

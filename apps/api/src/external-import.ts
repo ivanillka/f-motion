@@ -10,6 +10,7 @@ export interface ExternalImportConfig {
   token: string;
   ownerId: string;
   webOrigin: string;
+  mediaOrigins: string[];
 }
 
 export interface ExternalDraft {
@@ -17,6 +18,7 @@ export interface ExternalDraft {
   brief: ProjectSnapshot["brief"];
   architecture: VideoArchitecture;
   source: StoryboardSource;
+  mediaUrls: string[];
 }
 
 const ownerIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -38,6 +40,19 @@ function enumValue<T extends string>(value: unknown, allowed: readonly T[], fall
   if (value === undefined) return fallback;
   if (typeof value !== "string" || !allowed.includes(value as T)) throw new Error(`invalid ${name}`);
   return value as T;
+}
+
+function mediaUrls(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 8) throw new Error("invalid media_urls");
+  const urls = value.map((item) => {
+    if (typeof item !== "string" || item.length > 2_048) throw new Error("invalid media_urls");
+    let url: URL;
+    try { url = new URL(item); } catch { throw new Error("invalid media_urls"); }
+    if (url.protocol !== "https:" || url.username || url.password || url.hash) throw new Error("invalid media_urls");
+    return url.href;
+  });
+  return [...new Set(urls)];
 }
 
 export function parseExternalDraft(value: unknown): ExternalDraft {
@@ -73,8 +88,17 @@ export function parseExternalDraft(value: unknown): ExternalDraft {
     externalId,
     brief: { purpose, audience, tone: `${architecture.tone}, ${architecture.pace}` },
     architecture,
-    source: { ...(caption ? { caption } : {}), ...(callToAction ? { callToAction } : {}), ...(visualHint ? { visualHint } : {}) }
+    source: { ...(caption ? { caption } : {}), ...(callToAction ? { callToAction } : {}), ...(visualHint ? { visualHint } : {}) },
+    mediaUrls: mediaUrls(body.media_urls)
   };
+}
+
+export function externalMediaUrlAllowed(value: string, allowedOrigins: readonly string[]): boolean {
+  try { return allowedOrigins.includes(new URL(value).origin); } catch { return false; }
+}
+
+export function mediaIdForExternalImport(projectId: string, sourceUrl: string): string {
+  return projectIdForExternalImport(projectId, sourceUrl);
 }
 
 export function projectIdForExternalImport(ownerId: string, externalId: string): string {
@@ -107,7 +131,15 @@ export function externalImportConfigFromEnv(
   if ((env.FENGINE_ENV === "hosted" && origin.protocol !== "https:") || origin.username || origin.password) {
     throw new Error("invalid FENGINE_WEB_ORIGIN");
   }
-  return { token, ownerId, webOrigin: origin.origin };
+  const rawMediaOrigins = env.FENGINE_IMPORT_MEDIA_ORIGINS?.trim();
+  const mediaOrigins = rawMediaOrigins ? rawMediaOrigins.split(",").map((value) => {
+    const mediaOrigin = new URL(value.trim());
+    if (mediaOrigin.protocol !== "https:" || mediaOrigin.username || mediaOrigin.password || mediaOrigin.pathname !== "/") {
+      throw new Error("invalid FENGINE_IMPORT_MEDIA_ORIGINS");
+    }
+    return mediaOrigin.origin;
+  }) : [];
+  return { token, ownerId, webOrigin: origin.origin, mediaOrigins: [...new Set(mediaOrigins)] };
 }
 
 export function externalProjectUrl(webOrigin: string, projectId: string): string {

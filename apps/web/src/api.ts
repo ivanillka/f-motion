@@ -54,6 +54,7 @@ export interface SceneMediaView {
     attributionUrl: string;
     previewUrl?: string;
   };
+  previewUrl?: string;
 }
 
 export {

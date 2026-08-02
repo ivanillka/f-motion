@@ -359,6 +359,7 @@ test("scene media view is owner-scoped and exposes only validated public fields"
             projectId,
             state: "ready",
             objectKey: "private/object/key",
+            sealedObjectKey: "private/sealed/key",
             declaredType: "video/mp4",
             maxBytes: 42,
             detected: {
@@ -378,7 +379,10 @@ test("scene media view is owner-scoped and exposes only validated public fields"
           };
         }
       },
-      store: {},
+      store: { async signedGet(key) {
+        assert.equal(key, "private/sealed/key");
+        return "https://private-storage.example/signed-preview";
+      } },
       pexels: {}
     }
   }));
@@ -395,7 +399,8 @@ test("scene media view is owner-scoped and exposes only validated public fields"
         creator: "Fixture Creator",
         attributionUrl: "https://www.pexels.com/video/7",
         previewUrl: "https://images.pexels.com/videos/7/preview.jpg"
-      }
+      },
+      previewUrl: "https://private-storage.example/signed-preview"
     });
     assert.deepEqual(lookups, [["authenticated-user", "project-1", "asset-1"]]);
     const body = JSON.stringify(await (await fetch(`${origin}/api/projects/project-1/media/asset-1`)).json());
