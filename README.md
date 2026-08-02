@@ -44,6 +44,8 @@ The repository contains:
   planning;
 - `@f-engine/fal-host`: a private reference-host adapter for encrypted,
   owner-scoped provider credentials;
+- `@f-engine/fmotion-cli` / `@f-engine/fmotion-mcp`: thin `/v1` CLI and stdio
+  MCP for agents (see [Agent getting started](docs/agents/getting-started.md));
 - a reference API, worker, and React client that exercise the boundary;
 - private release tooling that produces sanitized snapshots.
 
