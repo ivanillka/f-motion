@@ -1,6 +1,8 @@
 import {
   buildStoryboardDraft,
+  conceptsFor,
   defaultVideoArchitecture,
+  type Concept,
   type VideoArchitecture
 } from "@f-engine/reel-engine";
 
@@ -32,12 +34,6 @@ export interface ProjectSummary {
   brief: ProjectSnapshot["brief"];
 }
 
-export interface Concept {
-  id: string;
-  title: string;
-  treatment: string;
-}
-
 export interface SceneMediaView {
   id: string;
   state: "admitted" | "inspecting" | "ready" | "quarantined" | "rejected";
@@ -59,7 +55,9 @@ export interface SceneMediaView {
 
 export {
   buildStoryboardDraft,
+  conceptsFor,
   defaultVideoArchitecture,
+  type Concept,
   type VideoArchitecture
 };
 

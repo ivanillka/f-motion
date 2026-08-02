@@ -53,6 +53,17 @@ async function signIn(page: import("@playwright/test").Page) {
   await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
 }
 
+
+async function continueToConcepts(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Continue to story concepts" }).click();
+  await expect(page.getByRole("heading", { name: "Choose a story approach" })).toBeVisible();
+}
+
+async function chooseConcept(page: Page, title: "Direct" | "Story" | "Rhythm"): Promise<void> {
+  await continueToConcepts(page);
+  await page.getByRole("button", { name: `Choose ${title} concept` }).click();
+}
+
 async function attachFixtureToScene(page: Page, sceneNumber: number): Promise<void> {
   await page.getByRole("button", { name: `Edit scene ${sceneNumber}` }).click();
   const input = page.locator('input[type="file"]');
@@ -140,7 +151,7 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await expect(page.getByLabel("Where should visuals come from?")).not.toBeVisible();
   await page.getByText("Edit recommended video plan").click();
   await page.getByLabel("Where should visuals come from?").selectOption("own");
-  await page.getByRole("button", { name: "Build storyboard" }).click();
+  await chooseConcept(page, "Direct");
 
   await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
   await page.locator('input[type="file"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
@@ -201,9 +212,18 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   await page.getByText("Edit recommended video plan").click();
   await page.getByLabel("How should the story unfold?").selectOption("mystery");
   await page.getByLabel("What tone fits best?").selectOption("documentary");
-  await page.getByRole("button", { name: "Build storyboard" }).click();
+  const pexelsMediaPosts: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && /\/media\/pexels(\/|$)/.test(request.url())) {
+      pexelsMediaPosts.push(request.url());
+    }
+  });
+  await continueToConcepts(page);
+  expect(pexelsMediaPosts).toEqual([]);
+  await page.getByRole("button", { name: "Choose Story concept" }).click();
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
+  await expect(page.getByText(/The story begins\.|Calm studio introduction/i).first()).toBeVisible();
   await expect(page.getByRole("status").filter({
     hasText: /Licensed media attached for every scene|scenes have media/
   })).toBeVisible({ timeout: 60_000 });

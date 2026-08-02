@@ -6,6 +6,11 @@ export interface Concept {
   id: string;
   title: string;
   treatment: string;
+  hook: string;
+  beat_summary: string;
+  duration_seconds: 15 | 30 | 45;
+  scene_count: 4 | 5 | 6;
+  media_direction: string;
 }
 
 export interface RenderProfile {
@@ -188,11 +193,39 @@ export function buildStoryboardDraft(
 }
 
 export function conceptsFor(brief: ProjectSnapshot["brief"]): [Concept, Concept, Concept] {
-  const subject = brief.purpose.trim().slice(0, 80);
+  const subject = brief.purpose.trim().slice(0, 80) || "your subject";
+  const short = subject.slice(0, 48);
   return [
-    { id: "direct", title: "Direct", treatment: `${subject}: lead with the result` },
-    { id: "story", title: "Story", treatment: `${subject}: establish, turn, resolve` },
-    { id: "rhythm", title: "Rhythm", treatment: `${subject}: concise visual beats` }
+    {
+      id: "direct",
+      title: "Direct",
+      treatment: `${subject}: lead with the result`,
+      hook: `Lead with the outcome, then show how ${short} gets there.`,
+      beat_summary: "Problem → impact → friction → solution → proof → result",
+      duration_seconds: 15,
+      scene_count: 4,
+      media_direction: "Concrete people and product shots; search for the result early."
+    },
+    {
+      id: "story",
+      title: "Story",
+      treatment: `${subject}: establish, turn, resolve`,
+      hook: `Establish the world of ${short}, turn once, then resolve.`,
+      beat_summary: "Establish → detail → develop → turn → close",
+      duration_seconds: 30,
+      scene_count: 5,
+      media_direction: "Wide establishing frames, human detail, then a decisive visual turn."
+    },
+    {
+      id: "rhythm",
+      title: "Rhythm",
+      treatment: `${subject}: concise visual beats`,
+      hook: `Cut through ${short} as short, punchy visual beats.`,
+      beat_summary: "Start → progress → momentum → turn → result → today",
+      duration_seconds: 45,
+      scene_count: 6,
+      media_direction: "Chronological places and action; keep every beat imageable and brief."
+    }
   ];
 }
 
@@ -206,14 +239,15 @@ export function planStoryboardScenes(
   conceptId: string,
   makeId: () => string
 ): Scene[] {
-  if (!conceptsFor(brief).some(({ id }) => id === conceptId)) throw new Error("unknown concept");
+  const concept = conceptsFor(brief).find(({ id }) => id === conceptId);
+  if (!concept) throw new Error("unknown concept");
   const architecture: VideoArchitecture = {
     goal: conceptId === "direct" ? "promote" : "story",
     audience: "general",
     structure: conceptId === "story" ? "story_arc" : conceptId === "rhythm" ? "chronological" : "problem_solution",
     tone: "cinematic",
     pace: conceptId === "rhythm" ? "fast" : "balanced",
-    durationSeconds: 30,
+    durationSeconds: concept.duration_seconds,
     media: "stock"
   };
   return buildStoryboardDraft(brief.purpose, makeId, architecture);

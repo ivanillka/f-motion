@@ -25,8 +25,17 @@ const command = (kind, payload, base_revision = 0) => ({
 });
 
 test("concept construction is deterministic and exactly three", () => {
-  assert.equal(conceptsFor(snapshot.brief).length, 3);
-  assert.deepEqual(conceptsFor(snapshot.brief), conceptsFor(snapshot.brief));
+  const concepts = conceptsFor(snapshot.brief);
+  assert.equal(concepts.length, 3);
+  assert.deepEqual(concepts.map(({ id }) => id), ["direct", "story", "rhythm"]);
+  assert.deepEqual(concepts, conceptsFor(snapshot.brief));
+  for (const concept of concepts) {
+    assert.ok(concept.hook.length > 8);
+    assert.ok(concept.beat_summary.length > 8);
+    assert.ok(concept.media_direction.length > 8);
+    assert.ok([15, 30, 45].includes(concept.duration_seconds));
+    assert.ok([4, 5, 6].includes(concept.scene_count));
+  }
 });
 test("shared storyboard planning separates footage intent from copy and closes with the CTA", () => {
   let id = 0;
@@ -65,6 +74,20 @@ test("concept planner yields a stable 4–6 beat storyboard without provider voc
     assert.doesNotMatch(scene.visual_prompt, /\b(pexels|fal|beatoven|openai|llm)\b/i);
     assert.doesNotMatch(scene.caption, /\b(pexels|fal|beatoven|openai|llm)\b/i);
   }
+});
+test("direct, story, and rhythm concepts produce observably different multi-scene plans", () => {
+  const brief = { purpose: "Calm studio introduction for a product launch", audience: "Customers", tone: "Warm" };
+  const plans = ["direct", "story", "rhythm"].map((conceptId) => {
+    let id = 0;
+    return planStoryboardScenes(brief, conceptId, () => `${conceptId}-${++id}`);
+  });
+  assert.deepEqual(plans.map((scenes) => scenes.length), [4, 5, 6]);
+  assert.deepEqual(plans.map((scenes) => scenes.reduce((sum, scene) => sum + scene.duration_ms, 0)), [15_000, 30_000, 45_000]);
+  assert.notDeepEqual(plans[0].map(({ caption }) => caption), plans[1].map(({ caption }) => caption));
+  assert.notDeepEqual(plans[1].map(({ visual_prompt }) => visual_prompt), plans[2].map(({ visual_prompt }) => visual_prompt));
+  assert.match(plans[0][0].caption, /problem|visible|launch/i);
+  assert.match(plans[1][0].caption, /story begins|launch/i);
+  assert.match(plans[2][0].caption, /started|launch/i);
 });
 test("select_concept seeds a multi-scene plan when the project is empty", () => {
   const empty = { ...snapshot, scenes: [] };

@@ -4,10 +4,12 @@ import {
   ApiClient,
   ApiResponseError,
   buildStoryboardDraft,
+  conceptsFor,
   defaultVideoArchitecture,
   loadSceneMediaViews,
   recommendVideoArchitecture,
   sceneDurationForMedia,
+  type Concept,
   type ProjectSnapshot,
   type ProjectSummary,
   type Scene,
@@ -17,7 +19,7 @@ import {
 import { AuthConfigurationError, createAuthGateway } from "./auth";
 import "./style.css";
 
-type Step = "sign-in" | "drafts" | "brief" | "architecture" | "media" | "editor" | "render" | "settings";
+type Step = "sign-in" | "drafts" | "brief" | "architecture" | "concepts" | "media" | "editor" | "render" | "settings";
 interface PexelsMatch {
   id: number;
   creator: string;
@@ -76,6 +78,7 @@ function App() {
   const [email, setEmail] = useState("");
   const [draft, setDraft] = useState(() => localStorage.getItem("fengine-draft") ?? "");
   const [architecture, setArchitecture] = useState<VideoArchitecture>(defaultVideoArchitecture);
+  const [conceptChoices, setConceptChoices] = useState<Concept[]>([]);
   const [project, setProject] = useState<ProjectSnapshot>();
   const [activeSceneId, setActiveSceneId] = useState("");
   const [drafts, setDrafts] = useState<ProjectSummary[]>([]);
@@ -289,47 +292,64 @@ function App() {
     }
   }
 
-  async function initializeScene(snapshot: ProjectSnapshot): Promise<ProjectSnapshot> {
-    if (snapshot.scenes.length) return snapshot;
-    return api.command(snapshot.id, snapshot.revision, "select_concept", { concept_id: "direct" });
+  function briefForConcepts(): ProjectSnapshot["brief"] {
+    return {
+      purpose: draft,
+      audience: architecture.audience,
+      tone: `${architecture.tone}, ${architecture.pace}`
+    };
   }
 
-  async function prepareProject(): Promise<ProjectSnapshot> {
-    let current = project;
-    let createdNow = false;
-    if (!current) {
-      const body = await api.request<{ project: ProjectSnapshot }>("/api/projects", {
-        method: "POST",
-        body: JSON.stringify({
-          purpose: draft,
-          audience: architecture.audience,
-          tone: `${architecture.tone}, ${architecture.pace}`
-        })
-      });
-      current = body.project;
-      createdNow = true;
-      localStorage.setItem("fengine-project", current.id);
-    }
-    current = await initializeScene(current);
-    if (createdNow) {
-      current = await api.command(current.id, current.revision, "replace_storyboard", {
-        scenes: buildStoryboardDraft(draft, () => crypto.randomUUID(), architecture)
-      });
-    }
-    setProject(current);
-    setActiveSceneId((active) => current.scenes.some(({ id }) => id === active) ? active : (current.scenes[0]?.id ?? ""));
-    return current;
-  }
-
-  async function createStoryboard() {
+  async function continueToConcepts() {
     if (busy) return;
     mediaTransition.current += 1;
     setSceneMedia({});
     setSceneProgress({});
     setBusy(true);
-    setStatus("Creating an editable storyboard…");
+    setStatus("Preparing story concepts…");
     try {
-      const current = await prepareProject();
+      let current = project;
+      if (!current) {
+        const body = await api.request<{ project: ProjectSnapshot; concepts?: Concept[] }>("/api/projects", {
+          method: "POST",
+          body: JSON.stringify(briefForConcepts())
+        });
+        current = body.project;
+        localStorage.setItem("fengine-project", current.id);
+        setProject(current);
+        setConceptChoices(body.concepts?.length ? body.concepts : [...conceptsFor(briefForConcepts())]);
+      } else {
+        setConceptChoices([...conceptsFor(current.brief.purpose ? current.brief : briefForConcepts())]);
+      }
+      setActiveSceneId("");
+      setStep("concepts");
+      setStatus("Licensed visuals are matched only after you choose a story approach.");
+    } catch {
+      setStatus("Story concepts could not be prepared. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function chooseConcept(conceptId: string) {
+    if (busy || !project) return;
+    mediaTransition.current += 1;
+    setSceneMedia({});
+    setSceneProgress({});
+    setBusy(true);
+    setStatus("Building the selected storyboard…");
+    try {
+      let current = project;
+      if (!current.scenes.length || current.selected_concept_id !== conceptId) {
+        if (current.scenes.length) {
+          // ponytail: empty projects are the concept gate; non-empty reselection stays replace-free.
+          setStatus("This draft already has scenes. Open it from Drafts to keep editing.");
+          return;
+        }
+        current = await api.command(current.id, current.revision, "select_concept", { concept_id: conceptId });
+      }
+      setProject(current);
+      setActiveSceneId(current.scenes[0]?.id ?? "");
       if (architecture.media === "own") {
         setStatus("Storyboard ready. Upload media for each scene.");
         setStep("media");
@@ -352,16 +372,22 @@ function App() {
     setSceneMedia({});
     setStatus("Opening draft…");
     try {
-      const { project: opened } = await api.getProject(projectId);
-      const initialized = await initializeScene(opened);
+      const found = await api.getProject(projectId);
+      const opened = found.project;
       if (transition !== mediaTransition.current) return false;
-      setProject(initialized);
-      setActiveSceneId(initialized.scenes[0]?.id ?? "");
-      localStorage.setItem("fengine-project", initialized.id);
-      setDraft(initialized.brief.purpose);
+      setProject(opened);
+      setActiveSceneId(opened.scenes[0]?.id ?? "");
+      localStorage.setItem("fengine-project", opened.id);
+      setDraft(opened.brief.purpose);
+      if (!opened.scenes.length) {
+        setConceptChoices(found.concepts?.length ? found.concepts : [...conceptsFor(opened.brief)]);
+        setStep("concepts");
+        setStatus("Licensed visuals are matched only after you choose a story approach.");
+        return true;
+      }
       let hydrationFailed = false;
       try {
-        const views = await loadSceneMediaViews(api, initialized);
+        const views = await loadSceneMediaViews(api, opened);
         if (transition !== mediaTransition.current) return false;
         setSceneMedia(views);
       } catch {
@@ -644,7 +670,10 @@ function App() {
       body: JSON.stringify(brief)
     });
     let updated = body.project;
-    updated = await api.command(updated.id, updated.revision, "select_concept", { concept_id: "direct" });
+    const conceptId = source.selected_concept_id
+      ?? conceptsFor(brief).find(({ id }) => id === "story")?.id
+      ?? conceptsFor(brief)[0].id;
+    updated = await api.command(updated.id, updated.revision, "select_concept", { concept_id: conceptId });
     const scenes = (source.scenes.length ? source.scenes : buildStoryboardDraft(brief.purpose, () => crypto.randomUUID())).map((scene, order) => {
       const { media_id: _mediaId, ...withoutMedia } = scene;
       return {
@@ -1013,9 +1042,29 @@ function App() {
         </select></label>
         </div>
       </details>
-      <button disabled={busy} onClick={() => void createStoryboard()}>{busy ? "Building video plan…" : "Build storyboard"}</button>
+      <button disabled={busy} onClick={() => void continueToConcepts()}>{busy ? "Preparing concepts…" : "Continue to story concepts"}</button>
       <button className="secondary" disabled={busy} onClick={() => setStep("brief")}>Back to description</button>
       <p role="status" aria-live="polite">{status}</p>
+    </section>}
+    {authReady && step === "concepts" && project && <section>
+      <h1>Choose a story approach</h1>
+      <p>Each option builds a different multi-scene plan. Licensed stock is matched only after you choose.</p>
+      <div className="concept-choices" aria-label="Story concepts">{conceptChoices.map((concept) =>
+        <button
+          key={concept.id}
+          className="card"
+          disabled={busy}
+          aria-label={`Choose ${concept.title} concept`}
+          onClick={() => void chooseConcept(concept.id)}
+        >
+          <strong>{concept.title}</strong>
+          <span>{concept.hook}</span>
+          <span>{concept.beat_summary}</span>
+          <span>About {concept.duration_seconds} seconds · {concept.scene_count} scenes</span>
+          <span>{concept.media_direction}</span>
+        </button>)}</div>
+      <p role="status" aria-live="polite">{status}</p>
+      <button className="secondary" disabled={busy} onClick={() => setStep("architecture")}>Back to video plan</button>
     </section>}
     {authReady && step === "media" && project && <section>
       <h1>Upload your media</h1>

@@ -82,6 +82,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   outline-offset: 2px;
 }
 .concepts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.concept-choices { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.concept-choices .card { text-align: left; display: grid; gap: 6px; }
+.concept-choices .card strong { font-size: 1.1rem; }
 .architecture-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .card {
   border-radius: 8px;
