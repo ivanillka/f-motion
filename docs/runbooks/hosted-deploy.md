@@ -122,6 +122,32 @@ DATABASE_URL=<your-session-mode-url> npx prisma migrate deploy
 `prisma/schema.prisma` reads `env("DATABASE_URL")`. CI and local stack must
 export the same variable (see `.env.example` and `.github/workflows/ci.yml`).
 
+### Optional: enable user-owned FAL credential connection
+
+This only enables authenticated connect, status, test, replace, and disconnect
+operations. It does not enable paid inference or generation. Generate a
+host-owned key-encryption key once:
+
+```sh
+openssl rand -base64 32
+```
+
+Put the result directly into protected **API-only** configuration as
+`FENGINE_CREDENTIAL_KEY_V1`; also set
+`FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION=1` and
+`FENGINE_FAL_BYOK_ENABLED=1`. Do not paste the value into source, chat,
+Cloudflare Pages/Vite variables, worker configuration, logs, or screenshots.
+Never configure `FAL_KEY` or `FAL_API_KEY`: hosted startup rejects shared FAL
+credentials.
+
+Each user supplies an API-scope key in authenticated Settings and is charged
+by FAL directly. The API can validate call capability but FAL does not expose
+scope introspection, so the product must not claim to detect ADMIN scope.
+Production media generation remains blocked until the operator records FAL
+output ownership, commercial-use, training/data-use, and retention terms.
+BYOK changes who is charged; it does not remove privacy or legal responsibility
+for prompts and media transmitted to FAL.
+
 ## 5. Deploy the API and worker images
 
 Using Fly.io with the provided configs (first time only needs `fly launch`
@@ -133,7 +159,9 @@ fly secrets set --config fly.api.toml \
   DATABASE_URL=... SUPABASE_ISSUER=... SUPABASE_AUDIENCE=... SUPABASE_JWKS_URL=... \
   R2_ENDPOINT=... R2_REGION=... R2_BUCKET=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... \
   PEXELS_API_KEY=... FENGINE_ACCESS_MODE=invite_only \
-  FENGINE_ALLOWED_USER_IDS=<comma-separated-supabase-user-uuids>
+  FENGINE_ALLOWED_USER_IDS=<comma-separated-supabase-user-uuids> \
+  FENGINE_FAL_BYOK_ENABLED=1 FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION=1 \
+  FENGINE_CREDENTIAL_KEY_V1=<base64-from-openssl>
 fly deploy --config fly.api.toml
 
 fly launch --config fly.worker.toml --no-deploy

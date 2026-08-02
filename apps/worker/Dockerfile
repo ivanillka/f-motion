@@ -35,6 +35,7 @@ COPY apps/api/package.json apps/api/package.json
 COPY apps/worker/package.json apps/worker/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/fal-host/package.json packages/fal-host/package.json
 COPY packages/reel-engine/package.json packages/reel-engine/package.json
 RUN npm ci
 COPY packages/contracts packages/contracts

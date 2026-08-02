@@ -30,6 +30,10 @@ import {
 import { PostgresRenderRepository, RenderCapacityError, type RenderKind } from "./render-repository.js";
 import type { AccessPolicy } from "./access-policy.js";
 import {
+  falCredentialHttpError,
+  type FalCredentialService
+} from "./fal-credentials.js";
+import {
   authenticatesExternalImport,
   externalProjectUrl,
   parseExternalDraft,
@@ -50,6 +54,7 @@ interface AppBaseOptions {
   ready?: () => boolean | Promise<boolean>;
   workerOrigin?: string;
   externalImports?: ExternalImportConfig;
+  falCredentials?: FalCredentialService;
 }
 
 export interface AppOptions extends AppBaseOptions {
@@ -202,6 +207,61 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       if (error instanceof AccountUnavailableError) return response.status(403).json({ type: "forbidden", message: error.message });
       next(error);
     }
+  });
+  const falUnavailable = (response: express.Response) => response.status(503).json({
+    type: "provider_unavailable",
+    message: "FAL connection is not enabled on this deployment."
+  });
+  const exactObject = (value: unknown, keys: string[]) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const actual = Object.keys(value as Record<string, unknown>);
+    return actual.length === keys.length && keys.every((key) => actual.includes(key));
+  };
+  const emptyBody = (value: unknown) => value === undefined || exactObject(value, []);
+  app.get("/api/providers/fal/credential", async (_request, response, next) => {
+    try {
+      if (!options.falCredentials) return falUnavailable(response);
+      response.json(await options.falCredentials.status(String(response.locals.ownerId)));
+    } catch (error) { next(error); }
+  });
+  app.put("/api/providers/fal/credential", async (request, response, next) => {
+    try {
+      if (!options.falCredentials) return falUnavailable(response);
+      if (!exactObject(request.body, ["api_key"])) {
+        return response.status(422).json({ type: "validation", message: "Enter a valid FAL API key." });
+      }
+      response.json(await options.falCredentials.connect(
+        String(response.locals.ownerId),
+        (request.body as { api_key?: unknown }).api_key
+      ));
+    } catch (error) {
+      const mapped = falCredentialHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/providers/fal/credential/test", async (request, response, next) => {
+    try {
+      if (!options.falCredentials) return falUnavailable(response);
+      if (!emptyBody(request.body)) {
+        return response.status(422).json({ type: "validation", message: "This request does not accept fields." });
+      }
+      response.json(await options.falCredentials.test(String(response.locals.ownerId)));
+    } catch (error) {
+      const mapped = falCredentialHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.delete("/api/providers/fal/credential", async (request, response, next) => {
+    try {
+      if (!options.falCredentials) return falUnavailable(response);
+      if (!emptyBody(request.body)) {
+        return response.status(422).json({ type: "validation", message: "This request does not accept fields." });
+      }
+      await options.falCredentials.disconnect(String(response.locals.ownerId));
+      response.status(204).end();
+    } catch (error) { next(error); }
   });
   app.get("/api/projects", async (_request, response, next) => {
     try {

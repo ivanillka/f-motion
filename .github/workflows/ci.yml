@@ -24,6 +24,7 @@ jobs:
       TEST_DATABASE_URL: postgresql://fengine:fengine@127.0.0.1:5432/fengine
       TEST_S3_ENDPOINT: http://127.0.0.1:9000
       RUN_MEDIA_INTEGRATION: "1"
+      RUN_FAL_INTEGRATION: "1"
       RUN_QUEUE_INTEGRATION: "1"
       RUN_PROJECT_INTEGRATION: "1"
       RUN_RENDER_INTEGRATION: "1"

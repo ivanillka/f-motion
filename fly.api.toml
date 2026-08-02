@@ -13,12 +13,19 @@
 # docs/runbooks/hosted-deploy.md.
 # Optional trusted imports also require protected FENGINE_IMPORT_TOKEN,
 # FENGINE_IMPORT_OWNER_ID, and FENGINE_WEB_ORIGIN secrets.
+# Optional user-owned FAL credential connection requires
+# FENGINE_FAL_BYOK_ENABLED=1, FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION=1, and a
+# protected FENGINE_CREDENTIAL_KEY_V1 generated with `openssl rand -base64 32`.
+# Never configure FAL_KEY or FAL_API_KEY; hosted startup rejects shared keys.
 
 app = "f-motion-api"            # pick a real, unique Fly app name
 primary_region = "ams"
 
 [build]
   dockerfile = "apps/api/Dockerfile"
+
+[deploy]
+  release_command = "node_modules/.bin/prisma migrate deploy"
 
 [env]
   PORT = "3000"
@@ -28,6 +35,7 @@ primary_region = "ams"
   PREVIEW_RENDER_HEIGHT = "960"
   RENDER_WIDTH = "720"
   RENDER_HEIGHT = "1280"
+  FENGINE_FAL_BYOK_ENABLED = "0"
 
 [http_service]
   internal_port = 3000

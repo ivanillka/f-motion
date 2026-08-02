@@ -23,6 +23,12 @@ interface PexelsMatch {
   attributionUrl: string;
   previewUrl: string;
 }
+interface FalCredentialView {
+  provider: "fal";
+  connected: boolean;
+  hint?: string;
+  validated_at?: string;
+}
 
 function App() {
   const authSetup = useMemo(() => {
@@ -61,6 +67,10 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const [status, setStatus] = useState("");
+  const [falCredential, setFalCredential] = useState<FalCredentialView>();
+  const [falUnavailable, setFalUnavailable] = useState(false);
+  const [falKey, setFalKey] = useState("");
+  const [falBusy, setFalBusy] = useState(false);
   const api = useMemo(() => new ApiClient(
     () => tokenRef.current,
     () => {
@@ -96,6 +106,10 @@ function App() {
     setPreviewMetadata({});
     setProgress({ phase: "queued", percent: 0 });
     setStatus("");
+    setFalCredential(undefined);
+    setFalUnavailable(false);
+    setFalKey("");
+    setFalBusy(false);
     setStep("sign-in");
   }
 
@@ -133,6 +147,14 @@ function App() {
     };
   }, []);
   useEffect(() => localStorage.setItem("fengine-draft", draft), [draft]);
+
+  useEffect(() => {
+    if (step !== "settings") {
+      setFalKey("");
+      return;
+    }
+    if (token) void loadFalCredential();
+  }, [step, token]);
 
   useEffect(() => {
     if (!token) return;
@@ -582,6 +604,80 @@ function App() {
     }
   }
 
+  async function loadFalCredential() {
+    setFalBusy(true);
+    try {
+      const view = await api.request<FalCredentialView>("/api/providers/fal/credential");
+      setFalCredential(view);
+      setFalUnavailable(false);
+      setStatus("");
+    } catch (error) {
+      setFalCredential(undefined);
+      setFalUnavailable(error instanceof ApiResponseError && error.status === 503);
+      setStatus(error instanceof ApiResponseError && error.status === 503
+        ? "FAL connection is not available on this deployment."
+        : "FAL connection status could not be loaded.");
+    } finally {
+      setFalBusy(false);
+    }
+  }
+
+  async function connectFal() {
+    if (!falKey.trim()) return;
+    if (falCredential?.connected && !window.confirm("Replace your saved FAL API key? Active generation must finish first.")) return;
+    setFalBusy(true);
+    try {
+      const view = await api.request<FalCredentialView>("/api/providers/fal/credential", {
+        method: "PUT",
+        body: JSON.stringify({ api_key: falKey })
+      });
+      setFalCredential(view);
+      setFalUnavailable(false);
+      setStatus("FAL connected. The key is encrypted and will never be shown again.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "invalid_provider_credential"
+        ? "FAL rejected this API key. Create an API-scope key and try again."
+        : type === "provider_unavailable"
+          ? "FAL could not be reached. Your existing projects are safe."
+          : "FAL could not be connected.");
+    } finally {
+      setFalKey("");
+      setFalBusy(false);
+    }
+  }
+
+  async function testFal() {
+    setFalBusy(true);
+    try {
+      const view = await api.request<FalCredentialView>("/api/providers/fal/credential/test", { method: "POST" });
+      setFalCredential(view);
+      setStatus("FAL connection verified.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "invalid_provider_credential"
+        ? "FAL rejected the saved key. Replace or disconnect it."
+        : "FAL could not verify the saved key. Try again later.");
+    } finally {
+      setFalBusy(false);
+    }
+  }
+
+  async function disconnectFal() {
+    if (!window.confirm("Disconnect FAL and delete your saved encrypted key?")) return;
+    setFalBusy(true);
+    try {
+      await api.request("/api/providers/fal/credential", { method: "DELETE" });
+      setFalCredential({ provider: "fal", connected: false });
+      setFalKey("");
+      setStatus("FAL disconnected.");
+    } catch {
+      setStatus("FAL could not be disconnected. Try again.");
+    } finally {
+      setFalBusy(false);
+    }
+  }
+
   const activeScene = project?.scenes.find(({ id }) => id === activeSceneId)
     ?? project?.scenes[0]; // read-only fallback for an old/recovered selection
   const activeSceneNumber = activeScene ? activeScene.order + 1 : 0;
@@ -791,9 +887,37 @@ function App() {
     {authReady && step === "settings" && <section>
       <h1>Settings</h1>
       <p>Pexels videos require on-product attribution — see “Use video by … · Pexels” in the editor when you add stock footage.</p>
+      <article className="settings-card" aria-labelledby="fal-settings-title">
+        <h2 id="fal-settings-title">FAL generation</h2>
+        <p>Connect your own FAL API-scope key. Generation will be charged directly to your FAL account. F-Motion does not supply or share a FAL key.</p>
+        {falUnavailable && <p className="notice">FAL connection is unavailable here. Uploads, Pexels, editing, and rendering still work.</p>}
+        {!falUnavailable && falCredential?.connected && <p>
+          Connected · key ending …{falCredential.hint}
+          {falCredential.validated_at ? ` · verified ${new Date(falCredential.validated_at).toLocaleString()}` : ""}
+        </p>}
+        {!falUnavailable && <label htmlFor="fal-key">{falCredential?.connected ? "Replacement FAL API key" : "FAL API key"}
+          <input
+            id="fal-key"
+            type="password"
+            autoComplete="new-password"
+            spellCheck={false}
+            value={falKey}
+            onChange={(event) => setFalKey(event.target.value)}
+            placeholder="Paste an API-scope key"
+          />
+          <small>Create an API-scope key in FAL. F-Motion can verify that it calls models, but FAL does not provide scope introspection.</small>
+        </label>}
+        {!falUnavailable && <div className="settings-actions">
+          <button disabled={falBusy || !falKey.trim()} onClick={() => void connectFal()}>{falCredential?.connected ? "Replace key" : "Connect FAL"}</button>
+          {falCredential?.connected && <button className="secondary" disabled={falBusy} onClick={() => void testFal()}>Test connection</button>}
+          {falCredential?.connected && <button className="secondary" disabled={falBusy} onClick={() => void disconnectFal()}>Disconnect</button>}
+        </div>}
+        <a href="https://fal.ai/dashboard/keys" target="_blank" rel="noreferrer">Open FAL API keys</a>
+      </article>
       <p>Privacy and terms will ship with Gate 0 launch policy evidence.</p>
+      <p role="status" aria-live="polite">{status}</p>
       <button disabled={authBusy} onClick={() => void signOut()}>Sign out</button>
-      <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
+      <button className="secondary" onClick={() => { setFalKey(""); setStep("drafts"); }}>Back to drafts</button>
     </section>}
   </main>;
 }

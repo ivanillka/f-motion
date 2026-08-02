@@ -3,6 +3,7 @@
   "compilerOptions": { "outDir": "dist", "rootDir": "src" },
   "references": [
     { "path": "../../packages/contracts" },
+    { "path": "../../packages/fal-host" },
     { "path": "../../packages/reel-engine" }
   ],
   "include": ["src/**/*.ts"]

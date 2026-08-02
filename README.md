@@ -25,10 +25,15 @@ Choose one path:
    Follow [Self-host onboarding](docs/getting-started.md). You create and
    control the Supabase, PostgreSQL, S3-compatible storage, and Pexels
    accounts. No maintainer credential, customer data, deployment identifier,
-   or private API endpoint is included.
+   or private API endpoint is included. If FAL credential support is enabled,
+   every signed-in user connects their own API-scope FAL key and their FAL
+   account is charged directly; the host never supplies a shared FAL key.
 
 Never paste database, storage, Pexels, or service-role credentials into the
 browser. They belong only in protected API/worker environment configuration.
+The one provider credential accepted by the reference web client is a user's
+own FAL key in authenticated Settings; it is sent over HTTPS, encrypted by the
+API, and never returned to the browser.
 
 ## What is included
 
@@ -37,6 +42,8 @@ The repository contains:
 - `@f-engine/contracts`: versioned language-neutral JSON/OpenAPI contracts;
 - `@f-engine/reel-engine`: deterministic commands, cues, crop math, and render
   planning;
+- `@f-engine/fal-host`: a private reference-host adapter for encrypted,
+  owner-scoped FAL credentials;
 - a reference API, worker, and React client that exercise the boundary;
 - private release tooling that produces sanitized snapshots.
 
@@ -56,7 +63,8 @@ boundary. They do not edit a vendored fork.
 
 The reference journey accepts a short brief, then either user-owned media or
 licensed Pexels footage, and produces an accurate vertical preview. AI
-generation is deliberately not implemented.
+generation is deliberately not implemented. The optional FAL Settings card
+only connects and validates a user-owned credential without generating media.
 
 ## Verify
 

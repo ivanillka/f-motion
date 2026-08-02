@@ -316,7 +316,9 @@ The visual system must support these product truths:
 - Users may edit or download after preview
 - Drafts autosave and remain available for later editing
 - Pexels is platform-managed
-- FAL supports managed credits or optional BYOK
+- FAL is BYOK-only: each user connects an API-scope key, their FAL account is
+  charged directly, and a missing key makes generation unavailable. F-Motion
+  never supplies a platform key or silently falls back to another account.
 - Estimated cost and explicit confirmation appear before paid generation
 - Music generation is unavailable until its licensing gate passes
 - No direct social publishing in the MVP

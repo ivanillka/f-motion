@@ -83,6 +83,8 @@ test("all API routes reject requests without a Bearer token", async () => {
       [`${context.apiOrigin}/api/projects/project`, { method: "GET" }],
       [`${context.apiOrigin}/api/projects/project/commands`, { method: "POST" }],
       [`${context.apiOrigin}/api/projects/project/render`, { method: "POST" }],
+      [`${context.apiOrigin}/api/providers/fal/credential`, { method: "GET" }],
+      [`${context.apiOrigin}/api/providers/fal/credential/test`, { method: "POST" }],
       [`${context.apiOrigin}/api/download/job`, undefined]
     ];
     for (const [url, options] of requests) {

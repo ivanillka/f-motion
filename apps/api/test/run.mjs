@@ -5,6 +5,8 @@ await import("./projects-list.test.mjs");
 await import("./local-auth.test.mjs");
 await import("./access-policy.test.mjs");
 await import("./external-import.test.mjs");
+await import("./fal-credentials.test.mjs");
+await import("./fal-credentials-integration.test.mjs");
 await import("./media-bound.test.mjs");
 await import("./media-repository.test.mjs");
 if (process.env.RUN_PROJECT_INTEGRATION === "1") await import("./project-persistence.test.mjs");

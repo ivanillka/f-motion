@@ -41,6 +41,25 @@ model User {
   projects              Project[]
   media                  MediaAsset[]
   jobs                   RenderJob[]
+  providerCredentials    ProviderCredential[]
+}
+
+model ProviderCredential {
+  id          String   @id @default(uuid())
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  provider    String
+  ciphertext  Bytes
+  nonce       Bytes
+  authTag     Bytes
+  keyVersion  Int
+  hint        String
+  validatedAt DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([ownerId, provider])
+  @@index([ownerId])
 }
 
 model Project {

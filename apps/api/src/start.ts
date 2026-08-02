@@ -7,6 +7,12 @@ import { assertLocalAuthAllowed } from "./local-auth.js";
 import { PexelsClient, PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
 import { PostgresRenderRepository, renderProfilesFromEnv } from "./render-repository.js";
 import { createApp, createTestApp } from "./server.js";
+import {
+  assertNoSharedFalCredential,
+  credentialVaultFromEnv,
+  falByokEnabled
+} from "@f-engine/fal-host";
+import { PostgresFalCredentialService } from "./fal-credentials.js";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -15,6 +21,7 @@ function required(name: string): string {
 }
 
 assertLocalAuthAllowed(process.env);
+assertNoSharedFalCredential(process.env);
 const accessPolicy = accessPolicyFromEnv(process.env);
 const externalImports = externalImportConfigFromEnv(process.env);
 
@@ -37,6 +44,9 @@ const objectStore = new PrivateObjectStore(new S3Client({
 
 const projects = new PostgresProjectRepository(pool);
 const renders = new PostgresRenderRepository(pool, renderProfilesFromEnv(process.env));
+const falCredentials = falByokEnabled(process.env)
+  ? new PostgresFalCredentialService(pool, credentialVaultFromEnv(process.env))
+  : undefined;
 const media = {
   repository: new PostgresMediaRepository(pool),
   store: objectStore,
@@ -58,12 +68,13 @@ if (process.env.FENGINE_LOCAL_AUTH === "1") {
      ON CONFLICT (id) DO UPDATE SET state = 'active'`,
     [ownerId]
   );
-  createTestApp({ ownerId, projects, renders, media, ready }).listen(port);
+  createTestApp({ ownerId, projects, renders, media, ready, falCredentials }).listen(port);
 } else {
   createApp({
     projects,
     renders,
     media,
+    falCredentials,
     ready,
     authConfig: {
       issuer: required("SUPABASE_ISSUER"),

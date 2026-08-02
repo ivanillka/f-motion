@@ -67,6 +67,7 @@ deploy (see `docs/runbooks/hosted-deploy.md` §2).
 export TEST_DATABASE_URL=postgresql://fengine:fengine@127.0.0.1:5432/fengine
 export TEST_S3_ENDPOINT=http://127.0.0.1:9000
 export RUN_MEDIA_INTEGRATION=1
+export RUN_FAL_INTEGRATION=1
 export RUN_QUEUE_INTEGRATION=1
 export RUN_PROJECT_INTEGRATION=1
 export RUN_RENDER_INTEGRATION=1

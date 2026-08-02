@@ -8,6 +8,7 @@
     "apps/api",
     "apps/worker",
     "packages/contracts",
+    "packages/fal-host",
     "packages/reel-engine"
   ],
   "scripts": {

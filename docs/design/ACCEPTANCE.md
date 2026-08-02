@@ -6,7 +6,7 @@ Behavioral precedence is: **architecture → this acceptance manifest → `DESIG
 
 Approved reusable visual patterns are the desktop sidebar, Android bottom navigation, dark technical shell, guided chat, draft cards, scene storyboard, preview player, settings cards, credit ledger, credential summary, and pending-operation dialogs.
 
-Reject as product truth: Fotium Motion, Fotium Studio, or Reel Studio customer names; light mobile screens; OpenAI, Stability AI, ElevenLabs, generated music, Cloud Export, subscriptions or Pro Studio; fixed prices, quotas, wait times, storage, or credit packs; 4K/60 FPS promises; multitrack editing; immediate deletion; password-only reauthentication; credit forfeiture; and client-only FAL-key storage. The customer name is F-Motion and the domain is f-motion.com.
+Reject as product truth: Fotium Motion, Fotium Studio, or Reel Studio customer names; light mobile screens; OpenAI, Stability AI, ElevenLabs, generated music, Cloud Export, subscriptions or Pro Studio; fixed prices, quotas, wait times, storage, or credit packs; 4K/60 FPS promises; multitrack editing; immediate deletion; password-only reauthentication; credit forfeiture; client-only FAL-key storage; managed FAL credits; a platform FAL key; or fallback to another account. FAL is BYOK-only and a connected user's FAL account is charged directly. The customer name is F-Motion and the domain is f-motion.com.
 
 `ACCEPT VISUAL` accepts composition and styling only. `ACCEPT WITH CORRECTIONS` requires architecture-aligned copy, state, capability, pricing, provider, security, or naming changes. `REJECT` must not guide implementation. `MISSING` records a required design that Stitch did not produce and therefore has no screen directory below.
 
