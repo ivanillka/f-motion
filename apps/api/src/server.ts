@@ -356,7 +356,11 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       }
       await options.falCredentials.disconnect(String(response.locals.ownerId));
       response.status(204).end();
-    } catch (error) { next(error); }
+    } catch (error) {
+      const mapped = falCredentialHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
   });
   const pexelsUnavailable = (response: express.Response) => response.status(503).json({
     type: "provider_unavailable",

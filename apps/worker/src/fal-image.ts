@@ -32,16 +32,16 @@ interface GenerationRow {
   ownerId: string;
   projectId: string;
   sceneId: string;
-  credentialId: string;
+  credentialId: string | null;
   prompt: string;
   state: string;
   cancelRequested: boolean;
   providerRequestId: string | null;
   resultMediaId: string | null;
-  ciphertext: Buffer;
-  nonce: Buffer;
-  authTag: Buffer;
-  keyVersion: number;
+  ciphertext: Buffer | null;
+  nonce: Buffer | null;
+  authTag: Buffer | null;
+  keyVersion: number | null;
 }
 
 async function loadJob(pool: pg.Pool, job: FalImageJob): Promise<GenerationRow | undefined> {
@@ -50,14 +50,39 @@ async function loadJob(pool: pg.Pool, job: FalImageJob): Promise<GenerationRow |
             g."cancelRequested", g."providerRequestId", g."resultMediaId",
             c.ciphertext, c.nonce, c."authTag", c."keyVersion"
        FROM "GenerationJob" g
-       JOIN "ProviderCredential" c ON c.id = g."credentialId" AND c."ownerId" = g."ownerId"
+       LEFT JOIN "ProviderCredential" c ON c.id = g."credentialId" AND c."ownerId" = g."ownerId"
       WHERE g.id = $1 AND g."ownerId" = $2 AND g."projectId" = $3`,
     [job.generationJobId, job.ownerId, job.projectId]
   );
   return result.rows[0];
 }
 
-function apiKey(row: GenerationRow, env: Record<string, string | undefined>): string {
+function hasCredential(row: GenerationRow): row is GenerationRow & {
+  credentialId: string;
+  ciphertext: Buffer;
+  nonce: Buffer;
+  authTag: Buffer;
+  keyVersion: number;
+} {
+  return Boolean(row.credentialId && row.ciphertext && row.nonce && row.authTag && row.keyVersion != null);
+}
+
+async function failMissingCredential(pool: pg.Pool, job: FalImageJob): Promise<Record<string, unknown>> {
+  await pool.query(
+    `UPDATE "GenerationJob" SET state = 'failed', "failureCode" = 'fal_not_connected', "updatedAt" = NOW()
+      WHERE id = $1 AND "ownerId" = $2 AND state NOT IN ('ready', 'cancelled', 'failed', 'submission_uncertain')`,
+    [job.generationJobId, job.ownerId]
+  );
+  return { state: "failed" };
+}
+
+function apiKey(row: GenerationRow & {
+  credentialId: string;
+  ciphertext: Buffer;
+  nonce: Buffer;
+  authTag: Buffer;
+  keyVersion: number;
+}, env: Record<string, string | undefined>): string {
   const vault = credentialVaultFromEnv(env);
   const encrypted: EncryptedCredential = {
     ciphertext: row.ciphertext,
@@ -119,6 +144,7 @@ export async function processFalImageJob(
   }
   // Media already quarantined — do not re-poll or re-download on worker retry.
   if (row.resultMediaId) return { state: row.state };
+  if (!hasCredential(row)) return failMissingCredential(pool, job);
 
   if (row.state === "submitting" && !row.providerRequestId) {
     // ponytail: crash after provider accept / before ID persist. Ceiling is manual
@@ -141,6 +167,7 @@ export async function processFalImageJob(
     );
     if (!claimed.rowCount) return { state: "ignored" };
     row = (await loadJob(pool, job))!;
+    if (!row) return { state: "ignored" };
     if (row.cancelRequested) {
       await pool.query(
         `UPDATE "GenerationJob" SET state = 'cancelled', "updatedAt" = NOW()
@@ -149,6 +176,7 @@ export async function processFalImageJob(
       );
       return { state: "cancelled" };
     }
+    if (!hasCredential(row)) return failMissingCredential(pool, job);
     const key = apiKey(row, env);
     const submitted = await submitImage(key, { prompt: row.prompt }, fetchImpl, 30_000, signal);
     await pool.query(
@@ -158,9 +186,11 @@ export async function processFalImageJob(
       [submitted.request_id, job.generationJobId, job.ownerId]
     );
     row = (await loadJob(pool, job))!;
+    if (!row) return { state: "ignored" };
   }
 
   if (!row.providerRequestId) return { state: row.state };
+  if (!hasCredential(row)) return failMissingCredential(pool, job);
   const key = apiKey(row, env);
   let completed = false;
   const deadline = Date.now() + pollCeilingMs;

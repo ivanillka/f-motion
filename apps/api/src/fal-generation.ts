@@ -389,6 +389,12 @@ export class PostgresFalGenerationService implements FalGenerationService {
       if (await activeJobCount(client, ownerId) > 0) {
         throw new FalGenerationBusyError("active FAL generation");
       }
+      try {
+        await this.credentials.decryptForOwner(ownerId);
+      } catch (error) {
+        if (error instanceof FalCredentialMissingError) throw error;
+        throw error;
+      }
       const outboxKind = row.kind === "image_to_video" ? "generate-fal-video" : "generate-fal-image";
       if (row.kind === "image_to_video") {
         const snapshot = asVideoSnapshot(row.inputJson);

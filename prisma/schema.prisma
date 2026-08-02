@@ -214,8 +214,8 @@ model GenerationJob {
   projectId         String
   project           Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   sceneId           String
-  credentialId      String
-  credential        ProviderCredential @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+  credentialId      String?
+  credential        ProviderCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
   kind              GenerationKind  @default(image)
   sourceMediaId     String?
   sourceMedia       MediaAsset?     @relation("GenerationSourceMedia", fields: [sourceMediaId], references: [id], onDelete: SetNull)

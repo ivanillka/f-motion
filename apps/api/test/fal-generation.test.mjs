@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { FalCredentialMissingError } from "../dist/fal-credentials.js";
 import {
   FalGenerationBusyError,
-  PostgresFalGenerationService
+  PostgresFalGenerationService,
+  falGenerationHttpError
 } from "../dist/fal-generation.js";
 import { createTestApp } from "../dist/server.js";
 
@@ -260,6 +262,46 @@ test("FAL video quote route is body-exact and owner-scoped", async () => {
       body: JSON.stringify({ motion_prompt: "x", endpoint: "nope" })
     });
     assert.equal(bad.status, 422);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("confirm after disconnect fails closed as fal_not_connected", async () => {
+  const pool = generationFakePool([baseJob({ state: "quoted" })]);
+  const disconnected = {
+    ...stubCredentials,
+    async decryptForOwner() { throw new FalCredentialMissingError("FAL is not connected"); }
+  };
+  const service = new PostgresFalGenerationService(pool, disconnected);
+  await assert.rejects(
+    () => service.confirm("owner", "job-1", "11111111-1111-4111-8111-111111111111"),
+    FalCredentialMissingError
+  );
+  assert.equal(pool.jobs.get("job-1").state, "quoted");
+
+  const mapped = falGenerationHttpError(new FalCredentialMissingError("FAL is not connected"));
+  assert.equal(mapped?.status, 409);
+  assert.equal(mapped?.body.type, "fal_not_connected");
+
+  const server = createServer(createTestApp({
+    falGeneration: {
+      async quoteImage() { throw new Error("unused"); },
+      async quoteVideo() { throw new Error("unused"); },
+      async confirm() { throw new FalCredentialMissingError("FAL is not connected"); },
+      async get() { return undefined; },
+      async cancel() { throw new Error("unused"); }
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const response = await fetch(`${origin}/api/generation-jobs/job-1/confirm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idempotency_key: "11111111-1111-4111-8111-111111111111" })
+    });
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).type, "fal_not_connected");
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
