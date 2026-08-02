@@ -44,7 +44,7 @@ interface GenerationJobView {
   id: string;
   project_id: string;
   scene_id: string;
-  kind: "image";
+  kind: "image" | "image_to_video";
   endpoint_id: string;
   state: string;
   cancel_requested: boolean;
@@ -122,6 +122,10 @@ function App() {
   const [falGenPrompt, setFalGenPrompt] = useState("");
   const [falGenJob, setFalGenJob] = useState<GenerationJobView>();
   const [falGenBusy, setFalGenBusy] = useState(false);
+  const [falVideoOpen, setFalVideoOpen] = useState(false);
+  const [falVideoPrompt, setFalVideoPrompt] = useState("");
+  const [falVideoJob, setFalVideoJob] = useState<GenerationJobView>();
+  const [falVideoBusy, setFalVideoBusy] = useState(false);
   const [pexelsCredential, setPexelsCredential] = useState<PexelsCredentialView>();
   const [pexelsUnavailable, setPexelsUnavailable] = useState(false);
   const [pexelsKey, setPexelsKey] = useState("");
@@ -182,6 +186,10 @@ function App() {
     setFalGenPrompt("");
     setFalGenJob(undefined);
     setFalGenBusy(false);
+    setFalVideoOpen(false);
+    setFalVideoPrompt("");
+    setFalVideoJob(undefined);
+    setFalVideoBusy(false);
     setPexelsCredential(undefined);
     setPexelsUnavailable(false);
     setPexelsKey("");
@@ -1142,6 +1150,171 @@ function App() {
     }
   }
 
+
+  function falVideoStorageKey(projectId: string, sceneId: string) {
+    return `fengine-fal-video:${projectId}:${sceneId}`;
+  }
+
+  function openFalAnimate(scene: Scene) {
+    if (!falCredential?.connected || falUnavailable) {
+      showFalLock();
+      return;
+    }
+    const media = scene.media_id ? sceneMedia[scene.media_id] : undefined;
+    const type = media?.detected?.type;
+    if (!media || media.state !== "ready" || type === "video/mp4") {
+      setStatus("Animate needs a ready still image on this scene.");
+      return;
+    }
+    setFalVideoPrompt("gentle camera drift, subtle motion");
+    setFalVideoJob(undefined);
+    setFalVideoOpen(true);
+    const projectId = project?.id;
+    if (!projectId) return;
+    const stored = localStorage.getItem(falVideoStorageKey(projectId, scene.id));
+    if (!stored) return;
+    void (async () => {
+      try {
+        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${stored}`);
+        setFalVideoJob(job);
+        setFalVideoPrompt(job.prompt);
+        if (!["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(job.state)) {
+          void pollFalVideo(job.id);
+        }
+      } catch {
+        localStorage.removeItem(falVideoStorageKey(projectId, scene.id));
+      }
+    })();
+  }
+
+  async function quoteFalVideo() {
+    if (!project || !activeScene?.media_id) return;
+    const prompt = falVideoPrompt.trim();
+    if (!prompt || prompt.length > 500) {
+      setStatus("Enter a motion prompt between 1 and 500 characters.");
+      return;
+    }
+    setFalVideoBusy(true);
+    setStatus("Requesting FAL video price…");
+    try {
+      const job = await api.request<GenerationJobView>(
+        `/api/projects/${project.id}/scenes/${activeScene.id}/fal/video-quotes`,
+        {
+          method: "POST",
+          body: JSON.stringify({ source_media_id: activeScene.media_id, motion_prompt: prompt })
+        }
+      );
+      setFalVideoJob(job);
+      localStorage.setItem(falVideoStorageKey(project.id, activeScene.id), job.id);
+      setStatus("Review the FAL price, then confirm to generate one 6-second video.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "fal_not_connected"
+        ? "Connect your FAL API key in Settings first."
+        : type === "fal_generation_busy"
+          ? "Only one active FAL generation is allowed. Wait or cancel it."
+          : "FAL could not price this video. Check that the scene still has a ready portrait image.");
+    } finally {
+      setFalVideoBusy(false);
+    }
+  }
+
+  async function confirmFalVideo() {
+    if (!project || !activeScene || !falVideoJob || falVideoJob.state !== "quoted") return;
+    if (falVideoJob.quote.estimated_total === null) return;
+    setFalVideoBusy(true);
+    setStatus("Confirming FAL video generation…");
+    try {
+      const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falVideoJob.id}/confirm`, {
+        method: "POST",
+        body: JSON.stringify({ idempotency_key: crypto.randomUUID() })
+      });
+      setFalVideoJob(job);
+      localStorage.setItem(falVideoStorageKey(project.id, activeScene.id), job.id);
+      setStatus("FAL video generation queued.");
+      void pollFalVideo(job.id);
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "quote_expired"
+        ? "This quote expired. Request a new price."
+        : type === "source_changed"
+          ? "The source image changed. Request a new price."
+          : "FAL video generation could not be confirmed.");
+    } finally {
+      setFalVideoBusy(false);
+    }
+  }
+
+  async function pollFalVideo(jobId: string) {
+    const deadline = Date.now() + 25 * 60_000;
+    while (Date.now() < deadline) {
+      try {
+        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
+        setFalVideoJob(job);
+        if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
+          if (job.state === "ready") setStatus("AI video ready — review it before attaching.");
+          else if (job.state === "cancelled") setStatus("FAL video generation cancelled.");
+          else setStatus(falGenFailureMessage(job));
+          return;
+        }
+        setStatus(`FAL video · ${job.state.replaceAll("_", " ")}`);
+      } catch {
+        setStatus("Could not refresh FAL video status.");
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    setStatus("FAL video is still running. Reopen Animate this image to check again.");
+  }
+
+  async function cancelFalVideo() {
+    if (!falVideoJob) return;
+    setFalVideoBusy(true);
+    try {
+      const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falVideoJob.id}/cancel`, { method: "POST" });
+      setFalVideoJob(job);
+      setStatus(job.state === "cancelled"
+        ? "FAL video generation cancelled."
+        : "Cancel requested. FAL may still bill work that already started.");
+    } catch {
+      setStatus("FAL video generation could not be cancelled.");
+    } finally {
+      setFalVideoBusy(false);
+    }
+  }
+
+  async function useFalVideoMedia() {
+    if (!project || !falVideoJob?.result_media || falVideoJob.result_media.state !== "ready") return;
+    const scene = project.scenes.find(({ id }) => id === falVideoJob.scene_id);
+    if (!scene) return;
+    setFalVideoBusy(true);
+    setBusy(true);
+    try {
+      const media = falVideoJob.result_media;
+      const updated = await api.command(project.id, project.revision, "update_scene", {
+        scene: { ...scene, media_id: media.id }
+      });
+      setProject(updated);
+      setSceneMedia((current) => ({ ...current, [media.id]: media }));
+      setSceneProgress((current) => ({ ...current, [scene.id]: "ready" }));
+      localStorage.removeItem(falVideoStorageKey(project.id, scene.id));
+      setFalVideoOpen(false);
+      setStatus(`Scene ${scene.order + 1} uses AI-generated FAL video. Preview may loop or trim to the scene duration.`);
+    } catch (error) {
+      if (error instanceof ApiResponseError && error.status === 409) {
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          sceneId: scene.id,
+          operation: "AI video attach"
+        });
+        return;
+      }
+      setStatus("Generated video could not be attached.");
+    } finally {
+      setFalVideoBusy(false);
+      setBusy(false);
+    }
+  }
+
   function showFalLock() {
     setFeatureLock(falCredential?.connected
       ? { title: "Generate AI stills from a scene", message: "Open a scene in the storyboard and choose Generate AI image. Each still is quoted and confirmed before FAL charges your account." }
@@ -1343,7 +1516,7 @@ function App() {
             Video by <a href={activeMedia.attribution.attributionUrl} target="_blank" rel="noreferrer">{activeMedia.attribution.creator}</a>
             {" · "}<a href="https://www.pexels.com" target="_blank" rel="noreferrer">Pexels</a>
           </p>}
-          {activeMedia?.generation?.source === "FAL" && <p>AI-generated with FAL · {activeMedia.generation.model}</p>}
+          {activeMedia?.generation?.source === "FAL" && <p>AI-generated with FAL{activeMedia.generation.derivedFromImage ? " · from your still" : ""} · {activeMedia.generation.model}</p>}
         </div>
 
         <div className="scene-controls">
@@ -1386,6 +1559,13 @@ function App() {
             onClick={() => openFalGenerate(activeScene)}>
             {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Generate AI image for scene {activeSceneNumber}
           </button>
+          {activeMedia?.state === "ready" && activeMedia.detected?.type !== "video/mp4" && (
+            <button className={!falCredential?.connected || falUnavailable ? "locked-feature" : undefined}
+              disabled={busy || falVideoBusy}
+              onClick={() => openFalAnimate(activeScene)}>
+              {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Animate this image for scene {activeSceneNumber}
+            </button>
+          )}
         </div>
       </div>
 
@@ -1461,6 +1641,55 @@ function App() {
             </>
           )}
           <button className="secondary" disabled={falGenBusy} onClick={() => setFalGenOpen(false)}>Close</button>
+        </div>
+      </dialog>}
+      {falVideoOpen && activeScene && <dialog open aria-labelledby="fal-video-title">
+        <h2 id="fal-video-title">Animate image for scene {activeSceneNumber}</h2>
+        <p>Creates one 6-second Hailuo video from the selected still. Charged directly to your FAL account. The accurate preview may loop or trim this clip to the scene duration.</p>
+        {activePreviewUrl && <img src={activePreviewUrl} alt="Source still for animation" />}
+        <label htmlFor="fal-video-prompt">Motion prompt
+          <textarea id="fal-video-prompt" maxLength={500} value={falVideoPrompt} disabled={falVideoBusy || (falVideoJob && !["quoted", "failed", "cancelled", "submission_uncertain", "ready"].includes(falVideoJob.state))} onChange={(event) => setFalVideoPrompt(event.target.value)} />
+        </label>
+        {falVideoJob && <div className="notice">
+          <p>Model · MiniMax Hailuo 2.3 Fast · 6 seconds</p>
+          <p>{falVideoJob.quote.currency} {falVideoJob.quote.unit_price} per {falVideoJob.quote.unit}
+            {falVideoJob.quote.estimated_total !== null
+              ? ` · estimated total ${falVideoJob.quote.currency} ${falVideoJob.quote.estimated_total}`
+              : ` · ${falVideoJob.quote.estimated_total_explanation ?? "FAL could not calculate a total"}`}</p>
+          <p>Status · {falVideoJob.state.replaceAll("_", " ")}</p>
+        </div>}
+        {falVideoJob?.state === "ready" && falVideoJob.result_media && (
+          <div>
+            {(falVideoJob.result_media.previewUrl)
+              ? <video src={falVideoJob.result_media.previewUrl} controls playsInline muted preload="metadata" />
+              : <p>Generated video is ready for review.</p>}
+            <p>AI-generated with FAL{falVideoJob.result_media.generation?.derivedFromImage ? " · from your still" : ""}</p>
+          </div>
+        )}
+        <div className="dialog-actions">
+          {(!falVideoJob || ["failed", "cancelled", "submission_uncertain", "ready"].includes(falVideoJob.state)) && (
+            <button disabled={falVideoBusy || !falVideoPrompt.trim()} onClick={() => void quoteFalVideo()}>Get FAL price</button>
+          )}
+          {falVideoJob?.state === "quoted" && (
+            <button disabled={falVideoBusy || falVideoJob.quote.estimated_total === null} onClick={() => void confirmFalVideo()}>Generate one 6-second video</button>
+          )}
+          {falVideoJob && !["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(falVideoJob.state) && (
+            <button className="secondary" disabled={falVideoBusy} onClick={() => void cancelFalVideo()}>Cancel generation</button>
+          )}
+          {falVideoJob?.state === "ready" && falVideoJob.result_media?.state === "ready" && (
+            <>
+              <button disabled={falVideoBusy || busy} onClick={() => void useFalVideoMedia()}>Use video for scene {activeSceneNumber}</button>
+              <button className="secondary" disabled={falVideoBusy} onClick={() => {
+                setFalVideoJob(undefined);
+                setStatus("Current image kept.");
+              }}>Keep image</button>
+              <button className="secondary" disabled={falVideoBusy} onClick={() => {
+                setFalVideoJob(undefined);
+                setStatus("Request a new FAL price to generate another video.");
+              }}>Generate another</button>
+            </>
+          )}
+          <button className="secondary" disabled={falVideoBusy} onClick={() => setFalVideoOpen(false)}>Close</button>
         </div>
       </dialog>}
       {conflict && <dialog open><h2>Newer changes exist</h2>

@@ -384,6 +384,27 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       next(error);
     }
   });
+  app.post("/api/projects/:projectId/scenes/:sceneId/fal/video-quotes", async (request, response, next) => {
+    try {
+      if (!options.falGeneration) return falGenUnavailable(response);
+      if (!exactObject(request.body, ["source_media_id", "motion_prompt"])) {
+        return response.status(422).json({ type: "validation", message: "invalid video quote" });
+      }
+      const body = request.body as { source_media_id?: unknown; motion_prompt?: unknown };
+      const job = await options.falGeneration.quoteVideo(
+        String(response.locals.ownerId),
+        request.params.projectId,
+        request.params.sceneId,
+        body.source_media_id,
+        body.motion_prompt
+      );
+      response.status(201).json(job);
+    } catch (error) {
+      const mapped = falGenerationHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
   app.post("/api/generation-jobs/:jobId/confirm", async (request, response, next) => {
     try {
       if (!options.falGeneration) return falGenUnavailable(response);

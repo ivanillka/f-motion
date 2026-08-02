@@ -40,6 +40,7 @@ export interface StoredMedia {
     source: "FAL";
     model: string;
     generationJobId?: string;
+    derivedFromMediaId?: string;
     generatedAt: string;
   };
 }
@@ -64,6 +65,7 @@ export interface SceneMediaView {
     source: "FAL";
     model: string;
     generatedAt: string;
+    derivedFromImage?: true;
   };
   previewUrl?: string;
 }
@@ -100,7 +102,8 @@ function safeFalGeneration(value: unknown): SceneMediaView["generation"] {
   const generatedAt = typeof attribution.generatedAt === "string" ? attribution.generatedAt.trim() : "";
   if (attribution.source !== "FAL" || !model || model.length > 200 || !generatedAt) return undefined;
   if (Number.isNaN(Date.parse(generatedAt))) return undefined;
-  return { source: "FAL", model, generatedAt };
+  const derived = typeof attribution.derivedFromMediaId === "string" && attribution.derivedFromMediaId.length > 0;
+  return { source: "FAL", model, generatedAt, ...(derived ? { derivedFromImage: true as const } : {}) };
 }
 
 /** Builds the complete client-safe projection; storage keys never cross this boundary. */

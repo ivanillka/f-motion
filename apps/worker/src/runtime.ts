@@ -6,6 +6,7 @@ import {
   PutObjectCommand,
   S3Client
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { isProjectSnapshot, type ProjectSnapshot } from "@f-engine/contracts";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdtemp, rm, stat } from "node:fs/promises";
@@ -32,6 +33,7 @@ import {
 } from "./index.js";
 import type { InspectionJob, PreviewJob, QueueHandlers } from "./queue.js";
 import { processFalImageJob } from "./fal-image.js";
+import { processFalVideoJob } from "./fal-video.js";
 
 interface ObjectIdentity {
   etag: string;
@@ -56,6 +58,8 @@ export interface WorkerObjectStore {
     contentLength: number,
     signal?: AbortSignal
   ): Promise<void>;
+  /** Short-lived HTTPS GET for sealed objects; used only for outbound FAL submit. */
+  signedGet(objectKey: string, expiresInSeconds?: number): Promise<string>;
 }
 
 class RenderCompletionRefusedError extends Error {}
@@ -103,6 +107,15 @@ export class S3WorkerObjectStore implements WorkerObjectStore {
     readonly bucket: string,
     readonly probeTimeoutMs = defaultMediaLimits.probeTimeoutMs
   ) {}
+
+  async signedGet(objectKey: string, expiresInSeconds = 300): Promise<string> {
+    return getSignedUrl(
+      this.client,
+      new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }),
+      { expiresIn: expiresInSeconds }
+    );
+  }
+
 
   async inspect(objectKey: string, maxBytes: number, signal?: AbortSignal): Promise<InspectionResult> {
     const head = await this.client.send(new HeadObjectCommand({
@@ -489,6 +502,9 @@ export function createQueueHandlers(
     },
     async generateFalImage(job, signal) {
       return processFalImageJob(pool, store, job, signal, env);
+    },
+    async generateFalVideo(job, signal) {
+      return processFalVideoJob(pool, store, job, signal, env);
     },
     async render(job: PreviewJob, signal: AbortSignal) {
       let stored: Awaited<ReturnType<typeof storedRender>>;

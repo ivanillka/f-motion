@@ -4,6 +4,7 @@ import { PgBoss, type Job } from "pg-boss";
 export const inspectionQueue = "inspect-media";
 export const renderQueue = "render-preview";
 export const falImageQueue = "generate-fal-image";
+export const falVideoQueue = "generate-fal-video";
 
 export interface InspectionJob {
   assetId: string;
@@ -25,10 +26,13 @@ export interface FalImageQueueJob {
   projectId: string;
 }
 
+export type FalVideoQueueJob = FalImageQueueJob;
+
 export interface QueueHandlers {
   inspect(job: InspectionJob, signal: AbortSignal): Promise<Record<string, unknown>>;
   render(job: PreviewJob, signal: AbortSignal): Promise<Record<string, unknown>>;
   generateFalImage?(job: FalImageQueueJob, signal: AbortSignal): Promise<Record<string, unknown>>;
+  generateFalVideo?(job: FalVideoQueueJob, signal: AbortSignal): Promise<Record<string, unknown>>;
 }
 
 interface OutboxRow {
@@ -67,7 +71,7 @@ export async function dispatchOutbox(pool: pg.Pool, boss: PgBoss): Promise<numbe
       retryLimit: 2,
       retryDelay: 1,
       retryBackoff: true,
-      expireInSeconds: row.kind === renderQueue ? 300 : row.kind === falImageQueue ? 600 : 60
+      expireInSeconds: row.kind === renderQueue ? 300 : (row.kind === falImageQueue || row.kind === falVideoQueue) ? 1200 : 60
     });
     // A null id means pg-boss already has this immutable outbox UUID. The send
     // still succeeded, so a retry after a mark failure can close the crash window.
@@ -116,6 +120,7 @@ export async function startQueueRuntime(
   await boss.createQueue(inspectionQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 60 });
   await boss.createQueue(renderQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 300 });
   await boss.createQueue(falImageQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 600 });
+  await boss.createQueue(falVideoQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 1200 });
   await boss.work<InspectionJob>(inspectionQueue, { pollingIntervalSeconds: 1 }, async (jobs: Job<InspectionJob>[]) => {
     const job = jobs[0];
     if (!job) return;
@@ -131,6 +136,13 @@ export async function startQueueRuntime(
       const job = jobs[0];
       if (!job) return;
       return handlers.generateFalImage!(job.data, job.signal);
+    });
+  }
+  if (handlers.generateFalVideo) {
+    await boss.work<FalVideoQueueJob>(falVideoQueue, { pollingIntervalSeconds: 1 }, async (jobs: Job<FalVideoQueueJob>[]) => {
+      const job = jobs[0];
+      if (!job) return;
+      return handlers.generateFalVideo!(job.data, job.signal);
     });
   }
   await dispatchOutbox(pool, boss);

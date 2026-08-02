@@ -123,6 +123,7 @@ model MediaAsset {
   detected            Json?
   attribution         Json?
   generationResults   GenerationJob[] @relation("GenerationResultMedia")
+  generationSources   GenerationJob[] @relation("GenerationSourceMedia")
 
   @@unique([ownerId, projectId, id])
   @@unique([quarantineObjectKey])
@@ -189,6 +190,7 @@ model WorkOutbox {
 
 enum GenerationKind {
   image
+  image_to_video
 }
 
 enum GenerationState {
@@ -215,6 +217,8 @@ model GenerationJob {
   credentialId      String
   credential        ProviderCredential @relation(fields: [credentialId], references: [id], onDelete: Restrict)
   kind              GenerationKind  @default(image)
+  sourceMediaId     String?
+  sourceMedia       MediaAsset?     @relation("GenerationSourceMedia", fields: [sourceMediaId], references: [id], onDelete: SetNull)
   endpointId        String
   prompt            String
   inputJson         Json

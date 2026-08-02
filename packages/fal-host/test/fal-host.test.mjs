@@ -92,6 +92,14 @@ import {
   FalImageError,
   assertFalMediaUrl,
   cancelImage,
+  FAL_VIDEO_ENDPOINT_ID,
+  estimateVideo,
+  falVideoInput,
+  submitVideo,
+  videoStatus,
+  videoResult,
+  cancelVideo,
+  assertFalVideoMediaUrl,
   estimateImage,
   falImageInput,
   imageResult,
@@ -147,4 +155,42 @@ test("image status, result, cancel, and fal.media URL bounds stay typed", async 
     submitImage("k", { prompt: "x" }, async () => new Response("no", { status: 429 })),
     (error) => error instanceof FalImageError && error.code === "rate_limited"
   );
+});
+
+test("estimateVideo and submitVideo pin Hailuo 6s contract without inventing totals", async () => {
+  const quote = await estimateVideo("synthetic:key", async () => new Response(JSON.stringify({
+    prices: [{ endpoint_id: FAL_VIDEO_ENDPOINT_ID, unit_price: 0.19, unit: "video", currency: "USD" }]
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  assert.equal(quote.estimated_total, 0.19);
+  const unclear = await estimateVideo("synthetic:key", async () => new Response(JSON.stringify({
+    prices: [{ endpoint_id: FAL_VIDEO_ENDPOINT_ID, unit_price: 0.01, unit: "compute second", currency: "USD" }]
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  assert.equal(unclear.estimated_total, null);
+  let seen;
+  const submitted = await submitVideo("k", {
+    prompt: "slow pan right",
+    imageUrl: "https://example.invalid/signed.jpg"
+  }, async (url, init) => {
+    seen = { url, init };
+    return new Response(JSON.stringify({ request_id: "v1" }), {
+      status: 200, headers: { "content-type": "application/json" }
+    });
+  });
+  assert.equal(submitted.request_id, "v1");
+  assert.equal(seen.url, `https://queue.fal.run/${FAL_VIDEO_ENDPOINT_ID}`);
+  assert.deepEqual(JSON.parse(seen.init.body), falVideoInput("slow pan right", "https://example.invalid/signed.jpg"));
+  assert.equal(JSON.parse(seen.init.body).duration, "6");
+});
+
+test("video result host allowlist accepts falserverless GCS and rejects others", async () => {
+  const result = await videoResult("k", "req", async () => new Response(JSON.stringify({
+    video: { url: "https://storage.googleapis.com/falserverless/example_outputs/out.mp4" }
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  assert.match(result.url, /falserverless/);
+  assert.throws(() => assertFalVideoMediaUrl("https://storage.googleapis.com/other/out.mp4"));
+  assert.throws(() => assertFalVideoMediaUrl("https://evil.example/out.mp4"));
+  assert.deepEqual(await videoStatus("k", "req", async () => new Response(JSON.stringify({ status: "COMPLETED" }), {
+    status: 200, headers: { "content-type": "application/json" }
+  })), { status: "COMPLETED" });
+  await cancelVideo("k", "req", async () => new Response(null, { status: 202 }));
 });

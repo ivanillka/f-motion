@@ -69,7 +69,12 @@ const mediaRepository = {
     if (asset.state === "inspecting" && !inspectionPolls.has(id)) {
       inspectionPolls.set(id, 1);
       asset.state = "ready";
-      asset.detected = { type: asset.declaredType, bytes: asset.maxBytes };
+      asset.detected = { type: asset.declaredType, bytes: asset.maxBytes, width: 720, height: 1280 };
+      if (asset.declaredType.startsWith("image/") || asset.declaredType === "video/mp4") {
+        asset.sealedObjectKey = asset.sealedObjectKey
+          ?? `projects/${projectId}/media-sealed/${id}`;
+      }
+      return structuredClone(asset);
     }
     return snapshot;
   },
@@ -164,6 +169,31 @@ const falCredentials = {
   async disconnect() {}
 };
 const falGeneration = {
+  async quoteVideo(ownerId, projectId, sceneId, sourceMediaId, motionPrompt) {
+    const job = {
+      id: randomUUID(),
+      project_id: projectId,
+      scene_id: sceneId,
+      kind: "image_to_video",
+      endpoint_id: "fal-ai/minimax/hailuo-2.3-fast/standard/image-to-video",
+      state: "quoted",
+      cancel_requested: false,
+      prompt: String(motionPrompt).trim(),
+      quote: {
+        endpoint_id: "fal-ai/minimax/hailuo-2.3-fast/standard/image-to-video",
+        unit_price: 0.19,
+        unit: "video",
+        currency: "USD",
+        estimated_total: 0.19
+      },
+      quote_expires_at: new Date(Date.now() + 600_000).toISOString(),
+      source_media_id: sourceMediaId,
+      ownerId,
+      projectId
+    };
+    falJobs.set(job.id, job);
+    return falJobView(job);
+  },
   async quoteImage(ownerId, projectId, sceneId, prompt) {
     const job = {
       id: randomUUID(),
@@ -213,27 +243,42 @@ const falGeneration = {
             quarantineObjectKey: `projects/${job.projectId}/media-quarantine/${assetId}`,
             sealedObjectKey: `projects/${job.projectId}/media-sealed/fal-${assetId}`,
             state: "ready",
-            declaredType: "image/jpeg",
+            declaredType: job.kind === "image_to_video" ? "video/mp4" : "image/jpeg",
             maxBytes: 4096,
-            detected: { type: "image/jpeg", bytes: 4096, width: 720, height: 1280 },
+            detected: job.kind === "image_to_video"
+              ? { type: "video/mp4", bytes: 4096, width: 720, height: 1280, duration_ms: 6000 }
+              : { type: "image/jpeg", bytes: 4096, width: 720, height: 1280 },
             attribution: {
               source: "FAL",
-              model: "fal-ai/flux/schnell",
+              model: job.kind === "image_to_video"
+                ? "fal-ai/minimax/hailuo-2.3-fast/standard/image-to-video"
+                : "fal-ai/flux/schnell",
+              ...(job.kind === "image_to_video" && job.source_media_id
+                ? { derivedFromMediaId: job.source_media_id }
+                : {}),
               generatedAt: new Date().toISOString()
             }
           });
         }
         job.state = "ready";
+        const isVideo = job.kind === "image_to_video";
         job.result_media = {
           id: assetId,
           state: "ready",
-          detected: { type: "image/jpeg", bytes: 4096, width: 720, height: 1280 },
+          detected: isVideo
+            ? { type: "video/mp4", bytes: 4096, width: 720, height: 1280, duration_ms: 6000 }
+            : { type: "image/jpeg", bytes: 4096, width: 720, height: 1280 },
           generation: {
             source: "FAL",
-            model: "fal-ai/flux/schnell",
+            model: isVideo
+              ? "fal-ai/minimax/hailuo-2.3-fast/standard/image-to-video"
+              : "fal-ai/flux/schnell",
+            ...(isVideo ? { derivedFromImage: true } : {}),
             generatedAt: new Date().toISOString()
           },
-          previewUrl: "https://e2e-images.invalid/fal.jpg"
+          previewUrl: isVideo
+            ? "http://127.0.0.1:43141/downloads/fal-video"
+            : "https://e2e-images.invalid/fal.jpg"
         };
       }
     }

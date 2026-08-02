@@ -54,6 +54,7 @@ export interface SceneMediaView {
     source: "FAL";
     model: string;
     generatedAt: string;
+    derivedFromImage?: true;
   };
   previewUrl?: string;
 }

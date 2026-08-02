@@ -106,3 +106,58 @@ test("FAL generation routes stay unavailable when the service is disabled", asyn
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+test("FAL video quote route is body-exact and owner-scoped", async () => {
+  const service = {
+    async quoteImage() { throw new Error("unused"); },
+    async quoteVideo(ownerId, projectId, sceneId, sourceMediaId, prompt) {
+      assert.equal(ownerId, "authenticated-user");
+      assert.equal(sourceMediaId, "11111111-1111-4111-8111-111111111111");
+      assert.equal(prompt, "slow pan");
+      return {
+        id: "vjob",
+        project_id: projectId,
+        scene_id: sceneId,
+        kind: "image_to_video",
+        endpoint_id: "fal-ai/minimax/hailuo-2.3-fast/standard/image-to-video",
+        state: "quoted",
+        cancel_requested: false,
+        prompt,
+        quote: {
+          endpoint_id: "fal-ai/minimax/hailuo-2.3-fast/standard/image-to-video",
+          unit_price: 0.19,
+          unit: "video",
+          currency: "USD",
+          estimated_total: 0.19
+        },
+        quote_expires_at: new Date(Date.now() + 60_000).toISOString(),
+        source_media_id: sourceMediaId
+      };
+    },
+    async confirm() { throw new Error("unused"); },
+    async get() { return undefined; },
+    async cancel() { throw new Error("unused"); }
+  };
+  const server = createServer(createTestApp({ falGeneration: service }));
+  const origin = await listen(server);
+  try {
+    const ok = await fetch(`${origin}/api/projects/p1/scenes/s1/fal/video-quotes`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        source_media_id: "11111111-1111-4111-8111-111111111111",
+        motion_prompt: "slow pan"
+      })
+    });
+    assert.equal(ok.status, 201);
+    assert.equal((await ok.json()).kind, "image_to_video");
+    const bad = await fetch(`${origin}/api/projects/p1/scenes/s1/fal/video-quotes`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ motion_prompt: "x", endpoint: "nope" })
+    });
+    assert.equal(bad.status, 422);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
