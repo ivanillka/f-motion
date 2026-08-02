@@ -105,6 +105,25 @@ test("E2E worker rejects empty snapshots and missing fixture mappings", async ({
   expect(missing.status()).toBe(400);
 });
 
+test("locked provider actions explain the blocker and next action", async ({ page }) => {
+  await page.route("**/api/providers/pexels/credential", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ provider: "pexels", connected: false }) });
+    } else {
+      await route.continue();
+    }
+  });
+  await signIn(page);
+  await page.getByRole("button", { name: /Pexels Real stock video · locked/ }).click();
+  await expect(page.getByRole("heading", { name: "Pexels stock is locked" })).toBeVisible();
+  await expect(page.getByText("Connect your Pexels API key to search real stock video.")).toBeVisible();
+  await page.getByRole("button", { name: "Open provider settings" }).click();
+  await expect(page.getByRole("heading", { name: "Choose your video sources" })).toBeVisible();
+  await page.getByRole("button", { name: "Why is this locked?" }).first().click();
+  await expect(page.getByRole("heading", { name: "Pexels stock is locked" })).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+});
+
 test("upload journey, natural conflict recovery, render, and download", async ({ page }) => {
   await page.route("https://e2e-storage.invalid/**", (route) =>
     route.fulfill({ status: 200, body: "" }));

@@ -138,7 +138,14 @@ const media = {
     }
   }
 };
-const api = createTestApp({ ownerId: "e2e-owner", projects, renders, media }).listen(43140, "127.0.0.1");
+const pexelsCredentials = {
+  async status() { return { provider: "pexels", connected: true, hint: "1234" }; },
+  async connect() { return { provider: "pexels", connected: true, hint: "1234" }; },
+  async test() { return { provider: "pexels", connected: true, hint: "1234" }; },
+  async disconnect() {},
+  async client() { return media.pexels; }
+};
+const api = createTestApp({ ownerId: "e2e-owner", projects, renders, media, pexelsCredentials }).listen(43140, "127.0.0.1");
 const web = spawn("npm", ["run", "dev", "--workspace", "apps/web", "--", "--host", "127.0.0.1", "--port", "4173"], { stdio: "inherit" });
 
 const stop = () => {

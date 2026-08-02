@@ -159,7 +159,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   border: 1px solid var(--border);
   border-radius: 12px;
 }
-.provider-preview div { display: grid; gap: 3px; padding: 8px; }
+.provider-preview-item {
+  min-height: 0;
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+}
+.provider-preview-item:hover { background: var(--raised); border-color: var(--border); }
+.provider-preview-item[data-locked="true"] strong::before { content: "🔒 "; font-size: 0.75rem; }
 .provider-preview span { color: var(--muted); font-size: 0.76rem; line-height: 1.3; }
 .provider-card {
   display: grid;
@@ -174,6 +185,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .provider-card h2 { margin: 0; font-size: 1.35rem; }
 .provider-card strong { font-size: 1rem; }
 .provider-live { border-color: color-mix(in srgb, var(--success) 45%, var(--border)); }
+.provider-locked { border-color: color-mix(in srgb, var(--warning) 35%, var(--border)); }
 .provider-future { border-style: dashed; }
 .provider-status {
   width: fit-content;
@@ -185,6 +197,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   font-weight: 700;
 }
 .provider-soon { color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, transparent); }
+.lock-trigger {
+  min-height: 36px;
+  padding: 6px 10px;
+  color: var(--warning);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border));
+}
+.locked-feature { background: var(--surface); border: 1px solid var(--warning); }
 a { color: var(--accent-soft); }
 .notice {
   border-left: 3px solid var(--warning);
@@ -225,6 +245,18 @@ dialog {
   padding: 24px;
   max-width: 460px;
 }
+dialog[open] {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  width: min(460px, calc(100% - 32px));
+  margin: auto;
+  display: grid;
+  gap: 16px;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.66), 0 24px 80px rgba(0, 0, 0, 0.65);
+}
+.lock-label { color: var(--warning); font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
+dialog h2 { margin: 0; }
 [role="status"] { color: var(--success); font-size: 0.875rem; }
 header [role="status"] { color: var(--muted); }
 @media (max-width: 980px) {

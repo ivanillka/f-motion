@@ -36,6 +36,11 @@ interface PexelsCredentialView {
   hint?: string;
   validated_at?: string;
 }
+interface FeatureLock {
+  title: string;
+  message: string;
+  action?: "settings";
+}
 
 const architectureLabels = {
   goal: { story: "Tell a story", explain: "Explain something", promote: "Promote an idea or product", educate: "Teach the viewer" },
@@ -91,6 +96,7 @@ function App() {
   const [pexelsUnavailable, setPexelsUnavailable] = useState(false);
   const [pexelsKey, setPexelsKey] = useState("");
   const [pexelsBusy, setPexelsBusy] = useState(false);
+  const [featureLock, setFeatureLock] = useState<FeatureLock>();
   const api = useMemo(() => new ApiClient(
     () => tokenRef.current,
     () => {
@@ -134,6 +140,7 @@ function App() {
     setPexelsUnavailable(false);
     setPexelsKey("");
     setPexelsBusy(false);
+    setFeatureLock(undefined);
     setStep("sign-in");
   }
 
@@ -173,16 +180,17 @@ function App() {
   useEffect(() => localStorage.setItem("fengine-draft", draft), [draft]);
 
   useEffect(() => {
+    if (!token) return;
+    void loadFalCredential();
+    void loadPexelsCredential();
+  }, [token]);
+
+  useEffect(() => {
     if (step !== "settings") {
       setFalKey("");
       setPexelsKey("");
-      return;
     }
-    if (token) {
-      void loadFalCredential();
-      void loadPexelsCredential();
-    }
-  }, [step, token]);
+  }, [step]);
 
   useEffect(() => {
     if (!token) return;
@@ -652,13 +660,9 @@ function App() {
       const view = await api.request<FalCredentialView>("/api/providers/fal/credential");
       setFalCredential(view);
       setFalUnavailable(false);
-      setStatus("");
     } catch (error) {
       setFalCredential(undefined);
       setFalUnavailable(error instanceof ApiResponseError && error.status === 503);
-      setStatus(error instanceof ApiResponseError && error.status === 503
-        ? "FAL connection is not available on this deployment."
-        : "FAL connection status could not be loaded.");
     } finally {
       setFalBusy(false);
     }
@@ -790,6 +794,22 @@ function App() {
     }
   }
 
+  function showPexelsLock() {
+    setFeatureLock(pexelsUnavailable
+      ? { title: "Pexels is unavailable", message: "This deployment cannot connect Pexels. Upload your own media instead." }
+      : { title: "Pexels stock is locked", message: "Connect your Pexels API key to search real stock video.", action: "settings" });
+  }
+
+  function showFalLock() {
+    setFeatureLock(falCredential?.connected
+      ? { title: "AI generation is not live yet", message: "Your FAL key is connected. Nothing else is required for now." }
+      : { title: "FAL generation is locked", message: "Connect your FAL API key now. AI video and voice will unlock when the workflow launches.", action: "settings" });
+  }
+
+  function showFutureLock() {
+    setFeatureLock({ title: "More providers are coming", message: "This option is not available yet. No setup is required." });
+  }
+
   const activeScene = project?.scenes.find(({ id }) => id === activeSceneId)
     ?? project?.scenes[0]; // read-only fallback for an old/recovered selection
   const activeSceneNumber = activeScene ? activeScene.order + 1 : 0;
@@ -819,9 +839,15 @@ function App() {
       <h1>Drafts</h1>
       <p>Pick up where you left off or start a new video.</p>
       <aside className="provider-preview" aria-label="Creation sources">
-        <div><strong>Pexels</strong><span>Real stock video · available now</span></div>
-        <div><strong>FAL</strong><span>AI video + voice · workflow coming soon</span></div>
-        <div><strong>More</strong><span>New providers coming soon</span></div>
+        <button className="provider-preview-item" data-locked={!pexelsCredential?.connected} onClick={() => pexelsCredential?.connected ? setStep("settings") : showPexelsLock()}>
+          <strong>Pexels</strong><span>Real stock video · {pexelsCredential?.connected ? "unlocked" : "locked"}</span>
+        </button>
+        <button className="provider-preview-item" data-locked onClick={showFalLock}>
+          <strong>FAL</strong><span>AI video + voice · locked</span>
+        </button>
+        <button className="provider-preview-item" data-locked onClick={showFutureLock}>
+          <strong>More</strong><span>New providers · locked</span>
+        </button>
         <button className="secondary" onClick={() => setStep("settings")}>Choose video sources</button>
       </aside>
       <button onClick={startCreate}>Create new video</button>
@@ -961,7 +987,11 @@ function App() {
             <input id={`audio-${activeScene.id}`} type="range" min="0" max="1" step="0.05" defaultValue={activeScene.audio_level} onBlur={(event) => void saveScenePatch(activeScene.id, { audio_level: event.currentTarget.valueAsNumber })} />
           </label>
           <button className="secondary" onClick={() => void saveScenePatch(activeScene.id, { audio_level: activeScene.audio_level === 0 ? 1 : 0 })}>{activeScene.audio_level === 0 ? `Unmute scene ${activeSceneNumber}` : `Mute scene ${activeSceneNumber}`}</button>
-          <button disabled={busy || !activeScene.visual_prompt} onClick={() => void searchStock(activeScene.id)}>Find licensed media for scene {activeSceneNumber}</button>
+          <button className={!pexelsCredential?.connected ? "locked-feature" : undefined}
+            disabled={busy || (Boolean(pexelsCredential?.connected) && !activeScene.visual_prompt)}
+            onClick={() => pexelsCredential?.connected ? void searchStock(activeScene.id) : showPexelsLock()}>
+            {!pexelsCredential?.connected ? "🔒 " : ""}Find licensed media for scene {activeSceneNumber}
+          </button>
         </div>
       </div>
 
@@ -1016,25 +1046,28 @@ function App() {
       <h1>Choose your video sources</h1>
       <p>Connect only the services you want to use. Each provider stays under your account and uses your own API key.</p>
       <div className="provider-onboarding" aria-label="Video source options">
-        <article className="provider-card provider-live">
-          <span className="provider-status">{pexelsCredential?.connected ? "Connected" : "Available now"}</span>
+        <article className={`provider-card ${pexelsCredential?.connected ? "provider-live" : "provider-locked"}`}>
+          <span className={`provider-status ${pexelsCredential?.connected ? "" : "provider-soon"}`}>{pexelsCredential?.connected ? "Unlocked" : "Locked"}</span>
           <h2>Pexels</h2>
           <strong>Real stock video</strong>
           <p>Search licensed footage from real creators and select it scene by scene.</p>
-          <a href="#pexels-settings-title">{pexelsCredential?.connected ? "Manage Pexels" : "Connect Pexels"}</a>
+          {pexelsCredential?.connected
+            ? <a href="#pexels-settings-title">Manage Pexels</a>
+            : <button className="lock-trigger" onClick={showPexelsLock}>Why is this locked?</button>}
         </article>
         <article className="provider-card">
-          <span className="provider-status provider-soon">Workflow coming soon</span>
+          <span className="provider-status provider-soon">Locked</span>
           <h2>FAL</h2>
           <strong>AI video + voice</strong>
           <p>Connect your key now. AI video and voice generation will appear here after the generation workflow and cost confirmation are enabled.</p>
-          <a href="#fal-settings-title">{falCredential?.connected ? "Manage FAL" : "Connect FAL"}</a>
+          <button className="lock-trigger" onClick={showFalLock}>Why is this locked?</button>
         </article>
         <article className="provider-card provider-future">
           <span className="provider-status provider-soon">Coming soon</span>
           <h2>More providers</h2>
           <strong>More ways to create</strong>
           <p>Additional stock, AI video, voice, and media services can join the same provider flow.</p>
+          <button className="lock-trigger" onClick={showFutureLock}>Why is this locked?</button>
         </article>
       </div>
       <p>Pexels videos require on-product attribution — see “Use video by … · Pexels” in the editor when you add stock footage.</p>
@@ -1090,6 +1123,13 @@ function App() {
       <button disabled={authBusy} onClick={() => void signOut()}>Sign out</button>
       <button className="secondary" onClick={() => { setFalKey(""); setPexelsKey(""); setStep("drafts"); }}>Back to drafts</button>
     </section>}
+    {featureLock && <dialog open aria-labelledby="feature-lock-title">
+      <span className="lock-label">Locked</span>
+      <h2 id="feature-lock-title">{featureLock.title}</h2>
+      <p>{featureLock.message}</p>
+      {featureLock.action === "settings" && <button onClick={() => { setFeatureLock(undefined); setStep("settings"); }}>Open provider settings</button>}
+      <button className="secondary" onClick={() => setFeatureLock(undefined)}>Close</button>
+    </dialog>}
   </main>;
 }
 
