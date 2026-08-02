@@ -157,7 +157,10 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     body: JSON.stringify(body)
   });
   try {
-    assert.equal((await request(baseBody)).status, 201);
+    assert.equal((await request({
+      ...baseBody,
+      caption: "One final look. Open the gallery: https://fotium.vip/galleries/portrait"
+    })).status, 201);
     const repaired = await request({
       ...baseBody,
       media_urls: [
@@ -173,6 +176,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     assert.ok(project.scenes.every((scene) => scene.media_id));
     assert.notEqual(project.scenes[0].media_id, project.scenes[1].media_id);
     assert.equal(project.scenes[0].media_id, project.scenes[2].media_id);
+    assert.doesNotMatch(project.scenes.map(({ caption }) => caption).join(" "), /https:\/\//);
     assert.deepEqual(requested.map(({ redirect }) => redirect), ["error", "error"]);
     assert.equal(stored.length, 2);
 

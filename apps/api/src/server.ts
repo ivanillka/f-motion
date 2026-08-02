@@ -211,7 +211,13 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           importedMediaIds.push(id);
         }
       }
-      const currentScenes = project.scenes.length ? project.scenes : generatedScenes;
+      const textOnlyImportedDraft = project.scenes.length > 0 && project.scenes.every((scene) => !scene.media_id);
+      const currentScenes = textOnlyImportedDraft
+        ? generatedScenes.map((scene, index) => ({
+            ...scene,
+            ...(project.scenes[index]?.id ? { id: project.scenes[index].id } : {})
+          }))
+        : project.scenes.length ? project.scenes : generatedScenes;
       const scenes = currentScenes.map((scene, index) => {
         const mediaId = importedMediaIds[index % importedMediaIds.length];
         return mediaId && !scene.media_id
