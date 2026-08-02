@@ -4,15 +4,21 @@ import { accessPolicyFromEnv } from "./access-policy.js";
 import { externalImportConfigFromEnv } from "./external-import.js";
 import { PostgresProjectRepository } from "./domain.js";
 import { assertLocalAuthAllowed } from "./local-auth.js";
-import { PexelsClient, PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
+import { PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
 import { PostgresRenderRepository, renderProfilesFromEnv } from "./render-repository.js";
 import { createApp, createTestApp } from "./server.js";
 import {
   assertNoSharedFalCredential,
+  assertNoSharedPexelsCredential,
   credentialVaultFromEnv,
   falByokEnabled
 } from "@f-engine/fal-host";
 import { PostgresFalCredentialService } from "./fal-credentials.js";
+import {
+  PexelsProviderError,
+  PostgresPexelsCredentialService,
+  pexelsByokEnabled
+} from "./pexels-credentials.js";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -22,6 +28,7 @@ function required(name: string): string {
 
 assertLocalAuthAllowed(process.env);
 assertNoSharedFalCredential(process.env);
+assertNoSharedPexelsCredential(process.env);
 const accessPolicy = accessPolicyFromEnv(process.env);
 const externalImports = externalImportConfigFromEnv(process.env);
 
@@ -44,13 +51,22 @@ const objectStore = new PrivateObjectStore(new S3Client({
 
 const projects = new PostgresProjectRepository(pool);
 const renders = new PostgresRenderRepository(pool, renderProfilesFromEnv(process.env));
-const falCredentials = falByokEnabled(process.env)
-  ? new PostgresFalCredentialService(pool, credentialVaultFromEnv(process.env))
+const falEnabled = falByokEnabled(process.env);
+const pexelsEnabled = pexelsByokEnabled(process.env);
+const credentialVault = falEnabled || pexelsEnabled ? credentialVaultFromEnv(process.env) : undefined;
+const falCredentials = falEnabled
+  ? new PostgresFalCredentialService(pool, credentialVault!)
+  : undefined;
+const pexelsCredentials = pexelsEnabled
+  ? new PostgresPexelsCredentialService(pool, credentialVault!)
   : undefined;
 const media = {
   repository: new PostgresMediaRepository(pool),
   store: objectStore,
-  pexels: new PexelsClient(required("PEXELS_API_KEY"))
+  pexelsForOwner: async (ownerId: string) => {
+    if (!pexelsCredentials) throw new PexelsProviderError("unavailable");
+    return pexelsCredentials.client(ownerId);
+  }
 };
 
 const port = Number(process.env.PORT ?? 3000);
@@ -68,13 +84,14 @@ if (process.env.FENGINE_LOCAL_AUTH === "1") {
      ON CONFLICT (id) DO UPDATE SET state = 'active'`,
     [ownerId]
   );
-  createTestApp({ ownerId, projects, renders, media, ready, falCredentials }).listen(port);
+  createTestApp({ ownerId, projects, renders, media, ready, falCredentials, pexelsCredentials }).listen(port);
 } else {
   createApp({
     projects,
     renders,
     media,
     falCredentials,
+    pexelsCredentials,
     ready,
     authConfig: {
       issuer: required("SUPABASE_ISSUER"),

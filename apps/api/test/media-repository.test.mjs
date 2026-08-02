@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import {
   PexelsClient,
+  PexelsRequestError,
   PostgresMediaRepository,
   PrivateObjectStore,
   pexelsQueriesForBrief
@@ -297,6 +298,11 @@ test("PexelsClient.search uses the v1 portrait endpoint and maps safe previews",
     sourceUrl: "https://media.pexels.test/final.mp4",
     contentType: "video/mp4"
   }]);
+});
+
+test("PexelsClient.search maps malformed provider data to a safe typed error", async () => {
+  const pexels = new PexelsClient("server-only-key", async () => new Response("not json", { status: 200 }));
+  await assert.rejects(pexels.search("ocean"), (error) => error instanceof PexelsRequestError);
 });
 
 test("Pexels brief queries prefer concrete visual language over narrative prose", () => {

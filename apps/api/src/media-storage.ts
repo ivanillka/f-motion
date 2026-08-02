@@ -303,8 +303,8 @@ export class PexelsClient {
     const response = await this.request(`https://api.pexels.com/v1/videos/search?query=${encodeURIComponent(query)}&orientation=portrait&per_page=12`, {
       headers: { authorization: this.apiKey }
     });
-    if (!response.ok) throw new Error("Pexels unavailable");
-    const body = await response.json() as {
+    if (!response.ok) throw new PexelsRequestError();
+    let body: {
       videos?: Array<{
         id: number;
         url: string;
@@ -313,6 +313,11 @@ export class PexelsClient {
         video_files: Array<{ link: string; file_type: string; width: number; file_size?: number }>;
       }>;
     };
+    try {
+      body = await response.json() as typeof body;
+    } catch {
+      throw new PexelsRequestError();
+    }
     return (body.videos ?? []).flatMap((video) => {
       const file = video.video_files
         .filter(({ file_type: type, file_size: bytes }) =>
@@ -354,7 +359,7 @@ export class PexelsClient {
     let response: Response | undefined;
     try {
       response = await this.request(selected.sourceUrl, { signal: controller.signal });
-      if (!response.ok) throw new Error("Pexels media unavailable");
+      if (!response.ok) throw new PexelsRequestError();
       const bytes = await spoolBoundedBody(response, path, maximumMediaBytes, controller.signal);
       const id = randomUUID();
       const asset: StoredMedia = {
@@ -393,6 +398,11 @@ export class PexelsClient {
       await rm(directory, { recursive: true, force: true });
     }
   }
+}
+
+export class PexelsRequestError extends Error {
+  readonly name = "PexelsRequestError";
+  constructor() { super("Pexels unavailable"); }
 }
 
 /** Spool a response to a private file while enforcing a hard byte ceiling. */

@@ -22,7 +22,7 @@ export interface EncryptedCredential {
 export interface CredentialIdentity {
   id: string;
   ownerId: string;
-  provider: "fal";
+  provider: "fal" | "pexels";
 }
 
 export class FalProviderError extends Error {
@@ -68,6 +68,13 @@ export function assertNoSharedFalCredential(env: Record<string, string | undefin
   }
 }
 
+export function assertNoSharedPexelsCredential(env: Record<string, string | undefined>): void {
+  if ((env.FENGINE_ENV === "hosted" || env.NODE_ENV === "production")
+    && env.PEXELS_API_KEY !== undefined) {
+    throw new Error("shared Pexels credentials are forbidden in hosted mode");
+  }
+}
+
 function aad(identity: CredentialIdentity, keyVersion: number): Buffer {
   return Buffer.from(`${identity.id}\n${identity.ownerId}\n${identity.provider}\n${keyVersion}`, "utf8");
 }
@@ -104,13 +111,17 @@ export function decryptCredential(
   return Buffer.concat([decipher.update(encrypted.ciphertext), decipher.final()]).toString("utf8");
 }
 
-export function normalizeFalCredential(value: unknown): string {
-  if (typeof value !== "string") throw new Error("invalid FAL credential");
+export function normalizeProviderCredential(value: unknown): string {
+  if (typeof value !== "string") throw new Error("invalid provider credential");
   const normalized = value.trim();
   if (!normalized || normalized.length > 512 || /[\s\u0000-\u001f\u007f]/u.test(normalized)) {
-    throw new Error("invalid FAL credential");
+    throw new Error("invalid provider credential");
   }
   return normalized;
+}
+
+export function normalizeFalCredential(value: unknown): string {
+  return normalizeProviderCredential(value);
 }
 
 function validPricing(value: unknown): boolean {

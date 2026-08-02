@@ -30,7 +30,7 @@ For durable self-hosting, create:
 1. A Supabase project for authentication.
 2. A PostgreSQL session-mode connection for the API and worker queue.
 3. A private S3-compatible bucket.
-4. A Pexels API key if licensed stock search is enabled.
+4. A Pexels account for each user who wants licensed stock search.
 
 All accounts, billing, quotas, retention policies, and stored media remain
 under your control.
@@ -43,11 +43,17 @@ under your control.
 | `VITE_SUPABASE_ANON_KEY` | web build | Yes, public browser key only |
 | `DATABASE_URL`, `QUEUE_DATABASE_URL` | API/worker secret | No |
 | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | API/worker secret | No |
-| `PEXELS_API_KEY` | API secret | No |
+| `FENGINE_PEXELS_BYOK_ENABLED` | API configuration | No credential value |
+| `FENGINE_CREDENTIAL_KEY_V<n>` | API secret | No |
 | Supabase service-role key | Not used | Never expose |
 
 Only variables prefixed with `VITE_` can enter the browser build. A Supabase
 service-role key must never be placed in any `VITE_*` variable.
+
+With Pexels BYOK enabled, each authenticated user enters their own API key in
+Settings. The browser sends it over HTTPS once; the API validates and encrypts
+it with the versioned credential key, returns only last-four metadata, and uses
+it only for that owner's Pexels requests. A shared `PEXELS_API_KEY` is forbidden.
 
 ## 4. Configure authentication
 

@@ -30,6 +30,12 @@ interface FalCredentialView {
   hint?: string;
   validated_at?: string;
 }
+interface PexelsCredentialView {
+  provider: "pexels";
+  connected: boolean;
+  hint?: string;
+  validated_at?: string;
+}
 
 const architectureLabels = {
   goal: { story: "Tell a story", explain: "Explain something", promote: "Promote an idea or product", educate: "Teach the viewer" },
@@ -81,6 +87,10 @@ function App() {
   const [falUnavailable, setFalUnavailable] = useState(false);
   const [falKey, setFalKey] = useState("");
   const [falBusy, setFalBusy] = useState(false);
+  const [pexelsCredential, setPexelsCredential] = useState<PexelsCredentialView>();
+  const [pexelsUnavailable, setPexelsUnavailable] = useState(false);
+  const [pexelsKey, setPexelsKey] = useState("");
+  const [pexelsBusy, setPexelsBusy] = useState(false);
   const api = useMemo(() => new ApiClient(
     () => tokenRef.current,
     () => {
@@ -120,6 +130,10 @@ function App() {
     setFalUnavailable(false);
     setFalKey("");
     setFalBusy(false);
+    setPexelsCredential(undefined);
+    setPexelsUnavailable(false);
+    setPexelsKey("");
+    setPexelsBusy(false);
     setStep("sign-in");
   }
 
@@ -161,9 +175,13 @@ function App() {
   useEffect(() => {
     if (step !== "settings") {
       setFalKey("");
+      setPexelsKey("");
       return;
     }
-    if (token) void loadFalCredential();
+    if (token) {
+      void loadFalCredential();
+      void loadPexelsCredential();
+    }
   }, [step, token]);
 
   useEffect(() => {
@@ -440,7 +458,12 @@ function App() {
       setCandidates(body.results.slice(0, 3));
       setStatus(body.results.length ? "Choose the footage that fits this scene." : "No licensed options found. Refine the footage search.");
     } catch (error) {
-      if (!controller.signal.aborted) setStatus("Licensed media search failed. Your scene edits are safe.");
+      if (!controller.signal.aborted) {
+        const type = error instanceof ApiResponseError ? error.body.type : undefined;
+        setStatus(type === "pexels_not_connected"
+          ? "Connect your Pexels API key in Settings, or upload your own media."
+          : "Licensed media search failed. Your scene edits are safe.");
+      }
     }
   }
 
@@ -459,8 +482,11 @@ function App() {
       if (await attachMediaWhenReady(body.asset.id, project.id, sceneId)) {
         setStatus(`Scene media selected · video by ${candidate.creator} on Pexels`);
       }
-    } catch {
-      setStatus("That licensed visual could not be attached. Choose another or try again.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "pexels_not_connected"
+        ? "Connect your Pexels API key in Settings, or upload your own media."
+        : "That licensed visual could not be attached. Choose another or try again.");
     } finally {
       setBusy(false);
     }
@@ -635,6 +661,76 @@ function App() {
         : "FAL connection status could not be loaded.");
     } finally {
       setFalBusy(false);
+    }
+  }
+
+  async function loadPexelsCredential() {
+    setPexelsBusy(true);
+    try {
+      const view = await api.request<PexelsCredentialView>("/api/providers/pexels/credential");
+      setPexelsCredential(view);
+      setPexelsUnavailable(false);
+    } catch (error) {
+      setPexelsCredential(undefined);
+      setPexelsUnavailable(error instanceof ApiResponseError && error.status === 503);
+    } finally {
+      setPexelsBusy(false);
+    }
+  }
+
+  async function connectPexels() {
+    if (!pexelsKey.trim()) return;
+    if (pexelsCredential?.connected && !window.confirm("Replace your saved Pexels API key?")) return;
+    setPexelsBusy(true);
+    try {
+      const view = await api.request<PexelsCredentialView>("/api/providers/pexels/credential", {
+        method: "PUT",
+        body: JSON.stringify({ api_key: pexelsKey })
+      });
+      setPexelsCredential(view);
+      setPexelsUnavailable(false);
+      setStatus("Pexels connected. Licensed searches now use your encrypted key.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "invalid_provider_credential"
+        ? "Pexels rejected this API key. Check it and try again."
+        : type === "provider_unavailable"
+          ? "Pexels could not be reached. Your existing projects are safe."
+          : "Pexels could not be connected.");
+    } finally {
+      setPexelsKey("");
+      setPexelsBusy(false);
+    }
+  }
+
+  async function testPexels() {
+    setPexelsBusy(true);
+    try {
+      const view = await api.request<PexelsCredentialView>("/api/providers/pexels/credential/test", { method: "POST" });
+      setPexelsCredential(view);
+      setStatus("Pexels connection verified.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "invalid_provider_credential"
+        ? "Pexels rejected the saved key. Replace or disconnect it."
+        : "Pexels could not verify the saved key. Try again later.");
+    } finally {
+      setPexelsBusy(false);
+    }
+  }
+
+  async function disconnectPexels() {
+    if (!window.confirm("Disconnect Pexels and delete your saved encrypted key? Licensed search will stop working.")) return;
+    setPexelsBusy(true);
+    try {
+      await api.request("/api/providers/pexels/credential", { method: "DELETE" });
+      setPexelsCredential({ provider: "pexels", connected: false });
+      setPexelsKey("");
+      setStatus("Pexels disconnected. You can still upload your own media.");
+    } catch {
+      setStatus("Pexels could not be disconnected. Try again.");
+    } finally {
+      setPexelsBusy(false);
     }
   }
 
@@ -914,6 +1010,26 @@ function App() {
     {authReady && step === "settings" && <section>
       <h1>Settings</h1>
       <p>Pexels videos require on-product attribution — see “Use video by … · Pexels” in the editor when you add stock footage.</p>
+      <article className="settings-card" aria-labelledby="pexels-settings-title">
+        <h2 id="pexels-settings-title">Pexels licensed media</h2>
+        <p>Connect your own Pexels API key. Licensed searches use your Pexels account; F-Motion does not supply or share a Pexels key.</p>
+        {pexelsUnavailable && <p className="notice">Pexels connection is unavailable here. Uploading, editing, and rendering still work.</p>}
+        {!pexelsUnavailable && pexelsCredential?.connected && <p>
+          Connected · key ending …{pexelsCredential.hint}
+          {pexelsCredential.validated_at ? ` · verified ${new Date(pexelsCredential.validated_at).toLocaleString()}` : ""}
+        </p>}
+        {!pexelsUnavailable && <label htmlFor="pexels-key">{pexelsCredential?.connected ? "Replacement Pexels API key" : "Pexels API key"}
+          <input id="pexels-key" type="password" autoComplete="new-password" spellCheck={false}
+            value={pexelsKey} onChange={(event) => setPexelsKey(event.target.value)} placeholder="Paste your Pexels API key" />
+          <small>The key is validated, encrypted server-side, and never shown again.</small>
+        </label>}
+        {!pexelsUnavailable && <div className="settings-actions">
+          <button disabled={pexelsBusy || !pexelsKey.trim()} onClick={() => void connectPexels()}>{pexelsCredential?.connected ? "Replace key" : "Connect Pexels"}</button>
+          {pexelsCredential?.connected && <button className="secondary" disabled={pexelsBusy} onClick={() => void testPexels()}>Test Pexels</button>}
+          {pexelsCredential?.connected && <button className="secondary" disabled={pexelsBusy} onClick={() => void disconnectPexels()}>Disconnect Pexels</button>}
+        </div>}
+        <a href="https://www.pexels.com/api/" target="_blank" rel="noreferrer">Get a Pexels API key</a>
+      </article>
       <article className="settings-card" aria-labelledby="fal-settings-title">
         <h2 id="fal-settings-title">FAL generation</h2>
         <p>Connect your own FAL API-scope key. Generation will be charged directly to your FAL account. F-Motion does not supply or share a FAL key.</p>
@@ -944,7 +1060,7 @@ function App() {
       <p>Privacy and terms will ship with Gate 0 launch policy evidence.</p>
       <p role="status" aria-live="polite">{status}</p>
       <button disabled={authBusy} onClick={() => void signOut()}>Sign out</button>
-      <button className="secondary" onClick={() => { setFalKey(""); setStep("drafts"); }}>Back to drafts</button>
+      <button className="secondary" onClick={() => { setFalKey(""); setPexelsKey(""); setStep("drafts"); }}>Back to drafts</button>
     </section>}
   </main>;
 }

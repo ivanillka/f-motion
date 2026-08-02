@@ -122,10 +122,11 @@ DATABASE_URL=<your-session-mode-url> npx prisma migrate deploy
 `prisma/schema.prisma` reads `env("DATABASE_URL")`. CI and local stack must
 export the same variable (see `.env.example` and `.github/workflows/ci.yml`).
 
-### Optional: enable user-owned FAL credential connection
+### Enable user-owned provider credential connections
 
-This only enables authenticated connect, status, test, replace, and disconnect
-operations. It does not enable paid inference or generation. Generate a
+These flags enable authenticated connect, status, test, replace, and disconnect
+operations for Pexels and FAL. FAL does not enable paid inference or generation.
+Generate a
 host-owned key-encryption key once:
 
 ```sh
@@ -135,10 +136,13 @@ openssl rand -base64 32
 Put the result directly into protected **API-only** configuration as
 `FENGINE_CREDENTIAL_KEY_V1`; also set
 `FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION=1` and
-`FENGINE_FAL_BYOK_ENABLED=1`. Do not paste the value into source, chat,
+`FENGINE_PEXELS_BYOK_ENABLED=1` and/or `FENGINE_FAL_BYOK_ENABLED=1`. Do not paste the value into source, chat,
 Cloudflare Pages/Vite variables, worker configuration, logs, or screenshots.
-Never configure `FAL_KEY` or `FAL_API_KEY`: hosted startup rejects shared FAL
-credentials.
+Never configure `PEXELS_API_KEY`, `FAL_KEY`, or `FAL_API_KEY`: hosted startup
+rejects shared provider credentials.
+
+Each user supplies their own Pexels API key in authenticated Settings. Pexels
+search and media copy use only that owner's encrypted credential and quota.
 
 Each user supplies an API-scope key in authenticated Settings and is charged
 by FAL directly. The API can validate call capability but FAL does not expose
@@ -158,9 +162,10 @@ fly launch --config fly.api.toml --no-deploy
 fly secrets set --config fly.api.toml \
   DATABASE_URL=... SUPABASE_ISSUER=... SUPABASE_AUDIENCE=... SUPABASE_JWKS_URL=... \
   R2_ENDPOINT=... R2_REGION=... R2_BUCKET=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... \
-  PEXELS_API_KEY=... FENGINE_ACCESS_MODE=invite_only \
+  FENGINE_ACCESS_MODE=invite_only \
   FENGINE_ALLOWED_USER_IDS=<comma-separated-supabase-user-uuids> \
-  FENGINE_FAL_BYOK_ENABLED=1 FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION=1 \
+  FENGINE_PEXELS_BYOK_ENABLED=1 FENGINE_FAL_BYOK_ENABLED=1 \
+  FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION=1 \
   FENGINE_CREDENTIAL_KEY_V1=<base64-from-openssl>
 fly deploy --config fly.api.toml
 
@@ -365,9 +370,10 @@ the storage host, fix bucket CORS (§2) before debugging the API.
 | `DATABASE_URL` | API | session-mode Postgres |
 | `QUEUE_DATABASE_URL` | worker | session-mode Postgres (pg-boss) |
 | `R2_ENDPOINT`, `R2_REGION`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | API + worker | private object storage |
-| `PEXELS_API_KEY` | API | stock media search |
 | `SUPABASE_ISSUER`, `SUPABASE_AUDIENCE`, `SUPABASE_JWKS_URL` | API | JWT verification |
 | `FENGINE_ACCESS_MODE`, `FENGINE_ALLOWED_USER_IDS` | API | hosted invite-only admission; exact Supabase user UUIDs |
+| `FENGINE_PEXELS_BYOK_ENABLED`, `FENGINE_FAL_BYOK_ENABLED` | API | enable owner-scoped provider connections |
+| `FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION`, `FENGINE_CREDENTIAL_KEY_V<n>` | API | encrypt user provider credentials |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | web build | Supabase client |
 | `VITE_ENABLE_GOOGLE_AUTH` | web build | optional UI flag after Google provider setup |
 | `FENGINE_LOCAL_AUTH` | — | must stay **unset** on every hosted process |

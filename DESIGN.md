@@ -315,7 +315,8 @@ The visual system must support these product truths:
 - The first output is a preview, not an automatically published video
 - Users may edit or download after preview
 - Drafts autosave and remain available for later editing
-- Pexels is platform-managed
+- Pexels is BYOK-only: each user connects a personal API key for stock search;
+  F-Motion never supplies a platform key or silently falls back to another account.
 - FAL is BYOK-only: each user connects an API-scope key, their FAL account is
   charged directly, and a missing key makes generation unavailable. F-Motion
   never supplies a platform key or silently falls back to another account.

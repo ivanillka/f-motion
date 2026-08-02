@@ -6,13 +6,14 @@ import { createServer } from "vite";
 
 test("required recovery, accessibility, and preview language is present", async () => {
   const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
-  for (const phrase of ["Drafts", "Continue to video plan", "Plan the video", "prepared this recommendation from your conversation", "Edit recommended video plan", "Recommended video plan", "What should this video achieve", "Who is it for", "How should the story unfold", "What tone fits best", "How fast should it feel", "Target length", "Where should visuals come from", "Build storyboard", "Storyboard", "Approximate composition", "Find licensed media", "Select for scene", "Move scene", "Add scene", "Remove scene", "Generate accurate preview", "playsInline", "Older preview", "Reload latest", "Save as new project", "media not copied", "Reconnecting", "magic link", "Google", "Pexels", "Cancel render", "Download preview", "Accurate preview failed", "Retry", "Settings", "Sign out", "Waiting for media inspection", "Media is still inspecting", "Connect your own FAL API-scope key", "charged directly to your FAL account", "F-Motion does not supply or share a FAL key", "Connect FAL", "Test connection", "Disconnect"]) assert.match(source, new RegExp(phrase));
+  for (const phrase of ["Drafts", "Continue to video plan", "Plan the video", "prepared this recommendation from your conversation", "Edit recommended video plan", "Recommended video plan", "What should this video achieve", "Who is it for", "How should the story unfold", "What tone fits best", "How fast should it feel", "Target length", "Where should visuals come from", "Build storyboard", "Storyboard", "Approximate composition", "Find licensed media", "Select for scene", "Move scene", "Add scene", "Remove scene", "Generate accurate preview", "playsInline", "Older preview", "Reload latest", "Save as new project", "media not copied", "Reconnecting", "magic link", "Google", "Pexels", "Cancel render", "Download preview", "Accurate preview failed", "Retry", "Settings", "Sign out", "Waiting for media inspection", "Media is still inspecting", "Connect your own Pexels API key", "F-Motion does not supply or share a Pexels key", "Connect Pexels", "Test Pexels", "Disconnect Pexels", "Connect your own FAL API-scope key", "charged directly to your FAL account", "F-Motion does not supply or share a FAL key", "Connect FAL", "Test connection", "Disconnect"]) assert.match(source, new RegExp(phrase));
   assert.doesNotMatch(source, /Test stale revision|Choose one concept/);
   assert.doesNotMatch(source, /Automatically matched|strongest licensed match|Finding the best/);
   for (const unsafe of ["fengine-access-token", "/auth/v1/otp", "/authorize", "location.hash"]) {
     assert.doesNotMatch(source, new RegExp(unsafe.replace("/", "\\/")));
   }
   assert.doesNotMatch(source, /localStorage[^\n]*fal|sessionStorage[^\n]*fal|VITE_.*FAL/);
+  assert.doesNotMatch(source, /localStorage[^\n]*pexels|sessionStorage[^\n]*pexels|VITE_.*PEXELS/);
 });
 
 test("draft media hydration replaces project-scoped stock, upload, reopen, and failure state", async () => {

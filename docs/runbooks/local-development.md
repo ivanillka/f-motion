@@ -19,7 +19,8 @@ Requires Docker access (your user must be in the `docker` group).
 
 ```sh
 cp .env.example .env
-# Fill PEXELS_API_KEY; keep FENGINE_LOCAL_AUTH=1 for local.
+# To test stock search, enable FENGINE_PEXELS_BYOK_ENABLED, configure the
+# credential vault key, then connect your own Pexels key in Settings.
 
 bash scripts/local-deps.sh
 npx prisma migrate deploy
@@ -52,8 +53,9 @@ The API refuses to boot with local auth when `NODE_ENV=production` or
 Real browser auth uses Supabase's PKCE client, including persisted session
 refresh and callback detection.
 
-Use PostgreSQL session-mode connections for pg-boss. Never expose the Pexels,
-R2, database, or queue credentials to either client. The web PWA does not
+Use PostgreSQL session-mode connections for pg-boss. A user's Pexels key is the
+only Pexels credential accepted by authenticated Settings; never put it in a
+VITE variable. Never expose R2, database, or queue credentials to either client. The web PWA does not
 provide offline editing or rendering.
 
 If you test browser uploads against MinIO from an origin other than the API

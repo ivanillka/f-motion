@@ -23,6 +23,7 @@ import {
   maximumMediaBytes,
   pexelsQueriesForBrief,
   sceneMediaView,
+  PexelsRequestError,
   type PexelsClient,
   type PostgresMediaRepository,
   type PrivateObjectStore
@@ -34,6 +35,11 @@ import {
   type FalCredentialService
 } from "./fal-credentials.js";
 import {
+  PexelsProviderError,
+  pexelsCredentialHttpError,
+  type PexelsCredentialService
+} from "./pexels-credentials.js";
+import {
   authenticatesExternalImport,
   externalProjectUrl,
   parseExternalDraft,
@@ -44,7 +50,9 @@ import {
 export interface MediaDependencies {
   repository: PostgresMediaRepository;
   store: PrivateObjectStore;
-  pexels: PexelsClient;
+  pexelsForOwner?: (ownerId: string) => Promise<PexelsClient>;
+  /** Test/local adapter only; hosted startup never constructs a shared client. */
+  pexels?: PexelsClient;
 }
 
 interface AppBaseOptions {
@@ -55,6 +63,7 @@ interface AppBaseOptions {
   workerOrigin?: string;
   externalImports?: ExternalImportConfig;
   falCredentials?: FalCredentialService;
+  pexelsCredentials?: PexelsCredentialService;
 }
 
 export interface AppOptions extends AppBaseOptions {
@@ -218,6 +227,15 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     return actual.length === keys.length && keys.every((key) => actual.includes(key));
   };
   const emptyBody = (value: unknown) => value === undefined || exactObject(value, []);
+  const pexelsForOwner = async (media: MediaDependencies, ownerId: string) => {
+    if (media.pexelsForOwner) return media.pexelsForOwner(ownerId);
+    if (media.pexels) return media.pexels;
+    throw new PexelsProviderError("unavailable");
+  };
+  const pexelsHttpError = (error: unknown) => pexelsCredentialHttpError(error)
+    ?? (error instanceof PexelsRequestError
+      ? { status: 503, body: { type: "provider_unavailable", message: "Pexels could not be reached. Try again later." } }
+      : undefined);
   app.get("/api/providers/fal/credential", async (_request, response, next) => {
     try {
       if (!options.falCredentials) return falUnavailable(response);
@@ -260,6 +278,55 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         return response.status(422).json({ type: "validation", message: "This request does not accept fields." });
       }
       await options.falCredentials.disconnect(String(response.locals.ownerId));
+      response.status(204).end();
+    } catch (error) { next(error); }
+  });
+  const pexelsUnavailable = (response: express.Response) => response.status(503).json({
+    type: "provider_unavailable",
+    message: "Pexels connection is not enabled on this deployment."
+  });
+  app.get("/api/providers/pexels/credential", async (_request, response, next) => {
+    try {
+      if (!options.pexelsCredentials) return pexelsUnavailable(response);
+      response.json(await options.pexelsCredentials.status(String(response.locals.ownerId)));
+    } catch (error) { next(error); }
+  });
+  app.put("/api/providers/pexels/credential", async (request, response, next) => {
+    try {
+      if (!options.pexelsCredentials) return pexelsUnavailable(response);
+      if (!exactObject(request.body, ["api_key"])) {
+        return response.status(422).json({ type: "validation", message: "Enter a valid Pexels API key." });
+      }
+      response.json(await options.pexelsCredentials.connect(
+        String(response.locals.ownerId),
+        (request.body as { api_key?: unknown }).api_key
+      ));
+    } catch (error) {
+      const mapped = pexelsHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/providers/pexels/credential/test", async (request, response, next) => {
+    try {
+      if (!options.pexelsCredentials) return pexelsUnavailable(response);
+      if (!emptyBody(request.body)) {
+        return response.status(422).json({ type: "validation", message: "This request does not accept fields." });
+      }
+      response.json(await options.pexelsCredentials.test(String(response.locals.ownerId)));
+    } catch (error) {
+      const mapped = pexelsHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.delete("/api/providers/pexels/credential", async (request, response, next) => {
+    try {
+      if (!options.pexelsCredentials) return pexelsUnavailable(response);
+      if (!emptyBody(request.body)) {
+        return response.status(422).json({ type: "validation", message: "This request does not accept fields." });
+      }
+      await options.pexelsCredentials.disconnect(String(response.locals.ownerId));
       response.status(204).end();
     } catch (error) { next(error); }
   });
@@ -389,11 +456,14 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           message: error instanceof Error ? error.message : "invalid Pexels query"
         });
       }
-      const results = await options.media.pexels.search(query);
+      const ownerId = String(response.locals.ownerId);
+      const results = await (await pexelsForOwner(options.media, ownerId)).search(query);
       response.json({
         results: results.map(({ sourceUrl: _sourceUrl, contentType: _contentType, ...result }) => result)
       });
     } catch (error) {
+      const mapped = pexelsHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
       next(error);
     }
   });
@@ -414,9 +484,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         });
       }
       const pexelsId = Number(request.body?.pexels_id);
-      const selected = (await options.media.pexels.search(query)).find(({ id }) => id === pexelsId);
+      const pexels = await pexelsForOwner(options.media, ownerId);
+      const selected = (await pexels.search(query)).find(({ id }) => id === pexelsId);
       if (!selected) return response.status(404).json({ type: "not_found", message: "Pexels result unavailable" });
-      const asset = await options.media.pexels.copy(
+      const asset = await pexels.copy(
         ownerId,
         request.params.projectId,
         selected,
@@ -425,6 +496,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       );
       response.status(201).json({ asset: sceneMediaView(asset) });
     } catch (error) {
+      const mapped = pexelsHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
       next(error);
     }
   });
@@ -438,10 +511,11 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         ? project.brief.purpose
         : projectBrief({ purpose: request.body.description }).purpose;
 
+      const pexels = await pexelsForOwner(options.media, ownerId);
       let selected: Awaited<ReturnType<PexelsClient["search"]>>[number] | undefined;
       let matchedQuery = "";
       for (const query of pexelsQueriesForBrief(description)) {
-        const [result] = await options.media.pexels.search(query);
+        const [result] = await pexels.search(query);
         if (!result) continue;
         selected = result;
         matchedQuery = query;
@@ -454,7 +528,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         });
       }
 
-      const asset = await options.media.pexels.copy(
+      const asset = await pexels.copy(
         ownerId,
         request.params.projectId,
         selected,
@@ -464,6 +538,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const { sourceUrl: _sourceUrl, contentType: _contentType, ...match } = selected;
       response.status(201).json({ asset: sceneMediaView(asset), match, query: matchedQuery });
     } catch (error) {
+      const mapped = pexelsHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
       next(error);
     }
   });

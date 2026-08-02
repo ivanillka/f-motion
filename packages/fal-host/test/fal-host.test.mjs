@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   FalProviderError,
   assertNoSharedFalCredential,
+  assertNoSharedPexelsCredential,
   credentialVaultFromEnv,
   decryptCredential,
   encryptCredential,
@@ -40,6 +41,7 @@ test("credential configuration fails closed", () => {
   assert.throws(() => assertNoSharedFalCredential({ FENGINE_ENV: "hosted", FAL_KEY: "synthetic" }), /forbidden/);
   assert.throws(() => assertNoSharedFalCredential({ NODE_ENV: "production", FAL_API_KEY: "synthetic" }), /forbidden/);
   assert.throws(() => assertNoSharedFalCredential({ FENGINE_ENV: "hosted", FAL_KEY: "" }), /forbidden/);
+  assert.throws(() => assertNoSharedPexelsCredential({ FENGINE_ENV: "hosted", PEXELS_API_KEY: "" }), /forbidden/);
   assert.doesNotThrow(() => assertNoSharedFalCredential({ FENGINE_ENV: "hosted" }));
 });
 

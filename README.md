@@ -25,15 +25,15 @@ Choose one path:
    Follow [Self-host onboarding](docs/getting-started.md). You create and
    control the Supabase, PostgreSQL, S3-compatible storage, and Pexels
    accounts. No maintainer credential, customer data, deployment identifier,
-   or private API endpoint is included. If FAL credential support is enabled,
-   every signed-in user connects their own API-scope FAL key and their FAL
-   account is charged directly; the host never supplies a shared FAL key.
+   or private API endpoint is included. Every signed-in user connects their
+   own Pexels API key for stock search. If FAL credential support is enabled,
+   they also connect their own API-scope FAL key and their FAL account is
+   charged directly. The host never supplies a shared provider key.
 
-Never paste database, storage, Pexels, or service-role credentials into the
-browser. They belong only in protected API/worker environment configuration.
-The one provider credential accepted by the reference web client is a user's
-own FAL key in authenticated Settings; it is sent over HTTPS, encrypted by the
-API, and never returned to the browser.
+Never paste database, storage, or service-role credentials into the browser.
+The provider credentials accepted by the reference web client are a user's own
+Pexels and FAL keys in authenticated Settings. They are sent over HTTPS,
+encrypted by the API, and never returned to the browser.
 
 ## What is included
 
@@ -43,7 +43,7 @@ The repository contains:
 - `@f-engine/reel-engine`: deterministic commands, cues, crop math, and render
   planning;
 - `@f-engine/fal-host`: a private reference-host adapter for encrypted,
-  owner-scoped FAL credentials;
+  owner-scoped provider credentials;
 - a reference API, worker, and React client that exercise the boundary;
 - private release tooling that produces sanitized snapshots.
 
@@ -62,9 +62,10 @@ Private hosts pin reviewed F-Engine releases and adapt at the package/API
 boundary. They do not edit a vendored fork.
 
 The reference journey accepts a short brief, then either user-owned media or
-licensed Pexels footage, and produces an accurate vertical preview. AI
-generation is deliberately not implemented. The optional FAL Settings card
-only connects and validates a user-owned credential without generating media.
+licensed Pexels footage from the user's account, and produces an accurate
+vertical preview. AI generation is deliberately not implemented. Settings
+connects and validates user-owned Pexels and optional FAL credentials; it never
+returns their values to the browser.
 
 ## Verify
 
