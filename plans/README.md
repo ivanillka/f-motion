@@ -91,8 +91,8 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (reason)
 **Ship tip (round 10)**: `advisor/054-wire-final-export` (from `advisor/053-product-tip`
 = `6287cce` + 051 + 052 + gate fix + final export). Worktree
 `.worktrees/053-product-tip`. Full `lint`/`test`/`build` exit 0. Web e2e
-**BLOCKED** here (Playwright Chromium not installed in this environment;
-coverage added in `tests/e2e/web-flow.spec.ts`).
+`npm run test:e2e:web` exit 0 (6 passed; render expects need ≥90s for
+multi-scene video).
 **Superseded divergent checkout**: `advisor/export-quality-merge` @ `8125787`
 (merge-base `20365f9` with tip; lacks `packages/fal-host`). Do **not** execute
 new plans against `8125787`. Do **not** merge its alternate history onto tip.

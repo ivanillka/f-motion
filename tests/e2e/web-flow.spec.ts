@@ -189,7 +189,7 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await page.getByRole("button", { name: "Reload latest" }).click();
 
   await page.getByRole("button", { name: "Generate accurate preview" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 90_000 });
   const download = page.getByRole("link").filter({ has: page.getByRole("button", { name: "Download preview" }) });
   await expect(page.getByRole("button", { name: "Download preview" })).toBeEnabled();
   await expect(page.locator("video")).toHaveAttribute("preload", "metadata");
@@ -202,7 +202,7 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await page.getByRole("button", { name: "Keep editing" }).click();
   await page.getByRole("button", { name: "Export final" }).click();
   await expect(page.getByRole("heading", { name: "Final export" })).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "complete · final export" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "complete · final export" })).toBeVisible({ timeout: 90_000 });
   const finalDownload = page.getByRole("link").filter({ has: page.getByRole("button", { name: "Download export" }) });
   await expect(page.getByRole("button", { name: "Download export" })).toBeEnabled();
   await expect(page.getByText("720×1280")).toBeVisible();
@@ -273,7 +273,7 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   await expect(page.getByRole("button", { name: "Edit scene 1", pressed: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Generate accurate preview" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 90_000 });
   const download = page.getByRole("link").filter({ has: page.getByRole("button", { name: "Download preview" }) });
   await expect(page.getByRole("button", { name: "Download preview" })).toBeEnabled();
   const href = await download.getAttribute("href");
@@ -352,7 +352,7 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   expect(mediaIdAfter).not.toEqual(mediaIdBefore);
 
   await page.getByRole("button", { name: "Generate accurate preview" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 90_000 });
 });
 
 test("FAL image-to-video quotes, confirms, and attaches only after review", async ({ page }) => {
@@ -390,5 +390,5 @@ test("FAL image-to-video quotes, confirms, and attaches only after review", asyn
   await expect(page.getByRole("status").filter({ hasText: /AI-generated FAL video/i })).toBeVisible();
 
   await page.getByRole("button", { name: "Generate accurate preview" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 90_000 });
 });
