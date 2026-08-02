@@ -32,6 +32,28 @@ interface FalCredentialView {
   hint?: string;
   validated_at?: string;
 }
+interface FalImageQuote {
+  endpoint_id: string;
+  unit_price: number;
+  unit: string;
+  currency: string;
+  estimated_total: number | null;
+  estimated_total_explanation?: string;
+}
+interface GenerationJobView {
+  id: string;
+  project_id: string;
+  scene_id: string;
+  kind: "image";
+  endpoint_id: string;
+  state: string;
+  cancel_requested: boolean;
+  prompt: string;
+  quote: FalImageQuote;
+  quote_expires_at: string;
+  failure_code?: string;
+  result_media?: SceneMediaView;
+}
 interface PexelsCredentialView {
   provider: "pexels";
   connected: boolean;
@@ -96,6 +118,10 @@ function App() {
   const [falUnavailable, setFalUnavailable] = useState(false);
   const [falKey, setFalKey] = useState("");
   const [falBusy, setFalBusy] = useState(false);
+  const [falGenOpen, setFalGenOpen] = useState(false);
+  const [falGenPrompt, setFalGenPrompt] = useState("");
+  const [falGenJob, setFalGenJob] = useState<GenerationJobView>();
+  const [falGenBusy, setFalGenBusy] = useState(false);
   const [pexelsCredential, setPexelsCredential] = useState<PexelsCredentialView>();
   const [pexelsUnavailable, setPexelsUnavailable] = useState(false);
   const [pexelsKey, setPexelsKey] = useState("");
@@ -152,6 +178,10 @@ function App() {
     setFalUnavailable(false);
     setFalKey("");
     setFalBusy(false);
+    setFalGenOpen(false);
+    setFalGenPrompt("");
+    setFalGenJob(undefined);
+    setFalGenBusy(false);
     setPexelsCredential(undefined);
     setPexelsUnavailable(false);
     setPexelsKey("");
@@ -934,10 +964,188 @@ function App() {
       : { title: "Pexels stock is locked", message: "Connect your Pexels API key to search real stock video.", action: "settings" });
   }
 
+  function falJobStorageKey(projectId: string, sceneId: string) {
+    return `fengine-fal-job:${projectId}:${sceneId}`;
+  }
+
+  function falGenFailureMessage(job: GenerationJobView): string {
+    switch (job.failure_code) {
+      case "submission_uncertain":
+        return "FAL may have started this job. Check your FAL dashboard before generating again.";
+      case "inspection_rejected":
+        return "The generated image did not pass media inspection.";
+      case "credential":
+        return "FAL rejected the saved key. Replace or disconnect it in Settings.";
+      case "rate_limited":
+        return "FAL rate-limited this request. Wait a moment and try again.";
+      case "unsafe_output":
+        return "FAL blocked this output. Try a different prompt.";
+      default:
+        return "FAL generation failed. Your scene media was not changed.";
+    }
+  }
+
+  function openFalGenerate(scene: Scene) {
+    if (!falCredential?.connected || falUnavailable) {
+      showFalLock();
+      return;
+    }
+    setFalGenPrompt(scene.visual_prompt?.trim() || "");
+    setFalGenJob(undefined);
+    setFalGenOpen(true);
+    const projectId = project?.id;
+    if (!projectId) return;
+    const stored = localStorage.getItem(falJobStorageKey(projectId, scene.id));
+    if (!stored) return;
+    void (async () => {
+      try {
+        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${stored}`);
+        setFalGenJob(job);
+        setFalGenPrompt(job.prompt);
+        if (!["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(job.state)) {
+          void pollFalGeneration(job.id);
+        }
+      } catch {
+        localStorage.removeItem(falJobStorageKey(projectId, scene.id));
+      }
+    })();
+  }
+
+  async function quoteFalImage() {
+    if (!project || !activeScene) return;
+    const prompt = falGenPrompt.trim();
+    if (!prompt || prompt.length > 500) {
+      setStatus("Enter an image prompt between 1 and 500 characters.");
+      return;
+    }
+    setFalGenBusy(true);
+    setStatus("Requesting FAL price…");
+    try {
+      const job = await api.request<GenerationJobView>(
+        `/api/projects/${project.id}/scenes/${activeScene.id}/fal/image-quotes`,
+        { method: "POST", body: JSON.stringify({ prompt }) }
+      );
+      setFalGenJob(job);
+      localStorage.setItem(falJobStorageKey(project.id, activeScene.id), job.id);
+      setStatus("Review the FAL price, then confirm to generate one image.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "fal_not_connected"
+        ? "Connect your FAL API key in Settings first."
+        : type === "fal_generation_busy"
+          ? "Only one active FAL generation is allowed. Wait or cancel it."
+          : type === "invalid_provider_credential"
+            ? "FAL rejected the saved key. Replace it in Settings."
+            : "FAL could not price this image. Try again later.");
+    } finally {
+      setFalGenBusy(false);
+    }
+  }
+
+  async function confirmFalImage() {
+    if (!project || !activeScene || !falGenJob || falGenJob.state !== "quoted") return;
+    if (falGenJob.quote.estimated_total === null) return;
+    setFalGenBusy(true);
+    setStatus("Confirming FAL generation…");
+    try {
+      const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falGenJob.id}/confirm`, {
+        method: "POST",
+        body: JSON.stringify({ idempotency_key: crypto.randomUUID() })
+      });
+      setFalGenJob(job);
+      localStorage.setItem(falJobStorageKey(project.id, activeScene.id), job.id);
+      setStatus("FAL generation queued.");
+      void pollFalGeneration(job.id);
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "quote_expired"
+        ? "This quote expired. Request a new price."
+        : type === "quote_incomplete"
+          ? "FAL could not calculate a total for this model."
+          : "FAL generation could not be confirmed.");
+    } finally {
+      setFalGenBusy(false);
+    }
+  }
+
+  async function pollFalGeneration(jobId: string) {
+    const deadline = Date.now() + 12 * 60_000;
+    while (Date.now() < deadline) {
+      try {
+        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
+        setFalGenJob(job);
+        if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
+          if (job.state === "ready") setStatus("AI still ready — review it before attaching.");
+          else if (job.state === "cancelled") setStatus("FAL generation cancelled.");
+          else setStatus(falGenFailureMessage(job));
+          return;
+        }
+        setStatus(`FAL generation · ${job.state.replaceAll("_", " ")}`);
+      } catch {
+        setStatus("Could not refresh FAL generation status.");
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    setStatus("FAL generation is still running. Reopen Generate AI image to check again.");
+  }
+
+  async function cancelFalGeneration() {
+    if (!falGenJob) return;
+    setFalGenBusy(true);
+    try {
+      const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falGenJob.id}/cancel`, { method: "POST" });
+      setFalGenJob(job);
+      setStatus(job.state === "cancelled"
+        ? "FAL generation cancelled."
+        : "Cancel requested. FAL may still bill work that already started.");
+    } catch {
+      setStatus("FAL generation could not be cancelled.");
+    } finally {
+      setFalGenBusy(false);
+    }
+  }
+
+  async function useFalGeneratedMedia() {
+    if (!project || !falGenJob?.result_media || falGenJob.result_media.state !== "ready") return;
+    const scene = project.scenes.find(({ id }) => id === falGenJob.scene_id);
+    if (!scene) return;
+    setFalGenBusy(true);
+    setBusy(true);
+    try {
+      const media = falGenJob.result_media;
+      const updated = await api.command(project.id, project.revision, "update_scene", {
+        scene: {
+          ...scene,
+          duration_ms: sceneDurationForMedia(media.detected?.duration_ms, scene.duration_ms),
+          media_id: media.id
+        }
+      });
+      setProject(updated);
+      setSceneMedia((current) => ({ ...current, [media.id]: media }));
+      setSceneProgress((current) => ({ ...current, [scene.id]: "ready" }));
+      localStorage.removeItem(falJobStorageKey(project.id, scene.id));
+      setFalGenOpen(false);
+      setStatus(`Scene ${scene.order + 1} uses AI-generated with FAL still.`);
+    } catch (error) {
+      if (error instanceof ApiResponseError && error.status === 409) {
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          sceneId: scene.id,
+          operation: "AI media attach"
+        });
+        return;
+      }
+      setStatus("Generated still could not be attached.");
+    } finally {
+      setFalGenBusy(false);
+      setBusy(false);
+    }
+  }
+
   function showFalLock() {
     setFeatureLock(falCredential?.connected
-      ? { title: "AI generation is not live yet", message: "Your FAL key is connected. Nothing else is required for now." }
-      : { title: "FAL generation is locked", message: "Connect your FAL API key now. AI video and voice will unlock when the workflow launches.", action: "settings" });
+      ? { title: "Generate AI stills from a scene", message: "Open a scene in the storyboard and choose Generate AI image. Each still is quoted and confirmed before FAL charges your account." }
+      : { title: "FAL generation is locked", message: "Connect your FAL API key now. AI still generation unlocks in the storyboard after you connect.", action: "settings" });
   }
 
   function showFutureLock() {
@@ -979,7 +1187,7 @@ function App() {
           <strong>Pexels</strong><span>Real stock video · {pexelsCredential?.connected ? "unlocked" : "locked"}</span>
         </button>
         <button className="provider-preview-item" data-locked onClick={showFalLock}>
-          <strong>FAL</strong><span>AI video + voice · locked</span>
+          <strong>FAL</strong><span>{falCredential?.connected && !falUnavailable ? "AI stills in storyboard" : "AI stills · locked"}</span>
         </button>
         <button className="provider-preview-item" data-locked onClick={showFutureLock}>
           <strong>More</strong><span>New providers · locked</span>
@@ -1135,6 +1343,7 @@ function App() {
             Video by <a href={activeMedia.attribution.attributionUrl} target="_blank" rel="noreferrer">{activeMedia.attribution.creator}</a>
             {" · "}<a href="https://www.pexels.com" target="_blank" rel="noreferrer">Pexels</a>
           </p>}
+          {activeMedia?.generation?.source === "FAL" && <p>AI-generated with FAL · {activeMedia.generation.model}</p>}
         </div>
 
         <div className="scene-controls">
@@ -1172,6 +1381,11 @@ function App() {
               ? `Find another licensed video for scene ${activeSceneNumber}`
               : `Find licensed media for scene ${activeSceneNumber}`}
           </button>
+          <button className={!falCredential?.connected || falUnavailable ? "locked-feature" : undefined}
+            disabled={busy || falGenBusy}
+            onClick={() => openFalGenerate(activeScene)}>
+            {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Generate AI image for scene {activeSceneNumber}
+          </button>
         </div>
       </div>
 
@@ -1201,6 +1415,54 @@ function App() {
       {downloadUrl && <button className="secondary" onClick={() => setStep("render")}>View accurate preview{previewRevision !== project.revision ? " · older" : ""}</button>}
       <button className="secondary" onClick={() => setStep("brief")}>Start a different description</button>
       <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
+      {falGenOpen && activeScene && <dialog open aria-labelledby="fal-gen-title">
+        <h2 id="fal-gen-title">Generate AI image for scene {activeSceneNumber}</h2>
+        <p>Optional fallback after your own media or licensed Pexels search. One still uses Flux Schnell on FAL. Charged directly to your FAL account. F-Motion copies the result into private storage within an hour and does not keep FAL CDN copies longer than that preference.</p>
+        <label htmlFor="fal-gen-prompt">Image prompt
+          <textarea id="fal-gen-prompt" maxLength={500} value={falGenPrompt} disabled={falGenBusy || (falGenJob && !["quoted", "failed", "cancelled", "submission_uncertain", "ready"].includes(falGenJob.state))} onChange={(event) => setFalGenPrompt(event.target.value)} />
+        </label>
+        {falGenJob && <div className="notice">
+          <p>Model · Flux Schnell (fast still)</p>
+          <p>{falGenJob.quote.currency} {falGenJob.quote.unit_price} per {falGenJob.quote.unit}
+            {falGenJob.quote.estimated_total !== null
+              ? ` · estimated total ${falGenJob.quote.currency} ${falGenJob.quote.estimated_total}`
+              : ` · ${falGenJob.quote.estimated_total_explanation ?? "FAL could not calculate a total"}`}</p>
+          <p>Status · {falGenJob.state.replaceAll("_", " ")}</p>
+        </div>}
+        {falGenJob?.state === "ready" && falGenJob.result_media && (
+          <div>
+            {(falGenJob.result_media.previewUrl || falGenJob.result_media.attribution?.previewUrl)
+              ? <img src={falGenJob.result_media.previewUrl ?? falGenJob.result_media.attribution?.previewUrl} alt="Generated AI still preview" />
+              : <p>Generated still is ready for review.</p>}
+            <p>AI-generated with FAL</p>
+          </div>
+        )}
+        <div className="dialog-actions">
+          {(!falGenJob || ["failed", "cancelled", "submission_uncertain", "ready"].includes(falGenJob.state)) && (
+            <button disabled={falGenBusy || !falGenPrompt.trim()} onClick={() => void quoteFalImage()}>Get FAL price</button>
+          )}
+          {falGenJob?.state === "quoted" && (
+            <button disabled={falGenBusy || falGenJob.quote.estimated_total === null} onClick={() => void confirmFalImage()}>Generate one image</button>
+          )}
+          {falGenJob && !["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(falGenJob.state) && (
+            <button className="secondary" disabled={falGenBusy} onClick={() => void cancelFalGeneration()}>Cancel generation</button>
+          )}
+          {falGenJob?.state === "ready" && falGenJob.result_media?.state === "ready" && (
+            <>
+              <button disabled={falGenBusy || busy} onClick={() => void useFalGeneratedMedia()}>Use for scene {activeSceneNumber}</button>
+              <button className="secondary" disabled={falGenBusy} onClick={() => {
+                setFalGenJob(undefined);
+                setStatus("Current scene media kept.");
+              }}>Keep current media</button>
+              <button className="secondary" disabled={falGenBusy} onClick={() => {
+                setFalGenJob(undefined);
+                setStatus("Request a new FAL price to generate another still.");
+              }}>Generate another</button>
+            </>
+          )}
+          <button className="secondary" disabled={falGenBusy} onClick={() => setFalGenOpen(false)}>Close</button>
+        </div>
+      </dialog>}
       {conflict && <dialog open><h2>Newer changes exist</h2>
         <p>{(() => {
           const scene = conflictNotice?.sceneId
@@ -1254,7 +1516,7 @@ function App() {
           <span className="provider-status provider-soon">Locked</span>
           <h2>FAL</h2>
           <strong>AI video + voice</strong>
-          <p>Connect your key now. AI video and voice generation will appear here after the generation workflow and cost confirmation are enabled.</p>
+          <p>Connect your key for AI still generation. Open a storyboard scene and choose Generate AI image to quote, confirm, and review one still.</p>
           <button className="lock-trigger" onClick={showFalLock}>Why is this locked?</button>
         </article>
         <article className="provider-card provider-future">
@@ -1288,7 +1550,7 @@ function App() {
       </article>
       <article className="settings-card" aria-labelledby="fal-settings-title">
         <h2 id="fal-settings-title">FAL generation</h2>
-        <p>Connect your own FAL API-scope key for the planned AI video and voice workflow. Future generation will be charged directly to your FAL account after you see the estimated cost and confirm it. Generation is not live yet, and F-Motion does not supply or share a FAL key.</p>
+        <p>Connect your own FAL API-scope key for AI still generation in the storyboard. Each image is charged directly to your FAL account after you see the estimated cost and confirm it. F-Motion does not supply or share a FAL key.</p>
         {falUnavailable && <p className="notice">FAL connection is unavailable here. Uploads, Pexels, editing, and rendering still work.</p>}
         {!falUnavailable && falCredential?.connected && <p>
           Connected · key ending …{falCredential.hint}

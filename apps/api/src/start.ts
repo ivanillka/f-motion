@@ -14,6 +14,7 @@ import {
   falByokEnabled
 } from "@f-engine/fal-host";
 import { PostgresFalCredentialService } from "./fal-credentials.js";
+import { PostgresFalGenerationService } from "./fal-generation.js";
 import {
   PexelsProviderError,
   PostgresPexelsCredentialService,
@@ -57,6 +58,9 @@ const credentialVault = falEnabled || pexelsEnabled ? credentialVaultFromEnv(pro
 const falCredentials = falEnabled
   ? new PostgresFalCredentialService(pool, credentialVault!)
   : undefined;
+const falGeneration = falCredentials
+  ? new PostgresFalGenerationService(pool, falCredentials)
+  : undefined;
 const pexelsCredentials = pexelsEnabled
   ? new PostgresPexelsCredentialService(pool, credentialVault!)
   : undefined;
@@ -84,13 +88,14 @@ if (process.env.FENGINE_LOCAL_AUTH === "1") {
      ON CONFLICT (id) DO UPDATE SET state = 'active'`,
     [ownerId]
   );
-  createTestApp({ ownerId, projects, renders, media, ready, falCredentials, pexelsCredentials }).listen(port);
+  createTestApp({ ownerId, projects, renders, media, ready, falCredentials, falGeneration, pexelsCredentials }).listen(port);
 } else {
   createApp({
     projects,
     renders,
     media,
     falCredentials,
+    falGeneration,
     pexelsCredentials,
     ready,
     authConfig: {

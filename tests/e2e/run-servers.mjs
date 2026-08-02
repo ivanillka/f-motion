@@ -145,7 +145,127 @@ const pexelsCredentials = {
   async disconnect() {},
   async client() { return media.pexels; }
 };
-const api = createTestApp({ ownerId: "e2e-owner", projects, renders, media, pexelsCredentials }).listen(43140, "127.0.0.1");
+
+function falJobView(job) {
+  const {
+    ownerId: _ownerId,
+    projectId: _projectId,
+    resultMediaId: _resultMediaId,
+    ...view
+  } = job;
+  return structuredClone(view);
+}
+const falJobs = new Map();
+const falPolls = new Map();
+const falCredentials = {
+  async status() { return { provider: "fal", connected: true, hint: "abcd" }; },
+  async connect() { return { provider: "fal", connected: true, hint: "abcd" }; },
+  async test() { return { provider: "fal", connected: true, hint: "abcd" }; },
+  async disconnect() {}
+};
+const falGeneration = {
+  async quoteImage(ownerId, projectId, sceneId, prompt) {
+    const job = {
+      id: randomUUID(),
+      project_id: projectId,
+      scene_id: sceneId,
+      kind: "image",
+      endpoint_id: "fal-ai/flux/schnell",
+      state: "quoted",
+      cancel_requested: false,
+      prompt: String(prompt).trim(),
+      quote: {
+        endpoint_id: "fal-ai/flux/schnell",
+        unit_price: 0.003,
+        unit: "image",
+        currency: "USD",
+        estimated_total: 0.003
+      },
+      quote_expires_at: new Date(Date.now() + 600_000).toISOString(),
+      ownerId,
+      projectId
+    };
+    falJobs.set(job.id, job);
+    return falJobView(job);
+  },
+  async confirm(ownerId, jobId) {
+    const job = falJobs.get(jobId);
+    if (!job || job.ownerId !== ownerId) throw Object.assign(new Error("not found"), { status: 404 });
+    if (job.state === "quoted") job.state = "queued";
+    return falJobView(job);
+  },
+  async get(ownerId, jobId) {
+    const job = falJobs.get(jobId);
+    if (!job || job.ownerId !== ownerId) return undefined;
+    const polls = (falPolls.get(jobId) ?? 0) + 1;
+    falPolls.set(jobId, polls);
+    if (job.state === "queued" || job.state === "running" || job.state === "inspecting") {
+      if (polls === 1) job.state = "running";
+      else if (polls === 2) job.state = "inspecting";
+      else {
+        const assetId = job.resultMediaId ?? randomUUID();
+        job.resultMediaId = assetId;
+        if (!mediaAssets.has(assetId)) {
+          await mediaRepository.insert({
+            id: assetId,
+            ownerId,
+            projectId: job.projectId,
+            quarantineObjectKey: `projects/${job.projectId}/media-quarantine/${assetId}`,
+            sealedObjectKey: `projects/${job.projectId}/media-sealed/fal-${assetId}`,
+            state: "ready",
+            declaredType: "image/jpeg",
+            maxBytes: 4096,
+            detected: { type: "image/jpeg", bytes: 4096, width: 720, height: 1280 },
+            attribution: {
+              source: "FAL",
+              model: "fal-ai/flux/schnell",
+              generatedAt: new Date().toISOString()
+            }
+          });
+        }
+        job.state = "ready";
+        job.result_media = {
+          id: assetId,
+          state: "ready",
+          detected: { type: "image/jpeg", bytes: 4096, width: 720, height: 1280 },
+          generation: {
+            source: "FAL",
+            model: "fal-ai/flux/schnell",
+            generatedAt: new Date().toISOString()
+          },
+          previewUrl: "https://e2e-images.invalid/fal.jpg"
+        };
+      }
+    }
+    return falJobView(job);
+  },
+  async cancel(ownerId, jobId) {
+    const job = falJobs.get(jobId);
+    if (!job || job.ownerId !== ownerId) throw Object.assign(new Error("not found"), { status: 404 });
+    job.cancel_requested = true;
+    if (job.state === "quoted" || job.state === "queued") job.state = "cancelled";
+    return falJobView(job);
+  }
+};
+const mediaStore = media.store;
+media.store = {
+  ...mediaStore,
+  async signedGet(objectKey) {
+    if (String(objectKey).includes("fal-") || String(objectKey).includes("media-sealed")) {
+      return "https://e2e-images.invalid/fal.jpg";
+    }
+    return mediaStore.signedGet(objectKey);
+  }
+};
+const api = createTestApp({
+  ownerId: "e2e-owner",
+  projects,
+  renders,
+  media,
+  pexelsCredentials,
+  falCredentials,
+  falGeneration
+}).listen(43140, "127.0.0.1");
 const web = spawn("npm", ["run", "dev", "--workspace", "apps/web", "--", "--host", "127.0.0.1", "--port", "4173"], { stdio: "inherit" });
 
 const stop = () => {

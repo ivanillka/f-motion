@@ -50,6 +50,8 @@ function fakePool() {
       });
       return { rows: [], rowCount: 1 };
     }
+    if (sql.includes(`FROM "GenerationJob"`)) return { rows: [{ count: 0 }], rowCount: 1 };
+    if (sql.startsWith(`UPDATE "GenerationJob"`)) return { rows: [], rowCount: 0 };
     throw new Error(`unexpected fake query: ${sql}`);
   };
   return { query, connect: async () => ({ query, release() {} }), rows };
@@ -82,7 +84,8 @@ test("credential routes are fail-closed, exact, owner-scoped, and redacted", asy
     async status(ownerId) { calls.push(["status", ownerId]); return { provider: "fal", connected: saved, ...(saved ? { hint: "1234", validated_at: new Date(0).toISOString() } : {}) }; },
     async connect(ownerId, key) { calls.push(["connect", ownerId]); saved = true; assert.equal(key, "synthetic:key-1234"); return { provider: "fal", connected: true, hint: "1234", validated_at: new Date(0).toISOString() }; },
     async test(ownerId) { calls.push(["test", ownerId]); return { provider: "fal", connected: true, hint: "1234", validated_at: new Date(0).toISOString() }; },
-    async disconnect(ownerId) { calls.push(["disconnect", ownerId]); saved = false; }
+    async disconnect(ownerId) { calls.push(["disconnect", ownerId]); saved = false; },
+    async decryptForOwner(ownerId) { calls.push(["decrypt", ownerId]); return { id: "cred", apiKey: "synthetic:key-1234" }; }
   };
   const server = createServer(createTestApp({ ownerId: "route-owner", falCredentials: service }));
   const origin = await listen(server);
@@ -126,7 +129,7 @@ test("credential route maps provider failures without reflecting upstream data",
       async status() { return { provider: "fal", connected: false }; },
       async connect() { throw error; },
       async test() { throw error; },
-      async disconnect() {}
+      async disconnect() {}, async decryptForOwner() { throw new Error("unused"); }
     } }));
     const origin = await listen(server);
     try {

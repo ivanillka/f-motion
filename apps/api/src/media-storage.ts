@@ -31,7 +31,17 @@ export interface StoredMedia {
     height?: number;
     duration_ms?: number;
   };
-  attribution?: { source: "Pexels"; creator: string; url: string; previewUrl?: string };
+  attribution?: {
+    source: "Pexels";
+    creator: string;
+    url: string;
+    previewUrl?: string;
+  } | {
+    source: "FAL";
+    model: string;
+    generationJobId?: string;
+    generatedAt: string;
+  };
 }
 
 export interface SceneMediaView {
@@ -49,6 +59,11 @@ export interface SceneMediaView {
     creator: string;
     attributionUrl: string;
     previewUrl?: string;
+  };
+  generation?: {
+    source: "FAL";
+    model: string;
+    generatedAt: string;
   };
   previewUrl?: string;
 }
@@ -78,6 +93,16 @@ function safePexelsAttribution(value: unknown): SceneMediaView["attribution"] {
   };
 }
 
+function safeFalGeneration(value: unknown): SceneMediaView["generation"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const attribution = value as Record<string, unknown>;
+  const model = typeof attribution.model === "string" ? attribution.model.trim() : "";
+  const generatedAt = typeof attribution.generatedAt === "string" ? attribution.generatedAt.trim() : "";
+  if (attribution.source !== "FAL" || !model || model.length > 200 || !generatedAt) return undefined;
+  if (Number.isNaN(Date.parse(generatedAt))) return undefined;
+  return { source: "FAL", model, generatedAt };
+}
+
 /** Builds the complete client-safe projection; storage keys never cross this boundary. */
 export function sceneMediaView(asset: StoredMedia, previewUrl?: string): SceneMediaView {
   const detected = asset.detected && typeof asset.detected === "object"
@@ -92,11 +117,13 @@ export function sceneMediaView(asset: StoredMedia, previewUrl?: string): SceneMe
       }
     : undefined;
   const attribution = safePexelsAttribution(asset.attribution);
+  const generation = safeFalGeneration(asset.attribution);
   return {
     id: asset.id,
     state: asset.state,
     ...(detected && Object.keys(detected).length ? { detected } : {}),
     ...(attribution ? { attribution } : {}),
+    ...(generation ? { generation } : {}),
     ...(safeHttpsUrl(previewUrl) ? { previewUrl } : {})
   };
 }

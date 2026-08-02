@@ -320,6 +320,8 @@ The visual system must support these product truths:
 - FAL is BYOK-only: each user connects an API-scope key, their FAL account is
   charged directly, and a missing key makes generation unavailable. F-Motion
   never supplies a platform key or silently falls back to another account.
+- AI stills are an explicit per-scene fallback after own media and Pexels;
+  results are reviewed and attached by the user, never auto-filled.
 - Estimated cost and explicit confirmation appear before paid generation
 - Music generation is unavailable until its licensing gate passes
 - No direct social publishing in the MVP

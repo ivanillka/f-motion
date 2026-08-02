@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import {
   FalProviderError,
   decryptCredential,
@@ -22,10 +22,27 @@ export interface FalCredentialService {
   connect(ownerId: string, credential: unknown): Promise<FalCredentialView>;
   test(ownerId: string): Promise<FalCredentialView>;
   disconnect(ownerId: string): Promise<void>;
+  decryptForOwner(ownerId: string): Promise<{ id: string; apiKey: string }>;
 }
 
 export class FalCredentialInputError extends Error {}
 export class FalCredentialMissingError extends Error {}
+export class FalCredentialBusyError extends Error {}
+
+const ACTIVE_GENERATION_STATES = ["queued", "submitting", "running", "downloading", "inspecting"] as const;
+
+export async function assertNoActiveFalGeneration(client: Pool | PoolClient, ownerId: string): Promise<void> {
+  const result = await client.query<{ count: number }>(
+    `SELECT COUNT(*)::int AS count FROM "GenerationJob"
+      WHERE "ownerId" = $1
+        AND (
+          state::text = ANY($2::text[])
+          OR ("cancelRequested" = TRUE AND state NOT IN ('ready', 'cancelled', 'failed', 'submission_uncertain'))
+        )`,
+    [ownerId, [...ACTIVE_GENERATION_STATES]]
+  );
+  if ((result.rows[0]?.count ?? 0) > 0) throw new FalCredentialBusyError("active FAL generation");
+}
 
 interface CredentialRow {
   id: string;
@@ -82,6 +99,7 @@ export class PostgresFalCredentialService implements FalCredentialService {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
+      await assertNoActiveFalGeneration(client, ownerId);
       const owner = await client.query(`SELECT id FROM "User" WHERE id = $1 FOR UPDATE`, [ownerId]);
       if (owner.rowCount !== 1) throw new FalCredentialMissingError("account not found");
       const existing = await client.query<{ id: string }>(
@@ -106,17 +124,23 @@ export class PostgresFalCredentialService implements FalCredentialService {
         [id, ownerId, encrypted.ciphertext, encrypted.nonce, encrypted.authTag,
           encrypted.keyVersion, hint, validatedAt]
       );
+      await client.query(
+        `UPDATE "GenerationJob" SET state = 'failed', "failureCode" = 'credential_changed', "updatedAt" = NOW()
+          WHERE "ownerId" = $1 AND state = 'quoted'`,
+        [ownerId]
+      );
       await client.query("COMMIT");
       return view({ hint, validatedAt });
     } catch (error) {
       await client.query("ROLLBACK");
+      if (error instanceof FalCredentialBusyError) throw error;
       throw error;
     } finally {
       client.release();
     }
   }
 
-  async test(ownerId: string): Promise<FalCredentialView> {
+  async decryptForOwner(ownerId: string): Promise<{ id: string; apiKey: string }> {
     const row = await this.row(ownerId);
     if (!row) throw new FalCredentialMissingError("FAL is not connected");
     const encrypted: EncryptedCredential = {
@@ -125,26 +149,42 @@ export class PostgresFalCredentialService implements FalCredentialService {
       authTag: row.authTag,
       keyVersion: row.keyVersion
     };
-    const credential = decryptCredential(encrypted, {
+    return {
       id: row.id,
-      ownerId,
-      provider: "fal"
-    }, this.vault);
-    await validateFalCredential(credential, this.fetchImpl);
+      apiKey: decryptCredential(encrypted, { id: row.id, ownerId, provider: "fal" }, this.vault)
+    };
+  }
+
+  async test(ownerId: string): Promise<FalCredentialView> {
+    const { id, apiKey } = await this.decryptForOwner(ownerId);
+    await validateFalCredential(apiKey, this.fetchImpl);
     const validatedAt = new Date();
+    const row = await this.row(ownerId);
     await this.pool.query(
       `UPDATE "ProviderCredential" SET "validatedAt" = $1, "updatedAt" = NOW()
         WHERE id = $2 AND "ownerId" = $3 AND provider = 'fal'`,
-      [validatedAt, row.id, ownerId]
+      [validatedAt, id, ownerId]
     );
-    return view({ hint: row.hint, validatedAt });
+    return view({ hint: row?.hint ?? apiKey.slice(-4), validatedAt });
   }
 
   async disconnect(ownerId: string): Promise<void> {
-    await this.pool.query(
-      `DELETE FROM "ProviderCredential" WHERE "ownerId" = $1 AND provider = 'fal'`,
-      [ownerId]
-    );
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await assertNoActiveFalGeneration(client, ownerId);
+      await client.query(
+        `DELETE FROM "ProviderCredential" WHERE "ownerId" = $1 AND provider = 'fal'`,
+        [ownerId]
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      if (error instanceof FalCredentialBusyError) throw error;
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 
@@ -154,6 +194,15 @@ export function falCredentialHttpError(error: unknown): { status: number; body: 
   }
   if (error instanceof FalCredentialMissingError) {
     return { status: 409, body: { type: "fal_not_connected", message: "Connect FAL before testing it." } };
+  }
+  if (error instanceof FalCredentialBusyError) {
+    return {
+      status: 409,
+      body: {
+        type: "fal_credential_busy",
+        message: "Cancel or wait for the active FAL job before changing credentials."
+      }
+    };
   }
   if (error instanceof FalProviderError && error.code === "credential") {
     return { status: 422, body: { type: "invalid_provider_credential", message: "FAL rejected this API key." } };

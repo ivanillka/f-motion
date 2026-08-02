@@ -287,3 +287,54 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   await page.reload();
   await expect(page.getByRole("heading", { name: "Shape a vertical video" })).toBeVisible();
 });
+
+test("FAL still generation quotes, confirms, and attaches only after review", async ({ page }) => {
+  await page.route("https://e2e-storage.invalid/**", (route) =>
+    route.fulfill({ status: 200, body: "" }));
+  await page.route("https://e2e-images.invalid/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="90" height="160"><rect width="90" height="160" fill="#555"/></svg>'
+    }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Visual description").fill("A fictional lighthouse that does not exist on stock");
+  await page.getByRole("button", { name: "Continue to video plan" }).click();
+  await page.getByText("Edit recommended video plan").click();
+  await page.getByLabel("Where should visuals come from?").selectOption("own");
+  await chooseConcept(page, "Direct");
+  await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
+  await page.locator('input[type="file"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
+  for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
+
+  await page.getByRole("button", { name: "Edit scene 1" }).click();
+  await page.getByRole("button", { name: "Generate AI image for scene 1" }).click();
+  await expect(page.getByRole("heading", { name: "Generate AI image for scene 1" })).toBeVisible();
+  await page.getByLabel("Image prompt").fill("quiet lighthouse at dusk, soft fog, cinematic");
+  await page.getByRole("button", { name: "Get FAL price" }).click();
+  await expect(page.getByText(/estimated total USD 0\.003/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Generate one image" })).toBeEnabled();
+  await page.getByRole("button", { name: "Generate one image" }).click();
+  await expect(page.getByRole("button", { name: "Use for scene 1" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("AI-generated with FAL").first()).toBeVisible();
+  const mediaIdBefore = await page.evaluate(async () => {
+    const projectId = localStorage.getItem("fengine-project");
+    const { project } = await (await fetch(`/api/projects/${projectId}`)).json();
+    return project.scenes.find((scene) => scene.order === 0)?.media_id ?? null;
+  });
+  await page.getByRole("button", { name: "Use for scene 1" }).click();
+  await expect(page.getByRole("status").filter({ hasText: /AI-generated with FAL/i })).toBeVisible();
+  const mediaIdAfter = await page.evaluate(async () => {
+    const projectId = localStorage.getItem("fengine-project");
+    const { project } = await (await fetch(`/api/projects/${projectId}`)).json();
+    return project.scenes.find((scene) => scene.order === 0)?.media_id ?? null;
+  });
+  expect(mediaIdAfter).toBeTruthy();
+  expect(mediaIdAfter).not.toEqual(mediaIdBefore);
+
+  await page.getByRole("button", { name: "Generate accurate preview" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 30_000 });
+});

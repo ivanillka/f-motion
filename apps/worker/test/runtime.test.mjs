@@ -396,7 +396,10 @@ function createInspectionPool({ failReadyOnce = false } = {}) {
         row.inspectionSha256 = params[3];
         return { rowCount: 1, rows: [{ ...row }] };
       }
-      if (sql.includes(`SET state = 'ready'`)) {
+      if (sql.includes(`UPDATE "GenerationJob"`)) {
+        return { rowCount: 0, rows: [] };
+      }
+      if (sql.includes(`UPDATE "MediaAsset"`) && sql.includes(`SET state = 'ready'`)) {
         if (shouldFailReady) {
           shouldFailReady = false;
           throw new Error("database unavailable after copy");

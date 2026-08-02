@@ -42,6 +42,7 @@ model User {
   media                  MediaAsset[]
   jobs                   RenderJob[]
   providerCredentials    ProviderCredential[]
+  generationJobs         GenerationJob[]
 }
 
 model ProviderCredential {
@@ -57,6 +58,7 @@ model ProviderCredential {
   validatedAt DateTime
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  generationJobs GenerationJob[]
 
   @@unique([ownerId, provider])
   @@index([ownerId])
@@ -73,6 +75,7 @@ model Project {
   media             MediaAsset[]
   commands          CommandReceipt[]
   jobs              RenderJob[]
+  generationJobs    GenerationJob[]
 
   @@unique([ownerId, id])
   @@index([ownerId])
@@ -119,6 +122,7 @@ model MediaAsset {
   maxBytes            Int
   detected            Json?
   attribution         Json?
+  generationResults   GenerationJob[] @relation("GenerationResultMedia")
 
   @@unique([ownerId, projectId, id])
   @@unique([quarantineObjectKey])
@@ -181,4 +185,53 @@ model WorkOutbox {
   payload      Json
   createdAt    DateTime  @default(now())
   dispatchedAt DateTime?
+}
+
+enum GenerationKind {
+  image
+}
+
+enum GenerationState {
+  quoted
+  queued
+  submitting
+  running
+  downloading
+  inspecting
+  ready
+  cancelled
+  failed
+  submission_uncertain
+}
+
+/// Owner-scoped FAL generation outside the deterministic scene contract.
+model GenerationJob {
+  id                String          @id @default(uuid())
+  ownerId           String
+  owner             User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projectId         String
+  project           Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sceneId           String
+  credentialId      String
+  credential        ProviderCredential @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+  kind              GenerationKind  @default(image)
+  endpointId        String
+  prompt            String
+  inputJson         Json
+  quoteJson         Json
+  quoteExpiresAt    DateTime
+  state             GenerationState @default(quoted)
+  cancelRequested   Boolean         @default(false)
+  providerRequestId String?
+  resultMediaId     String?
+  resultMedia       MediaAsset?     @relation("GenerationResultMedia", fields: [resultMediaId], references: [id], onDelete: SetNull)
+  failureCode       String?
+  idempotencyKey    String
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([ownerId, projectId, idempotencyKey])
+  @@index([ownerId, projectId, sceneId])
+  @@index([ownerId, state])
+  @@index([state, updatedAt])
 }

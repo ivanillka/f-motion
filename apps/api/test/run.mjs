@@ -8,6 +8,7 @@ await import("./access-policy.test.mjs");
 await import("./external-import.test.mjs");
 await import("./fal-credentials.test.mjs");
 await import("./fal-credentials-integration.test.mjs");
+await import("./fal-generation.test.mjs");
 await import("./pexels-credentials.test.mjs");
 await import("./media-bound.test.mjs");
 await import("./media-repository.test.mjs");

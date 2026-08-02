@@ -50,6 +50,11 @@ export interface SceneMediaView {
     attributionUrl: string;
     previewUrl?: string;
   };
+  generation?: {
+    source: "FAL";
+    model: string;
+    generatedAt: string;
+  };
   previewUrl?: string;
 }
 

@@ -42,6 +42,10 @@ import {
   type FalCredentialService
 } from "./fal-credentials.js";
 import {
+  falGenerationHttpError,
+  type FalGenerationService
+} from "./fal-generation.js";
+import {
   PexelsProviderError,
   pexelsCredentialHttpError,
   type PexelsCredentialService
@@ -74,6 +78,7 @@ interface AppBaseOptions {
   /** Test adapter for trusted remote-media imports. */
   externalMediaRequest?: typeof fetch;
   falCredentials?: FalCredentialService;
+  falGeneration?: FalGenerationService;
   pexelsCredentials?: PexelsCredentialService;
 }
 
@@ -356,6 +361,70 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
   const pexelsUnavailable = (response: express.Response) => response.status(503).json({
     type: "provider_unavailable",
     message: "Pexels connection is not enabled on this deployment."
+  });
+
+  const falGenUnavailable = (response: import("express").Response) =>
+    response.status(503).json({ type: "provider_unavailable", message: "FAL generation is not enabled on this deployment." });
+  app.post("/api/projects/:projectId/scenes/:sceneId/fal/image-quotes", async (request, response, next) => {
+    try {
+      if (!options.falGeneration) return falGenUnavailable(response);
+      if (!exactObject(request.body, ["prompt"])) {
+        return response.status(422).json({ type: "validation", message: "invalid prompt" });
+      }
+      const job = await options.falGeneration.quoteImage(
+        String(response.locals.ownerId),
+        request.params.projectId,
+        request.params.sceneId,
+        (request.body as { prompt?: unknown }).prompt
+      );
+      response.status(201).json(job);
+    } catch (error) {
+      const mapped = falGenerationHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/generation-jobs/:jobId/confirm", async (request, response, next) => {
+    try {
+      if (!options.falGeneration) return falGenUnavailable(response);
+      if (!exactObject(request.body, ["idempotency_key"])) {
+        return response.status(422).json({ type: "validation", message: "invalid idempotency key" });
+      }
+      response.json(await options.falGeneration.confirm(
+        String(response.locals.ownerId),
+        request.params.jobId,
+        (request.body as { idempotency_key?: unknown }).idempotency_key
+      ));
+    } catch (error) {
+      const mapped = falGenerationHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.get("/api/generation-jobs/:jobId", async (_request, response, next) => {
+    try {
+      if (!options.falGeneration) return falGenUnavailable(response);
+      const job = await options.falGeneration.get(String(response.locals.ownerId), _request.params.jobId);
+      if (!job) return response.status(404).json({ type: "not_found", message: "not found" });
+      response.json(job);
+    } catch (error) {
+      const mapped = falGenerationHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/generation-jobs/:jobId/cancel", async (request, response, next) => {
+    try {
+      if (!options.falGeneration) return falGenUnavailable(response);
+      if (!emptyBody(request.body)) {
+        return response.status(422).json({ type: "validation", message: "This request does not accept fields." });
+      }
+      response.json(await options.falGeneration.cancel(String(response.locals.ownerId), request.params.jobId));
+    } catch (error) {
+      const mapped = falGenerationHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
   });
   app.get("/api/providers/pexels/credential", async (_request, response, next) => {
     try {

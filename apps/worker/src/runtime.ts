@@ -31,6 +31,7 @@ import {
   type MediaInput
 } from "./index.js";
 import type { InspectionJob, PreviewJob, QueueHandlers } from "./queue.js";
+import { processFalImageJob } from "./fal-image.js";
 
 interface ObjectIdentity {
   etag: string;
@@ -43,7 +44,7 @@ interface InspectionResult {
   identity?: ObjectIdentity;
 }
 
-interface WorkerObjectStore {
+export interface WorkerObjectStore {
   inspect(objectKey: string, maxBytes: number, signal?: AbortSignal): Promise<InspectionResult>;
   seal(sourceKey: string, sealedKey: string, identity: ObjectIdentity, signal?: AbortSignal): Promise<ObjectIdentity>;
   downloadSealed(objectKey: string, destination: string, identity: ObjectIdentity, signal?: AbortSignal): Promise<void>;
@@ -373,7 +374,8 @@ export function createQueueHandlers(
   pool: pg.Pool,
   store: WorkerObjectStore,
   _legacyProfile?: RenderProfile,
-  limits: MediaLimits = defaultMediaLimits
+  limits: MediaLimits = defaultMediaLimits,
+  env: Record<string, string | undefined> = process.env
 ): QueueHandlers {
   return {
     async inspect(job: InspectionJob, signal: AbortSignal) {
@@ -419,6 +421,11 @@ export function createQueueHandlers(
             `UPDATE "MediaAsset" SET state = 'quarantined', detected = $1
               WHERE id = $2 AND "ownerId" = $3 AND "projectId" = $4 AND state = 'inspecting'`,
             [inspection.detected, job.assetId, job.ownerId, job.projectId]
+          );
+          await pool.query(
+            `UPDATE "GenerationJob" SET state = 'failed', "failureCode" = 'inspection_rejected', "updatedAt" = NOW()
+              WHERE "resultMediaId" = $1 AND "ownerId" = $2 AND state = 'inspecting'`,
+            [job.assetId, job.ownerId]
           );
           return { state: "quarantined" };
         }
@@ -472,8 +479,16 @@ export function createQueueHandlers(
         ]
       );
       if (ready.rowCount !== 1) throw new Error("media seal state changed");
+      await pool.query(
+        `UPDATE "GenerationJob" SET state = 'ready', "updatedAt" = NOW()
+          WHERE "resultMediaId" = $1 AND "ownerId" = $2 AND state = 'inspecting'`,
+        [job.assetId, job.ownerId]
+      );
       await store.delete(asset.quarantineObjectKey);
       return { state: "ready" };
+    },
+    async generateFalImage(job, signal) {
+      return processFalImageJob(pool, store, job, signal, env);
     },
     async render(job: PreviewJob, signal: AbortSignal) {
       let stored: Awaited<ReturnType<typeof storedRender>>;
