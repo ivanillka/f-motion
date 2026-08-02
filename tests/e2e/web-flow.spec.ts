@@ -117,6 +117,9 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await page.getByRole("button", { name: "Create new video" }).click();
   await expect(page.getByLabel("Visual description")).toHaveValue("Launch a product for small teams");
   await page.getByRole("button", { name: "Continue to video plan" }).click();
+  await expect(page.getByLabel("Recommended video plan")).toContainText("Promote an idea or product");
+  await expect(page.getByLabel("Where should visuals come from?")).not.toBeVisible();
+  await page.getByText("Edit recommended video plan").click();
   await page.getByLabel("Where should visuals come from?").selectOption("own");
   await page.getByRole("button", { name: "Build storyboard" }).click();
 
@@ -172,13 +175,18 @@ test("licensed stock journey explicitly selects candidates for a multi-scene ren
   await page.getByRole("button", { name: "Create new video" }).click();
   await page.getByLabel("Visual description").fill("A calm studio introduction");
   await page.getByRole("button", { name: "Continue to video plan" }).click();
+  await expect(page.getByLabel("Recommended video plan")).toContainText("About 30 seconds");
+  await expect(page.getByLabel("How should the story unfold?")).not.toBeVisible();
+  await page.getByText("Edit recommended video plan").click();
   await page.getByLabel("How should the story unfold?").selectOption("mystery");
   await page.getByLabel("What tone fits best?").selectOption("documentary");
   await page.getByRole("button", { name: "Build storyboard" }).click();
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(4);
+  await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
   await expect(page.getByRole("button", { name: "Move scene 1 earlier" })).toBeDisabled();
   await page.getByRole("button", { name: "Add scene" }).click();
+  await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(6);
+  await page.getByRole("button", { name: "Remove scene 2" }).click();
   await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
   await page.getByRole("button", { name: "Remove scene 2" }).click();
   await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(4);

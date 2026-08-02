@@ -6,6 +6,7 @@ import {
   buildStoryboardDraft,
   defaultVideoArchitecture,
   loadSceneMediaViews,
+  recommendVideoArchitecture,
   sceneDurationForMedia,
   type ProjectSnapshot,
   type ProjectSummary,
@@ -29,6 +30,15 @@ interface FalCredentialView {
   hint?: string;
   validated_at?: string;
 }
+
+const architectureLabels = {
+  goal: { story: "Tell a story", explain: "Explain something", promote: "Promote an idea or product", educate: "Teach the viewer" },
+  audience: { general: "General viewers", social: "Social media audience", customers: "Customers", internal: "Internal team" },
+  structure: { story_arc: "Beginning → turn → resolution", mystery: "Clues → tension → reveal", problem_solution: "Problem → solution → result", chronological: "Chronological journey" },
+  tone: { cinematic: "Cinematic", documentary: "Documentary", energetic: "Energetic", calm: "Calm" },
+  pace: { slow: "Slow and atmospheric", balanced: "Balanced", fast: "Fast and punchy" },
+  media: { stock: "Licensed open stock", own: "My own media", mixed: "Mix stock and my media" }
+} as const;
 
 function App() {
   const authSetup = useMemo(() => {
@@ -306,6 +316,12 @@ function App() {
     setDraft(localStorage.getItem("fengine-draft") ?? "");
     setStatus("");
     setStep("brief");
+  }
+
+  function continueToArchitecture() {
+    setArchitecture(recommendVideoArchitecture(draft));
+    setStatus("");
+    setStep("architecture");
   }
 
   async function saveScenePatch(sceneId: string, patch: Partial<Scene>) {
@@ -719,16 +735,27 @@ function App() {
     </section>}
     {authReady && step === "brief" && <section>
       <h1>What do you want to make?</h1>
-      <p>Start with the subject or idea. Next we will ask a few short questions to design the video around your goal.</p>
+      <p>Describe the subject, audience, mood, intended result, media you have, and preferred length in your own words. F-Motion will recommend a complete video plan.</p>
       <label>Visual description<textarea value={draft} maxLength={500} onChange={(event) => setDraft(event.target.value)} placeholder="A remote island in dark ocean fog, an abandoned lighthouse, cinematic aerial shot…" /></label>
-      <button disabled={!draft.trim()} onClick={() => setStep("architecture")}>Continue to video plan</button>
+      <button disabled={!draft.trim()} onClick={continueToArchitecture}>Continue to video plan</button>
       <p role="status" aria-live="polite">{status}</p>
       <button className="secondary" disabled={busy} onClick={() => setStep("drafts")}>Back to drafts</button>
     </section>}
     {authReady && step === "architecture" && <section>
       <h1>Plan the video</h1>
-      <p>These choices define the story structure, timing, visual-search prompts, and edit rhythm. You can still change every scene afterward.</p>
-      <div className="architecture-grid">
+      <p>F-Motion prepared this recommendation from your conversation. Build it as proposed, or unfold the details to edit any decision.</p>
+      <dl className="architecture-summary" aria-label="Recommended video plan">
+        <div><dt>Goal</dt><dd>{architectureLabels.goal[architecture.goal]}</dd></div>
+        <div><dt>Audience</dt><dd>{architectureLabels.audience[architecture.audience]}</dd></div>
+        <div><dt>Story</dt><dd>{architectureLabels.structure[architecture.structure]}</dd></div>
+        <div><dt>Style</dt><dd>{architectureLabels.tone[architecture.tone]} · {architectureLabels.pace[architecture.pace]}</dd></div>
+        <div><dt>Length</dt><dd>About {architecture.durationSeconds} seconds</dd></div>
+        <div><dt>Visuals</dt><dd>{architectureLabels.media[architecture.media]}</dd></div>
+      </dl>
+      <details className="architecture-editor">
+        <summary>Edit recommended video plan</summary>
+        <p>Optional: adjust the decisions before F-Motion builds the storyboard and footage searches.</p>
+        <div className="architecture-grid">
         <label>What should this video achieve?<select value={architecture.goal} onChange={(event) => setArchitecture({ ...architecture, goal: event.target.value as VideoArchitecture["goal"] })}>
           <option value="story">Tell a story</option><option value="explain">Explain something</option><option value="promote">Promote an idea or product</option><option value="educate">Teach the viewer</option>
         </select></label>
@@ -750,8 +777,8 @@ function App() {
         <label>Where should visuals come from?<select value={architecture.media} onChange={(event) => setArchitecture({ ...architecture, media: event.target.value as VideoArchitecture["media"] })}>
           <option value="stock">Licensed open stock</option><option value="own">My own media</option><option value="mixed">Mix stock and my media</option>
         </select></label>
-      </div>
-      <p className="notice">Plan: {architecture.durationSeconds}s · {architecture.structure.replaceAll("_", " ")} · {architecture.tone} · {architecture.pace} pace.</p>
+        </div>
+      </details>
       <button disabled={busy} onClick={() => void createStoryboard()}>{busy ? "Building video plan…" : "Build storyboard"}</button>
       <button className="secondary" disabled={busy} onClick={() => setStep("brief")}>Back to description</button>
       <p role="status" aria-live="polite">{status}</p>

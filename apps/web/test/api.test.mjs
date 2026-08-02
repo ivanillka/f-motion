@@ -1,12 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, buildStoryboardDraft, sceneDurationForMedia } from "../src/api.ts";
+import { ApiClient, ApiResponseError, buildStoryboardDraft, recommendVideoArchitecture, sceneDurationForMedia } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
   assert.equal(sceneDurationForMedia(40_000, 3000), 15_000);
   assert.equal(sceneDurationForMedia(200, 3000), 500);
   assert.equal(sceneDurationForMedia(undefined, 3000), 3000);
+});
+
+test("conversation recommendations prefill distinct, editable video architectures", () => {
+  assert.deepEqual(recommendVideoArchitecture("Mystery of a lonely island in ocean fog"), {
+    goal: "story", audience: "general", structure: "mystery", tone: "cinematic",
+    pace: "slow", durationSeconds: 30, media: "stock"
+  });
+  assert.deepEqual(recommendVideoArchitecture("Launch our product to customers as a fast 15 second reel using my videos and stock"), {
+    goal: "promote", audience: "social", structure: "problem_solution", tone: "energetic",
+    pace: "fast", durationSeconds: 15, media: "mixed"
+  });
+  assert.deepEqual(recommendVideoArchitecture("Documentary tutorial for employees using our footage"), {
+    goal: "educate", audience: "internal", structure: "story_arc", tone: "documentary",
+    pace: "balanced", durationSeconds: 45, media: "own"
+  });
 });
 
 const ids = () => {
