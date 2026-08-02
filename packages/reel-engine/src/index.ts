@@ -196,6 +196,29 @@ export function conceptsFor(brief: ProjectSnapshot["brief"]): [Concept, Concept,
   ];
 }
 
+/**
+ * Deterministic first storyboard from a chosen concept and brief.
+ * ponytail: formulaic concept→architecture mapping is the ceiling; upgrade to a
+ * host-owned planner only after this licensed-stock journey is measured.
+ */
+export function planStoryboardScenes(
+  brief: ProjectSnapshot["brief"],
+  conceptId: string,
+  makeId: () => string
+): Scene[] {
+  if (!conceptsFor(brief).some(({ id }) => id === conceptId)) throw new Error("unknown concept");
+  const architecture: VideoArchitecture = {
+    goal: conceptId === "direct" ? "promote" : "story",
+    audience: "general",
+    structure: conceptId === "story" ? "story_arc" : conceptId === "rhythm" ? "chronological" : "problem_solution",
+    tone: "cinematic",
+    pace: conceptId === "rhythm" ? "fast" : "balanced",
+    durationSeconds: 30,
+    media: "stock"
+  };
+  return buildStoryboardDraft(brief.purpose, makeId, architecture);
+}
+
 function boundedScene(scene: Scene): Scene {
   if (scene.caption.length > 180) throw new Error("caption exceeds 180 characters");
   if (!Number.isFinite(scene.duration_ms) || scene.duration_ms < 500 || scene.duration_ms > 15_000) {
@@ -368,17 +391,10 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
   if (command.kind === "select_concept") {
     const conceptId = String(command.payload.concept_id ?? "");
     if (!conceptsFor(snapshot.brief).some(({ id }) => id === conceptId)) throw new Error("unknown concept");
-    const scenes = snapshot.scenes.length ? snapshot.scenes : [{
-      id: `${snapshot.id}-scene-1`,
-      order: 0,
-      caption: snapshot.brief.purpose.trim().slice(0, 180),
-      duration_ms: 3000,
-      focal_x: 0.5,
-      focal_y: 0.5,
-      motion: "none" as const,
-      audio_level: 1,
-      ducking: false
-    }];
+    let sceneSerial = 0;
+    const scenes = snapshot.scenes.length
+      ? snapshot.scenes
+      : planStoryboardScenes(snapshot.brief, conceptId, () => `${snapshot.id}-scene-${++sceneSerial}`);
     return { ...snapshot, selected_concept_id: conceptId, scenes, revision: snapshot.revision + 1 };
   }
   if (command.kind === "update_scene") {

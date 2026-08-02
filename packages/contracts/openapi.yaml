@@ -373,6 +373,34 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "503": { $ref: "#/components/responses/Unavailable" }
+  /projects/{project_id}/media/pexels/storyboard:
+    post:
+      operationId: matchStoryboardPexels
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                exclude_pexels_ids:
+                  type: array
+                  items: { type: integer, minimum: 1 }
+              additionalProperties: false
+      responses:
+        "200":
+          description: Per-scene match results without attaching media_ids
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoryboardPexelsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
   /projects/{project_id}/render:
     post:
       operationId: enqueueRender
@@ -781,6 +809,23 @@ components:
         match: { type: object, additionalProperties: true }
         query: { type: string }
       additionalProperties: true
+    StoryboardPexelsResult:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            required: [scene_id, state]
+            properties:
+              scene_id: { type: string }
+              state: { type: string, enum: [matched, no_result, skipped] }
+              asset: { $ref: "#/components/schemas/SceneMediaView" }
+              match: { type: object, additionalProperties: true }
+              query: { type: string }
+              message: { type: string }
+            additionalProperties: true
     RenderJobAccepted:
       type: object
       required: [job_id, project_id, revision, kind, state]

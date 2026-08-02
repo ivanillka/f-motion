@@ -129,6 +129,57 @@ function isScene(value: unknown, order: number): value is Scene {
   return true;
 }
 
+/** Validates a planning brief for one beat before persistence as a Scene. */
+export interface SceneBrief {
+  id: string;
+  order: number;
+  /** Narrative purpose for this beat (planner-facing). */
+  purpose: string;
+  caption: string;
+  visual_prompt: string;
+  duration_ms: number;
+  mood?: string;
+  camera?: string;
+}
+
+export function isSceneBrief(value: unknown): value is SceneBrief {
+  if (!isRecord(value)
+    || typeof value.id !== "string"
+    || !value.id
+    || !Number.isInteger(value.order)
+    || (value.order as number) < 0
+    || typeof value.purpose !== "string"
+    || !value.purpose.trim()
+    || value.purpose.length > 240
+    || typeof value.caption !== "string"
+    || value.caption.length > 180
+    || typeof value.visual_prompt !== "string"
+    || !value.visual_prompt.trim()
+    || value.visual_prompt !== value.visual_prompt.trim()
+    || value.visual_prompt.length > 240
+    || !isFiniteNumber(value.duration_ms)
+    || value.duration_ms < 500
+    || value.duration_ms > 15_000
+    || ("mood" in value && (typeof value.mood !== "string" || value.mood.length > 80))
+    || ("camera" in value && (typeof value.camera !== "string" || value.camera.length > 80))) {
+    return false;
+  }
+  return true;
+}
+
+/** 4–6 ordered scene briefs with unique IDs, contiguous order, and total ≤ 60s. */
+export function isStoryboardPlan(value: unknown): value is SceneBrief[] {
+  if (!Array.isArray(value) || value.length < 4 || value.length > 6) return false;
+  const ids = new Set<string>();
+  let total = 0;
+  for (const [order, brief] of value.entries()) {
+    if (!isSceneBrief(brief) || brief.order !== order || ids.has(brief.id)) return false;
+    ids.add(brief.id);
+    total += brief.duration_ms;
+  }
+  return total >= 4 * 500 && total <= 60_000;
+}
+
 /** Validates an authoritative lifecycle payload, not historical empty projects. */
 export function isStoryboardScenes(value: unknown, requireVisualPrompt = false): value is Scene[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 8) return false;

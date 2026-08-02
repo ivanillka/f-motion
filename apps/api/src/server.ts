@@ -618,6 +618,90 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       next(error);
     }
   });
+  app.post("/api/projects/:projectId/media/pexels/storyboard", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      const project = await projects.get(ownerId, request.params.projectId);
+      if (!project) return response.status(404).json({ type: "not_found", message: "not found" });
+      if (!project.scenes.length) {
+        return response.status(422).json({ type: "validation", message: "storyboard has no scenes" });
+      }
+      const exclude = new Set<number>();
+      if (request.body && typeof request.body === "object" && !Array.isArray(request.body)
+        && Array.isArray((request.body as { exclude_pexels_ids?: unknown }).exclude_pexels_ids)) {
+        for (const id of (request.body as { exclude_pexels_ids: unknown[] }).exclude_pexels_ids) {
+          if (Number.isInteger(id) && Number(id) > 0) exclude.add(Number(id));
+        }
+      }
+      const pexels = await pexelsForOwner(options.media, ownerId);
+      const usedPexelsIds = new Set(exclude);
+      const results: Array<{
+        scene_id: string;
+        state: "matched" | "no_result" | "skipped";
+        asset?: ReturnType<typeof sceneMediaView>;
+        match?: Omit<Awaited<ReturnType<PexelsClient["search"]>>[number], "sourceUrl" | "contentType">;
+        query?: string;
+        message?: string;
+      }> = [];
+      // Sequential on purpose: uniqueness across scenes depends on prior picks.
+      for (const scene of [...project.scenes].sort((a, b) => a.order - b.order)) {
+        if (scene.media_id) {
+          results.push({ scene_id: scene.id, state: "skipped", message: "scene already has media" });
+          continue;
+        }
+        const description = scene.visual_prompt?.trim() || scene.caption.trim() || project.brief.purpose;
+        let selected: Awaited<ReturnType<PexelsClient["search"]>>[number] | undefined;
+        let matchedQuery = "";
+        let fallback: Awaited<ReturnType<PexelsClient["search"]>>[number] | undefined;
+        let fallbackQuery = "";
+        for (const query of pexelsQueriesForBrief(description)) {
+          const hits = await pexels.search(query);
+          const unused = hits.find((hit) => !usedPexelsIds.has(hit.id));
+          if (unused) {
+            selected = unused;
+            matchedQuery = query;
+            break;
+          }
+          if (!fallback && hits[0]) {
+            fallback = hits[0];
+            fallbackQuery = query;
+          }
+        }
+        selected ??= fallback;
+        matchedQuery ||= fallbackQuery;
+        if (!selected) {
+          results.push({
+            scene_id: scene.id,
+            state: "no_result",
+            message: "No licensed stock matched this scene"
+          });
+          continue;
+        }
+        usedPexelsIds.add(selected.id);
+        const asset = await pexels.copy(
+          ownerId,
+          request.params.projectId,
+          selected,
+          options.media.repository,
+          options.media.store
+        );
+        const { sourceUrl: _sourceUrl, contentType: _contentType, ...match } = selected;
+        results.push({
+          scene_id: scene.id,
+          state: "matched",
+          asset: sceneMediaView(asset),
+          match,
+          query: matchedQuery
+        });
+      }
+      response.status(200).json({ results });
+    } catch (error) {
+      const mapped = pexelsHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
   app.post("/api/projects/:projectId/render", async (request, response, next) => {
     try {
       const ownerId = String(response.locals.ownerId);

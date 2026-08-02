@@ -1,0 +1,36 @@
+[
+  {
+    "id": "brief-1",
+    "order": 0,
+    "purpose": "Establish the setting",
+    "caption": "Morning light finds the quiet studio.",
+    "visual_prompt": "quiet cinematic studio soft window light",
+    "duration_ms": 6000,
+    "mood": "calm",
+    "camera": "wide"
+  },
+  {
+    "id": "brief-2",
+    "order": 1,
+    "purpose": "Introduce the subject",
+    "caption": "Hands prepare the first detail.",
+    "visual_prompt": "close up hands preparing product on table",
+    "duration_ms": 6000
+  },
+  {
+    "id": "brief-3",
+    "order": 2,
+    "purpose": "Escalate the story",
+    "caption": "The work gathers momentum.",
+    "visual_prompt": "medium shot creator working with tools",
+    "duration_ms": 6000
+  },
+  {
+    "id": "brief-4",
+    "order": 3,
+    "purpose": "Resolve with a clear CTA beat",
+    "caption": "Open the full gallery.",
+    "visual_prompt": "final product reveal on clean backdrop",
+    "duration_ms": 6000
+  }
+]

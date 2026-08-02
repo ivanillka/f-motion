@@ -70,8 +70,16 @@ async function seedRenderableProject(projects, pool, ownerId, brief, commandPref
     project_id: project.id,
     base_revision: selected.revision,
     client_timestamp: "diagnostic",
-    kind: "update_scene",
-    payload: { scene: { ...selected.scenes[0], media_id: mediaId } }
+    kind: "replace_storyboard",
+    payload: {
+      scenes: [{
+        ...selected.scenes[0],
+        id: selected.scenes[0].id,
+        order: 0,
+        media_id: mediaId,
+        visual_prompt: selected.scenes[0].visual_prompt ?? "render fixture visual"
+      }]
+    }
   });
 }
 
@@ -380,8 +388,15 @@ test("render enqueue rejects empty, missing, foreign, and non-ready media", asyn
       project_id: empty.id,
       base_revision: inspecting.revision,
       client_timestamp: "diagnostic",
-      kind: "update_scene",
-      payload: { scene: { ...selected.scenes[0], media_id: "ready-media" } }
+      kind: "replace_storyboard",
+      payload: {
+        scenes: [{
+          ...selected.scenes[0],
+          order: 0,
+          media_id: "ready-media",
+          visual_prompt: selected.scenes[0].visual_prompt ?? "ready fixture visual"
+        }]
+      }
     });
     const ok = await renders.create("owner", empty.id, "preview");
     assert.equal(ok.state, "queued");

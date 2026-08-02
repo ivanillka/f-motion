@@ -447,6 +447,98 @@ test("legacy and invalid persisted stock metadata never invents a preview", asyn
   }
 });
 
+test("storyboard Pexels matching prefers unique IDs and reports no_result without attaching", async () => {
+  const searches = [];
+  const copies = [];
+  const hits = [
+    {
+      id: 101,
+      creator: "A",
+      attributionUrl: "https://www.pexels.com/video/101",
+      previewUrl: "https://images.pexels.com/videos/101/preview.jpg",
+      sourceUrl: "https://provider.example/a.mp4",
+      contentType: "video/mp4"
+    },
+    {
+      id: 102,
+      creator: "B",
+      attributionUrl: "https://www.pexels.com/video/102",
+      previewUrl: "https://images.pexels.com/videos/102/preview.jpg",
+      sourceUrl: "https://provider.example/b.mp4",
+      contentType: "video/mp4"
+    }
+  ];
+  const server = createServer(createTestApp({
+    media: {
+      repository: {},
+      store: {},
+      pexels: {
+        async search(query) {
+          searches.push(query);
+          if (String(query).includes("zzzunmatched")) return [];
+          return hits;
+        },
+        async copy(_ownerId, _projectId, selected) {
+          copies.push(selected.id);
+          return { id: `asset-${selected.id}`, state: "inspecting" };
+        }
+      }
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const created = await (await fetch(`${origin}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "Unique licensed scenes" })
+    })).json();
+    const selected = await (await fetch(`${origin}/api/projects/${created.project.id}/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command_id: "select",
+        base_revision: 0,
+        client_timestamp: "",
+        kind: "select_concept",
+        payload: { concept_id: "direct" }
+      })
+    })).json();
+    const seed = await (await fetch(`${origin}/api/projects/${created.project.id}/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command_id: "seed-three",
+        base_revision: selected.revision,
+        client_timestamp: "",
+        kind: "replace_storyboard",
+        payload: {
+          scenes: [
+            { ...selected.scenes[0], id: "s1", order: 0, visual_prompt: "red lighthouse on rocky coast", media_id: undefined },
+            { ...selected.scenes[0], id: "s2", order: 1, visual_prompt: "fishing boat in morning fog", media_id: undefined },
+            { ...selected.scenes[0], id: "s3", order: 2, visual_prompt: "zzzunmatched footage request", media_id: undefined }
+          ]
+        }
+      })
+    })).json();
+    assert.equal(seed.scenes.length, 3);
+    const response = await fetch(
+      `${origin}/api/projects/${created.project.id}/media/pexels/storyboard`,
+      { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }
+    );
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.results.map(({ scene_id, state, asset }) => ({ scene_id, state, asset_id: asset?.id })), [
+      { scene_id: "s1", state: "matched", asset_id: "asset-101" },
+      { scene_id: "s2", state: "matched", asset_id: "asset-102" },
+      { scene_id: "s3", state: "no_result", asset_id: undefined }
+    ]);
+    assert.deepEqual(copies, [101, 102]);
+    assert.ok(searches.length >= 3);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("automatic Pexels matching derives a visual query and never exposes the source URL", async () => {
   const queries = [];
   const selected = {
@@ -611,13 +703,33 @@ test("scene lifecycle media_id values must be owner-scoped and ready", async () 
       })
     });
     const afterSelect = await selected.json();
-    const scene = afterSelect.scenes[0];
+    const collapsed = await fetch(`${origin}/api/projects/${project.id}/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command_id: "collapse",
+        base_revision: afterSelect.revision,
+        client_timestamp: "",
+        kind: "replace_storyboard",
+        payload: {
+          scenes: [{
+            ...afterSelect.scenes[0],
+            order: 0,
+            visual_prompt: afterSelect.scenes[0].visual_prompt ?? "single scene fixture",
+            media_id: undefined
+          }]
+        }
+      })
+    });
+    assert.equal(collapsed.status, 200);
+    const afterCollapse = await collapsed.json();
+    const scene = afterCollapse.scenes[0];
     const missing = await fetch(`${origin}/api/projects/${project.id}/commands`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         command_id: "attach-missing",
-        base_revision: afterSelect.revision,
+        base_revision: afterCollapse.revision,
         client_timestamp: "",
         kind: "update_scene",
         payload: { scene: { ...scene, media_id: "missing" } }
@@ -636,7 +748,7 @@ test("scene lifecycle media_id values must be owner-scoped and ready", async () 
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         command_id: "attach-quarantined",
-        base_revision: afterSelect.revision,
+        base_revision: afterCollapse.revision,
         client_timestamp: "",
         kind: "update_scene",
         payload: { scene: { ...scene, media_id: "quarantined" } }
@@ -655,7 +767,7 @@ test("scene lifecycle media_id values must be owner-scoped and ready", async () 
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         command_id: "attach-ready",
-        base_revision: afterSelect.revision,
+        base_revision: afterCollapse.revision,
         client_timestamp: "",
         kind: "update_scene",
         payload: { scene: { ...scene, media_id: "ready-asset" } }

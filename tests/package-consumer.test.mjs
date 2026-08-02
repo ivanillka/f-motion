@@ -52,6 +52,7 @@ test("private package tarballs install and run outside the monorepo without regi
       "fixtures/project-v2-breaking.json",
       "fixtures/scene-media-ready.json",
       "fixtures/sse-progress.json",
+      "fixtures/storyboard-plan-v1.json",
       "openapi.yaml",
       "package.json",
       "route-inventory.json",

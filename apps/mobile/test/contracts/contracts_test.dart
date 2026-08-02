@@ -42,6 +42,10 @@ void main() {
     final progress = loadSharedFixture('sse-progress.json');
     expect(progress['phase'], 'preparing');
     expect(progress['additive_field'], 'ok');
+
+    final plan = loadSharedFixture('storyboard-plan-v1.json') as List<dynamic>;
+    expect(plan, hasLength(4));
+    expect((plan.first as Map)['visual_prompt'], isA<String>());
   });
 
   test('draft survives a replacement cache adapter instance', () async {

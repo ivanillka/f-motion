@@ -81,6 +81,7 @@ function App() {
   const [drafts, setDrafts] = useState<ProjectSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [sceneMedia, setSceneMedia] = useState<Record<string, SceneMediaView>>({});
+  const [sceneProgress, setSceneProgress] = useState<Record<string, "finding" | "inspecting" | "ready" | "needs_media">>({});
   const mediaTransition = useRef(0);
   const searchTransition = useRef(0);
   const searchAbort = useRef<AbortController | null>(null);
@@ -123,6 +124,7 @@ function App() {
     setDrafts([]);
     mediaTransition.current += 1;
     setSceneMedia({});
+    setSceneProgress({});
     searchAbort.current?.abort();
     setCandidates([]);
     setConflict(undefined);
@@ -312,14 +314,23 @@ function App() {
     if (busy) return;
     mediaTransition.current += 1;
     setSceneMedia({});
+    setSceneProgress({});
     setBusy(true);
     setStatus("Creating an editable storyboard…");
     try {
-      await prepareProject();
-      setStatus("Storyboard ready. Review each footage search, then choose media.");
-      setStep(architecture.media === "own" ? "media" : "editor");
-    } catch {
-      setStatus("Your storyboard could not be created. Please try again.");
+      const current = await prepareProject();
+      if (architecture.media === "own") {
+        setStatus("Storyboard ready. Upload media for each scene.");
+        setStep("media");
+        return;
+      }
+      setStep("editor");
+      await fillStockStoryboard(current);
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.type : undefined;
+      setStatus(type === "pexels_not_connected"
+        ? "Connect your Pexels API key in Settings, or upload your own media."
+        : "Your storyboard could not be created. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -360,6 +371,7 @@ function App() {
     setProject(undefined);
     setActiveSceneId("");
     setSceneMedia({});
+    setSceneProgress({});
     setCandidates([]);
     setArchitecture(defaultVideoArchitecture);
     setDraft(localStorage.getItem("fengine-draft") ?? "");
@@ -415,7 +427,7 @@ function App() {
         });
         setProject(updated);
         setSceneMedia((current) => ({ ...current, [media.id]: media }));
-        setStep("editor");
+        setSceneProgress((current) => ({ ...current, [intendedSceneId]: "ready" }));
         return true;
       }
       if (media.state !== "admitted" && media.state !== "inspecting") return false;
@@ -423,6 +435,40 @@ function App() {
     }
     setStatus("Media is still inspecting — try again in a moment.");
     return false;
+  }
+
+  async function fillStockStoryboard(snapshot: ProjectSnapshot): Promise<void> {
+    setSceneProgress(Object.fromEntries(
+      snapshot.scenes.map((scene) => [scene.id, scene.media_id ? "ready" as const : "finding" as const])
+    ));
+    setStatus("Finding licensed media for each scene…");
+    const body = await api.request<{
+      results: Array<{
+        scene_id: string;
+        state: "matched" | "no_result" | "skipped";
+        asset?: { id: string };
+      }>;
+    }>(`/api/projects/${snapshot.id}/media/pexels/storyboard`, {
+      method: "POST",
+      body: "{}"
+    });
+    for (const result of body.results) {
+      if (result.state === "skipped") continue;
+      if (result.state !== "matched" || !result.asset) {
+        setSceneProgress((current) => ({ ...current, [result.scene_id]: "needs_media" }));
+        continue;
+      }
+      setSceneProgress((current) => ({ ...current, [result.scene_id]: "inspecting" }));
+      const attached = await attachMediaWhenReady(result.asset.id, snapshot.id, result.scene_id);
+      if (!attached) setSceneProgress((current) => ({ ...current, [result.scene_id]: "needs_media" }));
+    }
+    const { project: refreshed } = await api.getProject(snapshot.id);
+    setProject(refreshed);
+    setSceneMedia(await loadSceneMediaViews(api, refreshed));
+    const readyCount = refreshed.scenes.filter((scene) => scene.media_id).length;
+    setStatus(readyCount === refreshed.scenes.length
+      ? "Licensed media attached for every scene. Review attribution, then render."
+      : `${readyCount} of ${refreshed.scenes.length} scenes have media. Find or upload the rest before rendering.`);
   }
 
   async function moveScene(sceneId: string, to: number) {
@@ -544,7 +590,10 @@ function App() {
       if (!uploaded.ok) throw new Error("Upload failed");
       await api.request(`/api/projects/${project.id}/media/${admission.asset_id}/complete`, { method: "POST" });
       setStatus("Media uploaded and queued for inspection.");
-      if (await attachMediaWhenReady(admission.asset_id, project.id, intendedSceneId)) setStatus("Media attached to this scene.");
+      if (await attachMediaWhenReady(admission.asset_id, project.id, intendedSceneId)) {
+        setStatus("Media attached to this scene.");
+        setStep("editor");
+      }
     } catch {
       setStatus("Media could not be uploaded. Check the file and try again.");
     } finally {
@@ -965,12 +1014,27 @@ function App() {
           }}
         >
           {previewUrl
-            ? media?.detected?.type === "video/mp4"
+            ? (media?.detected?.type === "video/mp4"
               ? <video src={previewUrl} muted playsInline preload="metadata" />
-              : <img src={previewUrl} alt="" />
-            : <span className="scene-empty">{media ? "Media processing" : "No media"}</span>}
+              : <img src={previewUrl} alt="" />)
+            : (
+              <span className="scene-empty">
+                {sceneProgress[scene.id] === "finding" ? "Finding…"
+                  : sceneProgress[scene.id] === "inspecting" ? "Inspecting…"
+                    : sceneProgress[scene.id] === "needs_media" ? "Needs media"
+                      : media ? "Media processing" : "No media"}
+              </span>
+            )}
           <strong>Scene {scene.order + 1}</strong>
           <span>{scene.caption || scene.visual_prompt}</span>
+          {sceneProgress[scene.id] && !previewUrl ? (
+            <span className="scene-progress">
+              {sceneProgress[scene.id] === "finding" ? "finding"
+                : sceneProgress[scene.id] === "inspecting" ? "inspecting"
+                  : sceneProgress[scene.id] === "ready" ? "ready"
+                    : "needs media"}
+            </span>
+          ) : null}
         </button>;
       })}</nav>
 

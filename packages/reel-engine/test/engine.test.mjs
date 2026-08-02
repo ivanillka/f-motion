@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { conceptsFor, applyCommand, buildStoryboardDraft, renderPlan, cuesForScene, validateCues, coverCropFilter } from "../dist/index.js";
+import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, validateCues, coverCropFilter } from "../dist/index.js";
 
 const snapshot = {
   schema_version: 1, id: "p1", owner_id: "u1", revision: 0,
@@ -40,6 +40,45 @@ test("shared storyboard planning separates footage intent from copy and closes w
   assert.equal(scenes.length, 4);
   assert.match(scenes[0].visual_prompt, /editorial portrait photography/i);
   assert.equal(scenes.at(-1).caption, "Open the full gallery.");
+});
+test("concept planner yields a stable 4–6 beat storyboard without provider vocabulary", () => {
+  let id = 0;
+  const first = planStoryboardScenes(
+    { purpose: "Calm studio introduction for a product launch", audience: "Customers", tone: "Warm" },
+    "direct",
+    () => `scene-${++id}`
+  );
+  id = 0;
+  const second = planStoryboardScenes(
+    { purpose: "Calm studio introduction for a product launch", audience: "Customers", tone: "Warm" },
+    "direct",
+    () => `scene-${++id}`
+  );
+  assert.deepEqual(first, second);
+  assert.ok(first.length >= 4 && first.length <= 6);
+  assert.equal(new Set(first.map(({ id: sceneId }) => sceneId)).size, first.length);
+  assert.deepEqual(first.map(({ order }) => order), first.map((_, order) => order));
+  const total = first.reduce((sum, scene) => sum + scene.duration_ms, 0);
+  assert.ok(total >= 15_000 && total <= 60_000);
+  for (const scene of first) {
+    assert.ok(scene.visual_prompt);
+    assert.doesNotMatch(scene.visual_prompt, /\b(pexels|fal|beatoven|openai|llm)\b/i);
+    assert.doesNotMatch(scene.caption, /\b(pexels|fal|beatoven|openai|llm)\b/i);
+  }
+});
+test("select_concept seeds a multi-scene plan when the project is empty", () => {
+  const empty = { ...snapshot, scenes: [] };
+  const result = applyCommand(empty, {
+    command_id: "seed",
+    project_id: "p1",
+    base_revision: 0,
+    client_timestamp: "diagnostic",
+    kind: "select_concept",
+    payload: { concept_id: "story" }
+  });
+  assert.equal(result.selected_concept_id, "story");
+  assert.ok(result.scenes.length >= 4 && result.scenes.length <= 6);
+  assert.ok(result.scenes.every((scene) => scene.visual_prompt));
 });
 test("command increments revision exactly once", () => {
   const result = applyCommand(snapshot, { command_id: "c1", project_id: "p1", base_revision: 0, client_timestamp: "diagnostic", kind: "select_concept", payload: { concept_id: "direct" } });

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { acceptsFixture, isProjectSnapshot, isStoryboardScenes } from "../dist/index.js";
+import { acceptsFixture, isProjectSnapshot, isStoryboardScenes, isStoryboardPlan, isSceneBrief } from "../dist/index.js";
 
 const fixture = async (name) => JSON.parse(await readFile(new URL(`../fixtures/${name}`, import.meta.url)));
 const inventory = JSON.parse(await readFile(new URL("../route-inventory.json", import.meta.url), "utf8"));
@@ -100,4 +100,20 @@ test("shared error and media fixtures stay additive and typed", async () => {
   const progress = await fixture("sse-progress.json");
   assert.equal(progress.phase, "preparing");
   assert.equal(progress.additive_field, "ok");
+});
+
+test("storyboard plan fixtures accept 4–6 briefs and reject invalid plans", async () => {
+  const plan = await fixture("storyboard-plan-v1.json");
+  assert.equal(isStoryboardPlan(plan), true);
+  assert.equal(isSceneBrief(plan[0]), true);
+  assert.equal(isStoryboardPlan(plan.slice(0, 3)), false);
+  assert.equal(isStoryboardPlan(plan.map((brief, order) => ({
+    ...brief,
+    id: "dup",
+    order
+  }))), false);
+  assert.equal(isStoryboardPlan(plan.map((brief) => ({
+    ...brief,
+    duration_ms: 20_000
+  }))), false);
 });
