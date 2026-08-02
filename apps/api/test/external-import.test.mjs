@@ -187,6 +187,12 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     const cleaned = projects.get(ownerId, projectId);
     assert.equal(cleaned.revision, 3);
     assert.doesNotMatch(cleaned.scenes.map(({ caption }) => caption).join(" "), /https:\/\//);
+    assert.deepEqual(cleaned.scenes.map(({ visual_prompt }) => visual_prompt), [
+      "Selected gallery image 1",
+      "Selected gallery image 2",
+      "Selected gallery image 3",
+      "Selected gallery image 4"
+    ]);
     assert.equal(stored.length, 2);
 
     const rejected = await request({ ...baseBody, external_id: "followup:blocked", media_urls: ["https://example.com/private.jpg"] });

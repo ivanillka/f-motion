@@ -212,10 +212,16 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         }
       }
       const textOnlyImportedDraft = project.scenes.length > 0 && project.scenes.every((scene) => !scene.media_id);
+      const legacyAutoPrompts = project.scenes.length > 0 && project.scenes.every((scene) =>
+        scene.visual_prompt === "Selected gallery media"
+          || scene.visual_prompt?.startsWith("Selected gallery image ")
+          || scene.visual_prompt?.startsWith("use secondary image"));
       const legacyMediaRepair = project.scenes.length > 0
-        && project.scenes.every((scene) => scene.visual_prompt === "Selected gallery media")
-        && project.scenes.some((scene) => scene.caption.includes("https://"));
-      const currentScenes = textOnlyImportedDraft || legacyMediaRepair
+        && project.scenes.every((scene) => scene.media_id)
+        && legacyAutoPrompts
+        && project.scenes.some((scene) => scene.caption.includes("https://") || scene.visual_prompt?.startsWith("use secondary image"));
+      const rebuildImportedDraft = textOnlyImportedDraft || legacyMediaRepair;
+      const currentScenes = rebuildImportedDraft
         ? generatedScenes.map((scene, index) => ({
             ...scene,
             ...(project.scenes[index]?.id ? { id: project.scenes[index].id } : {}),
@@ -224,8 +230,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         : project.scenes.length ? project.scenes : generatedScenes;
       const scenes = currentScenes.map((scene, index) => {
         const mediaId = importedMediaIds[index % importedMediaIds.length];
-        return mediaId && !scene.media_id
-          ? { ...scene, media_id: mediaId, visual_prompt: "Selected gallery media" }
+        return mediaId && (!scene.media_id || rebuildImportedDraft || !project.scenes.length)
+          ? { ...scene, media_id: mediaId, visual_prompt: `Selected gallery image ${index + 1}` }
           : scene;
       });
       const storyboardChanged = scenes.length !== project.scenes.length || scenes.some((scene, index) => {
