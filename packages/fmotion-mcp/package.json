@@ -1,0 +1,19 @@
+{
+  "name": "@f-engine/fmotion-mcp",
+  "private": true,
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "fmotion-mcp": "./dist/server.js"
+  },
+  "main": "dist/server.js",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@f-engine/fmotion-cli": "^0.1.0"
+  }
+}

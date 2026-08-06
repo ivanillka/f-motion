@@ -8,6 +8,7 @@ await import("./external-import.test.mjs");
 await import("./fal-credentials.test.mjs");
 await import("./fal-credentials-integration.test.mjs");
 await import("./pexels-credentials.test.mjs");
+await import("./api-keys-usage.test.mjs");
 await import("./media-bound.test.mjs");
 await import("./media-repository.test.mjs");
 if (process.env.RUN_PROJECT_INTEGRATION === "1") await import("./project-persistence.test.mjs");
