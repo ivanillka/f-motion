@@ -85,6 +85,7 @@ test("trusted imports create one editable project and retry idempotently", async
     const created = await first.json();
     assert.equal(created.project_id, projectIdForExternalImport(ownerId, body.external_id));
     assert.equal(created.project_url, `https://f-motion.example/?project=${created.project_id}`);
+    assert.equal(created.projectUrl, created.project_url);
     const project = projects.get(ownerId, created.project_id);
     assert.equal(project.scenes.length, 4);
     assert.match(project.scenes[0].visual_prompt, /editorial portrait photography/i);
