@@ -264,10 +264,13 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           payload: { scenes }
         });
       }
+      const projectUrl = externalProjectUrl(integration.webOrigin, project.id);
       response.status(prior ? 200 : 201).json({
         created: !prior,
         project_id: project.id,
-        project_url: externalProjectUrl(integration.webOrigin, project.id),
+        project_url: projectUrl,
+        // Fotium marketing admin reads camelCase when opening the draft tab.
+        projectUrl,
         revision: project.revision
       });
     } catch (error) {
