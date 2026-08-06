@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AuthConfigurationError, createAuthGateway } from "../src/auth.ts";
+import { AuthConfigurationError, createAuthGateway, parseAuthCallback } from "../src/auth.ts";
 
 function memoryStorage(initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -24,6 +24,14 @@ function fakeSupabase() {
       },
       async signInWithOtp(input) {
         calls.push(["otp", input]);
+        return { error: null };
+      },
+      async exchangeCodeForSession(code) {
+        calls.push(["exchange", code]);
+        return { error: null };
+      },
+      async verifyOtp(input) {
+        calls.push(["verify", input]);
         return { error: null };
       },
       async signInWithOAuth(input) {
@@ -134,6 +142,40 @@ test("magic-link, Google, and sign-out use the official auth client", async () =
       options: { redirectTo: "https://app.example/path/" }
     }],
     ["signout"]
+  ]);
+});
+
+test("parseAuthCallback reads Fotium PKCE code URLs and Supabase verify links", () => {
+  assert.deepEqual(
+    parseAuthCallback("https://fotium.vip/?code=319a6594-0f48-48f0-a9f4-4acbe405b738"),
+    { kind: "pkce", code: "319a6594-0f48-48f0-a9f4-4acbe405b738" }
+  );
+  assert.deepEqual(
+    parseAuthCallback("319a6594-0f48-48f0-a9f4-4acbe405b738"),
+    { kind: "pkce", code: "319a6594-0f48-48f0-a9f4-4acbe405b738" }
+  );
+  assert.deepEqual(
+    parseAuthCallback("https://example.supabase.co/auth/v1/verify?token=deadbeef&type=magiclink"),
+    { kind: "otp", token_hash: "deadbeef", type: "magiclink" }
+  );
+});
+
+test("Fotium ?code= URLs exchange through PKCE on the F-Motion client", async () => {
+  const fake = fakeSupabase();
+  const gateway = createAuthGateway(
+    {
+      url: "https://example.supabase.co",
+      publicKey: "public-key",
+      origin: "https://f-motion.com",
+      allowDemo: false
+    },
+    { createClient: () => fake.client }
+  );
+  await gateway.completeAuthCallback(
+    "https://fotium.vip/?code=319a6594-0f48-48f0-a9f4-4acbe405b738"
+  );
+  assert.deepEqual(fake.calls, [
+    ["exchange", "319a6594-0f48-48f0-a9f4-4acbe405b738"]
   ]);
 });
 

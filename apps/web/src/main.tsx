@@ -89,6 +89,8 @@ function App() {
   const [authBusy, setAuthBusy] = useState(false);
   const [step, setStep] = useState<Step>("marketing");
   const [email, setEmail] = useState("");
+  const [awaitingEmail, setAwaitingEmail] = useState(false);
+  const [authCallbackPaste, setAuthCallbackPaste] = useState("");
   const [draft, setDraft] = useState(() => localStorage.getItem("fengine-draft") ?? "");
   const [architecture, setArchitecture] = useState<VideoArchitecture>(defaultVideoArchitecture);
   const [project, setProject] = useState<ProjectSnapshot>();
@@ -156,6 +158,8 @@ function App() {
     setPreviewMetadata({});
     setProgress({ phase: "queued", percent: 0 });
     setStatus("");
+    setAwaitingEmail(false);
+    setAuthCallbackPaste("");
     setFalCredential(undefined);
     setFalUnavailable(false);
     setFalKey("");
@@ -295,11 +299,28 @@ function App() {
       await authSetup.gateway.sendMagicLink(email);
       if (import.meta.env.DEV || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1") {
         setStatus("");
+        setAwaitingEmail(false);
       } else {
-        setStatus("Check your email for the sign-in link.");
+        setAwaitingEmail(true);
+        setStatus("Email sent. If the link opens fotium.vip, copy that page URL and paste it below — do not sign in on Fotium.");
       }
     } catch {
       setStatus("Sign-in link could not be sent.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function completeAuthCallbackPaste() {
+    if (!authSetup.gateway) return;
+    setAuthBusy(true);
+    try {
+      await authSetup.gateway.completeAuthCallback(authCallbackPaste);
+      setStatus("");
+      setAwaitingEmail(false);
+      setAuthCallbackPaste("");
+    } catch {
+      setStatus("That login URL could not be completed. Request a new email, open the link, copy the fotium.vip address bar, and paste it here on f-motion.com (same browser).");
     } finally {
       setAuthBusy(false);
     }
@@ -952,6 +973,15 @@ function App() {
         : "Sign in to keep projects private."}</p>
       <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
       <button disabled={authBusy || !authSetup.gateway || (Boolean(import.meta.env.VITE_SUPABASE_URL) && !email.trim())} onClick={() => void magicLink()}>Email me a magic link</button>
+      {(awaitingEmail || Boolean(import.meta.env.VITE_SUPABASE_URL)) && <>
+        <p>Shared Fotium auth often sends the email link to fotium.vip. Stay in this browser, copy the full fotium.vip URL from the address bar (it contains <code>?code=</code>), and paste it here.</p>
+        <label>Paste Fotium login URL<input
+          value={authCallbackPaste}
+          onChange={(event) => setAuthCallbackPaste(event.target.value)}
+          placeholder="https://fotium.vip/?code=…"
+        /></label>
+        <button className="secondary" disabled={authBusy || !authCallbackPaste.trim()} onClick={() => void completeAuthCallbackPaste()}>Complete login</button>
+      </>}
       {import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "1"
         ? <button className="secondary" disabled={authBusy || !authSetup.gateway} onClick={() => void googleSignIn()}>Continue with Google</button>
         : null}
