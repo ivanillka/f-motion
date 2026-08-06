@@ -42,42 +42,6 @@ model User {
   media                  MediaAsset[]
   jobs                   RenderJob[]
   providerCredentials    ProviderCredential[]
-  apiKeys                ApiKey[]
-  usageBalance           UsageBalance?
-  usageLedger            UsageLedger[]
-}
-
-model ApiKey {
-  id         String    @id @default(uuid())
-  ownerId    String
-  owner      User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  tokenHash  String
-  hint       String
-  label      String    @default("default")
-  createdAt  DateTime  @default(now())
-  revokedAt  DateTime?
-
-  @@index([ownerId])
-}
-
-model UsageBalance {
-  ownerId   String   @id
-  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  balance   Int      @default(0)
-  updatedAt DateTime @updatedAt
-}
-
-model UsageLedger {
-  id             String   @id @default(uuid())
-  ownerId        String
-  owner          User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  delta          Int
-  reason         String
-  idempotencyKey String
-  createdAt      DateTime @default(now())
-
-  @@unique([ownerId, idempotencyKey])
-  @@index([ownerId])
 }
 
 model ProviderCredential {

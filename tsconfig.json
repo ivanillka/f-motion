@@ -4,8 +4,6 @@
     { "path": "packages/contracts" },
     { "path": "packages/fal-host" },
     { "path": "packages/reel-engine" },
-    { "path": "packages/fmotion-cli" },
-    { "path": "packages/fmotion-mcp" },
     { "path": "apps/api" },
     { "path": "apps/worker" },
     { "path": "apps/web" }

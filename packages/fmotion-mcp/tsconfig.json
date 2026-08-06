@@ -1,6 +1,0 @@
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "outDir": "dist", "rootDir": "src" },
-  "references": [{ "path": "../fmotion-cli" }],
-  "include": ["src/**/*.ts"]
-}

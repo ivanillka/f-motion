@@ -10,7 +10,6 @@ export { AccountUnavailableError } from "./access-policy.js";
 export interface AuthConfig { issuer: string; audience: string; jwksUrl: URL }
 export type AccountStateLookup = (ownerId: string) => Promise<string | undefined>;
 export type EnsureUser = (ownerId: string) => Promise<void>;
-export type ApiKeyLookup = (token: string) => Promise<string | undefined>;
 
 export class UnauthorizedError extends Error {
   constructor() { super("authentication required"); }
@@ -29,35 +28,19 @@ export function assertAccountActive(state: string): void {
   if (state !== "active") throw new AccountUnavailableError();
 }
 
-function looksLikeApiKey(token: string): boolean {
-  return token.startsWith("fm_") && token.length > 10;
-}
-
 export async function authenticateBearer(
   authorization: string | undefined,
   config: AuthConfig,
   accountState: AccountStateLookup,
   ensureUser?: EnsureUser,
-  accessPolicy: AccessPolicy = { mode: "provision_verified", allowedOwnerIds: new Set() },
-  apiKeyLookup?: ApiKeyLookup
+  accessPolicy: AccessPolicy = { mode: "provision_verified", allowedOwnerIds: new Set() }
 ): Promise<string> {
   const match = authorization?.match(/^Bearer ([^\s]+)$/i);
   if (!match?.[1]) throw new UnauthorizedError();
-  const token = match[1];
-
-  if (apiKeyLookup && looksLikeApiKey(token)) {
-    const ownerId = await apiKeyLookup(token);
-    if (!ownerId) throw new UnauthorizedError();
-    assertOwnerAdmitted(ownerId, accessPolicy);
-    // API keys never auto-provision; the owner account must already exist.
-    const state = await accountState(ownerId);
-    assertAccountActive(state ?? "missing");
-    return ownerId;
-  }
 
   let payload: JWTPayload;
   try {
-    payload = await verifyAccessToken(token, config);
+    payload = await verifyAccessToken(match[1], config);
   } catch {
     throw new UnauthorizedError();
   }

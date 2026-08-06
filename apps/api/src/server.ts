@@ -50,8 +50,6 @@ import {
   projectIdForExternalImport,
   type ExternalImportConfig
 } from "./external-import.js";
-import { ApiKeyValidationError, type ApiKeyService } from "./api-keys.js";
-import { QuotaExceededError, type PostgresHostUsageService } from "./host-usage.js";
 
 export interface MediaDependencies {
   repository: PostgresMediaRepository;
@@ -60,8 +58,6 @@ export interface MediaDependencies {
   /** Test/local adapter only; hosted startup never constructs a shared client. */
   pexels?: PexelsClient;
 }
-
-export type HostUsageService = Pick<PostgresHostUsageService, "status" | "consumeRender" | "ensureFreeGrant">;
 
 interface AppBaseOptions {
   projects: ProjectRepository;
@@ -74,8 +70,6 @@ interface AppBaseOptions {
   externalMediaRequest?: typeof fetch;
   falCredentials?: FalCredentialService;
   pexelsCredentials?: PexelsCredentialService;
-  apiKeys?: ApiKeyService;
-  hostUsage?: HostUsageService;
 }
 
 export interface AppOptions extends AppBaseOptions {
@@ -83,7 +77,6 @@ export interface AppOptions extends AppBaseOptions {
   accountState: AccountStateLookup;
   ensureUser?: EnsureUser;
   accessPolicy?: AccessPolicy;
-  apiKeyLookup?: (token: string) => Promise<string | undefined>;
 }
 
 export interface TestAppOptions extends Omit<AppBaseOptions, "projects"> {
@@ -176,13 +169,6 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
   const projects = options.projects;
   const ready = options.ready ?? (() => true);
   app.use(express.json());
-  // /v1 is the agent-facing alias of /api; keep one route table.
-  app.use((request, _response, next) => {
-    if (request.url === "/v1" || request.url.startsWith("/v1/") || request.url.startsWith("/v1?")) {
-      request.url = `/api${request.url.slice(3)}`;
-    }
-    next();
-  });
   app.use((request, response, next) => {
     const requestId = request.header("x-request-id") || randomUUID();
     response.setHeader("x-request-id", requestId);
@@ -309,46 +295,6 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     ?? (error instanceof PexelsRequestError
       ? { status: 503, body: { type: "provider_unavailable", message: "Pexels could not be reached. Try again later." } }
       : undefined);
-  app.get("/api/me/usage", async (_request, response, next) => {
-    try {
-      if (!options.hostUsage) return response.status(503).json({ type: "unavailable", message: "usage unavailable" });
-      response.json(await options.hostUsage.status(String(response.locals.ownerId)));
-    } catch (error) { next(error); }
-  });
-  app.get("/api/me/api-keys", async (_request, response, next) => {
-    try {
-      if (!options.apiKeys) return response.status(503).json({ type: "unavailable", message: "api keys unavailable" });
-      response.json({ keys: await options.apiKeys.list(String(response.locals.ownerId)) });
-    } catch (error) { next(error); }
-  });
-  app.post("/api/me/api-keys", async (request, response, next) => {
-    try {
-      if (!options.apiKeys) return response.status(503).json({ type: "unavailable", message: "api keys unavailable" });
-      if (request.body !== undefined && request.body !== null
-        && (typeof request.body !== "object" || Array.isArray(request.body)
-          || Object.keys(request.body).some((key) => key !== "label"))) {
-        return response.status(422).json({ type: "validation", message: "invalid label" });
-      }
-      const created = await options.apiKeys.create(
-        String(response.locals.ownerId),
-        (request.body as { label?: unknown } | undefined)?.label
-      );
-      response.status(201).json(created);
-    } catch (error) {
-      if (error instanceof ApiKeyValidationError) {
-        return response.status(422).json({ type: "validation", message: error.message });
-      }
-      next(error);
-    }
-  });
-  app.delete("/api/me/api-keys/:keyId", async (request, response, next) => {
-    try {
-      if (!options.apiKeys) return response.status(503).json({ type: "unavailable", message: "api keys unavailable" });
-      const revoked = await options.apiKeys.revoke(String(response.locals.ownerId), request.params.keyId);
-      if (!revoked) return response.status(404).json({ type: "not_found", message: "not found" });
-      response.status(204).end();
-    } catch (error) { next(error); }
-  });
   app.get("/api/providers/fal/credential", async (_request, response, next) => {
     try {
       if (!options.falCredentials) return falUnavailable(response);
@@ -668,36 +614,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         || Object.keys(request.body).some((key) => key !== "kind")) {
         return response.status(422).json({ type: "validation", message: "invalid render kind" });
       }
-      const kind = request.body.kind as RenderKind;
-      if (options.hostUsage) {
-        const usage = await options.hostUsage.status(ownerId);
-        const cost = kind === "final" ? usage.costs.final : usage.costs.preview;
-        if (usage.balance < cost) {
-          return response.status(402).json({
-            type: "quota_exceeded",
-            message: "host usage quota exceeded",
-            unit: usage.unit,
-            balance: usage.balance,
-            required: cost
-          });
-        }
-      }
-      const job = await options.renders.create(ownerId, request.params.projectId, kind);
+      const job = await options.renders.create(ownerId, request.params.projectId, request.body.kind as RenderKind);
       if (!job) return response.status(404).json({ type: "not_found", message: "not found" });
-      if (options.hostUsage) {
-        try {
-          await options.hostUsage.consumeRender(ownerId, kind, job.jobId);
-        } catch (error) {
-          if (error instanceof QuotaExceededError) {
-            await options.renders.cancel(ownerId, job.jobId);
-            return response.status(402).json({
-              type: "quota_exceeded",
-              message: "host usage quota exceeded"
-            });
-          }
-          throw error;
-        }
-      }
       response.status(202).json({
         job_id: job.jobId,
         project_id: job.projectId,
@@ -816,10 +734,7 @@ export function createApp(options: AppOptions) {
       options.authConfig,
       options.accountState,
       options.ensureUser,
-      options.accessPolicy,
-      options.apiKeyLookup ?? (options.apiKeys
-        ? (token) => options.apiKeys!.ownerIdForToken(token)
-        : undefined)
+      options.accessPolicy
     ));
 }
 

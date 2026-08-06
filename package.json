@@ -9,9 +9,7 @@
     "apps/worker",
     "packages/contracts",
     "packages/fal-host",
-    "packages/reel-engine",
-    "packages/fmotion-cli",
-    "packages/fmotion-mcp"
+    "packages/reel-engine"
   ],
   "scripts": {
     "lint": "tsc -b --pretty false",
@@ -21,7 +19,6 @@
     "verify:pages-artifact": "node tools/deploy/verify-pages-artifact.mjs",
     "deploy:pages": "node tools/deploy/deploy-pages.mjs",
     "smoke:pages": "node tools/deploy/smoke-pages.mjs",
-    "smoke:agents": "node tests/agents/smoke.mjs",
     "demo": "npm run build --workspace apps/api && npm run build --workspace apps/worker && node tests/e2e/run-servers.mjs",
     "stack": "npm run build --workspace apps/api && npm run start --workspace apps/api",
     "test:e2e:web": "playwright test -c tests/e2e/playwright.config.ts",

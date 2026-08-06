@@ -356,8 +356,8 @@ export class PexelsClient {
     const directory = await mkdtemp(join(this.temporaryRoot, "fengine-pexels-"));
     const path = join(directory, "media");
     const controller = new AbortController();
-    // Keep the deadline timer referenced so short copies still abort under an idle event loop.
     const timeout = setTimeout(() => controller.abort(), this.copyDeadlineMs);
+    timeout.unref();
     let response: Response | undefined;
     try {
       response = await this.request(selected.sourceUrl, { signal: controller.signal });
