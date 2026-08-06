@@ -1,8 +1,10 @@
 import { S3Client } from "@aws-sdk/client-s3";
 import pg from "pg";
 import { accessPolicyFromEnv } from "./access-policy.js";
+import { PostgresApiKeyService } from "./api-keys.js";
 import { externalImportConfigFromEnv } from "./external-import.js";
 import { PostgresProjectRepository } from "./domain.js";
+import { freeRenderUnitsFromEnv, PostgresHostUsageService } from "./host-usage.js";
 import { assertLocalAuthAllowed } from "./local-auth.js";
 import { PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
 import { PostgresRenderRepository, renderProfilesFromEnv } from "./render-repository.js";
@@ -51,6 +53,8 @@ const objectStore = new PrivateObjectStore(new S3Client({
 
 const projects = new PostgresProjectRepository(pool);
 const renders = new PostgresRenderRepository(pool, renderProfilesFromEnv(process.env));
+const apiKeys = new PostgresApiKeyService(pool);
+const hostUsage = new PostgresHostUsageService(pool, freeRenderUnitsFromEnv(process.env));
 const falEnabled = falByokEnabled(process.env);
 const pexelsEnabled = pexelsByokEnabled(process.env);
 const credentialVault = falEnabled || pexelsEnabled ? credentialVaultFromEnv(process.env) : undefined;
@@ -84,7 +88,18 @@ if (process.env.FENGINE_LOCAL_AUTH === "1") {
      ON CONFLICT (id) DO UPDATE SET state = 'active'`,
     [ownerId]
   );
-  createTestApp({ ownerId, projects, renders, media, ready, falCredentials, pexelsCredentials }).listen(port);
+  await hostUsage.ensureFreeGrant(ownerId);
+  createTestApp({
+    ownerId,
+    projects,
+    renders,
+    media,
+    ready,
+    falCredentials,
+    pexelsCredentials,
+    apiKeys,
+    hostUsage
+  }).listen(port);
 } else {
   createApp({
     projects,
@@ -92,6 +107,8 @@ if (process.env.FENGINE_LOCAL_AUTH === "1") {
     media,
     falCredentials,
     pexelsCredentials,
+    apiKeys,
+    hostUsage,
     ready,
     authConfig: {
       issuer: required("SUPABASE_ISSUER"),
@@ -110,6 +127,7 @@ if (process.env.FENGINE_LOCAL_AUTH === "1") {
         `INSERT INTO "User" (id, state) VALUES ($1, 'active') ON CONFLICT (id) DO NOTHING`,
         [ownerId]
       );
+      await hostUsage.ensureFreeGrant(ownerId);
     },
     accessPolicy,
     externalImports

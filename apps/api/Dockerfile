@@ -16,6 +16,8 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/fal-host/package.json packages/fal-host/package.json
 COPY packages/reel-engine/package.json packages/reel-engine/package.json
+COPY packages/fmotion-cli/package.json packages/fmotion-cli/package.json
+COPY packages/fmotion-mcp/package.json packages/fmotion-mcp/package.json
 COPY prisma prisma
 RUN npm ci
 COPY packages/contracts packages/contracts

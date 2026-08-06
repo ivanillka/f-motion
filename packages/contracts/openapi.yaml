@@ -1,8 +1,87 @@
 openapi: 3.1.0
 info:
-  title: F-Engine Reference API
+  title: F-Engine / F-Motion Reference API
   version: 1.0.0
+  description: |
+    Versioned machine API. `/v1` and `/api` are aliases.
+    Authenticate with a Supabase JWT (browser) or an owner API key
+    (`Authorization: Bearer fm_…`). Host usage is metered in render_units
+    (preview=1, final=2). FAL/Pexels stay BYOK and are never resold.
+security:
+  - bearerAuth: []
 paths:
+  /v1/me/usage:
+    get:
+      summary: Remaining host usage balance
+      responses:
+        "200":
+          description: Current balance and unit costs
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsageView" }
+        "401": { description: Unauthorized }
+  /v1/me/api-keys:
+    get:
+      summary: List owner API keys (hints only)
+      responses:
+        "200":
+          description: Active and revoked key metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [keys]
+                properties:
+                  keys:
+                    type: array
+                    items: { $ref: "#/components/schemas/ApiKeyView" }
+    post:
+      summary: Create an API key (secret returned once)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: string, minLength: 1, maxLength: 64 }
+      responses:
+        "201":
+          description: Created key including raw token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreatedApiKey" }
+        "422": { description: Invalid label }
+  /v1/me/api-keys/{key_id}:
+    delete:
+      summary: Revoke an API key
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Revoked }
+        "404": { description: Not found }
+  /v1/projects:
+    get:
+      summary: List projects for the authenticated owner
+      responses:
+        "200": { description: Project summaries }
+    post:
+      summary: Create a project from a brief
+      responses:
+        "201": { description: Created project and concepts }
+  /v1/projects/{project_id}:
+    get:
+      summary: Fetch an authoritative project snapshot
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Project snapshot }
+        "404": { description: Not found }
   /v1/projects/{project_id}/commands:
     post:
       summary: Apply an idempotent command_id at base_revision
@@ -20,15 +99,97 @@ paths:
         "200": { description: Authoritative snapshot }
         "409": { description: Typed stale revision conflict }
         "422": { description: Invalid command or scene lifecycle transition }
+  /v1/projects/{project_id}/render:
+    post:
+      summary: Queue a preview or final render (consumes host usage)
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              additionalProperties: false
+              properties:
+                kind: { type: string, enum: [preview, final] }
+      responses:
+        "202": { description: Render job accepted }
+        "402":
+          description: Host usage quota exceeded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuotaExceeded" }
+        "422": { description: Invalid render kind }
+        "429": { description: Another render is already active }
   /v1/render-jobs/{job_id}/events:
     get:
+      summary: Reconnectable SSE progress stream
       parameters:
         - { name: job_id, in: path, required: true, schema: { type: string } }
         - { name: Last-Event-ID, in: header, schema: { type: string } }
       responses:
         "200": { description: Reconnectable SSE stream }
+  /v1/render-jobs/{job_id}/download:
+    get:
+      summary: Signed download metadata for a completed render
+      parameters:
+        - { name: job_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Signed URL and output metadata }
+        "404": { description: Not found }
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Supabase JWT or F-Motion API key (`fm_…`)
   schemas:
+    UsageView:
+      type: object
+      required: [unit, balance, free_grant, costs]
+      properties:
+        unit: { type: string, const: render_unit }
+        balance: { type: integer, minimum: 0 }
+        free_grant: { type: integer, minimum: 0 }
+        costs:
+          type: object
+          required: [preview, final]
+          properties:
+            preview: { type: integer, minimum: 1 }
+            final: { type: integer, minimum: 1 }
+    QuotaExceeded:
+      type: object
+      required: [type, message]
+      properties:
+        type: { type: string, const: quota_exceeded }
+        message: { type: string }
+        unit: { type: string, const: render_unit }
+        balance: { type: integer }
+        required: { type: integer }
+    ApiKeyView:
+      type: object
+      required: [id, label, hint, created_at]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        hint: { type: string, minLength: 1, maxLength: 4 }
+        created_at: { type: string, format: date-time }
+        revoked_at: { type: string, format: date-time }
+    CreatedApiKey:
+      allOf:
+        - { $ref: "#/components/schemas/ApiKeyView" }
+        - type: object
+          required: [token]
+          properties:
+            token:
+              type: string
+              description: Returned once at creation; never stored in plaintext.
+              pattern: "^fm_[0-9a-f]{64}$"
     CommandEnvelope:
       type: object
       required: [command_id, base_revision, client_timestamp, kind, payload]
