@@ -88,6 +88,14 @@ mcp_servers:
 }
 ```
 
+## Host recipes
+
+Import-and-open, API render pipeline, and MCP agent loop:
+[`docs/agents/host-recipes.md`](./host-recipes.md).
+
+Partner import + Edit-in-F-Motion + webhook contract:
+[`docs/contracts/partner-import.md`](../contracts/partner-import.md).
+
 ## OpenClaw
 
 See [`docs/agents/openclaw/README.md`](./openclaw/README.md). Prefer HTTP tool wrappers with a per-user F-Motion API key; do not reuse the gateway operator bearer as F-Motion auth.
