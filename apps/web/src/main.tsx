@@ -16,9 +16,10 @@ import {
 } from "./api";
 import { AuthConfigurationError, createAuthGateway } from "./auth";
 import { clearImportedProject, isImportedProjectId, rememberImportedProject } from "./imported-project";
+import { MarketingLanding } from "./MarketingLanding";
 import "./style.css";
 
-type Step = "sign-in" | "drafts" | "brief" | "architecture" | "media" | "editor" | "render" | "settings";
+type Step = "marketing" | "sign-in" | "drafts" | "brief" | "architecture" | "media" | "editor" | "render" | "settings";
 interface PexelsMatch {
   id: number;
   creator: string;
@@ -86,7 +87,7 @@ function App() {
   const [token, setToken] = useState("");
   const [authReady, setAuthReady] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
-  const [step, setStep] = useState<Step>("sign-in");
+  const [step, setStep] = useState<Step>("marketing");
   const [email, setEmail] = useState("");
   const [draft, setDraft] = useState(() => localStorage.getItem("fengine-draft") ?? "");
   const [architecture, setArchitecture] = useState<VideoArchitecture>(defaultVideoArchitecture);
@@ -169,7 +170,7 @@ function App() {
     setApiKeyLabel("agent");
     setCreatedApiToken("");
     setApiKeysBusy(false);
-    setStep("sign-in");
+    setStep("marketing");
   }
 
   useEffect(() => {
@@ -191,7 +192,7 @@ function App() {
         callback.searchParams.delete("code");
         history.replaceState(null, "", `${callback.pathname}${callback.search}${callback.hash}`);
       }
-      setStep((current) => current === "sign-in" ? "drafts" : current);
+      setStep((current) => current === "sign-in" || current === "marketing" ? "drafts" : current);
     });
   }, [authSetup.error, authSetup.gateway]);
 
@@ -229,6 +230,7 @@ function App() {
     if (!token) {
       if (pendingId && authReady) {
         setStatus("Sign in to open the imported draft from Fotium.");
+        setStep("sign-in");
       }
       return;
     }
@@ -930,9 +932,14 @@ function App() {
   const allScenesHaveMedia = Boolean(project?.scenes.length && project.scenes.every(({ media_id }) =>
     media_id && sceneMedia[media_id]?.state === "ready"));
 
+  if (authReady && !token && step === "marketing") {
+    return <MarketingLanding onOpenStudio={() => setStep("sign-in")} />;
+  }
+
   return <main>
-    <header><strong>F-Engine Reference</strong>
+    <header><strong>F-Motion</strong>
       <div className="header-actions">
+        {authReady && !token && <button className="secondary" onClick={() => setStep("marketing")}>Marketing</button>}
         {authReady && token && step !== "sign-in" && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
         <span role="status">{online ? "● Connected" : "○ Reconnecting — draft kept locally"}</span>
       </div>
@@ -949,6 +956,7 @@ function App() {
         ? <button className="secondary" disabled={authBusy || !authSetup.gateway} onClick={() => void googleSignIn()}>Continue with Google</button>
         : null}
       <p role="status">{status}</p>
+      <button className="secondary" onClick={() => setStep("marketing")}>Back to marketing</button>
     </section>}
     {authReady && step === "drafts" && <section>
       <h1>Drafts</h1>

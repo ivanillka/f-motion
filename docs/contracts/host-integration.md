@@ -4,6 +4,11 @@ F-Engine owns versioned wire contracts and deterministic reel behavior. A host
 owns identity, UI, authentication, persistence, providers, secrets,
 infrastructure, customer data, and operational policy.
 
+Partner import (Fotium and the next CMS), Edit-in-F-Motion, and the return
+webhook contract: [`partner-import.md`](./partner-import.md).  
+Recipes: [`../agents/host-recipes.md`](../agents/host-recipes.md).  
+Fotium faces/Immich UX (host-owned): [`fotium-faces-ux.md`](./fotium-faces-ux.md).
+
 The host must supply a `RenderProfile`:
 
 ```ts
