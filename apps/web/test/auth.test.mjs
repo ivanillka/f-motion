@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AuthConfigurationError, createAuthGateway, parseMagicLink } from "../src/auth.ts";
+import { AuthConfigurationError, createAuthGateway } from "../src/auth.ts";
 
 function memoryStorage(initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -24,10 +24,6 @@ function fakeSupabase() {
       },
       async signInWithOtp(input) {
         calls.push(["otp", input]);
-        return { error: null };
-      },
-      async verifyOtp(input) {
-        calls.push(["verify", input]);
         return { error: null };
       },
       async signInWithOAuth(input) {
@@ -138,61 +134,6 @@ test("magic-link, Google, and sign-out use the official auth client", async () =
       options: { redirectTo: "https://app.example/path/" }
     }],
     ["signout"]
-  ]);
-});
-
-test("parseMagicLink reads token_hash from Supabase verify URLs", () => {
-  assert.deepEqual(
-    parseMagicLink("https://example.supabase.co/auth/v1/verify?token=abc123&type=magiclink&redirect_to=https://fotium.vip"),
-    { token_hash: "abc123", type: "magiclink" }
-  );
-  assert.deepEqual(parseMagicLink("raw-token_hash.VALUE"), { token_hash: "raw-token_hash.VALUE", type: "magiclink" });
-  assert.throws(() => parseMagicLink("https://example.supabase.co/auth/v1/verify"), /missing a token/);
-});
-
-test("email OTP and pasted magic links verify through Supabase", async () => {
-  const fake = fakeSupabase();
-  const gateway = createAuthGateway(
-    {
-      url: "https://example.supabase.co",
-      publicKey: "public-key",
-      origin: "https://f-motion.com",
-      allowDemo: false
-    },
-    { createClient: () => fake.client }
-  );
-  await gateway.verifyEmailOtp("person@example.com", "123456");
-  await gateway.completeMagicLink(
-    "https://example.supabase.co/auth/v1/verify?token=deadbeef&type=magiclink&redirect_to=https://fotium.vip/"
-  );
-  assert.deepEqual(fake.calls, [
-    ["verify", { email: "person@example.com", token: "123456", type: "email" }],
-    ["verify", { token_hash: "deadbeef", type: "magiclink" }]
-  ]);
-});
-
-test("pasted magic link falls back to email type when magiclink verify fails", async () => {
-  const fake = fakeSupabase();
-  fake.client.auth.verifyOtp = async (input) => {
-    fake.calls.push(["verify", input]);
-    if (input.type === "magiclink") return { error: new Error("Email link is invalid or has expired") };
-    return { error: null };
-  };
-  const gateway = createAuthGateway(
-    {
-      url: "https://example.supabase.co",
-      publicKey: "public-key",
-      origin: "https://f-motion.com",
-      allowDemo: false
-    },
-    { createClient: () => fake.client }
-  );
-  await gateway.completeMagicLink(
-    "https://example.supabase.co/auth/v1/verify?token=deadbeef&type=magiclink"
-  );
-  assert.deepEqual(fake.calls, [
-    ["verify", { token_hash: "deadbeef", type: "magiclink" }],
-    ["verify", { token_hash: "deadbeef", type: "email" }]
   ]);
 });
 

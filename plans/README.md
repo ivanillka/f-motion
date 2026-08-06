@@ -31,11 +31,6 @@ your row when done.
 | 015 | Add an accurate in-app proxy preview before final rendering | P1 | L | 012, 013, 014 | DONE (immutable 540p proxy + measured in-app playback E2E green) |
 | 016 | Gate final rendering on an approved preview and deliver it in-app | P1 | M | 013, 014, 015 | TODO |
 | 017 | Ship a portable editor bundle and validate timeline interchange | P2 | L | 013, 015, 016 | TODO |
-| 056 | Owner API keys + free→paid host usage ledger + `quota_exceeded` | P0 | M | — | DONE (`cursor/agent-api-cli-190c`) |
-| 057 | Thin `fmotion` CLI with `--json` over `/v1` | P1 | M | 056 | DONE (`cursor/agent-api-cli-190c`) |
-| 058 | `fmotion-mcp` stdio MCP for Hermes/Cursor | P0 | M | 056, 057 | DONE (`cursor/agent-api-cli-190c`) |
-| 059 | OpenClaw skill/docs calling F-Motion API keys | P1 | S | 056 | DONE (`cursor/agent-api-cli-190c`) |
-| 060 | OpenAPI/agent docs polish + smoke check | P1 | S | 056–059 | DONE (`cursor/agent-api-cli-190c`) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (reason)
 
