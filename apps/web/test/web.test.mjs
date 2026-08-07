@@ -92,4 +92,101 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /max-width: 520px/);
   assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /focus-visible/);
+  assert.match(css, /\.app-rail/);
+  assert.match(css, /\.app-dock/);
+  assert.match(css, /\.studio-board/);
+  assert.match(css, /\.crop-guide/);
+});
+
+test("studio shell brands F-Motion and keeps real destinations only", async () => {
+  const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(html, /<title>F-Motion<\/title>/);
+  assert.match(source, /<strong>F-Motion<\/strong>/);
+  assert.doesNotMatch(source, /F-Engine Reference/);
+  assert.match(source, /className="app-rail"/);
+  assert.match(source, /className="app-dock"/);
+  assert.match(source, /className="studio-board"/);
+  assert.match(source, /crop-guide/);
+  assert.doesNotMatch(source, /Assets|Effects|Pro Studio|multitrack/i);
+});
+
+test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind", async () => {
+  const root = new URL("../public/web/", import.meta.url);
+  const home = await readFile(new URL("index.html", root), "utf8");
+  const integrate = await readFile(new URL("integrate.html", root), "utf8");
+  const css = await readFile(new URL("web.css", root), "utf8");
+  const motion = await readFile(new URL("web-motion.js", root), "utf8");
+  for (const phrase of [
+    "Vertical reels from your own media",
+    "brief → storyboard → preview",
+    "Open studio",
+    "See integration",
+    "Your media, your keys",
+    "./assets/hero-reel.jpg",
+    "./assets/studio-ui.jpg"
+  ]) {
+    assert.match(home, new RegExp(phrase.replace(/[→]/g, "\\$&")));
+  }
+  for (const phrase of [
+    "Embed cinematic creation in your product",
+    "Integration Recipes",
+    "api.f-motion.com",
+    "./assets/host-diagram.jpg",
+    "MCP Agent Loop"
+  ]) {
+    assert.match(integrate, new RegExp(phrase));
+  }
+  assert.doesNotMatch(home, /cdn\.tailwindcss\.com|fonts\.googleapis\.com|assets\/logo\.png/);
+  assert.doesNotMatch(integrate, /cdn\.tailwindcss\.com|fonts\.googleapis\.com|assets\/logo\.png/);
+  assert.match(css, /--accent:\s*#a54d67/);
+  assert.match(css, /prefers-reduced-motion/);
+  assert.match(css, /\.glitch-logo/);
+  assert.match(home, /data-glitch="rgb-split"/);
+  assert.match(home, /data-glitch="scramble-cascade"/);
+  assert.match(home, /data-glitch="slice-tear"/);
+  assert.match(integrate, /data-glitch="flip-corrupt"/);
+  assert.match(integrate, /data-glitch="pulse-shard"/);
+  assert.match(motion, /scramble-cascade/);
+  assert.match(motion, /prefers-reduced-motion/);
+  assert.match(motion, /pagehide/);
+  assert.match(motion, /pointerenter/);
+  assert.match(motion, /delayedCall\(gsap\.utils\.random/);
+  assert.match(home, /skip-link/);
+  assert.match(home, /href="#main"/);
+  assert.match(home, /class="nav-compact"/);
+  assert.match(home, /href="\.\/terms\.html"/);
+  assert.match(home, /href="\.\/privacy\.html"/);
+  assert.match(home, /hero-reel\.webp/);
+  assert.match(home, /type="image\/webp"/);
+  assert.doesNotMatch(integrate, /ScrambleTextPlugin/);
+  assert.match(integrate, /host-diagram\.webp/);
+  assert.doesNotMatch(home, /#docs|View docs/);
+  assert.doesNotMatch(integrate, /#docs|View docs/);
+  assert.match(integrate, /Open studio →/);
+  assert.match(integrate, /href="\.\/terms\.html"/);
+  const terms = await readFile(new URL("terms.html", root), "utf8");
+  const privacy = await readFile(new URL("privacy.html", root), "utf8");
+  assert.match(terms, /Terms of use/);
+  assert.match(privacy, /Privacy notice/);
+  assert.doesNotMatch(terms, /ScrollTrigger|ScrambleText/);
+  assert.match(css, /\.nav-compact/);
+  assert.match(css, /\.skip-link/);
+  const headers = await readFile(new URL("../public/_headers", import.meta.url), "utf8");
+  assert.match(headers, /Content-Security-Policy/);
+  assert.match(headers, /X-Content-Type-Options:\s*nosniff/);
+  for (const asset of [
+    "hero-reel.jpg",
+    "hero-reel.webp",
+    "hero-reel-800.webp",
+    "studio-ui.jpg",
+    "studio-ui.webp",
+    "host-diagram.jpg",
+    "host-diagram.webp"
+  ]) {
+    await readFile(new URL(`assets/${asset}`, root));
+  }
+  for (const vendor of ["gsap.min.js", "ScrollTrigger.min.js", "ScrambleTextPlugin.min.js"]) {
+    await readFile(new URL(`vendor/${vendor}`, root));
+  }
 });

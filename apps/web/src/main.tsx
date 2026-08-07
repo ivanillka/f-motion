@@ -1349,11 +1349,39 @@ function App() {
   const activePreviewUrl = activeMedia?.previewUrl ?? activeMedia?.attribution?.previewUrl;
   const allScenesHaveMedia = Boolean(project?.scenes.length && project.scenes.every(({ media_id }) =>
     media_id && sceneMedia[media_id]?.state === "ready"));
+  const inApp = authReady && Boolean(token) && step !== "sign-in";
+  const createFlow = step === "brief" || step === "architecture" || step === "concepts" || step === "media" || step === "editor" || step === "render";
+  const projectTitle = project?.brief.purpose?.trim() || "Untitled draft";
+  const saveBusy = busy || status === "Saving…";
+  const saveLabel = saveBusy ? "Saving…" : (status.startsWith("✓") || !status ? "Saved" : status);
 
-  return <main>
-    <header><strong>F-Engine Reference</strong>
+  function goCreate() {
+    if (step === "drafts" || step === "settings") startCreate();
+  }
+
+  const appNav = inApp ? <>
+    <button type="button" aria-current={step === "drafts" ? "page" : undefined} onClick={() => setStep("drafts")}>Drafts</button>
+    <button type="button" aria-current={createFlow ? "page" : undefined} onClick={goCreate}>Create</button>
+    <button type="button" aria-current={step === "settings" ? "page" : undefined} onClick={() => setStep("settings")}>Settings</button>
+  </> : null;
+
+  return <div className={`app-shell${inApp ? " app-shell-signed" : ""}${step === "editor" ? " app-shell-editor" : ""}`}>
+    {inApp && <nav className="app-rail" aria-label="Primary">
+      <a className="rail-brand" href="/web/">F-MOTION</a>
+      {appNav}
+    </nav>}
+    <div className="app-stage">
+    <header>
+      <div className="header-identity">
+        <strong>F-Motion</strong>
+        {step === "editor" && project && <>
+          <span className="header-sep" aria-hidden="true">·</span>
+          <span className="project-title">{projectTitle}</span>
+          <span className="save-pill" data-busy={saveBusy || undefined}>{saveLabel}</span>
+        </>}
+      </div>
       <div className="header-actions">
-        {authReady && token && step !== "sign-in" && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
+        {authReady && token && step !== "sign-in" && !inApp && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
         <span role="status">{online ? "● Connected" : "○ Reconnecting — draft kept locally"}</span>
       </div>
     </header>
@@ -1369,8 +1397,10 @@ function App() {
       <p role="status">{status}</p>
     </section>}
     {authReady && step === "drafts" && <section>
-      <h1>Drafts</h1>
-      <p>Pick up where you left off or start a new video.</p>
+      <div className="drafts-hero">
+        <h1>Drafts</h1>
+        <p>Pick up where you left off or start a new video.</p>
+      </div>
       <aside className="provider-preview" aria-label="Creation sources">
         <button className="provider-preview-item" data-locked={!pexelsCredential?.connected} onClick={() => pexelsCredential?.connected ? setStep("settings") : showPexelsLock()}>
           <strong>Pexels</strong><span>Real stock video · {pexelsCredential?.connected ? "unlocked" : "locked"}</span>
@@ -1385,11 +1415,15 @@ function App() {
       </aside>
       <button onClick={startCreate}>Create new video</button>
       {draftsLoading && <p role="status">Loading drafts…</p>}
-      {!draftsLoading && drafts.length === 0 && <p role="status">No drafts yet.</p>}
-      <div className="concepts">{drafts.map((item) =>
-        <button key={item.id} className="card" onClick={() => void openDraft(item.id)}>
+      {!draftsLoading && drafts.length === 0 && <div className="empty-drafts">
+        <p role="status">No drafts yet.</p>
+        <p>Describe what you want to make — F-Motion will recommend a video plan and storyboard.</p>
+        <button onClick={startCreate}>Create new video</button>
+      </div>}
+      <div className="concepts drafts-grid">{drafts.map((item) =>
+        <button key={item.id} className="card draft-card" onClick={() => void openDraft(item.id)}>
           <strong>{item.brief.purpose || "Untitled draft"}</strong>
-          <span>Revision {item.revision}</span>
+          <span className="draft-meta">Revision {item.revision}</span>
         </button>)}</div>
       <p role="status">{status}</p>
     </section>}
@@ -1475,8 +1509,18 @@ function App() {
       <button className="secondary" disabled={busy} onClick={() => setStep("editor")}>Back to storyboard</button>
     </section>}
     {authReady && step === "editor" && project && activeScene && <section className="editor">
-      <h1>Storyboard</h1>
-      <p>Review each beat and its selected media. Replace it only when another visual fits better.</p>
+      <div className="editor-toolbar">
+        <div>
+          <h1>Storyboard</h1>
+          <p>Review each beat and its selected media. Replace it only when another visual fits better.</p>
+        </div>
+        <div className="editor-toolbar-actions">
+          <button disabled={!allScenesHaveMedia} onClick={() => void requestRender("preview")}>Generate accurate preview</button>
+          <button className="secondary" disabled={!allScenesHaveMedia} onClick={() => void requestRender("final")}>Export final</button>
+        </div>
+      </div>
+
+      <div className="studio-board">
       <nav className="scene-strip" aria-label="Storyboard scenes">{project.scenes.map((scene) => {
         const media = scene.media_id ? sceneMedia[scene.media_id] : undefined;
         const previewUrl = media?.previewUrl ?? media?.attribution?.previewUrl;
@@ -1518,16 +1562,22 @@ function App() {
       })}</nav>
 
       <div className="editor-grid" key={`${activeScene.id}:${project.revision}`}>
-        <div>
+        <div className="preview-panel">
           <p className="notice">Approximate composition — accurate rendered preview comes next.</p>
           <div className="preview" aria-label={`Approximate preview for scene ${activeSceneNumber}`}>
         {activePreviewUrl && (activeMedia?.detected?.type === "video/mp4"
           ? <video src={activePreviewUrl} muted loop playsInline controls preload="metadata" />
           : <img src={activePreviewUrl} alt={activeMedia?.attribution ? `Selected stock video by ${activeMedia.attribution.creator}` : "Selected gallery media"} />)}
-        {activeMedia && !activePreviewUrl && <span>{activeMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
-            {!activeMedia && <span>Choose stock or upload media</span>}
-            <span>{activeScene.caption}</span>
+        {activeMedia && !activePreviewUrl && <span className="media-placeholder">{activeMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
+            {!activeMedia && <span className="media-placeholder">Choose stock or upload media</span>}
+            {activeScene.caption ? <span className="caption-burn">{activeScene.caption}</span> : null}
+            <span
+              className="crop-guide"
+              style={{ left: `${activeScene.focal_x * 100}%`, top: `${activeScene.focal_y * 100}%` }}
+              aria-hidden="true"
+            />
           </div>
+          <p className="crop-hint">Crop focus · drag the focus sliders in the inspector</p>
           {activeMedia?.attribution && <p>
             Video by <a href={activeMedia.attribution.attributionUrl} target="_blank" rel="noreferrer">{activeMedia.attribution.creator}</a>
             {" · "}<a href="https://www.pexels.com" target="_blank" rel="noreferrer">Pexels</a>
@@ -1536,6 +1586,8 @@ function App() {
         </div>
 
         <div className="scene-controls">
+          <h2>Scene {activeSceneNumber}</h2>
+          <div className="inspector-block">
           <label htmlFor={`prompt-${activeScene.id}`}>Scene {activeSceneNumber} {activeMedia ? "visual note" : "footage search"}
             <textarea id={`prompt-${activeScene.id}`} maxLength={100} defaultValue={activeScene.visual_prompt ?? ""} onBlur={(event) => void saveScenePatch(activeScene.id, { visual_prompt: event.currentTarget.value.trim() })} />
             <small>{activeMedia
@@ -1548,6 +1600,8 @@ function App() {
           <label htmlFor={`duration-${activeScene.id}`}>Scene {activeSceneNumber} duration (seconds)
             <input id={`duration-${activeScene.id}`} type="number" min="0.5" max="15" step="0.1" defaultValue={activeScene.duration_ms / 1000} onBlur={(event) => void saveScenePatch(activeScene.id, { duration_ms: Math.round(event.currentTarget.valueAsNumber * 1000) })} />
           </label>
+          </div>
+          <div className="inspector-block">
           <label htmlFor={`motion-${activeScene.id}`}>Scene {activeSceneNumber} motion
             <select id={`motion-${activeScene.id}`} value={activeScene.motion} onChange={(event) => void saveScenePatch(activeScene.id, { motion: event.target.value as Scene["motion"] })}>
               <option value="none">None</option><option value="push">Push</option><option value="zoom">Zoom</option>
@@ -1563,6 +1617,8 @@ function App() {
             <input id={`audio-${activeScene.id}`} type="range" min="0" max="1" step="0.05" defaultValue={activeScene.audio_level} onBlur={(event) => void saveScenePatch(activeScene.id, { audio_level: event.currentTarget.valueAsNumber })} />
           </label>
           <button className="secondary" onClick={() => void saveScenePatch(activeScene.id, { audio_level: activeScene.audio_level === 0 ? 1 : 0 })}>{activeScene.audio_level === 0 ? `Unmute scene ${activeSceneNumber}` : `Mute scene ${activeSceneNumber}`}</button>
+          </div>
+          <div className="inspector-block">
           <button className={!pexelsCredential?.connected ? "locked-feature" : undefined}
             disabled={busy || (Boolean(pexelsCredential?.connected) && !activeScene.visual_prompt)}
             onClick={() => pexelsCredential?.connected ? void searchStock(activeScene.id) : showPexelsLock()}>
@@ -1582,7 +1638,9 @@ function App() {
               {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Animate this image for scene {activeSceneNumber}
             </button>
           )}
+          </div>
         </div>
+      </div>
       </div>
 
       {candidates.length > 0 && <div className="candidates" aria-label={`Licensed media options for scene ${activeSceneNumber}`}>{candidates.map((candidate) => <article key={candidate.id} className="candidate">
@@ -1604,8 +1662,6 @@ function App() {
       }} />
       <button className="secondary" disabled={busy} onClick={() => upload.current?.click()}>Upload media for scene {activeSceneNumber}</button>
       <p role="status">{status || "✓ All changes saved"}</p>
-      <button disabled={!allScenesHaveMedia} onClick={() => void requestRender("preview")}>Generate accurate preview</button>
-      <button className="secondary" disabled={!allScenesHaveMedia} onClick={() => void requestRender("final")}>Export final</button>
       {!allScenesHaveMedia && <p>{project.scenes.every(({ media_id }) => media_id)
         ? "Media is processing. Preview unlocks automatically when every scene is ready."
         : "Add media to every scene before rendering."}</p>}
@@ -1727,10 +1783,17 @@ function App() {
         <button onClick={() => void saveAsNewProject()}>Save as new project</button>
       </dialog>}
     </section>}
-    {authReady && step === "render" && <section>
+    {authReady && step === "render" && <section className="export-surface">
       <h1>{renderHeading}</h1>
+      {progress.phase === "queued" || progress.phase === "running" || progress.phase === "uploading" || progress.phase === "encoding" ? (
+        <p>Export setup · your storyboard is rendering. Keep this tab open until it finishes.</p>
+      ) : null}
       <p role="status">{progress.phase === "failed" ? renderFailedLabel : `${progress.phase} · ${renderLabel}`}</p>
       <progress value={progress.percent} max="100">{progress.percent}%</progress>
+      {downloadUrl && progress.phase === "complete" && <div className="export-complete">
+        <strong>{renderKind === "final" ? "Export complete" : "Preview ready"}</strong>
+        <p>Download the MP4 or keep editing the storyboard.</p>
+      </div>}
       {downloadUrl && <video controls playsInline preload="metadata" src={downloadUrl} onError={() => void refreshPreviewUrl()}>
         Your browser cannot play this MP4. Use the download link instead.
       </video>}
@@ -1738,7 +1801,7 @@ function App() {
         {previewMetadata.duration_ms ? ` · ${(Number(previewMetadata.duration_ms) / 1000).toFixed(1)} seconds` : ""}
         {previewMetadata.audio_status ? ` · audio ${previewMetadata.audio_status}` : ""}</p>}
       {previewRevision !== undefined && project && previewRevision !== project.revision && <p className="notice">{olderRenderNotice}</p>}
-      <div>
+      <div className="export-actions">
         <button disabled={progress.phase === "complete" || progress.phase === "cancelled" || progress.phase === "failed"} onClick={() => void cancelRender()}>Cancel render</button>
         {(progress.phase === "failed" || progress.phase === "cancelled") && <button onClick={() => void retryRender()}>Retry</button>}
         <a href={downloadUrl} download><button disabled={!downloadUrl || progress.phase === "failed"}>{downloadLabel}</button></a>
@@ -1758,12 +1821,14 @@ function App() {
             ? <a href="#pexels-settings-title">Manage Pexels</a>
             : <button className="lock-trigger" onClick={showPexelsLock}>Why is this locked?</button>}
         </article>
-        <article className="provider-card">
-          <span className="provider-status provider-soon">Locked</span>
+        <article className={`provider-card ${falCredential?.connected && !falUnavailable ? "provider-live" : "provider-locked"}`}>
+          <span className={`provider-status ${falCredential?.connected && !falUnavailable ? "" : "provider-soon"}`}>{falCredential?.connected && !falUnavailable ? "Unlocked" : "Locked"}</span>
           <h2>FAL</h2>
-          <strong>AI video + voice</strong>
+          <strong>AI stills</strong>
           <p>Connect your key for AI still generation. Open a storyboard scene and choose Generate AI image to quote, confirm, and review one still.</p>
-          <button className="lock-trigger" onClick={showFalLock}>Why is this locked?</button>
+          {falCredential?.connected && !falUnavailable
+            ? <a href="#fal-settings-title">Manage FAL</a>
+            : <button className="lock-trigger" onClick={showFalLock}>Why is this locked?</button>}
         </article>
         <article className="provider-card provider-future">
           <span className="provider-status provider-soon">Coming soon</span>
@@ -1833,7 +1898,9 @@ function App() {
       {featureLock.action === "settings" && <button onClick={() => { setFeatureLock(undefined); setStep("settings"); }}>Open provider settings</button>}
       <button className="secondary" onClick={() => setFeatureLock(undefined)}>Close</button>
     </dialog>}
-  </main>;
+    </div>
+    {inApp && <nav className="app-dock" aria-label="Primary">{appNav}</nav>}
+  </div>;
 }
 
 createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);
