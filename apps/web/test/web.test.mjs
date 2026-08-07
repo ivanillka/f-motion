@@ -158,6 +158,8 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.match(css, /--accent:\s*#a54d67/);
   assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /\.glitch-logo/);
+  assert.match(css, /font-family:\s*"Syne"|--display:\s*"Syne"/);
+  assert.match(css, /syne-700\.woff2/);
   assert.match(home, /data-glitch="rgb-split"/);
   assert.match(home, /data-glitch="scramble-cascade"/);
   assert.match(home, /data-glitch="slice-tear"/);
@@ -206,5 +208,8 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   }
   for (const vendor of ["gsap.min.js", "ScrollTrigger.min.js", "ScrambleTextPlugin.min.js"]) {
     await readFile(new URL(`vendor/${vendor}`, root));
+  }
+  for (const font of ["syne-600.woff2", "syne-700.woff2", "syne-800.woff2"]) {
+    await readFile(new URL(`fonts/${font}`, root));
   }
 });
