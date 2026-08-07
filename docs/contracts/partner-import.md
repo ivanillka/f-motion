@@ -55,8 +55,15 @@ Auth: `Authorization: Bearer <FENGINE_IMPORT_TOKEN>` (not user JWT / `fm_` keys)
 
 Rules:
 
-- `external_id` is stable and idempotent (retry-safe).
+- `external_id` is stable and idempotent (retry-safe). Influencer campaign
+  filenames may include spaces, underscores, and typographic marks (`×`, `—`).
 - `media_urls` must be HTTPS on `FENGINE_IMPORT_MEDIA_ORIGINS`.
+- CamelCase aliases (`externalId`, `mediaUrls`, `callToAction`, `visualHint`,
+  `durationSeconds`) are accepted so Fotium admin payloads round-trip.
+- Each `media_urls` entry may be an HTTPS string or `{ "url" }` /
+  `{ "sourceUrl" }` object (influencer platform picks).
+- When media is present, `architecture.media` defaults to `own`. Re-import with
+  a new media list reattaches scenes to that exact pick.
 - Import owner is always `FENGINE_IMPORT_OWNER_ID` (invite-only allowlist).
 
 ### Response
