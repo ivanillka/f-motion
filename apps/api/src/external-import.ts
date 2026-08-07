@@ -36,19 +36,37 @@ function optionalText(value: unknown, name: string, maximum: number): string | u
   return requiredText(value, name, maximum);
 }
 
+/** Fotium admin is camelCase; accept snake_case or camelCase for one field. */
+function field(body: Record<string, unknown>, snake: string, camel: string): unknown {
+  return body[snake] !== undefined ? body[snake] : body[camel];
+}
+
 function enumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T, name: string): T {
   if (value === undefined) return fallback;
   if (typeof value !== "string" || !allowed.includes(value as T)) throw new Error(`invalid ${name}`);
   return value as T;
 }
 
+function mediaUrlItem(item: unknown): string {
+  if (typeof item === "string") {
+    if (item.length > 2_048) throw new Error("invalid media_urls");
+    return item;
+  }
+  if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("invalid media_urls");
+  const record = item as Record<string, unknown>;
+  // Influencer campaigns send { url } / { sourceUrl } per platform pick.
+  const raw = record.url ?? record.source_url ?? record.sourceUrl;
+  if (typeof raw !== "string" || raw.length > 2_048) throw new Error("invalid media_urls");
+  return raw;
+}
+
 function mediaUrls(value: unknown): string[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > 8) throw new Error("invalid media_urls");
   const urls = value.map((item) => {
-    if (typeof item !== "string" || item.length > 2_048) throw new Error("invalid media_urls");
+    const href = mediaUrlItem(item);
     let url: URL;
-    try { url = new URL(item); } catch { throw new Error("invalid media_urls"); }
+    try { url = new URL(href); } catch { throw new Error("invalid media_urls"); }
     if (url.protocol !== "https:" || url.username || url.password || url.hash) throw new Error("invalid media_urls");
     return url.href;
   });
@@ -58,13 +76,13 @@ function mediaUrls(value: unknown): string[] {
 export function parseExternalDraft(value: unknown): ExternalDraft {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid external draft");
   const body = value as Record<string, unknown>;
-  const externalId = requiredText(body.external_id, "external_id", 128);
+  const externalId = requiredText(field(body, "external_id", "externalId"), "external_id", 128);
   if (!externalIdPattern.test(externalId)) throw new Error("invalid external_id");
   const title = requiredText(body.title, "title", 120);
   const goal = optionalText(body.goal, "goal", 80);
   const caption = optionalText(body.caption, "caption", 500);
-  const callToAction = optionalText(body.call_to_action, "call_to_action", 180);
-  const visualHint = optionalText(body.visual_hint, "visual_hint", 240);
+  const callToAction = optionalText(field(body, "call_to_action", "callToAction"), "call_to_action", 180);
+  const visualHint = optionalText(field(body, "visual_hint", "visualHint"), "visual_hint", 240);
   const purpose = optionalText(body.purpose, "purpose", 500)
     ?? [title, goal, caption, callToAction].filter(Boolean).join(". ").slice(0, 500);
   const architectureValue = body.architecture === undefined ? {} : body.architecture;
@@ -72,8 +90,10 @@ export function parseExternalDraft(value: unknown): ExternalDraft {
     throw new Error("invalid architecture");
   }
   const architectureBody = architectureValue as Record<string, unknown>;
-  const duration = architectureBody.duration_seconds ?? defaultVideoArchitecture.durationSeconds;
+  const duration = field(architectureBody, "duration_seconds", "durationSeconds")
+    ?? defaultVideoArchitecture.durationSeconds;
   if (duration !== 15 && duration !== 30 && duration !== 45) throw new Error("invalid duration_seconds");
+  const parsedMediaUrls = mediaUrls(field(body, "media_urls", "mediaUrls"));
   const architecture: VideoArchitecture = {
     goal: enumValue(architectureBody.goal, ["story", "explain", "promote", "educate"], "promote", "goal"),
     audience: enumValue(architectureBody.audience, ["general", "social", "customers", "internal"], "social", "audience"),
@@ -81,7 +101,13 @@ export function parseExternalDraft(value: unknown): ExternalDraft {
     tone: enumValue(architectureBody.tone, ["cinematic", "documentary", "energetic", "calm"], "cinematic", "tone"),
     pace: enumValue(architectureBody.pace, ["slow", "balanced", "fast"], "balanced", "pace"),
     durationSeconds: duration,
-    media: enumValue(architectureBody.media, ["stock", "own", "mixed"], "stock", "media")
+    // Host-supplied gallery/influencer media implies own footage unless overridden.
+    media: enumValue(
+      architectureBody.media,
+      ["stock", "own", "mixed"],
+      parsedMediaUrls.length ? "own" : "stock",
+      "media"
+    )
   };
   const audience = optionalText(body.audience, "audience", 80) ?? "Social audience";
   return {
@@ -89,7 +115,7 @@ export function parseExternalDraft(value: unknown): ExternalDraft {
     brief: { purpose, audience, tone: `${architecture.tone}, ${architecture.pace}` },
     architecture,
     source: { ...(caption ? { caption } : {}), ...(callToAction ? { callToAction } : {}), ...(visualHint ? { visualHint } : {}) },
-    mediaUrls: mediaUrls(body.media_urls)
+    mediaUrls: parsedMediaUrls
   };
 }
 

@@ -52,6 +52,26 @@ test("external drafts validate structured architecture and preserve distinct vis
     title: "Media",
     media_urls: ["https://media.fotium.vip/gallery/one.jpg"]
   }).mediaUrls, ["https://media.fotium.vip/gallery/one.jpg"]);
+  const influencer = parseExternalDraft({
+    externalId: "influencer:campaign-1",
+    title: "Influencer reel",
+    callToAction: "Shop the look.",
+    visualHint: "golden hour portraits",
+    architecture: { durationSeconds: 15 },
+    mediaUrls: [
+      "https://media.fotium.vip/galleries/a/1.jpg",
+      { url: "https://media.fotium.vip/galleries/a/2.jpg" },
+      { sourceUrl: "https://fotium.vip/cdn/a/3.jpg" }
+    ]
+  });
+  assert.equal(influencer.externalId, "influencer:campaign-1");
+  assert.equal(influencer.source.callToAction, "Shop the look.");
+  assert.equal(influencer.architecture.media, "own");
+  assert.deepEqual(influencer.mediaUrls, [
+    "https://media.fotium.vip/galleries/a/1.jpg",
+    "https://media.fotium.vip/galleries/a/2.jpg",
+    "https://fotium.vip/cdn/a/3.jpg"
+  ]);
   assert.throws(() => parseExternalDraft({ external_id: "queue:media", title: "Media", media_urls: ["http://localhost/a.jpg"] }), /media_urls/);
   assert.throws(() => parseExternalDraft({ external_id: "bad id", title: "Title" }), /external_id/);
 });
@@ -198,6 +218,41 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
 
     const rejected = await request({ ...baseBody, external_id: "followup:blocked", media_urls: ["https://example.com/private.jpg"] });
     assert.equal(rejected.status, 422);
+
+    // Influencer Create/Open again with a new media pick must replace scene attachments.
+    const influencerBody = {
+      externalId: "influencer:lookbook-1",
+      title: "Lookbook",
+      callToAction: "See the set.",
+      mediaUrls: [
+        { url: "https://media.fotium.vip/galleries/look/1.jpg" },
+        { sourceUrl: "https://media.fotium.vip/galleries/look/2.jpg" }
+      ]
+    };
+    assert.equal((await request(influencerBody)).status, 201);
+    const firstInfluencer = projects.get(ownerId, projectIdForExternalImport(ownerId, "influencer:lookbook-1"));
+    assert.equal(firstInfluencer.scenes[0].media_id, projectIdForExternalImport(
+      projectIdForExternalImport(ownerId, "influencer:lookbook-1"),
+      "https://media.fotium.vip/galleries/look/1.jpg"
+    ));
+    const swapped = await request({
+      ...influencerBody,
+      mediaUrls: [
+        "https://media.fotium.vip/galleries/look/3.jpg",
+        "https://media.fotium.vip/galleries/look/4.jpg"
+      ]
+    });
+    assert.equal(swapped.status, 200);
+    const updated = projects.get(ownerId, projectIdForExternalImport(ownerId, "influencer:lookbook-1"));
+    assert.ok(updated.revision > firstInfluencer.revision);
+    assert.equal(updated.scenes[0].media_id, projectIdForExternalImport(
+      projectIdForExternalImport(ownerId, "influencer:lookbook-1"),
+      "https://media.fotium.vip/galleries/look/3.jpg"
+    ));
+    assert.equal(updated.scenes[1].media_id, projectIdForExternalImport(
+      projectIdForExternalImport(ownerId, "influencer:lookbook-1"),
+      "https://media.fotium.vip/galleries/look/4.jpg"
+    ));
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
