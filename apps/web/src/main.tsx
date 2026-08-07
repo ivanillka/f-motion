@@ -1367,7 +1367,7 @@ function App() {
 
   return <div className={`app-shell${inApp ? " app-shell-signed" : ""}${step === "editor" ? " app-shell-editor" : ""}`}>
     {inApp && <nav className="app-rail" aria-label="Primary">
-      <a className="rail-brand" href="/web/">F-MOTION</a>
+      <a className="rail-brand" href="/">F-MOTION</a>
       {appNav}
     </nav>}
     <div className="app-stage">

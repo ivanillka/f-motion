@@ -108,7 +108,23 @@ test("studio shell brands F-Motion and keeps real destinations only", async () =
   assert.match(source, /className="app-dock"/);
   assert.match(source, /className="studio-board"/);
   assert.match(source, /crop-guide/);
+  assert.match(source, /href="\/"/);
   assert.doesNotMatch(source, /Assets|Effects|Pro Studio|multitrack/i);
+});
+
+test("build puts marketing at site root and studio under /app", async () => {
+  const { readFile, access } = await import("node:fs/promises");
+  const dist = new URL("../dist/", import.meta.url);
+  await access(new URL("index.html", dist));
+  await access(new URL("app/index.html", dist));
+  await access(new URL("_redirects", dist));
+  const home = await readFile(new URL("index.html", dist), "utf8");
+  const redirects = await readFile(new URL("_redirects", dist), "utf8");
+  const app = await readFile(new URL("app/index.html", dist), "utf8");
+  assert.match(home, /Vertical reels from your own media/);
+  assert.match(home, /glitch-logo/);
+  assert.match(app, /\/app\/assets\//);
+  assert.match(redirects, /\/web\/ \/\s*301/);
 });
 
 test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind", async () => {
@@ -164,6 +180,8 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.doesNotMatch(home, /#docs|View docs/);
   assert.doesNotMatch(integrate, /#docs|View docs/);
   assert.match(integrate, /Open studio →/);
+  assert.match(home, /href="\/app\/"/);
+  assert.match(integrate, /href="\/app\/"/);
   assert.match(integrate, /href="\.\/terms\.html"/);
   const terms = await readFile(new URL("terms.html", root), "utf8");
   const privacy = await readFile(new URL("privacy.html", root), "utf8");

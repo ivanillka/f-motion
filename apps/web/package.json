@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && node scripts/promote-marketing-root.mjs",
     "dev": "vite",
     "test": "npm run build && node --test test/*.test.mjs"
   },
