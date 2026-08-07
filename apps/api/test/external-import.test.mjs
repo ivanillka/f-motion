@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { ProjectService } from "../dist/domain.js";
 import {
   externalImportConfigFromEnv,
+  isExternalId,
   parseExternalDraft,
   projectIdForExternalImport
 } from "../dist/external-import.js";
@@ -33,6 +34,22 @@ test("trusted import configuration is all-or-nothing and hosted HTTPS-only", () 
     FENGINE_ENV: "hosted"
   });
   assert.deepEqual(configured.mediaOrigins, ["https://media.fotium.vip", "https://fotium.vip"]);
+});
+
+test("influencer campaign filenames are valid external ids", () => {
+  const campaign = "dope.veg × mallghareth_if — February 2020 — August 2026 — Campaign.md";
+  assert.equal(isExternalId(campaign), true);
+  assert.equal(isExternalId(`influencer:${campaign}`), true);
+  assert.equal(isExternalId("queue:abc123"), true);
+  assert.equal(isExternalId("bad/id"), false);
+  assert.equal(isExternalId("bad\\id"), false);
+  assert.equal(isExternalId(""), false);
+  const draft = parseExternalDraft({
+    externalId: `influencer:${campaign}`,
+    title: "Dope × Mallghareth",
+    mediaUrls: ["https://media.fotium.vip/galleries/look/1.jpg"]
+  });
+  assert.equal(draft.externalId, `influencer:${campaign}`);
 });
 
 test("external drafts validate structured architecture and preserve distinct visual/copy intent", () => {
@@ -73,7 +90,7 @@ test("external drafts validate structured architecture and preserve distinct vis
     "https://fotium.vip/cdn/a/3.jpg"
   ]);
   assert.throws(() => parseExternalDraft({ external_id: "queue:media", title: "Media", media_urls: ["http://localhost/a.jpg"] }), /media_urls/);
-  assert.throws(() => parseExternalDraft({ external_id: "bad id", title: "Title" }), /external_id/);
+  assert.throws(() => parseExternalDraft({ external_id: "bad/id", title: "Title" }), /external_id/);
 });
 
 test("trusted imports create one editable project and retry idempotently", async () => {

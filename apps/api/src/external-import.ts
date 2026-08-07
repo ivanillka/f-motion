@@ -22,13 +22,18 @@ export interface ExternalDraft {
 }
 
 const ownerIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const externalIdPattern = /^[a-z0-9][a-z0-9._:-]{0,127}$/i;
+// Influencer campaign filenames use spaces, underscores, and typographic marks (× —).
+const externalIdPattern = /^(?=.{1,128}$)[\p{L}\p{N}][\p{L}\p{N} ._:\-×—–,()]*$/u;
 
 function requiredText(value: unknown, name: string, maximum: number): string {
   if (typeof value !== "string") throw new Error(`invalid ${name}`);
   const result = value.trim();
   if (!result || result.length > maximum) throw new Error(`invalid ${name}`);
   return result;
+}
+
+export function isExternalId(value: string): boolean {
+  return externalIdPattern.test(value);
 }
 
 function optionalText(value: unknown, name: string, maximum: number): string | undefined {
@@ -77,7 +82,7 @@ export function parseExternalDraft(value: unknown): ExternalDraft {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid external draft");
   const body = value as Record<string, unknown>;
   const externalId = requiredText(field(body, "external_id", "externalId"), "external_id", 128);
-  if (!externalIdPattern.test(externalId)) throw new Error("invalid external_id");
+  if (!isExternalId(externalId)) throw new Error("invalid external_id");
   const title = requiredText(body.title, "title", 120);
   const goal = optionalText(body.goal, "goal", 80);
   const caption = optionalText(body.caption, "caption", 500);

@@ -281,7 +281,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         return response.status(422).json({ type: "validation", message: error.message });
       }
       if (error instanceof ExternalMediaImportError) {
-        return response.status(502).json({ type: "upstream", message: "existing media could not be imported" });
+        return response.status(502).json({
+          type: "upstream",
+          message: error.message || "existing media could not be imported"
+        });
       }
       next(error);
     }
