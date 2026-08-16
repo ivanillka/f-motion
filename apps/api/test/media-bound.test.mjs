@@ -100,5 +100,11 @@ test("stillSize reads PNG IHDR and WebP VP8X without ffprobe", () => {
     0x56, 0x50, 0x38, 0x58, 0, 0, 0, 0, 0, 0, 0, 0, 0x3f, 0, 0, 0x2b, 0, 0
   ]);
   assert.deepEqual(stillSize("image/webp", webp), { width: 64, height: 44 });
+  const vp8 = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50,
+    0x56, 0x50, 0x38, 0x20, 10, 0, 0, 0, 0, 0, 0, 0x9d, 0x01, 0x2a, 2, 0, 3, 0
+  ]);
+  assert.deepEqual(stillSize("image/webp", vp8), { width: 2, height: 3 });
+  assert.deepEqual(stillSize("image/jpeg", vp8), { width: 2, height: 3 });
   assert.equal(stillSize("image/png", new Uint8Array([1, 2, 3])), undefined);
 });

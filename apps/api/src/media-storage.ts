@@ -57,26 +57,79 @@ function u32be(bytes: Uint8Array, offset: number): number {
     + (bytes[offset + 3] ?? 0);
 }
 
+function u16le(bytes: Uint8Array, offset: number): number {
+  return (bytes[offset] ?? 0) | ((bytes[offset + 1] ?? 0) << 8);
+}
+
 function u24le(bytes: Uint8Array, offset: number): number {
-  return (bytes[offset] ?? 0) | ((bytes[offset + 1] ?? 0) << 8) | ((bytes[offset + 2] ?? 0) << 16);
+  return u16le(bytes, offset) | ((bytes[offset + 2] ?? 0) << 16);
+}
+
+function u32le(bytes: Uint8Array, offset: number): number {
+  return u16le(bytes, offset) | (u16le(bytes, offset + 2) << 16);
+}
+
+function webpSize(bytes: Uint8Array): { width: number; height: number } | undefined {
+  if (
+    bytes.length < 20
+    || bytes[0] !== 0x52 || bytes[1] !== 0x49 || bytes[2] !== 0x46 || bytes[3] !== 0x46
+    || bytes[8] !== 0x57 || bytes[9] !== 0x45 || bytes[10] !== 0x42 || bytes[11] !== 0x50
+  ) {
+    return undefined;
+  }
+  let offset = 12;
+  while (offset + 8 <= bytes.length) {
+    const tag = String.fromCharCode(
+      bytes[offset] ?? 0,
+      bytes[offset + 1] ?? 0,
+      bytes[offset + 2] ?? 0,
+      bytes[offset + 3] ?? 0
+    );
+    const chunk = u32le(bytes, offset + 4);
+    const payload = offset + 8;
+    if (tag === "VP8X" && payload + 10 <= bytes.length) {
+      const width = u24le(bytes, payload + 4) + 1;
+      const height = u24le(bytes, payload + 7) + 1;
+      return width > 0 && height > 0 ? { width, height } : undefined;
+    }
+    if (tag === "VP8L" && payload + 5 <= bytes.length) {
+      const bits = u32le(bytes, payload + 1);
+      const width = (bits & 0x3fff) + 1;
+      const height = ((bits >> 14) & 0x3fff) + 1;
+      return width > 0 && height > 0 ? { width, height } : undefined;
+    }
+    if (
+      tag === "VP8 "
+      && payload + 10 <= bytes.length
+      && bytes[payload + 3] === 0x9d
+      && bytes[payload + 4] === 0x01
+      && bytes[payload + 5] === 0x2a
+    ) {
+      const width = u16le(bytes, payload + 6) & 0x3fff;
+      const height = u16le(bytes, payload + 8) & 0x3fff;
+      return width > 0 && height > 0 ? { width, height } : undefined;
+    }
+    if (chunk <= 0) break;
+    offset = payload + chunk + (chunk & 1);
+  }
+  return undefined;
 }
 
 /** ponytail: no hosted worker yet. Stills become ready from headers; add ffprobe when f-motion-worker exists. */
 export function stillSize(type: string, bytes: Uint8Array): { width: number; height: number } | undefined {
+  const size = stillSizeForType(type, bytes);
+  if (size) return size;
+  const sniffed = mediaTypeFromBytes(bytes);
+  return sniffed && sniffed !== type ? stillSizeForType(sniffed, bytes) : undefined;
+}
+
+function stillSizeForType(type: string, bytes: Uint8Array): { width: number; height: number } | undefined {
   if (type === "image/png" && bytes.length >= 24) {
     const width = u32be(bytes, 16);
     const height = u32be(bytes, 20);
     return width > 0 && height > 0 ? { width, height } : undefined;
   }
-  if (type === "image/webp" && bytes.length >= 30 && bytes[12] === 0x56 && bytes[13] === 0x50 && bytes[14] === 0x38) {
-    if (bytes[15] === 0x58) {
-      return { width: u24le(bytes, 24) + 1, height: u24le(bytes, 27) + 1 };
-    }
-    if (bytes[15] === 0x4c && bytes.length >= 25) {
-      const bits = (bytes[21] ?? 0) | ((bytes[22] ?? 0) << 8) | ((bytes[23] ?? 0) << 16) | ((bytes[24] ?? 0) << 24);
-      return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
-    }
-  }
+  if (type === "image/webp") return webpSize(bytes);
   if (type === "image/jpeg") {
     let offset = 2;
     while (offset + 8 < bytes.length) {
