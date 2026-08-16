@@ -30,7 +30,7 @@ async function validatedJob(body) {
     if (!scene.media_id) continue;
     const descriptor = job.mediaInputs[scene.media_id];
     if (!descriptor || typeof descriptor.path !== "string"
-      || !["video/mp4", "image/jpeg", "image/png"].includes(descriptor.type)) {
+      || !["video/mp4", "image/jpeg", "image/png", "image/webp"].includes(descriptor.type)) {
       throw new Error(`missing media input for scene ${scene.id}`);
     }
     const path = await realpath(descriptor.path);

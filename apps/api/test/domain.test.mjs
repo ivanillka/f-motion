@@ -72,6 +72,7 @@ test("multi-scene lifecycle is authoritative, ordered, and idempotent", () => {
 test("upload uses declared bounds then detected worker facts", () => {
   const media = new MediaService();
   assert.throws(() => media.admit("o", "p", "text/html", 2));
+  assert.equal(media.admit("o", "p", "image/webp", 10).declaredType, "image/webp");
   const admitted = media.admit("o", "p", "video/mp4", 10);
   assert.throws(() => media.complete("other", "p", admitted.id));
   assert.equal(media.complete("o", "p", admitted.id).state, "inspecting");

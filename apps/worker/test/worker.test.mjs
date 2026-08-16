@@ -163,6 +163,7 @@ test("media-inspection rejects mismatch, oversize, and incomplete facts", () => 
     duration_ms: 100
   }, 10).accepted, true);
   assert.equal(inspectMedia("image/png", { type: "image/png", bytes: 10, width: 64, height: 64 }, 10).accepted, true);
+  assert.equal(inspectMedia("image/webp", { type: "image/webp", bytes: 10, width: 64, height: 64 }, 10).accepted, true);
 });
 
 test("media-inspection enforces each configured dimension, pixel, and duration boundary", () => {

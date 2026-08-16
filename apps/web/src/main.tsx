@@ -1515,7 +1515,7 @@ function App() {
     {authReady && step === "media" && project && <section>
       <h1>Upload your media</h1>
       <p>Choose one JPEG, PNG, or MP4 you have permission to use. It is inspected before it can be rendered.</p>
-      <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png" onChange={(event) => {
+      <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
         const file = event.target.files?.[0];
         if (file && activeScene) void admitFile(file, activeScene.id);
       }} />
@@ -1671,7 +1671,7 @@ function App() {
         <button className="secondary" disabled={project.scenes.length <= 1} onClick={() => void removeScene(activeScene.id)}>Remove scene {activeSceneNumber}</button>
       </div>
 
-      <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png" onChange={(event) => {
+      <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
         const file = event.target.files?.[0];
         if (file) void admitFile(file, activeScene.id);
       }} />

@@ -323,7 +323,7 @@ export interface UploadAdmission {
 export class MediaService {
   readonly #assets = new Map<string, UploadAdmission>();
   admit(ownerId: string, projectId: string, declaredType: string, bytes: number): UploadAdmission & { method: "PUT"; expiresInSeconds: 300 } {
-    const allowed = new Set(["video/mp4", "image/jpeg", "image/png"]);
+    const allowed = new Set(["video/mp4", "image/jpeg", "image/png", "image/webp"]);
     if (!allowed.has(declaredType) || bytes <= 0 || bytes > 100_000_000) throw new Error("upload declaration rejected");
     const id = randomUUID();
     const asset: UploadAdmission = { id, ownerId, projectId, objectKey: `projects/${projectId}/media/${id}`, state: "admitted", declaredType, maxBytes: bytes };

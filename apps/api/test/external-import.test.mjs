@@ -176,8 +176,9 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     },
     externalMediaRequest: async (input, init) => {
       requested.push({ input: String(input), redirect: init?.redirect });
+      const type = String(input).endsWith(".webp") ? "image/webp" : "image/jpeg";
       return new Response(new Uint8Array([1, 2, 3]), {
-        headers: { "content-type": "image/jpeg", "content-length": "3" }
+        headers: { "content-type": type, "content-length": "3" }
       });
     }
   }));
@@ -235,6 +236,14 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
 
     const rejected = await request({ ...baseBody, external_id: "followup:blocked", media_urls: ["https://example.com/private.jpg"] });
     assert.equal(rejected.status, 422);
+
+    const webp = await request({
+      ...baseBody,
+      external_id: "followup:webp",
+      media_urls: ["https://media.fotium.vip/galleries/look/04.webp"]
+    });
+    assert.equal(webp.status, 201);
+    assert.equal(requested.at(-1)?.input, "https://media.fotium.vip/galleries/look/04.webp");
 
     // Queue Edit again with a new media pick must replace scene attachments.
     const influencerBody = {

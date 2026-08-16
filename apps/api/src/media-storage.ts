@@ -9,7 +9,7 @@ import { Readable, Transform } from "node:stream";
 import { finished, pipeline } from "node:stream/promises";
 import type { Pool } from "pg";
 
-export const allowedMediaTypes = new Set(["video/mp4", "image/jpeg", "image/png"]);
+export const allowedMediaTypes = new Set(["video/mp4", "image/jpeg", "image/png", "image/webp"]);
 export const maximumMediaBytes = 100_000_000;
 
 export interface StoredMedia {

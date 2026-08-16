@@ -11,7 +11,7 @@ import {
 
 export const renderPhases = ["queued", "preparing", "rendering", "uploading", "complete"] as const;
 
-export const allowedProbeTypes = new Set(["video/mp4", "image/jpeg", "image/png"]);
+export const allowedProbeTypes = new Set(["video/mp4", "image/jpeg", "image/png", "image/webp"]);
 
 export interface DetectedMedia {
   type: string;
@@ -86,6 +86,7 @@ function mimeFromProbe(
   const codec = video.codec_name ?? "";
   const format = formatName.toLowerCase();
   if (codec === "png" || format.includes("png")) return "image/png";
+  if (codec === "webp" || format.includes("webp")) return "image/webp";
   if (codec === "mjpeg" || codec === "jpeg" || format.includes("jpeg") || format.includes("mjpeg")) {
     if (!format.includes("mp4") && !format.includes("mov") && !format.includes("ismv")) {
       return "image/jpeg";
@@ -362,7 +363,7 @@ export function sceneClipArguments(
       ...(motion ? [motion] : []),
       ...captions
     ];
-    const still = media.type === "image/jpeg" || media.type === "image/png";
+    const still = media.type === "image/jpeg" || media.type === "image/png" || media.type === "image/webp";
     const padAudio = still || media.hasAudio === false;
     const input = still
       ? ["-loop", "1", "-framerate", "30", "-t", String(duration), "-i", media.path]
