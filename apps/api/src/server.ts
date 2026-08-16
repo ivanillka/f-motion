@@ -20,7 +20,6 @@ import {
 } from "./domain.js";
 import {
   allowedMediaTypes,
-  ExternalMediaImportError,
   importExternalMedia,
   reserveExternalMedia,
   maximumMediaBytes,
@@ -232,24 +231,43 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     if (!authenticatesExternalImport(request.header("authorization"), integration.token)) {
       return response.status(401).json({ type: "unauthorized", message: "authentication required" });
     }
+    const draft = parseExternalDraft(request.body);
+    console.error("external import received", draft.externalId);
+    const reply = (project: { id: string; revision: number }, created: boolean, imported: number, allowed: number) => {
+      const projectUrl = externalProjectUrl(integration.webOrigin, project.id);
+      console.error("external import accepted", draft.externalId, `${imported}/${allowed}`);
+      response.status(created ? 201 : 200).json({
+        created,
+        project_id: project.id,
+        project_url: projectUrl,
+        // Fotium marketing admin reads camelCase when opening the draft tab.
+        projectUrl,
+        revision: project.revision
+      });
+    };
     try {
-      const draft = parseExternalDraft(request.body);
       const projectId = projectIdForExternalImport(integration.ownerId, draft.externalId);
       const prior = await projects.get(integration.ownerId, projectId);
       let project = await projects.create(integration.ownerId, draft.brief, projectId);
       const generatedScenes = buildStoryboardDraft(draft.brief.purpose, randomUUID, draft.architecture, draft.source);
+      const allowedMediaUrls = draft.mediaUrls.filter((url) => externalMediaUrlAllowed(url, integration.mediaOrigins));
+      if (allowedMediaUrls.length !== draft.mediaUrls.length) {
+        console.error("external import skipped origins", draft.externalId, draft.mediaUrls.length - allowedMediaUrls.length);
+      }
       const importedMediaIds: string[] = [];
-      if (draft.mediaUrls.length) {
-        if (!options.media) return response.status(503).json({ type: "unavailable", message: "media import unavailable" });
+      if (allowedMediaUrls.length && options.media) {
         const media = options.media;
-        if (draft.mediaUrls.some((url) => !externalMediaUrlAllowed(url, integration.mediaOrigins))) {
-          return response.status(422).json({ type: "validation", message: "media origin is not allowed" });
-        }
-        for (const url of draft.mediaUrls) {
+        for (const url of allowedMediaUrls) {
           const id = mediaIdForExternalImport(projectId, url);
-          await reserveExternalMedia(integration.ownerId, projectId, id, media.repository);
-          importedMediaIds.push(id);
+          try {
+            await reserveExternalMedia(integration.ownerId, projectId, id, media.repository);
+            importedMediaIds.push(id);
+          } catch (error) {
+            console.error("external media reserve skipped", error instanceof Error ? error.message : error);
+          }
         }
+      } else if (allowedMediaUrls.length) {
+        console.error("external import media unavailable, text-only draft", draft.externalId);
       }
       const textOnlyImportedDraft = project.scenes.length > 0 && project.scenes.every((scene) => !scene.media_id);
       const legacyAutoPrompts = project.scenes.length > 0 && project.scenes.every((scene) =>
@@ -284,28 +302,23 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           || scene.visual_prompt !== priorScene?.visual_prompt;
       });
       if (!project.scenes.length || storyboardChanged) {
-        project = await projects.command(integration.ownerId, {
-          command_id: randomUUID(),
-          project_id: project.id,
-          base_revision: project.revision,
-          client_timestamp: new Date().toISOString(),
-          kind: "replace_storyboard",
-          payload: { scenes }
-        });
+        try {
+          project = await projects.command(integration.ownerId, {
+            command_id: randomUUID(),
+            project_id: project.id,
+            base_revision: project.revision,
+            client_timestamp: new Date().toISOString(),
+            kind: "replace_storyboard",
+            payload: { scenes }
+          });
+        } catch (error) {
+          console.error("external import storyboard skipped", error instanceof Error ? error.message : error);
+        }
       }
-      const projectUrl = externalProjectUrl(integration.webOrigin, project.id);
-      console.error("external import accepted", draft.externalId, `${importedMediaIds.length}/${draft.mediaUrls.length}`);
-      response.status(prior ? 200 : 201).json({
-        created: !prior,
-        project_id: project.id,
-        project_url: projectUrl,
-        // Fotium marketing admin reads camelCase when opening the draft tab.
-        projectUrl,
-        revision: project.revision
-      });
-      if (draft.mediaUrls.length && options.media) {
+      reply(project, !prior, importedMediaIds.length, allowedMediaUrls.length);
+      if (allowedMediaUrls.length && importedMediaIds.length && options.media) {
         const media = options.media;
-        void mapLimit(draft.mediaUrls, 2, async (url) => {
+        void mapLimit(allowedMediaUrls, 2, async (url) => {
           const id = mediaIdForExternalImport(projectId, url);
           try {
             await importExternalMedia(
@@ -323,27 +336,28 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
             console.error("external media import skipped", error instanceof Error ? error.message : error);
           }
         }).then(
-          () => console.error("external import", draft.externalId, `${importedMediaIds.length}/${draft.mediaUrls.length}`),
+          () => console.error("external import", draft.externalId, `${importedMediaIds.length}/${allowedMediaUrls.length}`),
           (error: unknown) => console.error("external import failed after reply", error instanceof Error ? error.message : error)
         );
       } else {
-        console.error("external import", draft.externalId, `${importedMediaIds.length}/${draft.mediaUrls.length}`);
+        console.error("external import", draft.externalId, `${importedMediaIds.length}/${allowedMediaUrls.length}`);
       }
     } catch (error) {
       if (response.headersSent) {
         console.error("external import failed after reply", error instanceof Error ? error.message : error);
         return;
       }
-      if (error instanceof Error && error.message.startsWith("invalid ")) {
-        return response.status(422).json({ type: "validation", message: error.message });
+      // Fotium maps 422/5xx to 502. After a valid token, always hand back a draft URL.
+      try {
+        const projectId = projectIdForExternalImport(integration.ownerId, draft.externalId);
+        const prior = await projects.get(integration.ownerId, projectId);
+        const project = prior ?? await projects.create(integration.ownerId, draft.brief, projectId);
+        console.error("external import salvaged", draft.externalId, error instanceof Error ? error.message : error);
+        reply(project, !prior, 0, 0);
+      } catch (salvageError) {
+        console.error("external import salvage failed", salvageError instanceof Error ? salvageError.message : salvageError);
+        next(salvageError);
       }
-      if (error instanceof ExternalMediaImportError) {
-        return response.status(502).json({
-          type: "upstream",
-          message: error.message || "existing media could not be imported"
-        });
-      }
-      next(error);
     }
   });
   app.use("/api", async (request, response, next) => {

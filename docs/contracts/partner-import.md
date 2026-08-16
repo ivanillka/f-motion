@@ -56,7 +56,7 @@ Auth: `Authorization: Bearer <FENGINE_IMPORT_TOKEN>` (not user JWT / `fm_` keys)
 Rules:
 
 - `external_id` is stable and idempotent (retry-safe).
-- `media_urls` must be HTTPS on `FENGINE_IMPORT_MEDIA_ORIGINS`.
+- `media_urls` should be HTTPS on `FENGINE_IMPORT_MEDIA_ORIGINS`. Other URLs are skipped; the draft is still created.
 - Import owner is always `FENGINE_IMPORT_OWNER_ID` (invite-only allowlist).
 
 ### Response

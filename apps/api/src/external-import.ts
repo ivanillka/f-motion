@@ -25,20 +25,41 @@ const ownerIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]
 // Influencer campaign filenames use spaces, underscores, and typographic marks (× —).
 const externalIdPattern = /^(?=.{1,128}$)[\p{L}\p{N}][\p{L}\p{N} ._:\-×—–,()]*$/u;
 
-function requiredText(value: unknown, name: string, maximum: number): string {
-  if (typeof value !== "string") throw new Error(`invalid ${name}`);
+function asText(value: unknown): string | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value !== "string") return undefined;
   const result = value.trim();
-  if (!result || result.length > maximum) throw new Error(`invalid ${name}`);
-  return result;
+  return result || undefined;
+}
+
+function clipText(value: unknown, maximum: number, fallback: string): string {
+  const text = asText(value);
+  if (!text) return fallback.slice(0, maximum);
+  return text.slice(0, maximum);
 }
 
 export function isExternalId(value: string): boolean {
   return externalIdPattern.test(value);
 }
 
-function optionalText(value: unknown, name: string, maximum: number): string | undefined {
-  if (value === undefined || value === null || value === "") return undefined;
-  return requiredText(value, name, maximum);
+/** Host ids may include slashes or punctuation; keep a stable allowed form. */
+export function sanitizeExternalId(value: unknown): string {
+  const raw = asText(value) ?? "";
+  const cleaned = raw
+    .replace(/[^\p{L}\p{N} ._:\-×—–,()]/gu, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[^ \p{L}\p{N}]+/u, "")
+    .trim()
+    .slice(0, 128);
+  if (cleaned && isExternalId(cleaned)) return cleaned;
+  const digest = createHash("sha256").update(raw || "imported").digest("hex").slice(0, 24);
+  return `imported:${digest}`;
+}
+
+function optionalText(value: unknown, maximum: number): string | undefined {
+  const text = asText(value);
+  if (!text) return undefined;
+  return text.slice(0, maximum);
 }
 
 /** Fotium admin is camelCase; accept snake_case or camelCase for one field. */
@@ -46,75 +67,84 @@ function field(body: Record<string, unknown>, snake: string, camel: string): unk
   return body[snake] !== undefined ? body[snake] : body[camel];
 }
 
-function enumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T, name: string): T {
-  if (value === undefined) return fallback;
-  if (typeof value !== "string" || !allowed.includes(value as T)) throw new Error(`invalid ${name}`);
-  return value as T;
+function enumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === "string" && allowed.includes(value as T) ? value as T : fallback;
 }
 
-function mediaUrlItem(item: unknown): string {
-  if (typeof item === "string") {
-    if (item.length > 2_048) throw new Error("invalid media_urls");
-    return item;
-  }
-  if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("invalid media_urls");
+function durationSeconds(value: unknown): 15 | 30 | 45 {
+  const numeric = typeof value === "string" ? Number(value.trim()) : typeof value === "number" ? value : Number.NaN;
+  if (numeric === 15 || numeric === 30 || numeric === 45) return numeric;
+  if (!Number.isFinite(numeric)) return defaultVideoArchitecture.durationSeconds;
+  const options = [15, 30, 45] as const;
+  return options.reduce((best, current) => Math.abs(current - numeric) < Math.abs(best - numeric) ? current : best);
+}
+
+function mediaUrlItem(item: unknown): string | undefined {
+  if (typeof item === "string") return item.length <= 2_048 ? item : undefined;
+  if (!item || typeof item !== "object" || Array.isArray(item)) return undefined;
   const record = item as Record<string, unknown>;
   // Influencer campaigns send { url } / { sourceUrl } per platform pick.
   const raw = record.url ?? record.source_url ?? record.sourceUrl;
-  if (typeof raw !== "string" || raw.length > 2_048) throw new Error("invalid media_urls");
-  return raw;
+  return typeof raw === "string" && raw.length <= 2_048 ? raw : undefined;
 }
 
 function mediaUrls(value: unknown): string[] {
-  if (value === undefined) return [];
-  if (!Array.isArray(value)) throw new Error("invalid media_urls");
-  const urls = value.slice(0, 8).map((item) => {
+  const items = typeof value === "string" ? [value] : Array.isArray(value) ? value : [];
+  const urls: string[] = [];
+  for (const item of items.slice(0, 8)) {
     const href = mediaUrlItem(item);
-    let url: URL;
-    try { url = new URL(href); } catch { throw new Error("invalid media_urls"); }
-    if (url.protocol !== "https:" || url.username || url.password || url.hash) throw new Error("invalid media_urls");
-    return url.href;
-  });
+    if (!href) continue;
+    try {
+      const url = new URL(href);
+      if (url.protocol !== "https:" || url.username || url.password || url.hash) continue;
+      urls.push(url.href);
+    } catch {
+      // Skip one bad host URL; the rest of the draft still opens.
+    }
+  }
   return [...new Set(urls)];
 }
 
 export function parseExternalDraft(value: unknown): ExternalDraft {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid external draft");
-  const body = value as Record<string, unknown>;
-  const externalId = requiredText(field(body, "external_id", "externalId"), "external_id", 128);
-  if (!isExternalId(externalId)) throw new Error("invalid external_id");
-  const title = requiredText(body.title, "title", 120);
-  const goal = optionalText(body.goal, "goal", 80);
-  const caption = optionalText(body.caption, "caption", 500);
-  const callToAction = optionalText(field(body, "call_to_action", "callToAction"), "call_to_action", 180);
-  const visualHint = optionalText(field(body, "visual_hint", "visualHint"), "visual_hint", 240);
-  const purpose = optionalText(body.purpose, "purpose", 500)
+  const body = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const externalId = sanitizeExternalId(field(body, "external_id", "externalId"));
+  const title = clipText(
+    body.title,
+    120,
+    externalId.replace(/^(followup|queue|task|influencer|fotium|imported):/i, "").trim() || "Imported draft"
+  );
+  const goal = optionalText(body.goal, 80);
+  const caption = optionalText(body.caption, 500);
+  const callToAction = optionalText(field(body, "call_to_action", "callToAction"), 180);
+  const visualHint = optionalText(field(body, "visual_hint", "visualHint"), 240);
+  const purpose = optionalText(body.purpose, 500)
     ?? [title, goal, caption, callToAction].filter(Boolean).join(". ").slice(0, 500);
-  const architectureValue = body.architecture === undefined ? {} : body.architecture;
-  if (!architectureValue || typeof architectureValue !== "object" || Array.isArray(architectureValue)) {
-    throw new Error("invalid architecture");
-  }
-  const architectureBody = architectureValue as Record<string, unknown>;
-  const duration = field(architectureBody, "duration_seconds", "durationSeconds")
-    ?? defaultVideoArchitecture.durationSeconds;
-  if (duration !== 15 && duration !== 30 && duration !== 45) throw new Error("invalid duration_seconds");
+  const architectureValue = body.architecture;
+  const architectureBody = architectureValue && typeof architectureValue === "object" && !Array.isArray(architectureValue)
+    ? architectureValue as Record<string, unknown>
+    : {};
   const parsedMediaUrls = mediaUrls(field(body, "media_urls", "mediaUrls"));
   const architecture: VideoArchitecture = {
-    goal: enumValue(architectureBody.goal, ["story", "explain", "promote", "educate"], "promote", "goal"),
-    audience: enumValue(architectureBody.audience, ["general", "social", "customers", "internal"], "social", "audience"),
-    structure: enumValue(architectureBody.structure, ["story_arc", "mystery", "problem_solution", "chronological"], "story_arc", "structure"),
-    tone: enumValue(architectureBody.tone, ["cinematic", "documentary", "energetic", "calm"], "cinematic", "tone"),
-    pace: enumValue(architectureBody.pace, ["slow", "balanced", "fast"], "balanced", "pace"),
-    durationSeconds: duration,
+    goal: enumValue(architectureBody.goal, ["story", "explain", "promote", "educate"], "promote"),
+    audience: enumValue(architectureBody.audience, ["general", "social", "customers", "internal"], "social"),
+    structure: enumValue(architectureBody.structure, ["story_arc", "mystery", "problem_solution", "chronological"], "story_arc"),
+    tone: enumValue(architectureBody.tone, ["cinematic", "documentary", "energetic", "calm"], "cinematic"),
+    pace: enumValue(architectureBody.pace, ["slow", "balanced", "fast"], "balanced"),
+    durationSeconds: durationSeconds(
+      field(architectureBody, "duration_seconds", "durationSeconds")
+        ?? field(body, "duration_seconds", "durationSeconds")
+        ?? defaultVideoArchitecture.durationSeconds
+    ),
     // Host-supplied gallery/influencer media implies own footage unless overridden.
     media: enumValue(
       architectureBody.media,
       ["stock", "own", "mixed"],
-      parsedMediaUrls.length ? "own" : "stock",
-      "media"
+      parsedMediaUrls.length ? "own" : "stock"
     )
   };
-  const audience = optionalText(body.audience, "audience", 80) ?? "Social audience";
+  const audience = optionalText(body.audience, 80) ?? "Social audience";
   return {
     externalId,
     brief: { purpose, audience, tone: `${architecture.tone}, ${architecture.pace}` },

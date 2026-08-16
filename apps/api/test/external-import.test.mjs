@@ -53,6 +53,7 @@ test("influencer campaign filenames are valid external ids", () => {
   assert.equal(isExternalId("bad/id"), false);
   assert.equal(isExternalId("bad\\id"), false);
   assert.equal(isExternalId(""), false);
+  assert.equal(parseExternalDraft({ external_id: "bad/id", title: "Title" }).externalId, "bad-id");
   const draft = parseExternalDraft({
     externalId: `influencer:${campaign}`,
     title: "Dope × Mallghareth",
@@ -98,8 +99,23 @@ test("external drafts validate structured architecture and preserve distinct vis
     "https://media.fotium.vip/galleries/a/2.jpg",
     "https://fotium.vip/cdn/a/3.jpg"
   ]);
-  assert.throws(() => parseExternalDraft({ external_id: "queue:media", title: "Media", media_urls: ["http://localhost/a.jpg"] }), /media_urls/);
-  assert.throws(() => parseExternalDraft({ external_id: "bad/id", title: "Title" }), /external_id/);
+  assert.deepEqual(parseExternalDraft({
+    external_id: "queue:media",
+    title: "Media",
+    media_urls: ["http://localhost/a.jpg", "https://media.fotium.vip/galleries/look/1.jpg", "not-a-url"]
+  }).mediaUrls, ["https://media.fotium.vip/galleries/look/1.jpg"]);
+  assert.equal(parseExternalDraft({
+    external_id: "queue:duration",
+    title: "Duration",
+    architecture: { duration_seconds: "15", goal: "launch" }
+  }).architecture.durationSeconds, 15);
+  assert.equal(parseExternalDraft({
+    external_id: "queue:snap",
+    title: "Snap",
+    architecture: { durationSeconds: 20 }
+  }).architecture.durationSeconds, 15);
+  assert.equal(parseExternalDraft({ title: "No id" }).externalId.startsWith("imported:"), true);
+  assert.ok(parseExternalDraft(null).brief.purpose);
   const nine = Array.from({ length: 9 }, (_, index) => `https://media.fotium.vip/galleries/look/${index + 1}.jpg`);
   assert.deepEqual(parseExternalDraft({
     external_id: "queue:nine",
@@ -147,6 +163,20 @@ test("trusted imports create one editable project and retry idempotently", async
     assert.equal(second.status, 200);
     assert.equal((await second.json()).project_id, created.project_id);
     assert.equal(projects.list(ownerId).length, 1);
+
+    const messy = await fetch(`${origin}/api/integrations/project-imports`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        external_id: "task/41654960-337a-4288-96c1-96a0e7c2ddb8",
+        architecture: { duration_seconds: 20, goal: "launch" },
+        media_urls: ["http://localhost/a.jpg", "https://example.com/private.jpg"]
+      })
+    });
+    assert.equal(messy.status, 201);
+    const messyBody = await messy.json();
+    assert.match(messyBody.projectUrl, /\/app\/\?project=/);
+    assert.equal(messyBody.project_id, projectIdForExternalImport(ownerId, "task-41654960-337a-4288-96c1-96a0e7c2ddb8"));
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
@@ -316,7 +346,10 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     assert.equal(stored.length, 4);
 
     const rejected = await request({ ...baseBody, external_id: "followup:blocked", media_urls: ["https://example.com/private.jpg"] });
-    assert.equal(rejected.status, 422);
+    assert.equal(rejected.status, 201);
+    const blocked = await rejected.json();
+    assert.match(blocked.project_url, /\/app\/\?project=/);
+    assert.ok(projects.get(ownerId, blocked.project_id).scenes.every((scene) => !scene.media_id));
 
     const unreachable = await request({
       ...baseBody,
