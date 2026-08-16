@@ -176,6 +176,16 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     },
     externalMediaRequest: async (input, init) => {
       requested.push({ input: String(input), redirect: init?.redirect });
+      if (String(input).includes("missing.jpg")) {
+        return new Response("forbidden", { status: 403, headers: { "content-type": "text/html" } });
+      }
+      if (String(input).includes("bounce.jpg")) {
+        const bounced = new Response(new Uint8Array([0xff, 0xd8, 0xff]), {
+          headers: { "content-type": "image/jpeg", "content-length": "3" }
+        });
+        Object.defineProperty(bounced, "url", { value: "https://evil.example/stolen.jpg" });
+        return bounced;
+      }
       const type = String(input).endsWith(".webp") ? "image/webp" : "image/jpeg";
       return new Response(new Uint8Array([1, 2, 3]), {
         headers: { "content-type": type, "content-length": "3" }
@@ -218,7 +228,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     assert.notEqual(project.scenes[0].media_id, project.scenes[1].media_id);
     assert.equal(project.scenes[0].media_id, project.scenes[2].media_id);
     assert.match(project.scenes.map(({ caption }) => caption).join(" "), /https:\/\//);
-    assert.deepEqual(requested.map(({ redirect }) => redirect), ["error", "error"]);
+    assert.deepEqual(requested.map(({ redirect }) => redirect), ["follow", "follow"]);
     assert.equal(stored.length, 2);
 
     const retry = await request({ ...mediaBody, caption: baseBody.caption });
@@ -237,6 +247,29 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     const rejected = await request({ ...baseBody, external_id: "followup:blocked", media_urls: ["https://example.com/private.jpg"] });
     assert.equal(rejected.status, 422);
 
+    const unreachable = await request({
+      ...baseBody,
+      external_id: "followup:403",
+      media_urls: [
+        "https://media.fotium.vip/galleries/look/missing.jpg",
+        "https://media.fotium.vip/galleries/look/ok.jpg"
+      ]
+    });
+    assert.equal(unreachable.status, 201);
+    const partial = await unreachable.json();
+    assert.match(partial.project_url, /\/app\/\?project=/);
+    const partialProject = projects.get(ownerId, partial.project_id);
+    assert.ok(partialProject.scenes.every((scene) => scene.media_id));
+    assert.equal(new Set(partialProject.scenes.map((scene) => scene.media_id)).size, 1);
+
+    const bounced = await request({
+      ...baseBody,
+      external_id: "followup:bounce",
+      media_urls: ["https://media.fotium.vip/galleries/look/bounce.jpg"]
+    });
+    assert.equal(bounced.status, 201);
+    assert.match((await bounced.json()).project_url, /\/app\/\?project=/);
+
     const webp = await request({
       ...baseBody,
       external_id: "followup:webp",
@@ -244,6 +277,17 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     });
     assert.equal(webp.status, 201);
     assert.equal(requested.at(-1)?.input, "https://media.fotium.vip/galleries/look/04.webp");
+    const webpBeforeRetry = requested.length;
+    for (const [id, asset] of assets) {
+      if (asset.declaredType === "image/webp") assets.set(id, { ...asset, state: "quarantined" });
+    }
+    const webpRetry = await request({
+      ...baseBody,
+      external_id: "followup:webp",
+      media_urls: ["https://media.fotium.vip/galleries/look/04.webp"]
+    });
+    assert.equal(webpRetry.status, 200);
+    assert.equal(requested.length, webpBeforeRetry);
 
     // Queue Edit again with a new media pick must replace scene attachments.
     const influencerBody = {

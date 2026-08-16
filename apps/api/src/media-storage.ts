@@ -2,7 +2,7 @@ import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from 
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable, Transform } from "node:stream";
@@ -11,6 +11,48 @@ import type { Pool } from "pg";
 
 export const allowedMediaTypes = new Set(["video/mp4", "image/jpeg", "image/png", "image/webp"]);
 export const maximumMediaBytes = 100_000_000;
+
+const jpegStart = Buffer.from([0xff, 0xd8, 0xff]);
+const pngStart = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+
+/** Header Content-Type is often wrong; sniff a few trusted still/video magic bytes. */
+export function mediaTypeFromBytes(bytes: Uint8Array): string | undefined {
+  if (bytes.length >= 3 && bytes[0] === jpegStart[0] && bytes[1] === jpegStart[1] && bytes[2] === jpegStart[2]) {
+    return "image/jpeg";
+  }
+  if (bytes.length >= 4 && bytes[0] === pngStart[0] && bytes[1] === pngStart[1] && bytes[2] === pngStart[2] && bytes[3] === pngStart[3]) {
+    return "image/png";
+  }
+  if (
+    bytes.length >= 12
+    && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+    && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  if (bytes.length >= 8 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
+    return "video/mp4";
+  }
+  return undefined;
+}
+
+function headerMediaType(contentType: string | null): string {
+  const raw = contentType?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  return raw === "image/jpg" ? "image/jpeg" : raw;
+}
+
+function importedUrlAllowed(value: string, allowedOrigins: readonly string[]): boolean {
+  if (!allowedOrigins.length) return true;
+  try { return allowedOrigins.includes(new URL(value).origin); } catch { return false; }
+}
+
+export function resolveImportedMediaType(contentType: string | null, bytes: Uint8Array): string {
+  const header = headerMediaType(contentType);
+  if (allowedMediaTypes.has(header)) return header;
+  const sniffed = mediaTypeFromBytes(bytes);
+  if (sniffed && allowedMediaTypes.has(sniffed)) return sniffed;
+  throw new ExternalMediaImportError(`external media type rejected (${header || "empty"})`);
+}
 
 export interface StoredMedia {
   id: string;
@@ -451,30 +493,42 @@ export async function importExternalMedia(
   repository: PostgresMediaRepository,
   store: PrivateObjectStore,
   request: typeof fetch = fetch,
-  temporaryRoot = tmpdir()
+  temporaryRoot = tmpdir(),
+  allowedOrigins: readonly string[] = []
 ): Promise<StoredMedia> {
   const existing = await repository.get(ownerId, projectId, id);
   if (existing) {
     if (existing.state === "admitted" && await repository.completeAdmission(ownerId, projectId, id)) {
       return { ...existing, state: "inspecting" };
     }
-    if (existing.state === "inspecting" || existing.state === "ready") return existing;
+    // Quarantined WebP (old inspector) must not 502 a later Edit of the same pick.
+    if (existing.state === "inspecting" || existing.state === "ready" || existing.state === "quarantined") {
+      return existing;
+    }
     throw new ExternalMediaImportError("external media is not reusable");
   }
 
-  const directory = await mkdtemp(join(temporaryRoot, "fengine-import-"));
+  const directory = await mkdtemp(join(temporaryRoot ?? tmpdir(), "fengine-import-"));
   const path = join(directory, "media");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
   timeout.unref();
   let response: Response | undefined;
   try {
-    response = await request(sourceUrl, { redirect: "error", signal: controller.signal });
-    if (!response.ok) throw new ExternalMediaImportError();
-    const declaredType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
-    if (!allowedMediaTypes.has(declaredType)) throw new ExternalMediaImportError("external media type rejected");
+    response = await request(sourceUrl, {
+      redirect: "follow",
+      signal: controller.signal,
+      headers: { accept: "image/jpeg,image/png,image/webp,video/mp4,*/*;q=0.8" }
+    });
+    if (!response.ok) throw new ExternalMediaImportError(`external media HTTP ${response.status}`);
+    const finalUrl = response.url || sourceUrl;
+    if (!importedUrlAllowed(finalUrl, allowedOrigins)) {
+      throw new ExternalMediaImportError("external media origin is not allowed");
+    }
     const bytes = await spoolBoundedBody(response, path, maximumMediaBytes, controller.signal)
       .catch(() => { throw new ExternalMediaImportError("external media body rejected"); });
+    const head = new Uint8Array(await readFile(path).then((buffer) => buffer.subarray(0, 16)));
+    const declaredType = resolveImportedMediaType(response.headers.get("content-type"), head);
     const asset: StoredMedia = {
       id,
       ownerId,

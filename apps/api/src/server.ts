@@ -231,16 +231,24 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         }
         for (const url of draft.mediaUrls) {
           const id = mediaIdForExternalImport(projectId, url);
-          await importExternalMedia(
-            integration.ownerId,
-            projectId,
-            id,
-            url,
-            options.media.repository,
-            options.media.store,
-            options.externalMediaRequest
-          );
-          importedMediaIds.push(id);
+          try {
+            await importExternalMedia(
+              integration.ownerId,
+              projectId,
+              id,
+              url,
+              options.media.repository,
+              options.media.store,
+              options.externalMediaRequest,
+              undefined,
+              integration.mediaOrigins
+            );
+            importedMediaIds.push(id);
+          } catch (error) {
+            if (!(error instanceof ExternalMediaImportError)) throw error;
+            // Open the draft even when one host still is 403/HTML/quarantined.
+            console.error("external media import skipped", error.message);
+          }
         }
       }
       const textOnlyImportedDraft = project.scenes.length > 0 && project.scenes.every((scene) => !scene.media_id);
@@ -286,6 +294,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         });
       }
       const projectUrl = externalProjectUrl(integration.webOrigin, project.id);
+      console.error("external import", draft.externalId, `${importedMediaIds.length}/${draft.mediaUrls.length}`);
       response.status(prior ? 200 : 201).json({
         created: !prior,
         project_id: project.id,
