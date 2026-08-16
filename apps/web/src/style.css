@@ -352,6 +352,20 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   max-height: none;
   border-radius: 0;
 }
+.preview img.motion-push, .preview video.motion-push {
+  animation: preview-push var(--scene-ms, 3s) linear forwards;
+}
+.preview img.motion-zoom, .preview video.motion-zoom {
+  animation: preview-zoom var(--scene-ms, 3s) linear forwards;
+}
+@keyframes preview-push {
+  from { transform: scale(1.14) translate3d(0, 3%, 0); }
+  to { transform: scale(1.14) translate3d(0, -3%, 0); }
+}
+@keyframes preview-zoom {
+  from { transform: scale(1); }
+  to { transform: scale(1.12); }
+}
 .preview .caption-burn {
   z-index: 2;
   align-self: end;

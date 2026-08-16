@@ -195,6 +195,17 @@ export class ApiClient {
   }
 }
 
+export function scenePreviewUrl(media: SceneMediaView | undefined): string | undefined {
+  return media?.previewUrl ?? media?.attribution?.previewUrl;
+}
+
+export function nextLiveSceneId(sceneIds: readonly string[], currentId: string): string {
+  if (!sceneIds.length) return currentId;
+  const index = sceneIds.indexOf(currentId);
+  const from = index < 0 ? 0 : index;
+  return sceneIds[(from + 1) % sceneIds.length] ?? sceneIds[0]!;
+}
+
 /** Loads a fresh, project-scoped map so callers replace rather than merge stale media state. */
 export async function loadSceneMediaViews(
   api: Pick<ApiClient, "request">,

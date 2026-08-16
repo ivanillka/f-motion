@@ -7,8 +7,10 @@ import {
   conceptsFor,
   defaultVideoArchitecture,
   loadSceneMediaViews,
+  nextLiveSceneId,
   recommendVideoArchitecture,
   sceneDurationForMedia,
+  scenePreviewUrl,
   type Concept,
   type ProjectSnapshot,
   type ProjectSummary,
@@ -106,6 +108,9 @@ function App() {
   const [project, setProject] = useState<ProjectSnapshot>();
   const [activeSceneId, setActiveSceneId] = useState("");
   const [cropFocus, setCropFocus] = useState({ x: 0.5, y: 0.5 });
+  const [livePlaying, setLivePlaying] = useState(false);
+  const [playSceneId, setPlaySceneId] = useState("");
+  const userPausedPreview = useRef(false);
   const [drafts, setDrafts] = useState<ProjectSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [sceneMedia, setSceneMedia] = useState<Record<string, SceneMediaView>>({});
@@ -182,6 +187,9 @@ function App() {
     setToken("");
     setProject(undefined);
     setActiveSceneId("");
+    setLivePlaying(false);
+    setPlaySceneId("");
+    userPausedPreview.current = false;
     setDrafts([]);
     mediaTransition.current += 1;
     setSceneMedia({});
@@ -1385,8 +1393,7 @@ function App() {
   const activeSceneNumber = activeScene ? activeScene.order + 1 : 0;
   const activeMediaId = activeScene?.media_id;
   const activeMedia = activeMediaId ? sceneMedia[activeMediaId] : undefined;
-  const activePreviewUrl = activeMedia?.previewUrl ?? activeMedia?.attribution?.previewUrl;
-  const coverPosition = { objectPosition: `${cropFocus.x * 100}% ${cropFocus.y * 100}%` };
+  const activePreviewUrl = scenePreviewUrl(activeMedia);
   const wideStill = Boolean(
     activeMedia?.detected?.width
     && activeMedia.detected.height
@@ -1398,6 +1405,47 @@ function App() {
   }, [activeScene?.id, activeScene?.focal_x, activeScene?.focal_y]);
   const allScenesHaveMedia = Boolean(project?.scenes.length && project.scenes.every(({ media_id }) =>
     media_id && sceneMedia[media_id]?.state === "ready"));
+  const allScenesHavePreview = Boolean(project?.scenes.length && project.scenes.every((scene) =>
+    scenePreviewUrl(scene.media_id ? sceneMedia[scene.media_id] : undefined)));
+  const previewScene = livePlaying
+    ? (project?.scenes.find(({ id }) => id === playSceneId) ?? activeScene)
+    : activeScene;
+  const previewMedia = previewScene?.media_id ? sceneMedia[previewScene.media_id] : undefined;
+  const previewUrl = scenePreviewUrl(previewMedia);
+  const previewPosition = {
+    objectPosition: `${(livePlaying ? previewScene?.focal_x ?? cropFocus.x : cropFocus.x) * 100}% ${(livePlaying ? previewScene?.focal_y ?? cropFocus.y : cropFocus.y) * 100}%`,
+    transformOrigin: `${(livePlaying ? previewScene?.focal_x ?? cropFocus.x : cropFocus.x) * 100}% ${(livePlaying ? previewScene?.focal_y ?? cropFocus.y : cropFocus.y) * 100}%`,
+    ["--scene-ms" as string]: `${Math.max(500, previewScene?.duration_ms ?? 3000)}ms`
+  };
+  const previewMotion = livePlaying && previewScene && previewScene.motion !== "none" ? previewScene.motion : undefined;
+
+  function playLivePreview() {
+    userPausedPreview.current = false;
+    setPlaySceneId(activeSceneId || playSceneId);
+    setLivePlaying(true);
+  }
+
+  function pauseLivePreview() {
+    userPausedPreview.current = true;
+    setLivePlaying(false);
+  }
+  useEffect(() => {
+    userPausedPreview.current = false;
+    setPlaySceneId(activeSceneId || project?.scenes[0]?.id || "");
+  }, [project?.id]);
+  useEffect(() => {
+    if (step !== "editor" || !allScenesHavePreview || userPausedPreview.current) return;
+    setLivePlaying(true);
+  }, [step, project?.id, allScenesHavePreview]);
+  useEffect(() => {
+    if (!livePlaying || step !== "editor" || !project?.scenes.length) return;
+    const current = project.scenes.find(({ id }) => id === playSceneId) ?? project.scenes[0];
+    if (!current) return;
+    const timer = window.setTimeout(() => {
+      setPlaySceneId(nextLiveSceneId(project.scenes.map(({ id }) => id), current.id));
+    }, Math.max(500, current.duration_ms));
+    return () => window.clearTimeout(timer);
+  }, [livePlaying, step, project, playSceneId]);
   const inApp = authReady && Boolean(token) && step !== "sign-in";
   const createFlow = step === "brief" || step === "architecture" || step === "concepts" || step === "media" || step === "editor" || step === "render";
   const projectTitle = project?.brief.purpose?.trim() || "Untitled draft";
@@ -1569,7 +1617,7 @@ function App() {
           <p>Review each beat and its selected media. Replace it only when another visual fits better.</p>
         </div>
         <div className="editor-toolbar-actions">
-          <button disabled={!allScenesHaveMedia} onClick={() => void requestRender("preview")}>Generate accurate preview</button>
+          <button disabled={!allScenesHavePreview} onClick={() => livePlaying ? pauseLivePreview() : playLivePreview()}>{livePlaying ? "Pause preview" : "Play preview"}</button>
           <button className="secondary" disabled={!allScenesHaveMedia} onClick={() => void requestRender("final")}>Export final</button>
         </div>
       </div>
@@ -1577,7 +1625,7 @@ function App() {
       <div className="studio-board">
       <nav className="scene-strip" aria-label="Storyboard scenes">{project.scenes.map((scene) => {
         const media = scene.media_id ? sceneMedia[scene.media_id] : undefined;
-        const previewUrl = media?.previewUrl ?? media?.attribution?.previewUrl;
+        const previewUrl = scenePreviewUrl(media);
         return <button
           key={scene.id}
           className="scene-card"
@@ -1588,6 +1636,7 @@ function App() {
             searchTransition.current += 1;
             setCandidates([]);
             setActiveSceneId(scene.id);
+            setPlaySceneId(scene.id);
           }}
         >
           {previewUrl
@@ -1617,21 +1666,30 @@ function App() {
 
       <div className="editor-grid" key={`${activeScene.id}:${project.revision}`}>
         <div className="preview-panel">
-          <p className="notice">Approximate composition — accurate rendered preview comes next.</p>
-          <div className="preview" aria-label={`Approximate preview for scene ${activeSceneNumber}`}>
-        {activePreviewUrl && (activeMedia?.detected?.type === "video/mp4"
-          ? <video src={activePreviewUrl} muted loop playsInline controls preload="metadata" style={coverPosition} />
-          : <img src={activePreviewUrl} alt={activeMedia?.attribution ? `Selected stock video by ${activeMedia.attribution.creator}` : "Selected gallery media"} style={coverPosition} />)}
-        {activeMedia && !activePreviewUrl && <span className="media-placeholder">{activeMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
-            {!activeMedia && <span className="media-placeholder">Choose stock or upload media</span>}
-            {activeScene.caption ? <span className="caption-burn">{activeScene.caption}</span> : null}
-            <span
+          <p className="notice">{livePlaying
+            ? "Live preview — playing this storyboard in the app."
+            : "Live preview — play to watch every scene here."}</p>
+          <div
+            className={`preview${livePlaying ? " is-live" : ""}`}
+            aria-label={livePlaying
+              ? `Live preview · scene ${(previewScene?.order ?? 0) + 1}`
+              : `Live preview for scene ${activeSceneNumber}`}
+          >
+        {previewUrl && (previewMedia?.detected?.type === "video/mp4"
+          ? <video key={previewScene?.id} src={previewUrl} muted playsInline autoPlay={livePlaying} loop={!livePlaying} controls={!livePlaying} preload="metadata" className={previewMotion ? `motion-${previewMotion}` : undefined} style={previewPosition} />
+          : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} className={previewMotion ? `motion-${previewMotion}` : undefined} style={previewPosition} />)}
+        {previewMedia && !previewUrl && <span className="media-placeholder">{previewMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
+            {!previewMedia && <span className="media-placeholder">Choose stock or upload media</span>}
+            {previewScene?.caption ? <span className="caption-burn">{previewScene.caption}</span> : null}
+            {!livePlaying && <span
               className="crop-guide"
               style={{ left: `${cropFocus.x * 100}%`, top: `${cropFocus.y * 100}%` }}
               aria-hidden="true"
-            />
+            />}
           </div>
-          <p className="crop-hint">{wideStill
+          <p className="crop-hint">{livePlaying
+            ? "Playing in this tab · pause to frame a still."
+            : wideStill
             ? "Wide still — drag horizontal focus to keep the subject in the 9:16 frame."
             : "Crop focus · drag the focus sliders in the inspector"}</p>
           {activeMedia?.attribution && <p>
@@ -1664,10 +1722,10 @@ function App() {
             </select>
           </label>
           <label htmlFor={`focal-x-${activeScene.id}`}>Scene {activeSceneNumber} horizontal focus · {cropFocus.x.toFixed(2)}
-            <input id={`focal-x-${activeScene.id}`} type="range" min="0" max="1" step="0.05" value={cropFocus.x} onChange={(event) => setCropFocus((current) => ({ ...current, x: event.currentTarget.valueAsNumber }))} onBlur={(event) => void saveScenePatch(activeScene.id, { focal_x: event.currentTarget.valueAsNumber })} />
+            <input id={`focal-x-${activeScene.id}`} type="range" min="0" max="1" step="0.05" value={cropFocus.x} onChange={(event) => { pauseLivePreview(); setCropFocus((current) => ({ ...current, x: event.currentTarget.valueAsNumber })); }} onBlur={(event) => void saveScenePatch(activeScene.id, { focal_x: event.currentTarget.valueAsNumber })} />
           </label>
           <label htmlFor={`focal-y-${activeScene.id}`}>Scene {activeSceneNumber} vertical focus · {cropFocus.y.toFixed(2)}
-            <input id={`focal-y-${activeScene.id}`} type="range" min="0" max="1" step="0.05" value={cropFocus.y} onChange={(event) => setCropFocus((current) => ({ ...current, y: event.currentTarget.valueAsNumber }))} onBlur={(event) => void saveScenePatch(activeScene.id, { focal_y: event.currentTarget.valueAsNumber })} />
+            <input id={`focal-y-${activeScene.id}`} type="range" min="0" max="1" step="0.05" value={cropFocus.y} onChange={(event) => { pauseLivePreview(); setCropFocus((current) => ({ ...current, y: event.currentTarget.valueAsNumber })); }} onBlur={(event) => void saveScenePatch(activeScene.id, { focal_y: event.currentTarget.valueAsNumber })} />
           </label>
           <label htmlFor={`audio-${activeScene.id}`}>Scene {activeSceneNumber} source audio · {Math.round(activeScene.audio_level * 100)}%
             <input id={`audio-${activeScene.id}`} type="range" min="0" max="1" step="0.05" defaultValue={activeScene.audio_level} onBlur={(event) => void saveScenePatch(activeScene.id, { audio_level: event.currentTarget.valueAsNumber })} />
@@ -1718,9 +1776,9 @@ function App() {
       }} />
       <button className="secondary" disabled={busy} onClick={() => upload.current?.click()}>Upload media for scene {activeSceneNumber}</button>
       <p role="status">{status || "✓ All changes saved"}</p>
-      {!allScenesHaveMedia && <p>{project.scenes.every(({ media_id }) => media_id)
-        ? "Media is processing. Preview unlocks automatically when every scene is ready."
-        : "Add media to every scene before rendering."}</p>}
+      {!allScenesHavePreview && <p>{project.scenes.every(({ media_id }) => media_id)
+        ? "Media is processing. Live preview starts when every scene is ready."
+        : "Add media to every scene to play the live preview."}</p>}
       {downloadUrl && <button className="secondary" onClick={() => setStep("render")}>{renderKind === "final" ? "View final export" : "View accurate preview"}{previewRevision !== project.revision ? " · older" : ""}</button>}
       <button className="secondary" onClick={() => setStep("brief")}>Start a different description</button>
       <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>

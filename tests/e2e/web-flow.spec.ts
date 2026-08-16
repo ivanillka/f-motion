@@ -188,18 +188,9 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await expect(page.getByRole("button", { name: "Save as new project" })).toBeVisible();
   await page.getByRole("button", { name: "Reload latest" }).click();
 
-  await page.getByRole("button", { name: "Generate accurate preview" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 90_000 });
-  const download = page.getByRole("link").filter({ has: page.getByRole("button", { name: "Download preview" }) });
-  await expect(page.getByRole("button", { name: "Download preview" })).toBeEnabled();
-  await expect(page.locator("video")).toHaveAttribute("preload", "metadata");
-  await expect(page.locator("video")).not.toHaveAttribute("autoplay", "");
-  const href = await download.getAttribute("href");
-  expect(href).toMatch(/^http:\/\/127\.0\.0\.1:43141\/downloads\//);
-  const rendered = await page.request.get(href!);
-  await expectRenderedProject(rendered, await projectDurationMs(page));
+  await expect(page.getByRole("button", { name: /Play preview|Pause preview/ })).toBeVisible();
+  await expect(page.getByLabel(/Live preview/)).toBeVisible();
 
-  await page.getByRole("button", { name: "Keep editing" }).click();
   await page.getByRole("button", { name: "Export final" }).click();
   await expect(page.getByRole("heading", { name: "Final export" })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "complete · final export" })).toBeVisible({ timeout: 90_000 });
@@ -272,23 +263,12 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   await page.getByRole("button", { name: "Move scene 2 earlier" }).click();
   await expect(page.getByRole("button", { name: "Edit scene 1", pressed: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Generate accurate preview" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 90_000 });
-  const download = page.getByRole("link").filter({ has: page.getByRole("button", { name: "Download preview" }) });
-  await expect(page.getByRole("button", { name: "Download preview" })).toBeEnabled();
-  const href = await download.getAttribute("href");
-  expect(href).toMatch(/^http:\/\/127\.0\.0\.1:43141\/downloads\//);
-  const rendered = await page.request.get(href!);
-  await expectRenderedProject(rendered, await projectDurationMs(page));
-
-  await page.getByRole("button", { name: "Keep editing" }).click();
+  await expect(page.getByRole("button", { name: /Play preview|Pause preview/ })).toBeVisible();
+  await expect(page.getByLabel(/Live preview/)).toBeVisible();
   const editedCaption = page.getByLabel("Scene 1 caption");
   await editedCaption.fill("Updated after preview");
   await editedCaption.press("Tab");
-  await expect(page.getByRole("button", { name: /View accurate preview · older/ })).toBeVisible();
-  await page.getByRole("button", { name: /View accurate preview · older/ }).click();
-  await expect(page.getByText("Older preview — regenerate after your edits.")).toBeVisible();
-  await page.getByRole("button", { name: "Keep editing" }).click();
+  await expect(page.getByText("Updated after preview")).toBeVisible();
   await page.getByRole("button", { name: "Back to drafts" }).click();
   await page.getByRole("button").filter({ hasText: "A calm studio introduction" }).click();
   await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
@@ -351,8 +331,8 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   expect(mediaIdAfter).toBeTruthy();
   expect(mediaIdAfter).not.toEqual(mediaIdBefore);
 
-  await page.getByRole("button", { name: "Generate accurate preview" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByRole("button", { name: /Play preview|Pause preview/ })).toBeVisible();
+  await expect(page.getByLabel(/Live preview/)).toBeVisible();
 });
 
 test("FAL image-to-video quotes, confirms, and attaches only after review", async ({ page }) => {
@@ -389,6 +369,6 @@ test("FAL image-to-video quotes, confirms, and attaches only after review", asyn
   await page.getByRole("button", { name: "Use video for scene 1" }).click();
   await expect(page.getByRole("status").filter({ hasText: /AI-generated FAL video/i })).toBeVisible();
 
-  await page.getByRole("button", { name: "Generate accurate preview" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByRole("button", { name: /Play preview|Pause preview/ })).toBeVisible();
+  await expect(page.getByLabel(/Live preview/)).toBeVisible();
 });
