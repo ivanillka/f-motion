@@ -34,6 +34,8 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /openFalGenerate\(/);
   assert.match(source, /confirmFalImage\(/);
   assert.match(source, /useFalGeneratedMedia\(/);
+  assert.match(source, /objectPosition/);
+  assert.match(source, /Wide still/);
   assert.match(source, /openFalAnimate\(/);
   assert.match(source, /confirmFalVideo\(/);
   assert.doesNotMatch(source, /useFalGeneratedMedia[\s\S]{0,80}pollFalGeneration/);

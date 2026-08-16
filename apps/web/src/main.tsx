@@ -105,6 +105,7 @@ function App() {
   const [conceptChoices, setConceptChoices] = useState<Concept[]>([]);
   const [project, setProject] = useState<ProjectSnapshot>();
   const [activeSceneId, setActiveSceneId] = useState("");
+  const [cropFocus, setCropFocus] = useState({ x: 0.5, y: 0.5 });
   const [drafts, setDrafts] = useState<ProjectSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [sceneMedia, setSceneMedia] = useState<Record<string, SceneMediaView>>({});
@@ -1385,6 +1386,16 @@ function App() {
   const activeMediaId = activeScene?.media_id;
   const activeMedia = activeMediaId ? sceneMedia[activeMediaId] : undefined;
   const activePreviewUrl = activeMedia?.previewUrl ?? activeMedia?.attribution?.previewUrl;
+  const coverPosition = { objectPosition: `${cropFocus.x * 100}% ${cropFocus.y * 100}%` };
+  const wideStill = Boolean(
+    activeMedia?.detected?.width
+    && activeMedia.detected.height
+    && activeMedia.detected.width > activeMedia.detected.height
+  );
+  useEffect(() => {
+    if (!activeScene) return;
+    setCropFocus({ x: activeScene.focal_x, y: activeScene.focal_y });
+  }, [activeScene?.id, activeScene?.focal_x, activeScene?.focal_y]);
   const allScenesHaveMedia = Boolean(project?.scenes.length && project.scenes.every(({ media_id }) =>
     media_id && sceneMedia[media_id]?.state === "ready"));
   const inApp = authReady && Boolean(token) && step !== "sign-in";
@@ -1581,8 +1592,8 @@ function App() {
         >
           {previewUrl
             ? (media?.detected?.type === "video/mp4"
-              ? <video src={previewUrl} muted playsInline preload="metadata" />
-              : <img src={previewUrl} alt="" />)
+              ? <video src={previewUrl} muted playsInline preload="metadata" style={{ objectPosition: `${scene.focal_x * 100}% ${scene.focal_y * 100}%` }} />
+              : <img src={previewUrl} alt="" style={{ objectPosition: `${scene.focal_x * 100}% ${scene.focal_y * 100}%` }} />)
             : (
               <span className="scene-empty">
                 {sceneProgress[scene.id] === "finding" ? "Finding…"
@@ -1609,18 +1620,20 @@ function App() {
           <p className="notice">Approximate composition — accurate rendered preview comes next.</p>
           <div className="preview" aria-label={`Approximate preview for scene ${activeSceneNumber}`}>
         {activePreviewUrl && (activeMedia?.detected?.type === "video/mp4"
-          ? <video src={activePreviewUrl} muted loop playsInline controls preload="metadata" />
-          : <img src={activePreviewUrl} alt={activeMedia?.attribution ? `Selected stock video by ${activeMedia.attribution.creator}` : "Selected gallery media"} />)}
+          ? <video src={activePreviewUrl} muted loop playsInline controls preload="metadata" style={coverPosition} />
+          : <img src={activePreviewUrl} alt={activeMedia?.attribution ? `Selected stock video by ${activeMedia.attribution.creator}` : "Selected gallery media"} style={coverPosition} />)}
         {activeMedia && !activePreviewUrl && <span className="media-placeholder">{activeMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
             {!activeMedia && <span className="media-placeholder">Choose stock or upload media</span>}
             {activeScene.caption ? <span className="caption-burn">{activeScene.caption}</span> : null}
             <span
               className="crop-guide"
-              style={{ left: `${activeScene.focal_x * 100}%`, top: `${activeScene.focal_y * 100}%` }}
+              style={{ left: `${cropFocus.x * 100}%`, top: `${cropFocus.y * 100}%` }}
               aria-hidden="true"
             />
           </div>
-          <p className="crop-hint">Crop focus · drag the focus sliders in the inspector</p>
+          <p className="crop-hint">{wideStill
+            ? "Wide still — drag horizontal focus to keep the subject in the 9:16 frame."
+            : "Crop focus · drag the focus sliders in the inspector"}</p>
           {activeMedia?.attribution && <p>
             Video by <a href={activeMedia.attribution.attributionUrl} target="_blank" rel="noreferrer">{activeMedia.attribution.creator}</a>
             {" · "}<a href="https://www.pexels.com" target="_blank" rel="noreferrer">Pexels</a>
@@ -1650,11 +1663,11 @@ function App() {
               <option value="none">None</option><option value="push">Push</option><option value="zoom">Zoom</option>
             </select>
           </label>
-          <label htmlFor={`focal-x-${activeScene.id}`}>Scene {activeSceneNumber} horizontal focus · {activeScene.focal_x.toFixed(2)}
-            <input id={`focal-x-${activeScene.id}`} type="range" min="0" max="1" step="0.05" defaultValue={activeScene.focal_x} onBlur={(event) => void saveScenePatch(activeScene.id, { focal_x: event.currentTarget.valueAsNumber })} />
+          <label htmlFor={`focal-x-${activeScene.id}`}>Scene {activeSceneNumber} horizontal focus · {cropFocus.x.toFixed(2)}
+            <input id={`focal-x-${activeScene.id}`} type="range" min="0" max="1" step="0.05" value={cropFocus.x} onChange={(event) => setCropFocus((current) => ({ ...current, x: event.currentTarget.valueAsNumber }))} onBlur={(event) => void saveScenePatch(activeScene.id, { focal_x: event.currentTarget.valueAsNumber })} />
           </label>
-          <label htmlFor={`focal-y-${activeScene.id}`}>Scene {activeSceneNumber} vertical focus · {activeScene.focal_y.toFixed(2)}
-            <input id={`focal-y-${activeScene.id}`} type="range" min="0" max="1" step="0.05" defaultValue={activeScene.focal_y} onBlur={(event) => void saveScenePatch(activeScene.id, { focal_y: event.currentTarget.valueAsNumber })} />
+          <label htmlFor={`focal-y-${activeScene.id}`}>Scene {activeSceneNumber} vertical focus · {cropFocus.y.toFixed(2)}
+            <input id={`focal-y-${activeScene.id}`} type="range" min="0" max="1" step="0.05" value={cropFocus.y} onChange={(event) => setCropFocus((current) => ({ ...current, y: event.currentTarget.valueAsNumber }))} onBlur={(event) => void saveScenePatch(activeScene.id, { focal_y: event.currentTarget.valueAsNumber })} />
           </label>
           <label htmlFor={`audio-${activeScene.id}`}>Scene {activeSceneNumber} source audio · {Math.round(activeScene.audio_level * 100)}%
             <input id={`audio-${activeScene.id}`} type="range" min="0" max="1" step="0.05" defaultValue={activeScene.audio_level} onBlur={(event) => void saveScenePatch(activeScene.id, { audio_level: event.currentTarget.valueAsNumber })} />
