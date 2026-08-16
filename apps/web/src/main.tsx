@@ -17,6 +17,7 @@ import {
   type VideoArchitecture
 } from "./api";
 import { AuthConfigurationError, createAuthGateway } from "./auth";
+import { clearImportedProject, isImportedProjectId, rememberImportedProject } from "./imported-project";
 import "./style.css";
 
 type Step = "sign-in" | "drafts" | "brief" | "architecture" | "concepts" | "media" | "editor" | "render" | "settings";
@@ -149,6 +150,10 @@ function App() {
   const [previewMetadata, setPreviewMetadata] = useState<Record<string, string | number | boolean | null>>({});
   const upload = useRef<HTMLInputElement>(null);
   const importedProjectRef = useRef("");
+  const [pendingImportId, setPendingImportId] = useState(() => {
+    if (typeof sessionStorage === "undefined") return "";
+    return rememberImportedProject(location.href, sessionStorage);
+  });
   const previewRenderLabel = import.meta.env.VITE_RENDER_LABEL?.trim() || "720p preview";
   const renderLabel = renderKind === "final" ? "final export" : previewRenderLabel;
   const renderHeading = renderKind === "final" ? "Final export" : "Accurate preview";
@@ -258,17 +263,25 @@ function App() {
   }, [step]);
 
   useEffect(() => {
-    if (!token) return;
-    const url = new URL(location.href);
-    const projectId = url.searchParams.get("project") ?? "";
-    if (!/^[0-9a-f-]{36}$/i.test(projectId) || importedProjectRef.current === projectId) return;
-    importedProjectRef.current = projectId;
-    void openDraft(projectId).then((opened) => {
+    const pendingId = rememberImportedProject(location.href, sessionStorage);
+    setPendingImportId(pendingId);
+    if (!token) {
+      if (pendingId && authReady) {
+        setStatus("Sign in to open the imported draft from Fotium.");
+      }
+      return;
+    }
+    if (!isImportedProjectId(pendingId) || importedProjectRef.current === pendingId) return;
+    importedProjectRef.current = pendingId;
+    void openDraft(pendingId).then((opened) => {
       if (!opened) return;
+      clearImportedProject(sessionStorage);
+      setPendingImportId("");
+      const url = new URL(location.href);
       url.searchParams.delete("project");
       history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
     });
-  }, [token]);
+  }, [token, authReady]);
 
   useEffect(() => {
     if (step !== "drafts" || !token) return;
@@ -1388,7 +1401,9 @@ function App() {
     {!authReady && <section><p role="status">Checking session…</p></section>}
     {authReady && step === "sign-in" && <section>
       <h1>Shape a vertical video</h1>
-      <p>Sign in to keep projects private.</p>
+      <p>{pendingImportId
+        ? "Sign in to open the imported draft from Fotium."
+        : "Sign in to keep projects private."}</p>
       <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
       <button disabled={authBusy || !authSetup.gateway || (Boolean(import.meta.env.VITE_SUPABASE_URL) && !email.trim())} onClick={() => void magicLink()}>Email me a magic link</button>
       {import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "1"

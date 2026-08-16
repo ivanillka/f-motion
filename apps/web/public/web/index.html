@@ -8,6 +8,12 @@
   <title>F-Motion — Vertical reels from your own media</title>
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./web.css">
+  <script>
+    (function () {
+      var id = new URLSearchParams(location.search).get("project") || "";
+      if (/^[0-9a-f-]{36}$/i.test(id)) location.replace("/app/?project=" + encodeURIComponent(id));
+    })();
+  </script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>

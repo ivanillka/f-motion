@@ -215,7 +215,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         if (draft.mediaUrls.some((url) => !externalMediaUrlAllowed(url, integration.mediaOrigins))) {
           return response.status(422).json({ type: "validation", message: "media origin is not allowed" });
         }
-        for (const url of draft.mediaUrls.slice(0, generatedScenes.length)) {
+        for (const url of draft.mediaUrls) {
           const id = mediaIdForExternalImport(projectId, url);
           await importExternalMedia(
             integration.ownerId,
@@ -238,7 +238,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         && project.scenes.every((scene) => scene.media_id)
         && legacyAutoPrompts
         && project.scenes.some((scene) => scene.caption.includes("https://") || scene.visual_prompt?.startsWith("use secondary image"));
-      const rebuildImportedDraft = textOnlyImportedDraft || legacyMediaRepair;
+      // Queue Edit must land on the host's current media pick, not a stale attach.
+      const hostMediaMismatch = importedMediaIds.length > 0 && project.scenes.length > 0 && project.scenes.some((scene, index) =>
+        scene.media_id !== importedMediaIds[index % importedMediaIds.length]);
+      const rebuildImportedDraft = textOnlyImportedDraft || legacyMediaRepair || hostMediaMismatch;
       const currentScenes = rebuildImportedDraft
         ? generatedScenes.map((scene, index) => ({
             ...scene,
@@ -268,10 +271,13 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           payload: { scenes }
         });
       }
+      const projectUrl = externalProjectUrl(integration.webOrigin, project.id);
       response.status(prior ? 200 : 201).json({
         created: !prior,
         project_id: project.id,
-        project_url: externalProjectUrl(integration.webOrigin, project.id),
+        project_url: projectUrl,
+        // Fotium marketing admin reads camelCase when opening the draft tab.
+        projectUrl,
         revision: project.revision
       });
     } catch (error) {
@@ -279,7 +285,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         return response.status(422).json({ type: "validation", message: error.message });
       }
       if (error instanceof ExternalMediaImportError) {
-        return response.status(502).json({ type: "upstream", message: "existing media could not be imported" });
+        return response.status(502).json({
+          type: "upstream",
+          message: error.message || "existing media could not be imported"
+        });
       }
       next(error);
     }
