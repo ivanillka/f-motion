@@ -190,6 +190,7 @@ test("upload journey, natural conflict recovery, render, and download", async ({
 
   await expect(page.getByRole("button", { name: /Play preview|Pause preview/ })).toBeVisible();
   await expect(page.getByLabel(/Live preview/)).toBeVisible();
+  await expect(page.getByRole("slider", { name: "Play progress" })).toBeVisible();
 
   await page.getByRole("button", { name: "Export final" }).click();
   await expect(page.getByRole("heading", { name: "Final export" })).toBeVisible();
@@ -265,6 +266,7 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
 
   await expect(page.getByRole("button", { name: /Play preview|Pause preview/ })).toBeVisible();
   await expect(page.getByLabel(/Live preview/)).toBeVisible();
+  await expect(page.getByRole("slider", { name: "Play progress" })).toBeVisible();
   const editedCaption = page.getByLabel("Scene 1 caption");
   await editedCaption.fill("Updated after preview");
   await editedCaption.press("Tab");
@@ -333,6 +335,7 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
 
   await expect(page.getByRole("button", { name: /Play preview|Pause preview/ })).toBeVisible();
   await expect(page.getByLabel(/Live preview/)).toBeVisible();
+  await expect(page.getByRole("slider", { name: "Play progress" })).toBeVisible();
 });
 
 test("FAL image-to-video quotes, confirms, and attaches only after review", async ({ page }) => {
@@ -371,4 +374,5 @@ test("FAL image-to-video quotes, confirms, and attaches only after review", asyn
 
   await expect(page.getByRole("button", { name: /Play preview|Pause preview/ })).toBeVisible();
   await expect(page.getByLabel(/Live preview/)).toBeVisible();
+  await expect(page.getByRole("slider", { name: "Play progress" })).toBeVisible();
 });

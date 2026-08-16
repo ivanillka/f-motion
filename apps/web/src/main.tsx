@@ -6,11 +6,16 @@ import {
   buildStoryboardDraft,
   conceptsFor,
   defaultVideoArchitecture,
+  formatPlayTime,
+  livePlayhead,
+  liveTimeline,
   loadSceneMediaViews,
   nextLiveSceneId,
+  previousLiveSceneId,
   recommendVideoArchitecture,
   sceneDurationForMedia,
   scenePreviewUrl,
+  seekLivePlayhead,
   type Concept,
   type ProjectSnapshot,
   type ProjectSummary,
@@ -110,7 +115,9 @@ function App() {
   const [cropFocus, setCropFocus] = useState({ x: 0.5, y: 0.5 });
   const [livePlaying, setLivePlaying] = useState(false);
   const [playSceneId, setPlaySceneId] = useState("");
+  const [playTick, setPlayTick] = useState(0);
   const userPausedPreview = useRef(false);
+  const sceneClock = useRef({ startedAt: 0, elapsedAtPause: 0 });
   const [drafts, setDrafts] = useState<ProjectSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [sceneMedia, setSceneMedia] = useState<Record<string, SceneMediaView>>({});
@@ -189,7 +196,9 @@ function App() {
     setActiveSceneId("");
     setLivePlaying(false);
     setPlaySceneId("");
+    setPlayTick(0);
     userPausedPreview.current = false;
+    sceneClock.current = { startedAt: 0, elapsedAtPause: 0 };
     setDrafts([]);
     mediaTransition.current += 1;
     setSceneMedia({});
@@ -1418,34 +1427,126 @@ function App() {
     ["--scene-ms" as string]: `${Math.max(500, previewScene?.duration_ms ?? 3000)}ms`
   };
   const previewMotion = livePlaying && previewScene && previewScene.motion !== "none" ? previewScene.motion : undefined;
+  const sceneElapsedMs = livePlaying
+    ? sceneClock.current.elapsedAtPause + Math.max(0, playTick - sceneClock.current.startedAt)
+    : sceneClock.current.elapsedAtPause;
+  const playhead = livePlayhead(project?.scenes ?? [], playSceneId || previewScene?.id || "", sceneElapsedMs);
+  const timeline = liveTimeline(project?.scenes ?? []);
+
+  function readSceneElapsed(now = performance.now()) {
+    return livePlaying
+      ? sceneClock.current.elapsedAtPause + Math.max(0, now - sceneClock.current.startedAt)
+      : sceneClock.current.elapsedAtPause;
+  }
+
+  function armSceneClock(elapsedMs: number, playing: boolean, now = performance.now()) {
+    sceneClock.current.elapsedAtPause = Math.max(0, elapsedMs);
+    sceneClock.current.startedAt = playing ? now : 0;
+  }
 
   function playLivePreview() {
     userPausedPreview.current = false;
-    setPlaySceneId(activeSceneId || playSceneId);
+    const id = playSceneId || activeSceneId;
+    setPlaySceneId(id);
+    armSceneClock(sceneClock.current.elapsedAtPause, true);
     setLivePlaying(true);
+    setPlayTick(performance.now());
   }
 
   function pauseLivePreview() {
     userPausedPreview.current = true;
+    armSceneClock(readSceneElapsed(), false);
     setLivePlaying(false);
+  }
+
+  function seekLivePreview(sceneId: string, elapsedMs = 0, playing = livePlaying) {
+    setActiveSceneId(sceneId);
+    setPlaySceneId(sceneId);
+    armSceneClock(elapsedMs, playing);
+    setPlayTick(performance.now());
+  }
+
+  function stepLivePreview(direction: -1 | 1) {
+    if (!project?.scenes.length) return;
+    const ids = project.scenes.map(({ id }) => id);
+    const currentId = playSceneId || activeSceneId || ids[0]!;
+    if (direction < 0 && readSceneElapsed() > 400) {
+      seekLivePreview(currentId, 0);
+      return;
+    }
+    const nextId = direction < 0 ? previousLiveSceneId(ids, currentId) : nextLiveSceneId(ids, currentId);
+    seekLivePreview(nextId, 0);
+  }
+
+  function restartLivePreview() {
+    const first = project?.scenes[0];
+    if (!first) return;
+    userPausedPreview.current = false;
+    seekLivePreview(first.id, 0, true);
+    setLivePlaying(true);
+  }
+
+  function seekFromProgress(event: { currentTarget: HTMLElement; clientX: number }) {
+    if (!project?.scenes.length) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = rect.width <= 0 ? 0 : Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const seek = seekLivePlayhead(project.scenes, ratio * playhead.totalMs);
+    seekLivePreview(seek.sceneId, seek.sceneElapsedMs);
   }
   useEffect(() => {
     userPausedPreview.current = false;
+    sceneClock.current = { startedAt: 0, elapsedAtPause: 0 };
     setPlaySceneId(activeSceneId || project?.scenes[0]?.id || "");
+    setPlayTick(0);
   }, [project?.id]);
   useEffect(() => {
     if (step !== "editor" || !allScenesHavePreview || userPausedPreview.current) return;
+    if (livePlaying) return;
+    armSceneClock(0, true);
     setLivePlaying(true);
+    setPlayTick(performance.now());
   }, [step, project?.id, allScenesHavePreview]);
   useEffect(() => {
     if (!livePlaying || step !== "editor" || !project?.scenes.length) return;
-    const current = project.scenes.find(({ id }) => id === playSceneId) ?? project.scenes[0];
-    if (!current) return;
-    const timer = window.setTimeout(() => {
-      setPlaySceneId(nextLiveSceneId(project.scenes.map(({ id }) => id), current.id));
-    }, Math.max(500, current.duration_ms));
-    return () => window.clearTimeout(timer);
+    const tick = () => {
+      const now = performance.now();
+      const current = project.scenes.find(({ id }) => id === playSceneId) ?? project.scenes[0];
+      if (!current) return;
+      const elapsed = sceneClock.current.elapsedAtPause + Math.max(0, now - sceneClock.current.startedAt);
+      if (elapsed >= Math.max(500, current.duration_ms)) {
+        const nextId = nextLiveSceneId(project.scenes.map(({ id }) => id), current.id);
+        sceneClock.current = { startedAt: now, elapsedAtPause: 0 };
+        setPlaySceneId(nextId);
+      }
+      setPlayTick(now);
+    };
+    const timer = window.setInterval(tick, 100);
+    tick();
+    return () => window.clearInterval(timer);
   }, [livePlaying, step, project, playSceneId]);
+  useEffect(() => {
+    if (step !== "editor") return;
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (event.code === "Space") {
+        event.preventDefault();
+        if (livePlaying) pauseLivePreview();
+        else playLivePreview();
+      } else if (event.code === "ArrowLeft") {
+        event.preventDefault();
+        stepLivePreview(-1);
+      } else if (event.code === "ArrowRight") {
+        event.preventDefault();
+        stepLivePreview(1);
+      } else if (event.code === "Home") {
+        event.preventDefault();
+        restartLivePreview();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step, livePlaying, playSceneId, activeSceneId, project]);
   const inApp = authReady && Boolean(token) && step !== "sign-in";
   const createFlow = step === "brief" || step === "architecture" || step === "concepts" || step === "media" || step === "editor" || step === "render";
   const projectTitle = project?.brief.purpose?.trim() || "Untitled draft";
@@ -1614,10 +1715,11 @@ function App() {
       <div className="editor-toolbar">
         <div>
           <h1>Storyboard</h1>
-          <p>Review each beat and its selected media. Replace it only when another visual fits better.</p>
+          <p>{playhead.totalMs
+            ? `Live cut · ${formatPlayTime(playhead.offsetMs)} / ${formatPlayTime(playhead.totalMs)}`
+            : "Review each beat and replace a still only when another visual fits better."}</p>
         </div>
         <div className="editor-toolbar-actions">
-          <button disabled={!allScenesHavePreview} onClick={() => livePlaying ? pauseLivePreview() : playLivePreview()}>{livePlaying ? "Pause preview" : "Play preview"}</button>
           <button className="secondary" disabled={!allScenesHaveMedia} onClick={() => void requestRender("final")}>Export final</button>
         </div>
       </div>
@@ -1628,15 +1730,15 @@ function App() {
         const previewUrl = scenePreviewUrl(media);
         return <button
           key={scene.id}
-          className="scene-card"
+          className={`scene-card${scene.id === playSceneId ? " is-playing" : ""}`}
           aria-pressed={scene.id === activeScene.id}
+          aria-current={scene.id === playSceneId ? "true" : undefined}
           aria-label={`Edit scene ${scene.order + 1}`}
           onClick={() => {
             searchAbort.current?.abort();
             searchTransition.current += 1;
             setCandidates([]);
-            setActiveSceneId(scene.id);
-            setPlaySceneId(scene.id);
+            seekLivePreview(scene.id, 0);
           }}
         >
           {previewUrl
@@ -1651,7 +1753,7 @@ function App() {
                       : media ? "Media processing" : "No media"}
               </span>
             )}
-          <strong>Scene {scene.order + 1}</strong>
+          <strong>Scene {scene.order + 1} · {(scene.duration_ms / 1000).toFixed(1)}s</strong>
           <span>{scene.caption || scene.visual_prompt}</span>
           {sceneProgress[scene.id] && !previewUrl ? (
             <span className="scene-progress">
@@ -1666,9 +1768,6 @@ function App() {
 
       <div className="editor-grid" key={`${activeScene.id}:${project.revision}`}>
         <div className="preview-panel">
-          <p className="notice">{livePlaying
-            ? "Live preview — playing this storyboard in the app."
-            : "Live preview — play to watch every scene here."}</p>
           <div
             className={`preview${livePlaying ? " is-live" : ""}`}
             aria-label={livePlaying
@@ -1687,8 +1786,47 @@ function App() {
               aria-hidden="true"
             />}
           </div>
+          <div className="play-transport">
+            <div className="play-transport-row">
+              <button className="secondary" type="button" disabled={!project.scenes.length} onClick={() => restartLivePreview()}>Restart</button>
+              <button className="secondary" type="button" disabled={!project.scenes.length} onClick={() => stepLivePreview(-1)}>Previous scene</button>
+              <button type="button" disabled={!allScenesHavePreview} onClick={() => livePlaying ? pauseLivePreview() : playLivePreview()}>{livePlaying ? "Pause preview" : "Play preview"}</button>
+              <button className="secondary" type="button" disabled={!project.scenes.length} onClick={() => stepLivePreview(1)}>Next scene</button>
+              <span className="play-time">{formatPlayTime(playhead.offsetMs)} / {formatPlayTime(playhead.totalMs)}</span>
+            </div>
+            <div
+              className="play-progress"
+              role="slider"
+              tabIndex={0}
+              aria-label="Play progress"
+              aria-valuemin={0}
+              aria-valuemax={Math.round(playhead.totalMs / 1000)}
+              aria-valuenow={Math.round(playhead.offsetMs / 1000)}
+              aria-valuetext={`${formatPlayTime(playhead.offsetMs)} of ${formatPlayTime(playhead.totalMs)}`}
+              onClick={(event) => seekFromProgress(event)}
+              onKeyDown={(event) => {
+                if (event.code === "ArrowLeft") { event.preventDefault(); stepLivePreview(-1); }
+                if (event.code === "ArrowRight") { event.preventDefault(); stepLivePreview(1); }
+                if (event.code === "Home") { event.preventDefault(); restartLivePreview(); }
+              }}
+            >
+              {project.scenes.map((scene, index) => {
+                const duration = timeline.durations[index] ?? 0;
+                const current = scene.id === (playSceneId || previewScene?.id);
+                const done = timeline.offsets[index]! + duration <= playhead.offsetMs + 1;
+                const fill = current ? (duration ? (playhead.sceneElapsedMs / duration) * 100 : 0) : done ? 100 : 0;
+                return <span
+                  key={scene.id}
+                  className={`play-progress-scene${current ? " is-current" : ""}${done && !current ? " is-done" : ""}`}
+                  style={{ flexGrow: duration, ["--fill" as string]: `${fill}%` }}
+                >
+                  <span className="play-progress-fill" />
+                </span>;
+              })}
+            </div>
+          </div>
           <p className="crop-hint">{livePlaying
-            ? "Playing in this tab · pause to frame a still."
+            ? "Space plays or pauses · click the bar to scrub."
             : wideStill
             ? "Wide still — drag horizontal focus to keep the subject in the 9:16 frame."
             : "Crop focus · drag the focus sliders in the inspector"}</p>

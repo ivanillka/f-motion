@@ -206,6 +206,68 @@ export function nextLiveSceneId(sceneIds: readonly string[], currentId: string):
   return sceneIds[(from + 1) % sceneIds.length] ?? sceneIds[0]!;
 }
 
+export function previousLiveSceneId(sceneIds: readonly string[], currentId: string): string {
+  if (!sceneIds.length) return currentId;
+  const index = sceneIds.indexOf(currentId);
+  const from = index < 0 ? 0 : index;
+  return sceneIds[(from - 1 + sceneIds.length) % sceneIds.length] ?? sceneIds[0]!;
+}
+
+export function boundedSceneMs(durationMs: number): number {
+  if (!Number.isFinite(durationMs)) return 3_000;
+  return Math.min(15_000, Math.max(500, durationMs));
+}
+
+export function formatPlayTime(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+export function liveTimeline(scenes: readonly Pick<Scene, "id" | "duration_ms">[]): {
+  totalMs: number;
+  offsets: number[];
+  durations: number[];
+} {
+  const durations = scenes.map((scene) => boundedSceneMs(scene.duration_ms));
+  const offsets: number[] = [];
+  let totalMs = 0;
+  for (const duration of durations) {
+    offsets.push(totalMs);
+    totalMs += duration;
+  }
+  return { totalMs, offsets, durations };
+}
+
+export function livePlayhead(
+  scenes: readonly Pick<Scene, "id" | "duration_ms">[],
+  playSceneId: string,
+  sceneElapsedMs: number
+): { offsetMs: number; sceneElapsedMs: number; totalMs: number } {
+  const { totalMs, offsets, durations } = liveTimeline(scenes);
+  const index = Math.max(0, scenes.findIndex((scene) => scene.id === playSceneId));
+  const duration = durations[index] ?? 0;
+  const elapsed = Math.min(duration, Math.max(0, sceneElapsedMs));
+  return { offsetMs: (offsets[index] ?? 0) + elapsed, sceneElapsedMs: elapsed, totalMs };
+}
+
+export function seekLivePlayhead(
+  scenes: readonly Pick<Scene, "id" | "duration_ms">[],
+  timeMs: number
+): { sceneId: string; sceneElapsedMs: number } {
+  if (!scenes.length) return { sceneId: "", sceneElapsedMs: 0 };
+  const { totalMs, durations } = liveTimeline(scenes);
+  let remaining = Math.min(totalMs, Math.max(0, timeMs));
+  for (const [index, scene] of scenes.entries()) {
+    const duration = durations[index] ?? 0;
+    if (remaining < duration || index === scenes.length - 1) {
+      return { sceneId: scene.id, sceneElapsedMs: Math.min(duration, remaining) };
+    }
+    remaining -= duration;
+  }
+  const last = scenes[scenes.length - 1]!;
+  return { sceneId: last.id, sceneElapsedMs: boundedSceneMs(last.duration_ms) };
+}
+
 /** Loads a fresh, project-scoped map so callers replace rather than merge stale media state. */
 export async function loadSceneMediaViews(
   api: Pick<ApiClient, "request">,

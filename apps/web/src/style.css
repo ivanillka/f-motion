@@ -407,6 +407,52 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   color: var(--muted);
   text-align: center;
 }
+.scene-card.is-playing { box-shadow: inset 0 0 0 1px var(--success); }
+.play-transport {
+  display: grid;
+  gap: 8px;
+  width: min(100%, 320px);
+}
+.play-transport-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.play-transport-row button { min-height: 36px; padding: 6px 10px; }
+.play-time {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.play-progress {
+  display: flex;
+  width: 100%;
+  height: 12px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--soft);
+  cursor: pointer;
+}
+.play-progress:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+.play-progress-scene {
+  position: relative;
+  min-width: 6px;
+  background: color-mix(in srgb, var(--border) 80%, var(--soft));
+  border-right: 1px solid var(--bg);
+}
+.play-progress-scene:last-child { border-right: 0; }
+.play-progress-scene.is-done { background: var(--accent); }
+.play-progress-scene.is-current { background: color-mix(in srgb, var(--accent) 28%, var(--soft)); }
+.play-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--fill, 0%);
+  background: var(--accent-soft);
+}
 .scene-controls {
   display: grid;
   gap: 14px;
