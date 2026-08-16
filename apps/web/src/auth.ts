@@ -7,6 +7,8 @@ export interface WebAuthSession {
 export interface AuthGateway {
   subscribe(listener: (session?: WebAuthSession) => void): () => void;
   sendMagicLink(email: string): Promise<void>;
+  /** Completes email OTP when the magic-link redirect is owned by Fotium. */
+  verifyEmailOtp(email: string, token: string): Promise<void>;
   /**
    * Completes PKCE when the email link lands on Fotium (`?code=`) or a copied
    * Supabase verify URL. Must run in the same browser that requested the link.
@@ -62,10 +64,23 @@ export class AuthConfigurationError extends Error {
   }
 }
 
-/** Hosted studio is /app/; local Vite stays at /. Used as the magic-link return origin. */
+/**
+ * Magic-link return origin. Shared Fotium Supabase allowlists site roots
+ * (`https://f-motion.com/`), not `/app/`. Marketing `/` forwards `?code=` to the studio.
+ */
 export function studioOrigin(href: string): string {
+  return new URL("/", new URL(href)).href;
+}
+
+/** Supabase puts expired-link failures on the query, the hash, or both. */
+export function authCallbackError(href: string): string | undefined {
   const url = new URL(href);
-  return new URL(url.pathname.startsWith("/app") ? "/app/" : "/", url).href;
+  const hash = new URLSearchParams(url.hash.replace(/^#/, ""));
+  return url.searchParams.get("error_code")
+    ?? url.searchParams.get("error")
+    ?? hash.get("error_code")
+    ?? hash.get("error")
+    ?? undefined;
 }
 
 function callbackUrl(origin: string): string {
@@ -137,6 +152,17 @@ class SupabaseAuthGateway implements AuthGateway {
     throwAuthError(error);
   }
 
+  async verifyEmailOtp(email: string, token: string): Promise<void> {
+    const code = token.trim();
+    if (!/^\d{6,8}$/.test(code)) throw new Error("Enter the 6-digit code from the email");
+    const { error } = await this.client.auth.verifyOtp({
+      email: email.trim(),
+      token: code,
+      type: "email"
+    });
+    throwAuthError(error);
+  }
+
   async completeAuthCallback(linkOrCode: string): Promise<void> {
     const parsed = parseAuthCallback(linkOrCode);
     if (parsed.kind === "pkce") {
@@ -196,6 +222,10 @@ class DemoAuthGateway implements AuthGateway {
   }
 
   async sendMagicLink(): Promise<void> {
+    this.signInLocal();
+  }
+
+  async verifyEmailOtp(): Promise<void> {
     this.signInLocal();
   }
 

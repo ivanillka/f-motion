@@ -1,11 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AuthConfigurationError, createAuthGateway, parseAuthCallback, studioOrigin } from "../src/auth.ts";
+import { AuthConfigurationError, authCallbackError, createAuthGateway, parseAuthCallback, studioOrigin } from "../src/auth.ts";
 
-test("hosted /app/ magic links return to the studio, not the marketing root", () => {
-  assert.equal(studioOrigin("https://f-motion.com/app/?project=59af46af-b82d-5fda-a837-652b88dcb50f"), "https://f-motion.com/app/");
-  assert.equal(studioOrigin("https://f-motion.com/app/"), "https://f-motion.com/app/");
+test("hosted magic links return to the site root so they match the shared Supabase allowlist", () => {
+  assert.equal(studioOrigin("https://f-motion.com/app/?project=59af46af-b82d-5fda-a837-652b88dcb50f"), "https://f-motion.com/");
+  assert.equal(studioOrigin("https://f-motion.com/app/"), "https://f-motion.com/");
   assert.equal(studioOrigin("http://localhost:5173/"), "http://localhost:5173/");
+});
+
+test("authCallbackError reads expired OTP from query or hash", () => {
+  assert.equal(
+    authCallbackError("https://fotium.vip/?error_code=otp_expired#error_code=otp_expired&sb="),
+    "otp_expired"
+  );
+  assert.equal(authCallbackError("https://f-motion.com/app/#error_code=otp_expired"), "otp_expired");
+  assert.equal(authCallbackError("https://f-motion.com/app/?project=59af46af-b82d-5fda-a837-652b88dcb50f"), undefined);
 });
 
 function memoryStorage(initial = {}) {
@@ -164,6 +173,23 @@ test("parseAuthCallback reads Fotium PKCE code URLs and Supabase verify links", 
     parseAuthCallback("https://example.supabase.co/auth/v1/verify?token=deadbeef&type=magiclink"),
     { kind: "otp", token_hash: "deadbeef", type: "magiclink" }
   );
+});
+
+test("email OTP verifies through Supabase without following the Fotium redirect", async () => {
+  const fake = fakeSupabase();
+  const gateway = createAuthGateway(
+    {
+      url: "https://example.supabase.co",
+      publicKey: "public-key",
+      origin: "https://f-motion.com",
+      allowDemo: false
+    },
+    { createClient: () => fake.client }
+  );
+  await gateway.verifyEmailOtp("person@example.com", "123456");
+  assert.deepEqual(fake.calls, [
+    ["verify", { email: "person@example.com", token: "123456", type: "email" }]
+  ]);
 });
 
 test("Fotium ?code= URLs exchange through PKCE on the F-Motion client", async () => {

@@ -16,7 +16,7 @@ import {
   type SceneMediaView,
   type VideoArchitecture
 } from "./api";
-import { AuthConfigurationError, createAuthGateway, studioOrigin } from "./auth";
+import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOrigin } from "./auth";
 import { clearImportedProject, isImportedProjectId, rememberImportedProject } from "./imported-project";
 import "./style.css";
 
@@ -99,6 +99,9 @@ function App() {
   const [authBusy, setAuthBusy] = useState(false);
   const [step, setStep] = useState<Step>("sign-in");
   const [email, setEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [magicLinkPaste, setMagicLinkPaste] = useState("");
+  const [awaitingEmail, setAwaitingEmail] = useState(false);
   const [draft, setDraft] = useState(() => localStorage.getItem("fengine-draft") ?? "");
   const [architecture, setArchitecture] = useState<VideoArchitecture>(defaultVideoArchitecture);
   const [conceptChoices, setConceptChoices] = useState<Concept[]>([]);
@@ -211,6 +214,9 @@ function App() {
     setPexelsKey("");
     setPexelsBusy(false);
     setFeatureLock(undefined);
+    setOtpCode("");
+    setMagicLinkPaste("");
+    setAwaitingEmail(false);
     setStep("sign-in");
   }
 
@@ -220,10 +226,25 @@ function App() {
       setStatus(authSetup.error?.message ?? "Sign-in is not configured for this deployment.");
       return;
     }
+    const callbackError = authCallbackError(location.href);
+    const expiredMessage = callbackError === "otp_expired" || callbackError === "access_denied"
+      ? "That sign-in link was already used or expired. Stay on this page, request a new email, and enter the code — do not open the link if it goes to Fotium."
+      : "";
+    let pendingExpired = expiredMessage;
+    if (pendingExpired) {
+      const cleaned = new URL(location.href);
+      cleaned.searchParams.delete("error_code");
+      cleaned.searchParams.delete("error");
+      history.replaceState(null, "", `${cleaned.pathname}${cleaned.search}`);
+    }
     return authSetup.gateway.subscribe((session) => {
       setAuthReady(true);
       if (!session) {
         clearSessionState();
+        if (pendingExpired) {
+          setStatus(pendingExpired);
+          pendingExpired = "";
+        }
         return;
       }
       tokenRef.current = session.accessToken;
@@ -332,11 +353,43 @@ function App() {
       await authSetup.gateway.sendMagicLink(email);
       if (import.meta.env.DEV || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1") {
         setStatus("");
+        setAwaitingEmail(false);
       } else {
-        setStatus("Check your email for the sign-in link.");
+        setAwaitingEmail(true);
+        setStatus("Check your email. Enter the code or paste the login link here — do not open it if it sends you to Fotium.");
       }
     } catch {
       setStatus("Sign-in link could not be sent.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function verifyOtp() {
+    if (!authSetup.gateway) return;
+    setAuthBusy(true);
+    try {
+      await authSetup.gateway.verifyEmailOtp(email, otpCode);
+      setStatus("");
+      setAwaitingEmail(false);
+      setOtpCode("");
+    } catch {
+      setStatus("That code could not be verified. Request a new email and try again.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function completePastedMagicLink() {
+    if (!authSetup.gateway) return;
+    setAuthBusy(true);
+    try {
+      await authSetup.gateway.completeAuthCallback(magicLinkPaste);
+      setStatus("");
+      setAwaitingEmail(false);
+      setMagicLinkPaste("");
+    } catch {
+      setStatus("That login link could not be verified. Right-click the email Log In link → Copy link, then paste it here.");
     } finally {
       setAuthBusy(false);
     }
@@ -1406,6 +1459,25 @@ function App() {
         : "Sign in to keep projects private."}</p>
       <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
       <button disabled={authBusy || !authSetup.gateway || (Boolean(import.meta.env.VITE_SUPABASE_URL) && !email.trim())} onClick={() => void magicLink()}>Email me a magic link</button>
+      {Boolean(import.meta.env.VITE_SUPABASE_URL) && <>
+        <p>{awaitingEmail
+          ? "Email sent. Do not open the link if it goes to Fotium — enter the code or paste the login URL below."
+          : "If a login email already arrived, enter the code or paste the Log In link here (skip opening fotium.vip)."}</p>
+        <label>Email code<input
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          value={otpCode}
+          onChange={(event) => setOtpCode(event.target.value)}
+          placeholder="6-digit code from the email"
+        /></label>
+        <button className="secondary" disabled={authBusy || !email.trim() || !otpCode.trim()} onClick={() => void verifyOtp()}>Verify code</button>
+        <label>Or paste login link<input
+          value={magicLinkPaste}
+          onChange={(event) => setMagicLinkPaste(event.target.value)}
+          placeholder="Right-click Log In in the email → Copy link"
+        /></label>
+        <button className="secondary" disabled={authBusy || !magicLinkPaste.trim()} onClick={() => void completePastedMagicLink()}>Complete pasted link</button>
+      </>}
       {import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "1"
         ? <button className="secondary" disabled={authBusy || !authSetup.gateway} onClick={() => void googleSignIn()}>Continue with Google</button>
         : null}
