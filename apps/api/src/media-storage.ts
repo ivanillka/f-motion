@@ -325,7 +325,7 @@ export class PostgresMediaRepository {
           SET state = 'ready', "sealedObjectKey" = $4, "sealedEtag" = $5,
               "sealedVersionId" = $6, "sealedSha256" = $7, detected = $8
         WHERE "ownerId" = $1 AND "projectId" = $2 AND id = $3
-          AND state IN ('admitted', 'inspecting')
+          AND state IN ('admitted', 'inspecting', 'quarantined')
       RETURNING id, "ownerId", "projectId", "quarantineObjectKey", "sealedObjectKey",
                 "sealedEtag", "sealedVersionId", "sealedSha256", state, "declaredType",
                 "maxBytes", detected, attribution`,
@@ -701,9 +701,11 @@ async function sealImportedStillFromObject(
   fromKey: string,
   byteLength: number,
   store: Pick<PrivateObjectStore, "copy" | "readPrefix">,
-  repository: Pick<PostgresMediaRepository, "markImportedStillReady">
+  repository: Pick<PostgresMediaRepository, "markImportedStillReady">,
+  fallbackSize?: { width: number; height: number }
 ): Promise<StoredMedia> {
-  const size = await stillSizeFromPrefix(declaredType, (maxBytes) => store.readPrefix(fromKey, maxBytes));
+  const size = await stillSizeFromPrefix(declaredType, (maxBytes) => store.readPrefix(fromKey, maxBytes))
+    ?? fallbackSize;
   if (!size) throw new ExternalMediaImportError("external media dimensions rejected");
   const objectKey = `projects/${projectId}/media-sealed/${id}`;
   const copied = await store.copy(fromKey, objectKey);
@@ -752,13 +754,15 @@ export async function importExternalMedia(
 ): Promise<StoredMedia> {
   const existing = await repository.get(ownerId, projectId, id);
   if (existing?.state === "ready") return existing;
-  if (existing?.state === "quarantined") return existing;
   if (
     existing
-    && (existing.state === "admitted" || existing.state === "inspecting")
+    && (existing.state === "admitted" || existing.state === "inspecting" || existing.state === "quarantined")
     && existing.declaredType.startsWith("image/")
     && await store.exists(existing.quarantineObjectKey)
   ) {
+    const fallbackSize = existing.detected?.width && existing.detected?.height
+      ? { width: existing.detected.width, height: existing.detected.height }
+      : undefined;
     return sealImportedStillFromObject(
       ownerId,
       projectId,
@@ -767,9 +771,11 @@ export async function importExternalMedia(
       existing.quarantineObjectKey,
       existing.maxBytes,
       store,
-      repository
+      repository,
+      fallbackSize
     );
   }
+  if (existing?.state === "quarantined") return existing;
   if (existing && existing.state !== "admitted" && existing.state !== "inspecting") {
     throw new ExternalMediaImportError("external media is not reusable");
   }

@@ -324,7 +324,8 @@ function App() {
   }, [api, step, token]);
 
   useEffect(() => {
-    if (step !== "editor" || !project || !Object.values(sceneMedia).some(({ state }) => state === "admitted" || state === "inspecting")) return;
+    if (step !== "editor" || !project || !Object.values(sceneMedia).some(({ state }) =>
+      state === "admitted" || state === "inspecting" || state === "quarantined")) return;
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const refresh = async () => {
@@ -332,7 +333,8 @@ function App() {
         const views = await loadSceneMediaViews(api, project);
         if (cancelled) return;
         setSceneMedia(views);
-        if (Object.values(views).some(({ state }) => state === "admitted" || state === "inspecting")) {
+        if (Object.values(views).some(({ state }) =>
+          state === "admitted" || state === "inspecting" || state === "quarantined")) {
           timeout = setTimeout(() => void refresh(), 1_000);
         }
       } catch {

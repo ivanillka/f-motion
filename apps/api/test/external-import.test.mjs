@@ -166,7 +166,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     async markImportedStillReady(owner, project, id, sealed, detected) {
       const asset = assets.get(id);
       if (!asset || asset.ownerId !== owner || asset.projectId !== project) return undefined;
-      if (asset.state !== "admitted" && asset.state !== "inspecting") return undefined;
+      if (asset.state !== "admitted" && asset.state !== "inspecting" && asset.state !== "quarantined") return undefined;
       const ready = {
         ...asset,
         state: "ready",
@@ -370,7 +370,12 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
       media_urls: ["https://media.fotium.vip/galleries/look/04.webp"]
     });
     assert.equal(webpRetry.status, 200);
+    await waitFor(
+      () => [...assets.values()].some((asset) => asset.projectId === webpProjectId && asset.state === "ready"),
+      "quarantined webp sealed"
+    );
     assert.equal(requested.length, webpBeforeRetry);
+    assert.ok(stored.some((entry) => entry.fromKey && String(entry.key).includes("/media-sealed/")));
 
     const inspectUrl = "https://media.fotium.vip/galleries/look/inspect.jpg";
     const inspectExternalId = "followup:inspecting";
