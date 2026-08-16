@@ -1,6 +1,6 @@
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -44,6 +44,61 @@ function headerMediaType(contentType: string | null): string {
 function importedUrlAllowed(value: string, allowedOrigins: readonly string[]): boolean {
   if (!allowedOrigins.length) return true;
   try { return allowedOrigins.includes(new URL(value).origin); } catch { return false; }
+}
+
+function u16be(bytes: Uint8Array, offset: number): number {
+  return ((bytes[offset] ?? 0) << 8) | (bytes[offset + 1] ?? 0);
+}
+
+function u32be(bytes: Uint8Array, offset: number): number {
+  return ((bytes[offset] ?? 0) * 2 ** 24)
+    + ((bytes[offset + 1] ?? 0) * 2 ** 16)
+    + ((bytes[offset + 2] ?? 0) * 2 ** 8)
+    + (bytes[offset + 3] ?? 0);
+}
+
+function u24le(bytes: Uint8Array, offset: number): number {
+  return (bytes[offset] ?? 0) | ((bytes[offset + 1] ?? 0) << 8) | ((bytes[offset + 2] ?? 0) << 16);
+}
+
+/** ponytail: no hosted worker yet. Stills become ready from headers; add ffprobe when f-motion-worker exists. */
+export function stillSize(type: string, bytes: Uint8Array): { width: number; height: number } | undefined {
+  if (type === "image/png" && bytes.length >= 24) {
+    const width = u32be(bytes, 16);
+    const height = u32be(bytes, 20);
+    return width > 0 && height > 0 ? { width, height } : undefined;
+  }
+  if (type === "image/webp" && bytes.length >= 30 && bytes[12] === 0x56 && bytes[13] === 0x50 && bytes[14] === 0x38) {
+    if (bytes[15] === 0x58) {
+      return { width: u24le(bytes, 24) + 1, height: u24le(bytes, 27) + 1 };
+    }
+    if (bytes[15] === 0x4c && bytes.length >= 25) {
+      const bits = (bytes[21] ?? 0) | ((bytes[22] ?? 0) << 8) | ((bytes[23] ?? 0) << 16) | ((bytes[24] ?? 0) << 24);
+      return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+    }
+  }
+  if (type === "image/jpeg") {
+    let offset = 2;
+    while (offset + 8 < bytes.length) {
+      if (bytes[offset] !== 0xff) {
+        offset += 1;
+        continue;
+      }
+      const marker = bytes[offset + 1] ?? 0;
+      if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
+        offset += 2;
+        continue;
+      }
+      const length = u16be(bytes, offset + 2);
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        const height = u16be(bytes, offset + 5);
+        const width = u16be(bytes, offset + 7);
+        return width > 0 && height > 0 ? { width, height } : undefined;
+      }
+      offset += 2 + length;
+    }
+  }
+  return undefined;
 }
 
 export function resolveImportedMediaType(contentType: string | null, bytes: Uint8Array): string {
@@ -258,6 +313,36 @@ export class PostgresMediaRepository {
     }
   }
 
+  async markImportedStillReady(
+    ownerId: string,
+    projectId: string,
+    id: string,
+    sealed: { objectKey: string; etag: string; versionId?: string; sha256: string },
+    detected: NonNullable<StoredMedia["detected"]>
+  ): Promise<StoredMedia | undefined> {
+    const result = await this.pool.query<MediaRow>(
+      `UPDATE "MediaAsset"
+          SET state = 'ready', "sealedObjectKey" = $4, "sealedEtag" = $5,
+              "sealedVersionId" = $6, "sealedSha256" = $7, detected = $8
+        WHERE "ownerId" = $1 AND "projectId" = $2 AND id = $3
+          AND state IN ('admitted', 'inspecting')
+      RETURNING id, "ownerId", "projectId", "quarantineObjectKey", "sealedObjectKey",
+                "sealedEtag", "sealedVersionId", "sealedSha256", state, "declaredType",
+                "maxBytes", detected, attribution`,
+      [
+        ownerId,
+        projectId,
+        id,
+        sealed.objectKey,
+        sealed.etag,
+        sealed.versionId ?? null,
+        sealed.sha256,
+        detected
+      ]
+    );
+    return result.rows[0];
+  }
+
 }
 
 export class PrivateObjectStore {
@@ -289,14 +374,30 @@ export class PrivateObjectStore {
     body: Uint8Array | Readable,
     contentType: string,
     contentLength: number
-  ): Promise<void> {
-    await this.client.send(new PutObjectCommand({
+  ): Promise<{ etag: string; versionId?: string }> {
+    const result = await this.client.send(new PutObjectCommand({
       Bucket: this.bucket,
       Key: objectKey,
       Body: body,
       ContentType: contentType,
       ContentLength: contentLength
     }));
+    const etag = result.ETag?.replaceAll('"', "");
+    if (!etag) throw new Error("object identity missing");
+    return { etag, ...(result.VersionId ? { versionId: result.VersionId } : {}) };
+  }
+
+  async read(objectKey: string, maxBytes: number): Promise<Uint8Array> {
+    const result = await this.client.send(new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: objectKey
+    }));
+    if (!result.Body) throw new Error("object body missing");
+    const bytes = await result.Body.transformToByteArray();
+    if (bytes.byteLength <= 0 || bytes.byteLength > maxBytes) {
+      throw new ExternalMediaImportError("external media body rejected");
+    }
+    return bytes;
   }
 
   async exists(objectKey: string): Promise<boolean> {
@@ -484,7 +585,32 @@ export class ExternalMediaImportError extends Error {
   constructor(message = "external media import failed") { super(message); }
 }
 
-/** Copies a trusted integration's allowlisted URL into the normal quarantine and inspection path. */
+async function sealImportedStill(
+  ownerId: string,
+  projectId: string,
+  id: string,
+  declaredType: string,
+  bytes: Uint8Array,
+  store: Pick<PrivateObjectStore, "put">,
+  repository: Pick<PostgresMediaRepository, "markImportedStillReady">
+): Promise<StoredMedia> {
+  const size = stillSize(declaredType, bytes);
+  if (!size) throw new ExternalMediaImportError("external media dimensions rejected");
+  const objectKey = `projects/${projectId}/media-sealed/${id}`;
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const uploaded = await store.put(objectKey, bytes, declaredType, bytes.byteLength);
+  const ready = await repository.markImportedStillReady(
+    ownerId,
+    projectId,
+    id,
+    { objectKey, etag: uploaded.etag, versionId: uploaded.versionId, sha256 },
+    { type: declaredType, bytes: bytes.byteLength, width: size.width, height: size.height }
+  );
+  if (!ready) throw new ExternalMediaImportError("external media is not reusable");
+  return ready;
+}
+
+/** Copies a trusted integration's allowlisted URL into quarantine; stills skip the worker. */
 export async function importExternalMedia(
   ownerId: string,
   projectId: string,
@@ -498,11 +624,27 @@ export async function importExternalMedia(
 ): Promise<StoredMedia> {
   const existing = await repository.get(ownerId, projectId, id);
   if (existing) {
+    if (existing.state === "ready") return existing;
+    if (
+      (existing.state === "admitted" || existing.state === "inspecting")
+      && existing.declaredType.startsWith("image/")
+    ) {
+      const bytes = await store.read(existing.quarantineObjectKey, existing.maxBytes);
+      return sealImportedStill(
+        ownerId,
+        projectId,
+        id,
+        existing.declaredType,
+        bytes,
+        store,
+        repository
+      );
+    }
     if (existing.state === "admitted" && await repository.completeAdmission(ownerId, projectId, id)) {
       return { ...existing, state: "inspecting" };
     }
     // Quarantined WebP (old inspector) must not 502 a later Edit of the same pick.
-    if (existing.state === "inspecting" || existing.state === "ready" || existing.state === "quarantined") {
+    if (existing.state === "inspecting" || existing.state === "quarantined") {
       return existing;
     }
     throw new ExternalMediaImportError("external media is not reusable");
@@ -546,6 +688,9 @@ export async function importExternalMedia(
       await finished(upload).catch(() => undefined);
     }
     await repository.insert(asset);
+    if (declaredType.startsWith("image/")) {
+      return sealImportedStill(ownerId, projectId, id, declaredType, await readFile(path), store, repository);
+    }
     if (!await repository.completeAdmission(ownerId, projectId, id)) throw new ExternalMediaImportError();
     return { ...asset, state: "inspecting" };
   } catch (error) {

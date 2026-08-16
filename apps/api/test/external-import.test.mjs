@@ -154,6 +154,21 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
       return asset?.ownerId === owner && asset?.projectId === project ? structuredClone(asset) : undefined;
     },
     async insert(asset) { assets.set(asset.id, structuredClone(asset)); },
+    async markImportedStillReady(owner, project, id, sealed, detected) {
+      const asset = assets.get(id);
+      if (!asset || asset.ownerId !== owner || asset.projectId !== project) return undefined;
+      if (asset.state !== "admitted" && asset.state !== "inspecting") return undefined;
+      const ready = {
+        ...asset,
+        state: "ready",
+        sealedObjectKey: sealed.objectKey,
+        sealedEtag: sealed.etag,
+        sealedSha256: sealed.sha256,
+        detected
+      };
+      assets.set(id, ready);
+      return ready;
+    },
     async completeAdmission(owner, project, id) {
       const asset = assets.get(id);
       if (!asset || asset.ownerId !== owner || asset.projectId !== project) return false;
@@ -171,9 +186,17 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
         throw new Error("R2 unavailable");
       }
       let total = 0;
-      for await (const chunk of body) total += chunk.byteLength;
+      if (body instanceof Uint8Array) {
+        total = body.byteLength;
+      } else {
+        for await (const chunk of body) total += chunk.byteLength;
+      }
       assert.equal(total, bytes);
       stored.push({ key, type, bytes });
+      return { etag: "etag" };
+    },
+    async read() {
+      throw new Error("unexpected read");
     }
   };
   const requested = [];
@@ -198,9 +221,18 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
         Object.defineProperty(bounced, "url", { value: "https://evil.example/stolen.jpg" });
         return bounced;
       }
-      const type = String(input).endsWith(".webp") ? "image/webp" : "image/jpeg";
-      return new Response(new Uint8Array([1, 2, 3]), {
-        headers: { "content-type": type, "content-length": "3" }
+      const type = String(input).endsWith(".webp") ? "image/webp" : "image/png";
+      const body = type === "image/webp"
+        ? new Uint8Array([
+          0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50,
+          0x56, 0x50, 0x38, 0x58, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0
+        ])
+        : new Uint8Array([
+          0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d,
+          0x49, 0x48, 0x44, 0x52, 0, 0, 0, 2, 0, 0, 0, 3, 8, 2, 0, 0, 0
+        ]);
+      return new Response(body, {
+        headers: { "content-type": type, "content-length": String(body.byteLength) }
       });
     }
   }));
@@ -241,7 +273,9 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     assert.equal(project.scenes[0].media_id, project.scenes[2].media_id);
     assert.match(project.scenes.map(({ caption }) => caption).join(" "), /https:\/\//);
     assert.deepEqual(requested.map(({ redirect }) => redirect), ["follow", "follow"]);
-    assert.equal(stored.length, 2);
+    assert.equal(stored.length, 4);
+    assert.ok([...assets.values()].every((asset) => asset.state === "ready"));
+    assert.ok([...assets.values()].every((asset) => asset.detected?.width === 2));
 
     const retry = await request({ ...mediaBody, caption: baseBody.caption });
     assert.equal(retry.status, 200);
@@ -254,7 +288,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
       "Selected gallery image 3",
       "Selected gallery image 4"
     ]);
-    assert.equal(stored.length, 2);
+    assert.equal(stored.length, 4);
 
     const rejected = await request({ ...baseBody, external_id: "followup:blocked", media_urls: ["https://example.com/private.jpg"] });
     assert.equal(rejected.status, 422);

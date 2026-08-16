@@ -81,7 +81,7 @@ test("PrivateObjectStore uploads a multi-chunk stream with its known length", as
   const body = Readable.from(chunks);
   let input;
   const store = new PrivateObjectStore({
-    async send(command) { input = command.input; }
+    async send(command) { input = command.input; return { ETag: "\"etag\"" }; }
   }, "bucket");
   await store.put("object", body, "video/mp4", 4);
   assert.equal(input.Body, body);

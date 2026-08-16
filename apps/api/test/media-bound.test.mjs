@@ -7,7 +7,8 @@ import {
   maximumMediaBytes,
   mediaTypeFromBytes,
   resolveImportedMediaType,
-  spoolBoundedBody
+  spoolBoundedBody,
+  stillSize
 } from "../dist/media-storage.js";
 
 function streamResponse(chunks, headers = {}) {
@@ -86,4 +87,18 @@ test("imported media types prefer allowlisted headers and sniff still/video magi
   assert.equal(resolveImportedMediaType("image/jpg; charset=binary", new Uint8Array([1])), "image/jpeg");
   assert.equal(resolveImportedMediaType("application/octet-stream", webp), "image/webp");
   assert.throws(() => resolveImportedMediaType("text/html", new Uint8Array([1, 2, 3])), /type rejected/);
+});
+
+test("stillSize reads PNG IHDR and WebP VP8X without ffprobe", () => {
+  const png = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d,
+    0x49, 0x48, 0x44, 0x52, 0, 0, 0x04, 0x00, 0, 0, 0x03, 0x00, 8, 2, 0, 0, 0
+  ]);
+  assert.deepEqual(stillSize("image/png", png), { width: 1024, height: 768 });
+  const webp = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50,
+    0x56, 0x50, 0x38, 0x58, 0, 0, 0, 0, 0, 0, 0, 0, 0x3f, 0, 0, 0x2b, 0, 0
+  ]);
+  assert.deepEqual(stillSize("image/webp", webp), { width: 64, height: 44 });
+  assert.equal(stillSize("image/png", new Uint8Array([1, 2, 3])), undefined);
 });
