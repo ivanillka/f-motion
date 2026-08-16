@@ -422,8 +422,16 @@ export class PrivateObjectStore {
   }
 
   async exists(objectKey: string): Promise<boolean> {
-    await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: objectKey }));
-    return true;
+    try {
+      await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: objectKey }));
+      return true;
+    } catch (error) {
+      const status = error && typeof error === "object" && "$metadata" in error
+        ? Number((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode)
+        : undefined;
+      if (status === 404) return false;
+      throw error;
+    }
   }
 }
 
@@ -708,6 +716,28 @@ async function sealImportedStillFromObject(
   }, repository);
 }
 
+/** Reserved row so Edit can attach media_ids and reply before the host still is copied. */
+export async function reserveExternalMedia(
+  ownerId: string,
+  projectId: string,
+  id: string,
+  repository: Pick<PostgresMediaRepository, "get" | "insert">
+): Promise<StoredMedia> {
+  const existing = await repository.get(ownerId, projectId, id);
+  if (existing) return existing;
+  const asset: StoredMedia = {
+    id,
+    ownerId,
+    projectId,
+    quarantineObjectKey: `projects/${projectId}/media-quarantine/${id}`,
+    state: "admitted",
+    declaredType: "image/jpeg",
+    maxBytes: maximumMediaBytes
+  };
+  await repository.insert(asset);
+  return asset;
+}
+
 /** Copies a trusted integration's allowlisted URL into quarantine; stills skip the worker. */
 export async function importExternalMedia(
   ownerId: string,
@@ -721,30 +751,26 @@ export async function importExternalMedia(
   allowedOrigins: readonly string[] = []
 ): Promise<StoredMedia> {
   const existing = await repository.get(ownerId, projectId, id);
-  if (existing) {
-    if (existing.state === "ready") return existing;
-    if (
-      (existing.state === "admitted" || existing.state === "inspecting")
-      && existing.declaredType.startsWith("image/")
-    ) {
-      return sealImportedStillFromObject(
-        ownerId,
-        projectId,
-        id,
-        existing.declaredType,
-        existing.quarantineObjectKey,
-        existing.maxBytes,
-        store,
-        repository
-      );
-    }
-    if (existing.state === "admitted" && await repository.completeAdmission(ownerId, projectId, id)) {
-      return { ...existing, state: "inspecting" };
-    }
-    // Quarantined WebP (old inspector) must not 502 a later Edit of the same pick.
-    if (existing.state === "inspecting" || existing.state === "quarantined") {
-      return existing;
-    }
+  if (existing?.state === "ready") return existing;
+  if (existing?.state === "quarantined") return existing;
+  if (
+    existing
+    && (existing.state === "admitted" || existing.state === "inspecting")
+    && existing.declaredType.startsWith("image/")
+    && await store.exists(existing.quarantineObjectKey)
+  ) {
+    return sealImportedStillFromObject(
+      ownerId,
+      projectId,
+      id,
+      existing.declaredType,
+      existing.quarantineObjectKey,
+      existing.maxBytes,
+      store,
+      repository
+    );
+  }
+  if (existing && existing.state !== "admitted" && existing.state !== "inspecting") {
     throw new ExternalMediaImportError("external media is not reusable");
   }
 
@@ -785,7 +811,7 @@ export async function importExternalMedia(
       upload.destroy();
       await finished(upload).catch(() => undefined);
     }
-    await repository.insert(asset);
+    if (!existing) await repository.insert(asset);
     if (declaredType.startsWith("image/")) {
       return await sealImportedStillFromFile(ownerId, projectId, id, declaredType, path, bytes, store, repository);
     }

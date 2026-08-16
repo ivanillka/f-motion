@@ -17,6 +17,15 @@ async function listen(server) {
   return `http://127.0.0.1:${address.port}`;
 }
 
+async function waitFor(predicate, label = "condition") {
+  const deadline = Date.now() + 2_000;
+  for (;;) {
+    if (await predicate()) return;
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${label}`);
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
+}
+
 test("trusted import configuration is all-or-nothing and hosted HTTPS-only", () => {
   assert.equal(externalImportConfigFromEnv({}), undefined);
   assert.throws(() => externalImportConfigFromEnv({ FENGINE_IMPORT_TOKEN: "short" }), /at least 32/);
@@ -177,6 +186,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     }
   };
   const stored = [];
+  const knownObjects = new Set();
   const pngHeader = new Uint8Array([
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d,
     0x49, 0x48, 0x44, 0x52, 0, 0, 0, 2, 0, 0, 0, 3, 8, 2, 0, 0, 0
@@ -197,7 +207,11 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
       }
       assert.equal(total, bytes);
       stored.push({ key, type, bytes });
+      knownObjects.add(key);
       return { etag: "etag" };
+    },
+    async exists(key) {
+      return knownObjects.has(key);
     },
     async read() {
       throw new Error("unexpected read");
@@ -207,6 +221,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     },
     async copy(fromKey, toKey) {
       stored.push({ key: toKey, type: "copy", bytes: 0, fromKey });
+      knownObjects.add(toKey);
       return { etag: "etag" };
     }
   };
@@ -283,9 +298,8 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     assert.notEqual(project.scenes[0].media_id, project.scenes[1].media_id);
     assert.equal(project.scenes[0].media_id, project.scenes[2].media_id);
     assert.match(project.scenes.map(({ caption }) => caption).join(" "), /https:\/\//);
+    await waitFor(() => stored.length === 4 && [...assets.values()].every((asset) => asset.state === "ready"), "gallery stills ready");
     assert.deepEqual(requested.map(({ redirect }) => redirect), ["follow", "follow"]);
-    assert.equal(stored.length, 4);
-    assert.ok([...assets.values()].every((asset) => asset.state === "ready"));
     assert.ok([...assets.values()].every((asset) => asset.detected?.width === 2));
 
     const retry = await request({ ...mediaBody, caption: baseBody.caption });
@@ -317,7 +331,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     assert.match(partial.project_url, /\/app\/\?project=/);
     const partialProject = projects.get(ownerId, partial.project_id);
     assert.ok(partialProject.scenes.every((scene) => scene.media_id));
-    assert.equal(new Set(partialProject.scenes.map((scene) => scene.media_id)).size, 1);
+    assert.equal(new Set(partialProject.scenes.map((scene) => scene.media_id)).size, 2);
 
     const storeBroke = await request({
       ...baseBody,
@@ -341,10 +355,14 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
       media_urls: ["https://media.fotium.vip/galleries/look/04.webp"]
     });
     assert.equal(webp.status, 201);
-    assert.equal(requested.at(-1)?.input, "https://media.fotium.vip/galleries/look/04.webp");
+    const webpProjectId = projectIdForExternalImport(ownerId, "followup:webp");
+    await waitFor(
+      () => [...assets.values()].some((asset) => asset.projectId === webpProjectId && asset.state === "ready"),
+      "webp ready"
+    );
     const webpBeforeRetry = requested.length;
     for (const [id, asset] of assets) {
-      if (asset.declaredType === "image/webp") assets.set(id, { ...asset, state: "quarantined" });
+      if (asset.projectId === webpProjectId) assets.set(id, { ...asset, state: "quarantined" });
     }
     const webpRetry = await request({
       ...baseBody,
@@ -367,6 +385,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
       declaredType: "image/png",
       maxBytes: 1024
     });
+    knownObjects.add(`projects/${inspectProjectId}/media-quarantine/${inspectMediaId}`);
     const requestedBeforeInspect = requested.length;
     const inspectRes = await request({
       ...baseBody,
@@ -374,8 +393,8 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
       media_urls: [inspectUrl]
     });
     assert.equal(inspectRes.status, 201);
+    await waitFor(() => assets.get(inspectMediaId)?.state === "ready", "inspecting still sealed");
     assert.equal(requested.length, requestedBeforeInspect);
-    assert.equal(assets.get(inspectMediaId).state, "ready");
     assert.ok(stored.some((entry) =>
       entry.fromKey === `projects/${inspectProjectId}/media-quarantine/${inspectMediaId}`
       && entry.key === `projects/${inspectProjectId}/media-sealed/${inspectMediaId}`
@@ -416,6 +435,64 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
       "https://media.fotium.vip/galleries/look/4.jpg"
     ));
   } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("trusted import returns the draft URL before host stills finish copying", async () => {
+  const ownerId = "11111111-1111-4111-8111-111111111111";
+  const token = "trusted-import-token-that-is-long-enough";
+  const projects = new ProjectService();
+  const assets = new Map();
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const server = createServer(createTestApp({
+    projects,
+    media: {
+      repository: {
+        async get(owner, project, id) {
+          const asset = assets.get(id);
+          return asset?.ownerId === owner && asset?.projectId === project ? structuredClone(asset) : undefined;
+        },
+        async insert(asset) { assets.set(asset.id, structuredClone(asset)); }
+      },
+      store: {
+        async exists() { return false; },
+        async put() { throw new Error("copy must not block the reply"); }
+      }
+    },
+    externalImports: {
+      token,
+      ownerId,
+      webOrigin: "https://f-motion.example",
+      mediaOrigins: ["https://media.fotium.vip"]
+    },
+    externalMediaRequest: async () => {
+      await gate;
+      return new Response("too late", { status: 599 });
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const started = Date.now();
+    const response = await fetch(`${origin}/api/integrations/project-imports`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        external_id: "followup:slow-stills",
+        title: "Slow stills",
+        media_urls: ["https://media.fotium.vip/galleries/look/slow.jpg"]
+      })
+    });
+    assert.equal(response.status, 201);
+    assert.ok(Date.now() - started < 250);
+    const body = await response.json();
+    assert.match(body.project_url, /\/app\/\?project=/);
+    const project = projects.get(ownerId, body.project_id);
+    assert.ok(project.scenes.every((scene) => scene.media_id));
+    assert.ok([...assets.values()].every((asset) => asset.state === "admitted"));
+  } finally {
+    release();
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });

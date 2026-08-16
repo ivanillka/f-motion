@@ -111,6 +111,17 @@ test("PrivateObjectStore copies and range-reads without buffering a full GetObje
   assert.equal("Body" in commands[0].input, false);
 });
 
+test("PrivateObjectStore.exists is false for a missing object", async () => {
+  const store = new PrivateObjectStore({
+    async send() {
+      const error = new Error("not found");
+      error.$metadata = { httpStatusCode: 404 };
+      throw error;
+    }
+  }, "bucket");
+  assert.equal(await store.exists("projects/p/media-quarantine/missing"), false);
+});
+
 /** Fake pool backing both `insert` (top-level query) and `completeAdmission` (transaction). */
 function createFakeMediaPool() {
   const assets = new Map();

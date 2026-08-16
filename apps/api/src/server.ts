@@ -22,6 +22,7 @@ import {
   allowedMediaTypes,
   ExternalMediaImportError,
   importExternalMedia,
+  reserveExternalMedia,
   maximumMediaBytes,
   pexelsQueriesForBrief,
   sceneMediaView,
@@ -244,28 +245,11 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         if (draft.mediaUrls.some((url) => !externalMediaUrlAllowed(url, integration.mediaOrigins))) {
           return response.status(422).json({ type: "validation", message: "media origin is not allowed" });
         }
-        const imported = await mapLimit(draft.mediaUrls, 2, async (url) => {
+        for (const url of draft.mediaUrls) {
           const id = mediaIdForExternalImport(projectId, url);
-          try {
-            await importExternalMedia(
-              integration.ownerId,
-              projectId,
-              id,
-              url,
-              media.repository,
-              media.store,
-              options.externalMediaRequest,
-              undefined,
-              integration.mediaOrigins
-            );
-            return id;
-          } catch (error) {
-            // Open the draft even when one host still is 403/HTML/quarantined/R2-flaky.
-            console.error("external media import skipped", error instanceof Error ? error.message : error);
-            return undefined;
-          }
-        });
-        importedMediaIds.push(...imported.filter((id): id is string => Boolean(id)));
+          await reserveExternalMedia(integration.ownerId, projectId, id, media.repository);
+          importedMediaIds.push(id);
+        }
       }
       const textOnlyImportedDraft = project.scenes.length > 0 && project.scenes.every((scene) => !scene.media_id);
       const legacyAutoPrompts = project.scenes.length > 0 && project.scenes.every((scene) =>
@@ -310,7 +294,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         });
       }
       const projectUrl = externalProjectUrl(integration.webOrigin, project.id);
-      console.error("external import", draft.externalId, `${importedMediaIds.length}/${draft.mediaUrls.length}`);
+      console.error("external import accepted", draft.externalId, `${importedMediaIds.length}/${draft.mediaUrls.length}`);
       response.status(prior ? 200 : 201).json({
         created: !prior,
         project_id: project.id,
@@ -319,7 +303,37 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         projectUrl,
         revision: project.revision
       });
+      if (draft.mediaUrls.length && options.media) {
+        const media = options.media;
+        void mapLimit(draft.mediaUrls, 2, async (url) => {
+          const id = mediaIdForExternalImport(projectId, url);
+          try {
+            await importExternalMedia(
+              integration.ownerId,
+              projectId,
+              id,
+              url,
+              media.repository,
+              media.store,
+              options.externalMediaRequest,
+              undefined,
+              integration.mediaOrigins
+            );
+          } catch (error) {
+            console.error("external media import skipped", error instanceof Error ? error.message : error);
+          }
+        }).then(
+          () => console.error("external import", draft.externalId, `${importedMediaIds.length}/${draft.mediaUrls.length}`),
+          (error: unknown) => console.error("external import failed after reply", error instanceof Error ? error.message : error)
+        );
+      } else {
+        console.error("external import", draft.externalId, `${importedMediaIds.length}/${draft.mediaUrls.length}`);
+      }
     } catch (error) {
+      if (response.headersSent) {
+        console.error("external import failed after reply", error instanceof Error ? error.message : error);
+        return;
+      }
       if (error instanceof Error && error.message.startsWith("invalid ")) {
         return response.status(422).json({ type: "validation", message: error.message });
       }
