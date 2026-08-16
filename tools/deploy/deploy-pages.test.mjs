@@ -45,6 +45,13 @@ test("deployment fails closed before build when hosted sign-in configuration is 
   );
   assert.deepEqual(calls, []);
   assert.throws(() => assertHostedWebEnvironment({ ...hostedEnv, VITE_ALLOW_DEMO_AUTH: "1" }), /must stay unset/);
+  assert.throws(
+    () => assertHostedWebEnvironment({
+      ...hostedEnv,
+      VITE_SUPABASE_URL: "https://hsasubgxsomjvwdlbexg.supabase.co"
+    }),
+    /not Fotium/
+  );
 });
 
 test("deployment requires an explicit project name", () => {

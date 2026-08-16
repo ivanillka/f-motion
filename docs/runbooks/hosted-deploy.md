@@ -89,18 +89,14 @@ lives on the **bucket**, not the API.
 
 1. Create a Supabase project. Enable email magic-link (and Google, if
    wanted) under Authentication.
-2. Set **Authentication → URL Configuration → Site URL** to the canonical web
-   origin and add its slash-terminated callback to **Redirect URLs** (for
-   example `https://app.example.com/`). The web client uses Supabase PKCE and
-   returns to that root URL.
-3. Record: the JWT issuer (`https://<project>.supabase.co/auth/v1`), the
-   audience (`authenticated`), and the JWKS URL
-   (`https://<project>.supabase.co/auth/v1/.well-known/jwks.json`) — these
-   become `SUPABASE_ISSUER`, `SUPABASE_AUDIENCE`, `SUPABASE_JWKS_URL` for the
-   API.
-4. Record the project URL and anon key for the web build:
-   `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
-   This must be the public browser key, never a service-role key.
+2. Use **F-Motion's own Supabase project** for studio magic links. Site URL
+   and Redirect URLs: `https://f-motion.com/app/` (also `/` and `/**`).
+   The studio sends `emailRedirectTo=https://f-motion.com/app/`.
+   Fotium Edit for a user already signed in on fotium.vip is a separate JWT
+   (`SUPABASE_ISSUER_EXTRA` / `SUPABASE_JWKS_URL_EXTRA` on the API).
+3. Record F-Motion `SUPABASE_ISSUER`, `SUPABASE_AUDIENCE`, `SUPABASE_JWKS_URL`.
+4. Record F-Motion `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (browser
+   key only). `npm run deploy:pages` refuses Fotium's Supabase host.
 5. In **Authentication → Providers → Email**, disable new-user sign-ups for
    this private demo. Existing invited users can still request magic links.
 6. In **Authentication → Users**, copy each invited user's UUID. The API
@@ -311,8 +307,9 @@ npm run deploy:pages -- --project-name <pages-project-name>
 
 The wrapper builds and verifies first, then invokes Wrangler from `apps/web`
 with both `dist` and the adjacent `functions` directory discoverable. It
-requires both Supabase browser variables in its environment, refuses demo auth,
-and deploys the production `main` branch. It does not store an account ID,
+requires both F-Motion Supabase browser variables in its environment, refuses
+Fotium's Supabase host, refuses demo auth, and deploys the production `main`
+branch. It does not store an account ID,
 inspect credentials, or run from CI.
 
 Cloudflare may buffer SSE by default on proxied routes; if render progress
@@ -382,11 +379,12 @@ the storage host, fix bucket CORS (§2) before debugging the API.
 | `DATABASE_URL` | API | session-mode Postgres |
 | `QUEUE_DATABASE_URL` | worker | session-mode Postgres (pg-boss) |
 | `R2_ENDPOINT`, `R2_REGION`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | API + worker | private object storage |
-| `SUPABASE_ISSUER`, `SUPABASE_AUDIENCE`, `SUPABASE_JWKS_URL` | API | JWT verification |
+| `SUPABASE_ISSUER`, `SUPABASE_AUDIENCE`, `SUPABASE_JWKS_URL` | API | F-Motion JWT verification |
+| `SUPABASE_ISSUER_EXTRA`, `SUPABASE_JWKS_URL_EXTRA` | API | optional Fotium JWT when Edit hands off a logged-in session |
 | `FENGINE_ACCESS_MODE`, `FENGINE_ALLOWED_USER_IDS` | API | hosted invite-only admission; exact Supabase user UUIDs |
 | `FENGINE_PEXELS_BYOK_ENABLED`, `FENGINE_FAL_BYOK_ENABLED` | API | enable owner-scoped provider connections |
 | `FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION`, `FENGINE_CREDENTIAL_KEY_V<n>` | API + worker (when FAL BYOK on) | encrypt/decrypt user provider credentials |
-| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | web build | Supabase client |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | web build | F-Motion Supabase client only |
 | `VITE_ENABLE_GOOGLE_AUTH` | web build | optional UI flag after Google provider setup |
 | `FENGINE_LOCAL_AUTH` | — | must stay **unset** on every hosted process |
 | `VITE_ALLOW_DEMO_AUTH` | — | must stay **unset** on every hosted web build |

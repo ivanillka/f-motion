@@ -14,7 +14,7 @@ export interface AuthIssuer {
 }
 
 export interface AuthConfig extends AuthIssuer {
-  /** Hosted studio currently signs in through Fotium's Supabase project. */
+  /** Fotium JWTs when Edit opens a draft for a user already signed in on fotium.vip. */
   extra?: AuthIssuer[];
 }
 export type AccountStateLookup = (ownerId: string) => Promise<string | undefined>;

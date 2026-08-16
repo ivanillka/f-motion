@@ -44,6 +44,9 @@ export function assertHostedWebEnvironment(env) {
     || parsed.pathname !== "/" || parsed.search || parsed.hash) {
     throw new Error("VITE_SUPABASE_URL must be a valid HTTPS origin");
   }
+  if (parsed.hostname === "hsasubgxsomjvwdlbexg.supabase.co") {
+    throw new Error("VITE_SUPABASE_URL must be the F-Motion Supabase project, not Fotium");
+  }
   if (publicKey.length < 20 || /\s/.test(publicKey)) {
     throw new Error("VITE_SUPABASE_ANON_KEY is invalid");
   }

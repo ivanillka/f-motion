@@ -99,7 +99,6 @@ function App() {
   const [authBusy, setAuthBusy] = useState(false);
   const [step, setStep] = useState<Step>("sign-in");
   const [email, setEmail] = useState("");
-  const [magicLinkPaste, setMagicLinkPaste] = useState("");
   const [awaitingEmail, setAwaitingEmail] = useState(false);
   const [draft, setDraft] = useState(() => localStorage.getItem("fengine-draft") ?? "");
   const [architecture, setArchitecture] = useState<VideoArchitecture>(defaultVideoArchitecture);
@@ -213,7 +212,6 @@ function App() {
     setPexelsKey("");
     setPexelsBusy(false);
     setFeatureLock(undefined);
-    setMagicLinkPaste("");
     setAwaitingEmail(false);
     setStep("sign-in");
   }
@@ -226,7 +224,7 @@ function App() {
     }
     const callbackError = authCallbackError(location.href);
     const expiredMessage = callbackError === "otp_expired" || callbackError === "access_denied"
-      ? "That sign-in link was already used or expired. Request a new email, then right-click Log In → Copy link and paste it here. Do not open the link if it goes to Fotium."
+      ? "That sign-in link was already used or expired. Request a new email."
       : "";
     let pendingExpired = expiredMessage;
     if (pendingExpired) {
@@ -358,25 +356,10 @@ function App() {
         setAwaitingEmail(false);
       } else {
         setAwaitingEmail(true);
-        setStatus("Check your email. Right-click Log In → Copy link, then paste it here. Do not open the link if it goes to Fotium.");
+        setStatus("Check your email and open the link. It should return to this studio.");
       }
     } catch {
       setStatus("Sign-in link could not be sent.");
-    } finally {
-      setAuthBusy(false);
-    }
-  }
-
-  async function completePastedMagicLink() {
-    if (!authSetup.gateway) return;
-    setAuthBusy(true);
-    try {
-      await authSetup.gateway.completeAuthCallback(magicLinkPaste);
-      setStatus("");
-      setAwaitingEmail(false);
-      setMagicLinkPaste("");
-    } catch {
-      setStatus("That login link could not be verified. Right-click the email Log In link → Copy link, then paste it here.");
     } finally {
       setAuthBusy(false);
     }
@@ -1446,17 +1429,9 @@ function App() {
         : "Sign in to keep projects private."}</p>
       <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
       <button disabled={authBusy || !authSetup.gateway || (Boolean(import.meta.env.VITE_SUPABASE_URL) && !email.trim())} onClick={() => void magicLink()}>Email me a magic link</button>
-      {Boolean(import.meta.env.VITE_SUPABASE_URL) && <>
-        <p>{awaitingEmail
-          ? "Email sent. The message is a link, not a code. Right-click Log In → Copy link address, paste it below. Do not open it if it goes to Fotium."
-          : "The email has a login link, not a code. Right-click Log In → Copy link and paste it here (skip opening fotium.vip)."}</p>
-        <label>Paste login link<input
-          value={magicLinkPaste}
-          onChange={(event) => setMagicLinkPaste(event.target.value)}
-          placeholder="Right-click Log In in the email → Copy link"
-        /></label>
-        <button className="secondary" disabled={authBusy || !magicLinkPaste.trim()} onClick={() => void completePastedMagicLink()}>Complete pasted link</button>
-      </>}
+      {Boolean(import.meta.env.VITE_SUPABASE_URL) && <p>{awaitingEmail
+        ? "Email sent. Open the link to finish sign-in on this studio."
+        : "Open the email link to finish sign-in."}</p>}
       {import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "1"
         ? <button className="secondary" disabled={authBusy || !authSetup.gateway} onClick={() => void googleSignIn()}>Continue with Google</button>
         : null}
