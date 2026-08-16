@@ -226,10 +226,11 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const importedMediaIds: string[] = [];
       if (draft.mediaUrls.length) {
         if (!options.media) return response.status(503).json({ type: "unavailable", message: "media import unavailable" });
+        const media = options.media;
         if (draft.mediaUrls.some((url) => !externalMediaUrlAllowed(url, integration.mediaOrigins))) {
           return response.status(422).json({ type: "validation", message: "media origin is not allowed" });
         }
-        for (const url of draft.mediaUrls) {
+        const imported = await Promise.all(draft.mediaUrls.map(async (url) => {
           const id = mediaIdForExternalImport(projectId, url);
           try {
             await importExternalMedia(
@@ -237,19 +238,20 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
               projectId,
               id,
               url,
-              options.media.repository,
-              options.media.store,
+              media.repository,
+              media.store,
               options.externalMediaRequest,
               undefined,
               integration.mediaOrigins
             );
-            importedMediaIds.push(id);
+            return id;
           } catch (error) {
-            if (!(error instanceof ExternalMediaImportError)) throw error;
-            // Open the draft even when one host still is 403/HTML/quarantined.
-            console.error("external media import skipped", error.message);
+            // Open the draft even when one host still is 403/HTML/quarantined/R2-flaky.
+            console.error("external media import skipped", error instanceof Error ? error.message : error);
+            return undefined;
           }
-        }
+        }));
+        importedMediaIds.push(...imported.filter((id): id is string => Boolean(id)));
       }
       const textOnlyImportedDraft = project.scenes.length > 0 && project.scenes.every((scene) => !scene.media_id);
       const legacyAutoPrompts = project.scenes.length > 0 && project.scenes.every((scene) =>

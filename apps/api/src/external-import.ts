@@ -67,8 +67,8 @@ function mediaUrlItem(item: unknown): string {
 
 function mediaUrls(value: unknown): string[] {
   if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > 8) throw new Error("invalid media_urls");
-  const urls = value.map((item) => {
+  if (!Array.isArray(value)) throw new Error("invalid media_urls");
+  const urls = value.slice(0, 8).map((item) => {
     const href = mediaUrlItem(item);
     let url: URL;
     try { url = new URL(href); } catch { throw new Error("invalid media_urls"); }

@@ -550,10 +550,7 @@ export async function importExternalMedia(
     return { ...asset, state: "inspecting" };
   } catch (error) {
     if (error instanceof ExternalMediaImportError) throw error;
-    if (error instanceof TypeError || (error instanceof Error && error.name === "AbortError")) {
-      throw new ExternalMediaImportError();
-    }
-    throw error;
+    throw new ExternalMediaImportError(error instanceof Error ? error.message : "external media import failed");
   } finally {
     clearTimeout(timeout);
     controller.abort();

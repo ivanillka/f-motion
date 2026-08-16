@@ -91,6 +91,12 @@ test("external drafts validate structured architecture and preserve distinct vis
   ]);
   assert.throws(() => parseExternalDraft({ external_id: "queue:media", title: "Media", media_urls: ["http://localhost/a.jpg"] }), /media_urls/);
   assert.throws(() => parseExternalDraft({ external_id: "bad/id", title: "Title" }), /external_id/);
+  const nine = Array.from({ length: 9 }, (_, index) => `https://media.fotium.vip/galleries/look/${index + 1}.jpg`);
+  assert.deepEqual(parseExternalDraft({
+    external_id: "queue:nine",
+    title: "Nine stills",
+    media_urls: nine
+  }).mediaUrls, nine.slice(0, 8));
 });
 
 test("trusted imports create one editable project and retry idempotently", async () => {
@@ -158,6 +164,12 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
   const stored = [];
   const store = {
     async put(key, body, type, bytes) {
+      if (key.includes(projectIdForExternalImport(
+        projectIdForExternalImport(ownerId, "followup:store"),
+        "https://media.fotium.vip/galleries/look/store.jpg"
+      ))) {
+        throw new Error("R2 unavailable");
+      }
       let total = 0;
       for await (const chunk of body) total += chunk.byteLength;
       assert.equal(total, bytes);
@@ -261,6 +273,14 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     const partialProject = projects.get(ownerId, partial.project_id);
     assert.ok(partialProject.scenes.every((scene) => scene.media_id));
     assert.equal(new Set(partialProject.scenes.map((scene) => scene.media_id)).size, 1);
+
+    const storeBroke = await request({
+      ...baseBody,
+      external_id: "followup:store",
+      media_urls: ["https://media.fotium.vip/galleries/look/store.jpg"]
+    });
+    assert.equal(storeBroke.status, 201);
+    assert.match((await storeBroke.json()).project_url, /\/app\/\?project=/);
 
     const bounced = await request({
       ...baseBody,
