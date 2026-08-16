@@ -62,6 +62,12 @@ export class AuthConfigurationError extends Error {
   }
 }
 
+/** Hosted studio is /app/; local Vite stays at /. Used as the magic-link return origin. */
+export function studioOrigin(href: string): string {
+  const url = new URL(href);
+  return new URL(url.pathname.startsWith("/app") ? "/app/" : "/", url).href;
+}
+
 function callbackUrl(origin: string): string {
   return `${origin.replace(/\/+$/, "")}/`;
 }

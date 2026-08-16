@@ -123,7 +123,9 @@ test("build puts marketing at site root and studio under /app", async () => {
   const app = await readFile(new URL("app/index.html", dist), "utf8");
   assert.match(home, /Vertical reels from your own media/);
   assert.match(home, /glitch-logo/);
-  assert.match(home, /\/app\/\?project=/);
+  assert.match(home, /new URL\("\/app\/"/);
+  assert.match(home, /searchParams\.set\("project"/);
+  assert.match(home, /params\.get\("code"\)/);
   assert.match(app, /\/app\/assets\//);
   assert.match(redirects, /\/web\/ \/\s*301/);
 });
@@ -145,7 +147,8 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   ]) {
     assert.match(home, new RegExp(phrase.replace(/[→]/g, "\\$&")));
   }
-  assert.match(home, /\/app\/\?project=/);
+  assert.match(home, /new URL\("\/app\/"/);
+  assert.match(home, /searchParams\.set\("project"/);
   for (const phrase of [
     "Embed cinematic creation in your product",
     "Integration Recipes",
@@ -196,6 +199,9 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.match(css, /\.skip-link/);
   const headers = await readFile(new URL("../public/_headers", import.meta.url), "utf8");
   assert.match(headers, /Content-Security-Policy/);
+  assert.match(headers, /connect-src[^;]*https:\/\/\*\.supabase\.co/);
+  assert.match(headers, /connect-src[^;]*wss:\/\/\*\.supabase\.co/);
+  assert.match(home, /params\.get\("code"\)/);
   assert.match(headers, /X-Content-Type-Options:\s*nosniff/);
   for (const asset of [
     "hero-reel.jpg",

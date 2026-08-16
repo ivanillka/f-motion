@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AuthConfigurationError, createAuthGateway, parseAuthCallback } from "../src/auth.ts";
+import { AuthConfigurationError, createAuthGateway, parseAuthCallback, studioOrigin } from "../src/auth.ts";
+
+test("hosted /app/ magic links return to the studio, not the marketing root", () => {
+  assert.equal(studioOrigin("https://f-motion.com/app/?project=59af46af-b82d-5fda-a837-652b88dcb50f"), "https://f-motion.com/app/");
+  assert.equal(studioOrigin("https://f-motion.com/app/"), "https://f-motion.com/app/");
+  assert.equal(studioOrigin("http://localhost:5173/"), "http://localhost:5173/");
+});
 
 function memoryStorage(initial = {}) {
   const values = new Map(Object.entries(initial));

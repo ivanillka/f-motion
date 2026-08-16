@@ -16,7 +16,7 @@ import {
   type SceneMediaView,
   type VideoArchitecture
 } from "./api";
-import { AuthConfigurationError, createAuthGateway } from "./auth";
+import { AuthConfigurationError, createAuthGateway, studioOrigin } from "./auth";
 import { clearImportedProject, isImportedProjectId, rememberImportedProject } from "./imported-project";
 import "./style.css";
 
@@ -83,7 +83,7 @@ function App() {
         gateway: createAuthGateway({
           url: import.meta.env.VITE_SUPABASE_URL,
           publicKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          origin: location.origin,
+          origin: studioOrigin(location.href),
           allowDemo: Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1"
         })
       };
