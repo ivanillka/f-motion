@@ -6,6 +6,11 @@ export interface Concept {
   id: string;
   title: string;
   treatment: string;
+  hook: string;
+  beat_summary: string;
+  duration_seconds: 15 | 30 | 45;
+  scene_count: 4 | 5 | 6;
+  media_direction: string;
 }
 
 export interface RenderProfile {
@@ -188,12 +193,64 @@ export function buildStoryboardDraft(
 }
 
 export function conceptsFor(brief: ProjectSnapshot["brief"]): [Concept, Concept, Concept] {
-  const subject = brief.purpose.trim().slice(0, 80);
+  const subject = brief.purpose.trim().slice(0, 80) || "your subject";
+  const short = subject.slice(0, 48);
   return [
-    { id: "direct", title: "Direct", treatment: `${subject}: lead with the result` },
-    { id: "story", title: "Story", treatment: `${subject}: establish, turn, resolve` },
-    { id: "rhythm", title: "Rhythm", treatment: `${subject}: concise visual beats` }
+    {
+      id: "direct",
+      title: "Direct",
+      treatment: `${subject}: lead with the result`,
+      hook: `Lead with the outcome, then show how ${short} gets there.`,
+      beat_summary: "Problem → impact → friction → solution → proof → result",
+      duration_seconds: 15,
+      scene_count: 4,
+      media_direction: "Concrete people and product shots; search for the result early."
+    },
+    {
+      id: "story",
+      title: "Story",
+      treatment: `${subject}: establish, turn, resolve`,
+      hook: `Establish the world of ${short}, turn once, then resolve.`,
+      beat_summary: "Establish → detail → develop → turn → close",
+      duration_seconds: 30,
+      scene_count: 5,
+      media_direction: "Wide establishing frames, human detail, then a decisive visual turn."
+    },
+    {
+      id: "rhythm",
+      title: "Rhythm",
+      treatment: `${subject}: concise visual beats`,
+      hook: `Cut through ${short} as short, punchy visual beats.`,
+      beat_summary: "Start → progress → momentum → turn → result → today",
+      duration_seconds: 45,
+      scene_count: 6,
+      media_direction: "Chronological places and action; keep every beat imageable and brief."
+    }
   ];
+}
+
+/**
+ * Deterministic first storyboard from a chosen concept and brief.
+ * ponytail: formulaic concept→architecture mapping is the ceiling; upgrade to a
+ * host-owned planner only after this licensed-stock journey is measured.
+ */
+export function planStoryboardScenes(
+  brief: ProjectSnapshot["brief"],
+  conceptId: string,
+  makeId: () => string
+): Scene[] {
+  const concept = conceptsFor(brief).find(({ id }) => id === conceptId);
+  if (!concept) throw new Error("unknown concept");
+  const architecture: VideoArchitecture = {
+    goal: conceptId === "direct" ? "promote" : "story",
+    audience: "general",
+    structure: conceptId === "story" ? "story_arc" : conceptId === "rhythm" ? "chronological" : "problem_solution",
+    tone: "cinematic",
+    pace: conceptId === "rhythm" ? "fast" : "balanced",
+    durationSeconds: concept.duration_seconds,
+    media: "stock"
+  };
+  return buildStoryboardDraft(brief.purpose, makeId, architecture);
 }
 
 function boundedScene(scene: Scene): Scene {
@@ -368,17 +425,10 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
   if (command.kind === "select_concept") {
     const conceptId = String(command.payload.concept_id ?? "");
     if (!conceptsFor(snapshot.brief).some(({ id }) => id === conceptId)) throw new Error("unknown concept");
-    const scenes = snapshot.scenes.length ? snapshot.scenes : [{
-      id: `${snapshot.id}-scene-1`,
-      order: 0,
-      caption: snapshot.brief.purpose.trim().slice(0, 180),
-      duration_ms: 3000,
-      focal_x: 0.5,
-      focal_y: 0.5,
-      motion: "none" as const,
-      audio_level: 1,
-      ducking: false
-    }];
+    let sceneSerial = 0;
+    const scenes = snapshot.scenes.length
+      ? snapshot.scenes
+      : planStoryboardScenes(snapshot.brief, conceptId, () => `${snapshot.id}-scene-${++sceneSerial}`);
     return { ...snapshot, selected_concept_id: conceptId, scenes, revision: snapshot.revision + 1 };
   }
   if (command.kind === "update_scene") {

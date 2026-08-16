@@ -1,6 +1,8 @@
 import {
   buildStoryboardDraft,
+  conceptsFor,
   defaultVideoArchitecture,
+  type Concept,
   type VideoArchitecture
 } from "@f-engine/reel-engine";
 
@@ -32,12 +34,6 @@ export interface ProjectSummary {
   brief: ProjectSnapshot["brief"];
 }
 
-export interface Concept {
-  id: string;
-  title: string;
-  treatment: string;
-}
-
 export interface SceneMediaView {
   id: string;
   state: "admitted" | "inspecting" | "ready" | "quarantined" | "rejected";
@@ -54,12 +50,20 @@ export interface SceneMediaView {
     attributionUrl: string;
     previewUrl?: string;
   };
+  generation?: {
+    source: "FAL";
+    model: string;
+    generatedAt: string;
+    derivedFromImage?: true;
+  };
   previewUrl?: string;
 }
 
 export {
   buildStoryboardDraft,
+  conceptsFor,
   defaultVideoArchitecture,
+  type Concept,
   type VideoArchitecture
 };
 
@@ -134,6 +138,11 @@ export class ApiResponseError extends Error {
     super(String(body.message ?? `request failed (${status})`));
     this.status = status;
     this.body = body;
+  }
+
+  /** Stable wire `type` when the API returned a typed error body. */
+  get type(): string | undefined {
+    return typeof this.body.type === "string" ? this.body.type : undefined;
   }
 }
 

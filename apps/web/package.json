@@ -3,13 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && node scripts/promote-marketing-root.mjs",
     "dev": "vite",
     "test": "npm run build && node --test test/*.test.mjs"
   },
   "dependencies": {
     "@f-engine/reel-engine": "^0.1.0",
     "@supabase/supabase-js": "2.111.0",
+    "gsap": "^3.15.0",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },

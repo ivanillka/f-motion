@@ -69,7 +69,12 @@ const mediaRepository = {
     if (asset.state === "inspecting" && !inspectionPolls.has(id)) {
       inspectionPolls.set(id, 1);
       asset.state = "ready";
-      asset.detected = { type: asset.declaredType, bytes: asset.maxBytes };
+      asset.detected = { type: asset.declaredType, bytes: asset.maxBytes, width: 720, height: 1280 };
+      if (asset.declaredType.startsWith("image/") || asset.declaredType === "video/mp4") {
+        asset.sealedObjectKey = asset.sealedObjectKey
+          ?? `projects/${projectId}/media-sealed/${id}`;
+      }
+      return structuredClone(asset);
     }
     return snapshot;
   },
@@ -145,7 +150,167 @@ const pexelsCredentials = {
   async disconnect() {},
   async client() { return media.pexels; }
 };
-const api = createTestApp({ ownerId: "e2e-owner", projects, renders, media, pexelsCredentials }).listen(43140, "127.0.0.1");
+
+function falJobView(job) {
+  const {
+    ownerId: _ownerId,
+    projectId: _projectId,
+    resultMediaId: _resultMediaId,
+    ...view
+  } = job;
+  return structuredClone(view);
+}
+const falJobs = new Map();
+const falPolls = new Map();
+const falCredentials = {
+  async status() { return { provider: "fal", connected: true, hint: "abcd" }; },
+  async connect() { return { provider: "fal", connected: true, hint: "abcd" }; },
+  async test() { return { provider: "fal", connected: true, hint: "abcd" }; },
+  async disconnect() {}
+};
+const falGeneration = {
+  async quoteVideo(ownerId, projectId, sceneId, sourceMediaId, motionPrompt) {
+    const job = {
+      id: randomUUID(),
+      project_id: projectId,
+      scene_id: sceneId,
+      kind: "image_to_video",
+      endpoint_id: "fal-ai/minimax/hailuo-2.3-fast/standard/image-to-video",
+      state: "quoted",
+      cancel_requested: false,
+      prompt: String(motionPrompt).trim(),
+      quote: {
+        endpoint_id: "fal-ai/minimax/hailuo-2.3-fast/standard/image-to-video",
+        unit_price: 0.19,
+        unit: "video",
+        currency: "USD",
+        estimated_total: 0.19
+      },
+      quote_expires_at: new Date(Date.now() + 600_000).toISOString(),
+      source_media_id: sourceMediaId,
+      ownerId,
+      projectId
+    };
+    falJobs.set(job.id, job);
+    return falJobView(job);
+  },
+  async quoteImage(ownerId, projectId, sceneId, prompt) {
+    const job = {
+      id: randomUUID(),
+      project_id: projectId,
+      scene_id: sceneId,
+      kind: "image",
+      endpoint_id: "fal-ai/flux/schnell",
+      state: "quoted",
+      cancel_requested: false,
+      prompt: String(prompt).trim(),
+      quote: {
+        endpoint_id: "fal-ai/flux/schnell",
+        unit_price: 0.003,
+        unit: "image",
+        currency: "USD",
+        estimated_total: 0.003
+      },
+      quote_expires_at: new Date(Date.now() + 600_000).toISOString(),
+      ownerId,
+      projectId
+    };
+    falJobs.set(job.id, job);
+    return falJobView(job);
+  },
+  async confirm(ownerId, jobId) {
+    const job = falJobs.get(jobId);
+    if (!job || job.ownerId !== ownerId) throw Object.assign(new Error("not found"), { status: 404 });
+    if (job.state === "quoted") job.state = "queued";
+    return falJobView(job);
+  },
+  async get(ownerId, jobId) {
+    const job = falJobs.get(jobId);
+    if (!job || job.ownerId !== ownerId) return undefined;
+    const polls = (falPolls.get(jobId) ?? 0) + 1;
+    falPolls.set(jobId, polls);
+    if (job.state === "queued" || job.state === "running" || job.state === "inspecting") {
+      if (polls === 1) job.state = "running";
+      else if (polls === 2) job.state = "inspecting";
+      else {
+        const assetId = job.resultMediaId ?? randomUUID();
+        job.resultMediaId = assetId;
+        if (!mediaAssets.has(assetId)) {
+          await mediaRepository.insert({
+            id: assetId,
+            ownerId,
+            projectId: job.projectId,
+            quarantineObjectKey: `projects/${job.projectId}/media-quarantine/${assetId}`,
+            sealedObjectKey: `projects/${job.projectId}/media-sealed/fal-${assetId}`,
+            state: "ready",
+            declaredType: job.kind === "image_to_video" ? "video/mp4" : "image/jpeg",
+            maxBytes: 4096,
+            detected: job.kind === "image_to_video"
+              ? { type: "video/mp4", bytes: 4096, width: 720, height: 1280, duration_ms: 6000 }
+              : { type: "image/jpeg", bytes: 4096, width: 720, height: 1280 },
+            attribution: {
+              source: "FAL",
+              model: job.kind === "image_to_video"
+                ? "fal-ai/minimax/hailuo-2.3-fast/standard/image-to-video"
+                : "fal-ai/flux/schnell",
+              ...(job.kind === "image_to_video" && job.source_media_id
+                ? { derivedFromMediaId: job.source_media_id }
+                : {}),
+              generatedAt: new Date().toISOString()
+            }
+          });
+        }
+        job.state = "ready";
+        const isVideo = job.kind === "image_to_video";
+        job.result_media = {
+          id: assetId,
+          state: "ready",
+          detected: isVideo
+            ? { type: "video/mp4", bytes: 4096, width: 720, height: 1280, duration_ms: 6000 }
+            : { type: "image/jpeg", bytes: 4096, width: 720, height: 1280 },
+          generation: {
+            source: "FAL",
+            model: isVideo
+              ? "fal-ai/minimax/hailuo-2.3-fast/standard/image-to-video"
+              : "fal-ai/flux/schnell",
+            ...(isVideo ? { derivedFromImage: true } : {}),
+            generatedAt: new Date().toISOString()
+          },
+          previewUrl: isVideo
+            ? "http://127.0.0.1:43141/downloads/fal-video"
+            : "https://e2e-images.invalid/fal.jpg"
+        };
+      }
+    }
+    return falJobView(job);
+  },
+  async cancel(ownerId, jobId) {
+    const job = falJobs.get(jobId);
+    if (!job || job.ownerId !== ownerId) throw Object.assign(new Error("not found"), { status: 404 });
+    job.cancel_requested = true;
+    if (job.state === "quoted" || job.state === "queued") job.state = "cancelled";
+    return falJobView(job);
+  }
+};
+const mediaStore = media.store;
+media.store = {
+  ...mediaStore,
+  async signedGet(objectKey) {
+    if (String(objectKey).includes("fal-") || String(objectKey).includes("media-sealed")) {
+      return "https://e2e-images.invalid/fal.jpg";
+    }
+    return mediaStore.signedGet(objectKey);
+  }
+};
+const api = createTestApp({
+  ownerId: "e2e-owner",
+  projects,
+  renders,
+  media,
+  pexelsCredentials,
+  falCredentials,
+  falGeneration
+}).listen(43140, "127.0.0.1");
 const web = spawn("npm", ["run", "dev", "--workspace", "apps/web", "--", "--host", "127.0.0.1", "--port", "4173"], { stdio: "inherit" });
 
 const stop = () => {

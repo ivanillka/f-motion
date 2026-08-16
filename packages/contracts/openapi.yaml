@@ -1,112 +1,412 @@
 openapi: 3.1.0
 info:
-  title: F-Engine / F-Motion Reference API
+  title: F-Engine Reference API
   version: 1.0.0
-  description: |
-    Versioned machine API. `/v1` and `/api` are aliases.
-    Authenticate with a Supabase JWT (browser) or an owner API key
-    (`Authorization: Bearer fm_…`). Host usage is metered in render_units
-    (preview=1, final=2). FAL/Pexels stay BYOK and are never resold.
-security:
-  - bearerAuth: []
+  description: >
+    Language-neutral wire contract for the reference host. Production serves
+    these operations under `/api` and identical `/v1` aliases. Schema version 1
+    remains additive-only.
+servers:
+  - url: /api
+    description: Current production prefix
+  - url: /v1
+    description: Versioned compatibility alias (same handlers)
 paths:
-  /v1/me/usage:
+  /healthz:
     get:
-      summary: Remaining host usage balance
+      operationId: healthz
+      security: []
       responses:
         "200":
-          description: Current balance and unit costs
+          description: Process is alive
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/UsageView" }
-        "401": { description: Unauthorized }
-  /v1/me/api-keys:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+  /readyz:
     get:
-      summary: List owner API keys (hints only)
+      operationId: readyz
+      security: []
       responses:
         "200":
-          description: Active and revoked key metadata
+          description: Dependencies are ready
           content:
             application/json:
-              schema:
-                type: object
-                required: [keys]
-                properties:
-                  keys:
-                    type: array
-                    items: { $ref: "#/components/schemas/ApiKeyView" }
+              schema: { $ref: "#/components/schemas/ReadyStatus" }
+        "503":
+          description: Dependencies unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReadyStatus" }
+  /integrations/project-imports:
     post:
-      summary: Create an API key (secret returned once)
+      operationId: importExternalProject
+      security: [{ IntegrationToken: [] }]
       requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200": { $ref: "#/components/responses/ExternalImportResult" }
+        "201": { $ref: "#/components/responses/ExternalImportResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /providers/fal/credential:
+    get:
+      operationId: getFalCredential
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Non-secret FAL credential view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCredentialView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+    put:
+      operationId: putFalCredential
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [api_key]
               properties:
-                label: { type: string, minLength: 1, maxLength: 64 }
+                api_key: { type: string, minLength: 1 }
+              additionalProperties: false
       responses:
-        "201":
-          description: Created key including raw token
+        "200":
+          description: Connected FAL credential view
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/CreatedApiKey" }
-        "422": { description: Invalid label }
-  /v1/me/api-keys/{key_id}:
+              schema: { $ref: "#/components/schemas/ProviderCredentialView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
     delete:
-      summary: Revoke an API key
-      parameters:
-        - name: key_id
-          in: path
-          required: true
-          schema: { type: string }
+      operationId: deleteFalCredential
+      security: [{ BearerAuth: [] }]
       responses:
-        "204": { description: Revoked }
-        "404": { description: Not found }
-  /v1/projects:
-    get:
-      summary: List projects for the authenticated owner
-      responses:
-        "200": { description: Project summaries }
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCredentialView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /providers/fal/credential/test:
     post:
-      summary: Create a project from a brief
+      operationId: testFalCredential
+      security: [{ BearerAuth: [] }]
       responses:
-        "201": { description: Created project and concepts }
-  /v1/projects/{project_id}:
+        "200":
+          description: Credential validated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCredentialView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: FAL not connected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TypedError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /providers/pexels/credential:
     get:
-      summary: Fetch an authoritative project snapshot
-      parameters:
-        - name: project_id
-          in: path
-          required: true
-          schema: { type: string }
+      operationId: getPexelsCredential
+      security: [{ BearerAuth: [] }]
       responses:
-        "200": { description: Project snapshot }
-        "404": { description: Not found }
-  /v1/projects/{project_id}/commands:
+        "200":
+          description: Non-secret Pexels credential view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCredentialView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+    put:
+      operationId: putPexelsCredential
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [api_key]
+              properties:
+                api_key: { type: string, minLength: 1 }
+              additionalProperties: false
+      responses:
+        "200":
+          description: Connected Pexels credential view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCredentialView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+    delete:
+      operationId: deletePexelsCredential
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCredentialView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /providers/pexels/credential/test:
     post:
-      summary: Apply an idempotent command_id at base_revision
+      operationId: testPexelsCredential
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Credential validated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCredentialView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: Pexels not connected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TypedError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /projects:
+    get:
+      operationId: listProjects
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Owner project summaries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [projects]
+                properties:
+                  projects:
+                    type: array
+                    items: { $ref: "#/components/schemas/ProjectSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createProject
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateProjectRequest" }
+      responses:
+        "201":
+          description: Created project and concepts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreatedProject" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /projects/{project_id}:
+    get:
+      operationId: getProject
+      security: [{ BearerAuth: [] }]
       parameters:
-        - name: project_id
-          in: path
-          required: true
-          schema: { type: string }
+        - { $ref: "#/components/parameters/ProjectId" }
+      responses:
+        "200":
+          description: Authoritative project snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectSnapshot" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /projects/{project_id}/commands:
+    post:
+      operationId: applyCommand
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/CommandEnvelope" }
       responses:
-        "200": { description: Authoritative snapshot }
-        "409": { description: Typed stale revision conflict }
-        "422": { description: Invalid command or scene lifecycle transition }
-  /v1/projects/{project_id}/render:
+        "200":
+          description: Authoritative snapshot after command
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectSnapshot" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /projects/{project_id}/media/uploads:
     post:
-      summary: Queue a preview or final render (consumes host usage)
+      operationId: admitUpload
+      security: [{ BearerAuth: [] }]
       parameters:
-        - name: project_id
-          in: path
+        - { $ref: "#/components/parameters/ProjectId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UploadDeclaration" }
+      responses:
+        "201":
+          description: Admitted upload target
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UploadAdmission" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /projects/{project_id}/media/{asset_id}/complete:
+    post:
+      operationId: completeUpload
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+        - { $ref: "#/components/parameters/AssetId" }
+      responses:
+        "200":
+          description: Asset moved to inspecting
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SceneMediaView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /projects/{project_id}/media/{asset_id}:
+    get:
+      operationId: getSceneMedia
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+        - { $ref: "#/components/parameters/AssetId" }
+      responses:
+        "200":
+          description: Safe media view for a scene asset
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SceneMediaView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /pexels/search:
+    get:
+      operationId: searchPexels
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
           required: true
-          schema: { type: string }
+          schema: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        "200":
+          description: Bounded Pexels search results without source download URLs
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PexelsSearchResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /projects/{project_id}/media/pexels:
+    post:
+      operationId: copyPexels
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PexelsCopyRequest" }
+      responses:
+        "201":
+          description: Admitted Pexels copy for inspection
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PexelsCopyResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /projects/{project_id}/media/pexels/auto:
+    post:
+      operationId: autoMatchPexels
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+      responses:
+        "201":
+          description: Auto-matched Pexels asset
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PexelsCopyResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /projects/{project_id}/media/pexels/storyboard:
+    post:
+      operationId: matchStoryboardPexels
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                exclude_pexels_ids:
+                  type: array
+                  items: { type: integer, minimum: 1 }
+              additionalProperties: false
+      responses:
+        "200":
+          description: Per-scene match results without attaching media_ids
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoryboardPexelsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /projects/{project_id}/render:
+    post:
+      operationId: enqueueRender
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
       requestBody:
         required: true
         content:
@@ -114,87 +414,296 @@ paths:
             schema:
               type: object
               required: [kind]
-              additionalProperties: false
               properties:
                 kind: { type: string, enum: [preview, final] }
+              additionalProperties: false
       responses:
-        "202": { description: Render job accepted }
-        "402":
-          description: Host usage quota exceeded
+        "202":
+          description: Queued or coalesced render job
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/QuotaExceeded" }
-        "422": { description: Invalid render kind }
-        "429": { description: Another render is already active }
-  /v1/render-jobs/{job_id}/events:
-    get:
-      summary: Reconnectable SSE progress stream
+              schema: { $ref: "#/components/schemas/RenderJobAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: Invalid kind or incomplete media input
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TypedError" }
+        "429":
+          description: Owner render capacity reached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TypedError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /render-jobs/{job_id}/cancel:
+    post:
+      operationId: cancelRender
+      security: [{ BearerAuth: [] }]
       parameters:
-        - { name: job_id, in: path, required: true, schema: { type: string } }
-        - { name: Last-Event-ID, in: header, schema: { type: string } }
+        - { $ref: "#/components/parameters/JobId" }
       responses:
-        "200": { description: Reconnectable SSE stream }
-  /v1/render-jobs/{job_id}/download:
+        "200":
+          description: Cancellation accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RenderJobState" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /render-jobs/{job_id}/events:
     get:
-      summary: Signed download metadata for a completed render
+      operationId: renderEvents
+      security: [{ BearerAuth: [] }]
       parameters:
-        - { name: job_id, in: path, required: true, schema: { type: string } }
+        - { $ref: "#/components/parameters/JobId" }
+        - name: Last-Event-ID
+          in: header
+          schema: { type: string }
       responses:
-        "200": { description: Signed URL and output metadata }
-        "404": { description: Not found }
+        "200":
+          description: Reconnectable SSE progress stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /render-jobs/{job_id}/download:
+    get:
+      operationId: downloadRender
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/JobId" }
+      responses:
+        "302":
+          description: Redirect to a short-lived owner-scoped download URL
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /download/{job_id}:
+    get:
+      operationId: downloadRenderLegacy
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/JobId" }
+      responses:
+        "302":
+          description: Legacy alias of downloadRender
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
 components:
   securitySchemes:
-    bearerAuth:
+    BearerAuth:
       type: http
       scheme: bearer
-      description: Supabase JWT or F-Motion API key (`fm_…`)
+      bearerFormat: JWT
+    IntegrationToken:
+      type: http
+      scheme: bearer
+  parameters:
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+    AssetId:
+      name: asset_id
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+  responses:
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/TypedError" }
+    Forbidden:
+      description: Account cannot use the API
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/TypedError" }
+    NotFound:
+      description: Resource not found for this owner
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/TypedError" }
+    ValidationError:
+      description: Request failed validation
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/TypedError" }
+    Conflict:
+      description: Stale revision or inadmissible state
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/TypedError" }
+    Unavailable:
+      description: Required dependency is not configured
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/TypedError" }
+    UpstreamError:
+      description: Trusted upstream import failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/TypedError" }
+    ProviderUnavailable:
+      description: Provider connection unavailable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/TypedError" }
+    ExternalImportResult:
+      description: Trusted import result
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [created, project_id, project_url, revision]
+            properties:
+              created: { type: boolean }
+              project_id: { type: string }
+              project_url: { type: string }
+              revision: { type: integer, minimum: 0 }
   schemas:
-    UsageView:
+    HealthStatus:
       type: object
-      required: [unit, balance, free_grant, costs]
+      required: [status]
       properties:
-        unit: { type: string, const: render_unit }
-        balance: { type: integer, minimum: 0 }
-        free_grant: { type: integer, minimum: 0 }
-        costs:
-          type: object
-          required: [preview, final]
-          properties:
-            preview: { type: integer, minimum: 1 }
-            final: { type: integer, minimum: 1 }
-    QuotaExceeded:
+        status: { type: string, const: ok }
+    ReadyStatus:
       type: object
-      required: [type, message]
+      required: [status]
       properties:
-        type: { type: string, const: quota_exceeded }
+        status: { type: string, enum: [ready, unavailable] }
+    TypedError:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum:
+            - unauthorized
+            - forbidden
+            - not_found
+            - validation
+            - conflict
+            - unavailable
+            - upstream
+            - render_capacity
+            - render_input_incomplete
+            - provider_unavailable
+            - fal_not_connected
+            - invalid_provider_credential
+            - pexels_not_connected
         message: { type: string }
-        unit: { type: string, const: render_unit }
-        balance: { type: integer }
-        required: { type: integer }
-    ApiKeyView:
+        current_revision: { type: integer, minimum: 0 }
+      additionalProperties: true
+    ProviderCredentialView:
       type: object
-      required: [id, label, hint, created_at]
+      required: [connected]
+      properties:
+        connected: { type: boolean }
+        hint: { type: string }
+        validated_at: { type: string, format: date-time }
+      additionalProperties: false
+    ProjectSummary:
+      type: object
+      required: [id, revision, brief]
       properties:
         id: { type: string }
-        label: { type: string }
-        hint: { type: string, minLength: 1, maxLength: 4 }
-        created_at: { type: string, format: date-time }
-        revoked_at: { type: string, format: date-time }
-    CreatedApiKey:
-      allOf:
-        - { $ref: "#/components/schemas/ApiKeyView" }
-        - type: object
-          required: [token]
-          properties:
-            token:
-              type: string
-              description: Returned once at creation; never stored in plaintext.
-              pattern: "^fm_[0-9a-f]{64}$"
+        revision: { type: integer, minimum: 0 }
+        brief: { $ref: "#/components/schemas/Brief" }
+    Brief:
+      type: object
+      required: [purpose, audience, tone]
+      properties:
+        purpose: { type: string, minLength: 1 }
+        audience: { type: string, minLength: 1 }
+        tone: { type: string, minLength: 1 }
+    CreateProjectRequest:
+      type: object
+      required: [purpose]
+      properties:
+        purpose: { type: string, minLength: 1 }
+        audience: { type: string }
+        tone: { type: string }
+    CreatedProject:
+      type: object
+      required: [project, concepts]
+      properties:
+        project: { $ref: "#/components/schemas/ProjectSnapshot" }
+        concepts:
+          type: array
+          items: { $ref: "#/components/schemas/Concept" }
+    Concept:
+      type: object
+      required: [id, title, treatment]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        treatment: { type: string }
+    ProjectSnapshot:
+      type: object
+      required: [schema_version, id, owner_id, revision, brief, scenes]
+      properties:
+        schema_version: { type: integer, const: 1 }
+        id: { type: string }
+        owner_id: { type: string }
+        revision: { type: integer, minimum: 0 }
+        brief: { $ref: "#/components/schemas/Brief" }
+        selected_concept_id: { type: string }
+        scenes:
+          type: array
+          items: { $ref: "#/components/schemas/Scene" }
+      additionalProperties: true
+    Scene:
+      type: object
+      required: [id, order, caption, duration_ms, focal_x, focal_y, motion, audio_level, ducking]
+      properties:
+        id: { type: string, minLength: 1 }
+        order: { type: integer, minimum: 0 }
+        caption: { type: string, maxLength: 180 }
+        duration_ms: { type: number, minimum: 500, maximum: 15000 }
+        focal_x: { type: number, minimum: 0, maximum: 1 }
+        focal_y: { type: number, minimum: 0, maximum: 1 }
+        motion: { type: string, enum: [none, push, zoom] }
+        audio_level: { type: number, minimum: 0, maximum: 1 }
+        ducking: { type: boolean }
+        media_id: { type: string, minLength: 1 }
+        visual_prompt:
+          type: string
+          minLength: 1
+          maxLength: 240
+        caption_cues:
+          type: array
+          items: { $ref: "#/components/schemas/CaptionCue" }
+      additionalProperties: true
+    CaptionCue:
+      type: object
+      required: [text, start_ms, end_ms]
+      properties:
+        text: { type: string }
+        start_ms: { type: number, minimum: 0 }
+        end_ms: { type: number, minimum: 0 }
     CommandEnvelope:
       type: object
       required: [command_id, base_revision, client_timestamp, kind, payload]
       properties:
         command_id: { type: string, minLength: 1 }
+        project_id: { type: string }
         base_revision: { type: integer, minimum: 0 }
         client_timestamp: { type: string }
         kind:
@@ -244,22 +753,101 @@ components:
       required: [scene_id]
       properties:
         scene_id: { type: string, minLength: 1 }
-    Scene:
+    UploadDeclaration:
       type: object
-      required: [id, order, caption, duration_ms, focal_x, focal_y, motion, audio_level, ducking]
+      required: [content_type, byte_length]
       properties:
-        id: { type: string, minLength: 1 }
-        order: { type: integer, minimum: 0 }
-        caption: { type: string, maxLength: 180 }
-        duration_ms: { type: number, minimum: 500, maximum: 15000 }
-        focal_x: { type: number, minimum: 0, maximum: 1 }
-        focal_y: { type: number, minimum: 0, maximum: 1 }
-        motion: { type: string, enum: [none, push, zoom] }
-        audio_level: { type: number, minimum: 0, maximum: 1 }
-        ducking: { type: boolean }
-        media_id: { type: string, minLength: 1 }
-        visual_prompt:
+        content_type: { type: string }
+        byte_length: { type: integer, minimum: 1 }
+    UploadAdmission:
+      type: object
+      required: [asset, upload]
+      properties:
+        asset: { $ref: "#/components/schemas/SceneMediaView" }
+        upload:
+          type: object
+          required: [url, headers]
+          properties:
+            url: { type: string }
+            headers: { type: object, additionalProperties: { type: string } }
+    SceneMediaView:
+      type: object
+      required: [id, state]
+      properties:
+        id: { type: string }
+        state:
           type: string
-          minLength: 1
-          maxLength: 240
-          description: Search or generation intent, separate from viewer-facing caption copy.
+          enum: [admitted, inspecting, ready, quarantined, rejected]
+        detected:
+          type: object
+          additionalProperties: true
+        attribution:
+          type: object
+          additionalProperties: true
+        previewUrl: { type: string }
+      additionalProperties: true
+    PexelsSearchResult:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    PexelsCopyRequest:
+      type: object
+      required: [query, id]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 100 }
+        id: { type: integer }
+    PexelsCopyResult:
+      type: object
+      required: [asset]
+      properties:
+        asset: { $ref: "#/components/schemas/SceneMediaView" }
+        match: { type: object, additionalProperties: true }
+        query: { type: string }
+      additionalProperties: true
+    StoryboardPexelsResult:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            required: [scene_id, state]
+            properties:
+              scene_id: { type: string }
+              state: { type: string, enum: [matched, no_result, skipped] }
+              asset: { $ref: "#/components/schemas/SceneMediaView" }
+              match: { type: object, additionalProperties: true }
+              query: { type: string }
+              message: { type: string }
+            additionalProperties: true
+    RenderJobAccepted:
+      type: object
+      required: [job_id, project_id, revision, kind, state]
+      properties:
+        job_id: { type: string }
+        project_id: { type: string }
+        revision: { type: integer, minimum: 0 }
+        kind: { type: string, enum: [preview, final] }
+        state: { type: string }
+    RenderJobState:
+      type: object
+      required: [job_id, state]
+      properties:
+        job_id: { type: string }
+        state: { type: string }
+    RenderProgressEvent:
+      type: object
+      required: [event_id, phase, percent]
+      properties:
+        event_id: { type: string }
+        phase:
+          type: string
+          enum: [queued, preparing, rendering, uploading, complete, cancelled, failed]
+        percent: { type: number, minimum: 0, maximum: 100 }
+      additionalProperties: true

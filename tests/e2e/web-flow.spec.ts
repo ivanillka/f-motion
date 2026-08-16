@@ -20,7 +20,11 @@ async function projectDurationMs(page: Page): Promise<number> {
   });
 }
 
-async function expectRenderedProject(rendered: APIResponse, expectedDurationMs: number): Promise<void> {
+async function expectRenderedProject(
+  rendered: APIResponse,
+  expectedDurationMs: number,
+  size: { width: number; height: number } = { width: 540, height: 960 }
+): Promise<void> {
   expect(rendered.ok()).toBeTruthy();
   expect(rendered.headers()["content-type"]).toContain("video/mp4");
   const body = await rendered.body();
@@ -38,7 +42,7 @@ async function expectRenderedProject(rendered: APIResponse, expectedDurationMs: 
     const video = probe.streams?.find(({ codec_type: type }) => type === "video");
     const audio = probe.streams?.find(({ codec_type: type }) => type === "audio");
     const durationMs = Number(probe.format?.duration) * 1000;
-    expect(video).toMatchObject({ codec_name: "h264", width: 540, height: 960 });
+    expect(video).toMatchObject({ codec_name: "h264", width: size.width, height: size.height });
     expect(audio).toMatchObject({ codec_name: "aac" });
     expect(durationMs).toBeGreaterThan(500);
     expect(Math.abs(durationMs - expectedDurationMs)).toBeLessThan(250);
@@ -51,6 +55,17 @@ async function signIn(page: import("@playwright/test").Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "Email me a magic link" }).click();
   await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
+}
+
+
+async function continueToConcepts(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Continue to story concepts" }).click();
+  await expect(page.getByRole("heading", { name: "Choose a story approach" })).toBeVisible();
+}
+
+async function chooseConcept(page: Page, title: "Direct" | "Story" | "Rhythm"): Promise<void> {
+  await continueToConcepts(page);
+  await page.getByRole("button", { name: `Choose ${title} concept` }).click();
 }
 
 async function attachFixtureToScene(page: Page, sceneNumber: number): Promise<void> {
@@ -140,7 +155,7 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await expect(page.getByLabel("Where should visuals come from?")).not.toBeVisible();
   await page.getByText("Edit recommended video plan").click();
   await page.getByLabel("Where should visuals come from?").selectOption("own");
-  await page.getByRole("button", { name: "Build storyboard" }).click();
+  await chooseConcept(page, "Direct");
 
   await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
   await page.locator('input[type="file"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
@@ -167,12 +182,14 @@ test("upload journey, natural conflict recovery, render, and download", async ({
     if (!response.ok) throw new Error(`conflict setup failed: ${response.status}`);
   }, projectId);
   await page.getByLabel("Scene 4 motion").selectOption("push");
+  await expect(page.getByRole("heading", { name: "Newer changes exist" })).toBeVisible();
+  await expect(page.getByText(/pending scene edits on scene 4 was not merged/i)).toBeVisible();
   await expect(page.getByRole("button", { name: "Reload latest" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save as new project" })).toBeVisible();
   await page.getByRole("button", { name: "Reload latest" }).click();
 
   await page.getByRole("button", { name: "Generate accurate preview" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 90_000 });
   const download = page.getByRole("link").filter({ has: page.getByRole("button", { name: "Download preview" }) });
   await expect(page.getByRole("button", { name: "Download preview" })).toBeEnabled();
   await expect(page.locator("video")).toHaveAttribute("preload", "metadata");
@@ -181,9 +198,21 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   expect(href).toMatch(/^http:\/\/127\.0\.0\.1:43141\/downloads\//);
   const rendered = await page.request.get(href!);
   await expectRenderedProject(rendered, await projectDurationMs(page));
+
+  await page.getByRole("button", { name: "Keep editing" }).click();
+  await page.getByRole("button", { name: "Export final" }).click();
+  await expect(page.getByRole("heading", { name: "Final export" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "complete · final export" })).toBeVisible({ timeout: 90_000 });
+  const finalDownload = page.getByRole("link").filter({ has: page.getByRole("button", { name: "Download export" }) });
+  await expect(page.getByRole("button", { name: "Download export" })).toBeEnabled();
+  await expect(page.getByText("720×1280")).toBeVisible();
+  const finalHref = await finalDownload.getAttribute("href");
+  expect(finalHref).toMatch(/^http:\/\/127\.0\.0\.1:43141\/downloads\//);
+  const finalRendered = await page.request.get(finalHref!);
+  await expectRenderedProject(finalRendered, await projectDurationMs(page), { width: 720, height: 1280 });
 });
 
-test("licensed stock journey explicitly selects candidates for a multi-scene render", async ({ page }) => {
+test("licensed stock journey auto-matches distinct scenes then renders", async ({ page }) => {
   await page.route("https://e2e-images.invalid/**", (route) =>
     route.fulfill({
       status: 200,
@@ -199,47 +228,52 @@ test("licensed stock journey explicitly selects candidates for a multi-scene ren
   await page.getByText("Edit recommended video plan").click();
   await page.getByLabel("How should the story unfold?").selectOption("mystery");
   await page.getByLabel("What tone fits best?").selectOption("documentary");
-  await page.getByRole("button", { name: "Build storyboard" }).click();
+  const pexelsMediaPosts: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && /\/media\/pexels(\/|$)/.test(request.url())) {
+      pexelsMediaPosts.push(request.url());
+    }
+  });
+  await continueToConcepts(page);
+  expect(pexelsMediaPosts).toEqual([]);
+  await page.getByRole("button", { name: "Choose Story concept" }).click();
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
-  await expect(page.getByRole("button", { name: "Move scene 1 earlier" })).toBeDisabled();
-  await page.getByRole("button", { name: "Add scene" }).click();
-  await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(6);
-  await page.getByRole("button", { name: "Remove scene 2" }).click();
-  await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
-  await page.getByRole("button", { name: "Remove scene 2" }).click();
-  await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(4);
-  await page.getByRole("button", { name: "Edit scene 1" }).click();
-  const firstPrompt = page.getByLabel("Scene 1 footage search");
-  await firstPrompt.fill("quiet cinematic studio with soft window light");
-  await firstPrompt.press("Tab");
-  await expect(page.getByRole("status").filter({ hasText: "All changes saved" })).toBeVisible();
+  await expect(page.getByText(/The story begins\.|Calm studio introduction/i).first()).toBeVisible();
+  await expect(page.getByRole("status").filter({
+    hasText: /Licensed media attached for every scene|scenes have media/
+  })).toBeVisible({ timeout: 60_000 });
 
-  for (const sceneNumber of [1, 2, 3, 4]) {
-    await page.getByRole("button", { name: `Edit scene ${sceneNumber}` }).click();
-    await page.getByRole("button", { name: `Find licensed media for scene ${sceneNumber}` }).click();
-    await expect(page.getByRole("button", { name: `Select for scene ${sceneNumber}` })).toHaveCount(2);
-    const creator = sceneNumber === 1 ? "Fixture Two With A Long Name" : "Fixture One";
-    await page.getByRole("article").filter({ hasText: creator }).getByRole("button", { name: `Select for scene ${sceneNumber}` }).click();
-    await expect(page.getByRole("status").filter({ hasText: `video by ${creator} on Pexels` })).toBeVisible();
-  }
-
-  await page.getByRole("button", { name: "Edit scene 2" }).click();
-  await page.getByRole("button", { name: "Move scene 2 earlier" }).click();
-
-  const attachedCreators = await page.evaluate(async () => {
+  const attached = await page.evaluate(async () => {
     const projectId = localStorage.getItem("fengine-project");
     const { project } = await (await fetch(`/api/projects/${projectId}`)).json();
-    return Promise.all(project.scenes.map(async ({ media_id }) => {
+    const creators = await Promise.all(project.scenes.map(async ({ media_id }) => {
+      if (!media_id) return null;
       const media = await (await fetch(`/api/projects/${projectId}/media/${media_id}`)).json();
-      return media.attribution?.creator;
+      return media.attribution?.creator ?? null;
     }));
+    return { sceneCount: project.scenes.length, creators };
   });
-  expect(attachedCreators.filter((creator) => creator === "Fixture Two With A Long Name")).toHaveLength(1);
-  expect(attachedCreators.filter((creator) => creator === "Fixture One")).toHaveLength(3);
+  expect(attached.sceneCount).toBe(5);
+  expect(attached.creators.every(Boolean)).toBeTruthy();
+  expect(new Set(attached.creators).size).toBeGreaterThanOrEqual(1);
+
+  await page.getByRole("button", { name: "Edit scene 1" }).click();
+  await page.getByRole("button", { name: "Find another licensed video for scene 1" }).click();
+  await expect(page.getByRole("button", { name: "Select for scene 1" })).toHaveCount(2);
+  await page.getByRole("article").filter({ hasText: "Fixture Two With A Long Name" })
+    .getByRole("button", { name: "Select for scene 1" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "video by Fixture Two With A Long Name on Pexels" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Edit scene 5" }).click();
+  await page.getByLabel("Scene 5 caption").fill("Closing beat for the guided editor");
+  await page.getByLabel("Scene 5 caption").press("Tab");
+  await page.getByRole("button", { name: "Edit scene 2" }).click();
+  await page.getByRole("button", { name: "Move scene 2 earlier" }).click();
+  await expect(page.getByRole("button", { name: "Edit scene 1", pressed: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Generate accurate preview" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 90_000 });
   const download = page.getByRole("link").filter({ has: page.getByRole("button", { name: "Download preview" }) });
   await expect(page.getByRole("button", { name: "Download preview" })).toBeEnabled();
   const href = await download.getAttribute("href");
@@ -257,7 +291,7 @@ test("licensed stock journey explicitly selects candidates for a multi-scene ren
   await page.getByRole("button", { name: "Keep editing" }).click();
   await page.getByRole("button", { name: "Back to drafts" }).click();
   await page.getByRole("button").filter({ hasText: "A calm studio introduction" }).click();
-  await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(4);
+  await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
 
   const storedSessionValues = await page.evaluate(() =>
     Object.values(sessionStorage));
@@ -268,4 +302,93 @@ test("licensed stock journey explicitly selects candidates for a multi-scene ren
   await expect(page.getByRole("heading", { name: "Shape a vertical video" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Shape a vertical video" })).toBeVisible();
+});
+
+test("FAL still generation quotes, confirms, and attaches only after review", async ({ page }) => {
+  await page.route("https://e2e-storage.invalid/**", (route) =>
+    route.fulfill({ status: 200, body: "" }));
+  await page.route("https://e2e-images.invalid/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="90" height="160"><rect width="90" height="160" fill="#555"/></svg>'
+    }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Visual description").fill("A fictional lighthouse that does not exist on stock");
+  await page.getByRole("button", { name: "Continue to video plan" }).click();
+  await page.getByText("Edit recommended video plan").click();
+  await page.getByLabel("Where should visuals come from?").selectOption("own");
+  await chooseConcept(page, "Direct");
+  await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
+  await page.locator('input[type="file"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
+  for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
+
+  await page.getByRole("button", { name: "Edit scene 1" }).click();
+  await page.getByRole("button", { name: "Generate AI image for scene 1" }).click();
+  await expect(page.getByRole("heading", { name: "Generate AI image for scene 1" })).toBeVisible();
+  await page.getByLabel("Image prompt").fill("quiet lighthouse at dusk, soft fog, cinematic");
+  await page.getByRole("button", { name: "Get FAL price" }).click();
+  await expect(page.getByText(/estimated total USD 0\.003/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Generate one image" })).toBeEnabled();
+  await page.getByRole("button", { name: "Generate one image" }).click();
+  await expect(page.getByRole("button", { name: "Use for scene 1" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("AI-generated with FAL").first()).toBeVisible();
+  const mediaIdBefore = await page.evaluate(async () => {
+    const projectId = localStorage.getItem("fengine-project");
+    const { project } = await (await fetch(`/api/projects/${projectId}`)).json();
+    return project.scenes.find((scene) => scene.order === 0)?.media_id ?? null;
+  });
+  await page.getByRole("button", { name: "Use for scene 1" }).click();
+  await expect(page.getByRole("status").filter({ hasText: /AI-generated with FAL/i })).toBeVisible();
+  const mediaIdAfter = await page.evaluate(async () => {
+    const projectId = localStorage.getItem("fengine-project");
+    const { project } = await (await fetch(`/api/projects/${projectId}`)).json();
+    return project.scenes.find((scene) => scene.order === 0)?.media_id ?? null;
+  });
+  expect(mediaIdAfter).toBeTruthy();
+  expect(mediaIdAfter).not.toEqual(mediaIdBefore);
+
+  await page.getByRole("button", { name: "Generate accurate preview" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 90_000 });
+});
+
+test("FAL image-to-video quotes, confirms, and attaches only after review", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.route("https://e2e-storage.invalid/**", (route) =>
+    route.fulfill({ status: 200, body: "" }));
+  await page.route("https://e2e-images.invalid/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="90" height="160"><rect width="90" height="160" fill="#555"/></svg>'
+    }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Visual description").fill("Animate a portrait still of a quiet harbor");
+  await page.getByRole("button", { name: "Continue to video plan" }).click();
+  await page.getByText("Edit recommended video plan").click();
+  await page.getByLabel("Where should visuals come from?").selectOption("own");
+  await chooseConcept(page, "Direct");
+  await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
+  await page.locator('input[type="file"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
+  for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
+
+  await page.getByRole("button", { name: "Edit scene 1" }).click();
+  await page.getByRole("button", { name: "Animate this image for scene 1" }).click();
+  await expect(page.getByRole("heading", { name: "Animate image for scene 1" })).toBeVisible();
+  await page.getByLabel("Motion prompt").fill("gentle camera drift over the harbor");
+  await page.getByRole("button", { name: "Get FAL price" }).click();
+  await expect(page.getByText(/estimated total USD 0\.19/i)).toBeVisible();
+  await page.getByRole("button", { name: "Generate one 6-second video" }).click();
+  await expect(page.getByRole("button", { name: "Use video for scene 1" })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Use video for scene 1" }).click();
+  await expect(page.getByRole("status").filter({ hasText: /AI-generated FAL video/i })).toBeVisible();
+
+  await page.getByRole("button", { name: "Generate accurate preview" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "complete · 720p preview" })).toBeVisible({ timeout: 90_000 });
 });

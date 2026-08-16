@@ -57,3 +57,19 @@ no longer exists and the upload/inspection retry window has elapsed. A sealed
 object is removable only when no media row references its sealed key. Review the
 candidate set before deletion, and never include signed URLs, object contents,
 credentials, ETags, versions, or digests in tickets or logs.
+
+## FAL-generated stills
+
+Generated stills enter the same quarantine → inspect → seal path as uploads and
+Pexels copies. The worker downloads only HTTPS URLs on `fal.media` /
+`*.fal.media`, caps the stream at 25 MB, and accepts only JPEG/PNG. Provider
+result URLs never appear in API responses. Client-safe provenance is limited to
+`generation: { source: "FAL", model, generatedAt }`.
+
+## FAL image-to-video
+
+Endpoint contract checked 2026-08-02: `fal-ai/minimax/hailuo-2.3-fast/standard/image-to-video`
+(duration `"6"` only). The worker signs the sealed source still for one hour,
+submits once, and downloads only HTTPS results on `storage.googleapis.com/falserverless/`
+or `*.fal.media`. Signed source URLs are never persisted or logged. Result MP4s
+enter the same quarantine → inspect → seal path (100 MB cap).

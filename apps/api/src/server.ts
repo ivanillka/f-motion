@@ -30,12 +30,21 @@ import {
   type PostgresMediaRepository,
   type PrivateObjectStore
 } from "./media-storage.js";
-import { PostgresRenderRepository, RenderCapacityError, type RenderKind } from "./render-repository.js";
+import {
+  PostgresRenderRepository,
+  RenderCapacityError,
+  RenderInputIncompleteError,
+  type RenderKind
+} from "./render-repository.js";
 import type { AccessPolicy } from "./access-policy.js";
 import {
   falCredentialHttpError,
   type FalCredentialService
 } from "./fal-credentials.js";
+import {
+  falGenerationHttpError,
+  type FalGenerationService
+} from "./fal-generation.js";
 import {
   PexelsProviderError,
   pexelsCredentialHttpError,
@@ -73,6 +82,7 @@ interface AppBaseOptions {
   /** Test adapter for trusted remote-media imports. */
   externalMediaRequest?: typeof fetch;
   falCredentials?: FalCredentialService;
+  falGeneration?: FalGenerationService;
   pexelsCredentials?: PexelsCredentialService;
   apiKeys?: ApiKeyService;
   hostUsage?: HostUsageService;
@@ -188,6 +198,14 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     response.setHeader("x-request-id", requestId);
     next();
   });
+  // Compatibility: /v1/* executes the same handlers as /api/* (auth + routes).
+  app.use((request, _response, next) => {
+    const url = request.url;
+    if (url === "/v1" || url.startsWith("/v1/") || url.startsWith("/v1?")) {
+      request.url = `/api${url.slice(3)}`;
+    }
+    next();
+  });
   app.get("/healthz", (_request, response) => response.json({ status: "ok" }));
   app.get("/readyz", async (_request, response) => {
     const isReady = await Promise.resolve(ready()).catch(() => false);
@@ -211,7 +229,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         if (draft.mediaUrls.some((url) => !externalMediaUrlAllowed(url, integration.mediaOrigins))) {
           return response.status(422).json({ type: "validation", message: "media origin is not allowed" });
         }
-        for (const url of draft.mediaUrls.slice(0, generatedScenes.length)) {
+        for (const url of draft.mediaUrls) {
           const id = mediaIdForExternalImport(projectId, url);
           await importExternalMedia(
             integration.ownerId,
@@ -234,7 +252,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         && project.scenes.every((scene) => scene.media_id)
         && legacyAutoPrompts
         && project.scenes.some((scene) => scene.caption.includes("https://") || scene.visual_prompt?.startsWith("use secondary image"));
-      const rebuildImportedDraft = textOnlyImportedDraft || legacyMediaRepair;
+      // Queue Edit must land on the host's current media pick, not a stale attach.
+      const hostMediaMismatch = importedMediaIds.length > 0 && project.scenes.length > 0 && project.scenes.some((scene, index) =>
+        scene.media_id !== importedMediaIds[index % importedMediaIds.length]);
+      const rebuildImportedDraft = textOnlyImportedDraft || legacyMediaRepair || hostMediaMismatch;
       const currentScenes = rebuildImportedDraft
         ? generatedScenes.map((scene, index) => ({
             ...scene,
@@ -278,7 +299,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         return response.status(422).json({ type: "validation", message: error.message });
       }
       if (error instanceof ExternalMediaImportError) {
-        return response.status(502).json({ type: "upstream", message: "existing media could not be imported" });
+        return response.status(502).json({
+          type: "upstream",
+          message: error.message || "existing media could not be imported"
+        });
       }
       next(error);
     }
@@ -395,11 +419,100 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       }
       await options.falCredentials.disconnect(String(response.locals.ownerId));
       response.status(204).end();
-    } catch (error) { next(error); }
+    } catch (error) {
+      const mapped = falCredentialHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
   });
   const pexelsUnavailable = (response: express.Response) => response.status(503).json({
     type: "provider_unavailable",
     message: "Pexels connection is not enabled on this deployment."
+  });
+
+  const falGenUnavailable = (response: import("express").Response) =>
+    response.status(503).json({ type: "provider_unavailable", message: "FAL generation is not enabled on this deployment." });
+  app.post("/api/projects/:projectId/scenes/:sceneId/fal/image-quotes", async (request, response, next) => {
+    try {
+      if (!options.falGeneration) return falGenUnavailable(response);
+      if (!exactObject(request.body, ["prompt"])) {
+        return response.status(422).json({ type: "validation", message: "invalid prompt" });
+      }
+      const job = await options.falGeneration.quoteImage(
+        String(response.locals.ownerId),
+        request.params.projectId,
+        request.params.sceneId,
+        (request.body as { prompt?: unknown }).prompt
+      );
+      response.status(201).json(job);
+    } catch (error) {
+      const mapped = falGenerationHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/projects/:projectId/scenes/:sceneId/fal/video-quotes", async (request, response, next) => {
+    try {
+      if (!options.falGeneration) return falGenUnavailable(response);
+      if (!exactObject(request.body, ["source_media_id", "motion_prompt"])) {
+        return response.status(422).json({ type: "validation", message: "invalid video quote" });
+      }
+      const body = request.body as { source_media_id?: unknown; motion_prompt?: unknown };
+      const job = await options.falGeneration.quoteVideo(
+        String(response.locals.ownerId),
+        request.params.projectId,
+        request.params.sceneId,
+        body.source_media_id,
+        body.motion_prompt
+      );
+      response.status(201).json(job);
+    } catch (error) {
+      const mapped = falGenerationHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/generation-jobs/:jobId/confirm", async (request, response, next) => {
+    try {
+      if (!options.falGeneration) return falGenUnavailable(response);
+      if (!exactObject(request.body, ["idempotency_key"])) {
+        return response.status(422).json({ type: "validation", message: "invalid idempotency key" });
+      }
+      response.json(await options.falGeneration.confirm(
+        String(response.locals.ownerId),
+        request.params.jobId,
+        (request.body as { idempotency_key?: unknown }).idempotency_key
+      ));
+    } catch (error) {
+      const mapped = falGenerationHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.get("/api/generation-jobs/:jobId", async (_request, response, next) => {
+    try {
+      if (!options.falGeneration) return falGenUnavailable(response);
+      const job = await options.falGeneration.get(String(response.locals.ownerId), _request.params.jobId);
+      if (!job) return response.status(404).json({ type: "not_found", message: "not found" });
+      response.json(job);
+    } catch (error) {
+      const mapped = falGenerationHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/generation-jobs/:jobId/cancel", async (request, response, next) => {
+    try {
+      if (!options.falGeneration) return falGenUnavailable(response);
+      if (!emptyBody(request.body)) {
+        return response.status(422).json({ type: "validation", message: "This request does not accept fields." });
+      }
+      response.json(await options.falGeneration.cancel(String(response.locals.ownerId), request.params.jobId));
+    } catch (error) {
+      const mapped = falGenerationHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
   });
   app.get("/api/providers/pexels/credential", async (_request, response, next) => {
     try {
@@ -662,6 +775,90 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       next(error);
     }
   });
+  app.post("/api/projects/:projectId/media/pexels/storyboard", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      const project = await projects.get(ownerId, request.params.projectId);
+      if (!project) return response.status(404).json({ type: "not_found", message: "not found" });
+      if (!project.scenes.length) {
+        return response.status(422).json({ type: "validation", message: "storyboard has no scenes" });
+      }
+      const exclude = new Set<number>();
+      if (request.body && typeof request.body === "object" && !Array.isArray(request.body)
+        && Array.isArray((request.body as { exclude_pexels_ids?: unknown }).exclude_pexels_ids)) {
+        for (const id of (request.body as { exclude_pexels_ids: unknown[] }).exclude_pexels_ids) {
+          if (Number.isInteger(id) && Number(id) > 0) exclude.add(Number(id));
+        }
+      }
+      const pexels = await pexelsForOwner(options.media, ownerId);
+      const usedPexelsIds = new Set(exclude);
+      const results: Array<{
+        scene_id: string;
+        state: "matched" | "no_result" | "skipped";
+        asset?: ReturnType<typeof sceneMediaView>;
+        match?: Omit<Awaited<ReturnType<PexelsClient["search"]>>[number], "sourceUrl" | "contentType">;
+        query?: string;
+        message?: string;
+      }> = [];
+      // Sequential on purpose: uniqueness across scenes depends on prior picks.
+      for (const scene of [...project.scenes].sort((a, b) => a.order - b.order)) {
+        if (scene.media_id) {
+          results.push({ scene_id: scene.id, state: "skipped", message: "scene already has media" });
+          continue;
+        }
+        const description = scene.visual_prompt?.trim() || scene.caption.trim() || project.brief.purpose;
+        let selected: Awaited<ReturnType<PexelsClient["search"]>>[number] | undefined;
+        let matchedQuery = "";
+        let fallback: Awaited<ReturnType<PexelsClient["search"]>>[number] | undefined;
+        let fallbackQuery = "";
+        for (const query of pexelsQueriesForBrief(description)) {
+          const hits = await pexels.search(query);
+          const unused = hits.find((hit) => !usedPexelsIds.has(hit.id));
+          if (unused) {
+            selected = unused;
+            matchedQuery = query;
+            break;
+          }
+          if (!fallback && hits[0]) {
+            fallback = hits[0];
+            fallbackQuery = query;
+          }
+        }
+        selected ??= fallback;
+        matchedQuery ||= fallbackQuery;
+        if (!selected) {
+          results.push({
+            scene_id: scene.id,
+            state: "no_result",
+            message: "No licensed stock matched this scene"
+          });
+          continue;
+        }
+        usedPexelsIds.add(selected.id);
+        const asset = await pexels.copy(
+          ownerId,
+          request.params.projectId,
+          selected,
+          options.media.repository,
+          options.media.store
+        );
+        const { sourceUrl: _sourceUrl, contentType: _contentType, ...match } = selected;
+        results.push({
+          scene_id: scene.id,
+          state: "matched",
+          asset: sceneMediaView(asset),
+          match,
+          query: matchedQuery
+        });
+      }
+      response.status(200).json({ results });
+    } catch (error) {
+      const mapped = pexelsHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
   app.post("/api/projects/:projectId/render", async (request, response, next) => {
     try {
       const ownerId = String(response.locals.ownerId);
@@ -713,6 +910,12 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         return response.status(429).json({
           type: "render_capacity",
           message: "Finish or cancel an existing render before starting another."
+        });
+      }
+      if (error instanceof RenderInputIncompleteError) {
+        return response.status(422).json({
+          type: "render_input_incomplete",
+          message: error.message
         });
       }
       next(error);

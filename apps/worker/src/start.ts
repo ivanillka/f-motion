@@ -1,5 +1,6 @@
 import { S3Client } from "@aws-sdk/client-s3";
 import pg from "pg";
+import { credentialVaultFromEnv, falByokEnabled } from "@f-engine/fal-host";
 import {
   createQueueHandlers,
   mediaLimitsFromEnv,
@@ -16,6 +17,10 @@ function required(name: string): string {
 const connectionString = required("QUEUE_DATABASE_URL");
 const mediaLimits = mediaLimitsFromEnv(process.env);
 const outboxRetentionHours = outboxRetentionHoursFromEnv(process.env);
+if (falByokEnabled(process.env)) {
+  // Worker decrypts owner FAL credentials for generate-fal-image. Same KEK as API.
+  credentialVaultFromEnv(process.env);
+}
 const pool = new pg.Pool({ connectionString });
 const store = new S3WorkerObjectStore(new S3Client({
   region: process.env.R2_REGION ?? "auto",
@@ -29,7 +34,7 @@ const store = new S3WorkerObjectStore(new S3Client({
 
 await startQueueRuntime(
   connectionString,
-  createQueueHandlers(pool, store, undefined, mediaLimits),
+  createQueueHandlers(pool, store, undefined, mediaLimits, process.env),
   pool,
   outboxRetentionHours
 );

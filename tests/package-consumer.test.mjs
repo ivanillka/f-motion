@@ -45,8 +45,17 @@ test("private package tarballs install and run outside the monorepo without regi
     [
       "dist/index.d.ts",
       "dist/index.js",
+      "fixtures/error-render-capacity.json",
+      "fixtures/error-render-input-incomplete.json",
+      "fixtures/error-unauthorized.json",
+      "fixtures/project-v1.json",
+      "fixtures/project-v2-breaking.json",
+      "fixtures/scene-media-ready.json",
+      "fixtures/sse-progress.json",
+      "fixtures/storyboard-plan-v1.json",
       "openapi.yaml",
       "package.json",
+      "route-inventory.json",
       "schema/f-engine-v1.schema.json"
     ]
   );

@@ -125,7 +125,9 @@ export the same variable (see `.env.example` and `.github/workflows/ci.yml`).
 ### Enable user-owned provider credential connections
 
 These flags enable authenticated connect, status, test, replace, and disconnect
-operations for Pexels and FAL. FAL does not enable paid inference or generation.
+operations for Pexels and FAL. With FAL BYOK enabled, authenticated users can
+quote and explicitly confirm one Flux Schnell still per scene; the worker
+submits with the owner credential only after that confirmation.
 Generate a
 host-owned key-encryption key once:
 
@@ -133,11 +135,14 @@ host-owned key-encryption key once:
 openssl rand -base64 32
 ```
 
-Put the result directly into protected **API-only** configuration as
+Put the result into protected API configuration as
 `FENGINE_CREDENTIAL_KEY_V1`; also set
 `FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION=1` and
-`FENGINE_PEXELS_BYOK_ENABLED=1` and/or `FENGINE_FAL_BYOK_ENABLED=1`. Do not paste the value into source, chat,
-Cloudflare Pages/Vite variables, worker configuration, logs, or screenshots.
+`FENGINE_PEXELS_BYOK_ENABLED=1` and/or `FENGINE_FAL_BYOK_ENABLED=1`.
+When FAL generation is enabled, set the same KEK variables on the worker so
+`generate-fal-image` can decrypt the owner credential at submit time. Do not
+paste the value into source, chat, Cloudflare Pages/Vite variables, logs, or
+screenshots.
 Never configure `PEXELS_API_KEY`, `FAL_KEY`, or `FAL_API_KEY`: hosted startup
 rejects shared provider credentials.
 
@@ -147,10 +152,14 @@ search and media copy use only that owner's encrypted credential and quota.
 Each user supplies an API-scope key in authenticated Settings and is charged
 by FAL directly. The API can validate call capability but FAL does not expose
 scope introspection, so the product must not claim to detect ADMIN scope.
-Production media generation remains blocked until the operator records FAL
-output ownership, commercial-use, training/data-use, and retention terms.
-BYOK changes who is charged; it does not remove privacy or legal responsibility
-for prompts and media transmitted to FAL.
+Still generation may be enabled for invite-only hosts after Gate 0 FAL
+ownership, commercial-use, training/data-use, and retention evidence is
+recorded. BYOK changes who is charged; it does not remove privacy or legal
+responsibility for prompts and media transmitted to FAL.
+
+If a generation job reaches `submission_uncertain`, tell the user to check
+their FAL dashboard before retrying. The worker never auto-resubmits that job
+(duplicate spend risk). Cancel requests are best-effort after provider accept.
 
 ## 5. Deploy the API and worker images
 
@@ -172,7 +181,8 @@ fly deploy --config fly.api.toml
 fly launch --config fly.worker.toml --no-deploy
 fly secrets set --config fly.worker.toml \
   QUEUE_DATABASE_URL=... R2_ENDPOINT=... R2_REGION=... R2_BUCKET=... \
-  R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=...
+  R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... \
+  FENGINE_FAL_BYOK_ENABLED=1   FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION=1   FENGINE_CREDENTIAL_KEY_V1=<same-base64-as-api>
 fly deploy --config fly.worker.toml
 ```
 
@@ -375,7 +385,7 @@ the storage host, fix bucket CORS (§2) before debugging the API.
 | `SUPABASE_ISSUER`, `SUPABASE_AUDIENCE`, `SUPABASE_JWKS_URL` | API | JWT verification |
 | `FENGINE_ACCESS_MODE`, `FENGINE_ALLOWED_USER_IDS` | API | hosted invite-only admission; exact Supabase user UUIDs |
 | `FENGINE_PEXELS_BYOK_ENABLED`, `FENGINE_FAL_BYOK_ENABLED` | API | enable owner-scoped provider connections |
-| `FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION`, `FENGINE_CREDENTIAL_KEY_V<n>` | API | encrypt user provider credentials |
+| `FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION`, `FENGINE_CREDENTIAL_KEY_V<n>` | API + worker (when FAL BYOK on) | encrypt/decrypt user provider credentials |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | web build | Supabase client |
 | `VITE_ENABLE_GOOGLE_AUTH` | web build | optional UI flag after Google provider setup |
 | `FENGINE_LOCAL_AUTH` | — | must stay **unset** on every hosted process |

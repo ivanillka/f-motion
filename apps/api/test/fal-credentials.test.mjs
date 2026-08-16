@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { credentialVaultFromEnv, FalProviderError } from "@f-engine/fal-host";
-import { PostgresFalCredentialService } from "../dist/fal-credentials.js";
+import {
+  FalCredentialBusyError,
+  PostgresFalCredentialService
+} from "../dist/fal-credentials.js";
 import { createTestApp } from "../dist/server.js";
 
 async function listen(server) {
@@ -20,8 +23,9 @@ function pricingFetch(status = 200) {
     : new Response("upstream detail must not escape", { status });
 }
 
-function fakePool() {
+function fakePool({ activeGenerationCount = 0 } = {}) {
   const rows = new Map();
+  const state = { activeGenerationCount };
   const query = async (sql, params = []) => {
     if (sql.startsWith(`SELECT id, "ownerId"`)) {
       const row = rows.get(params[0]);
@@ -50,9 +54,13 @@ function fakePool() {
       });
       return { rows: [], rowCount: 1 };
     }
+    if (sql.includes(`FROM "GenerationJob"`) && sql.includes("COUNT(*)")) {
+      return { rows: [{ count: state.activeGenerationCount }], rowCount: 1 };
+    }
+    if (sql.startsWith(`UPDATE "GenerationJob"`)) return { rows: [], rowCount: 0 };
     throw new Error(`unexpected fake query: ${sql}`);
   };
-  return { query, connect: async () => ({ query, release() {} }), rows };
+  return { query, connect: async () => ({ query, release() {} }), rows, state };
 }
 
 test("Postgres service encrypts one credential per owner and never projects it", async () => {
@@ -82,7 +90,8 @@ test("credential routes are fail-closed, exact, owner-scoped, and redacted", asy
     async status(ownerId) { calls.push(["status", ownerId]); return { provider: "fal", connected: saved, ...(saved ? { hint: "1234", validated_at: new Date(0).toISOString() } : {}) }; },
     async connect(ownerId, key) { calls.push(["connect", ownerId]); saved = true; assert.equal(key, "synthetic:key-1234"); return { provider: "fal", connected: true, hint: "1234", validated_at: new Date(0).toISOString() }; },
     async test(ownerId) { calls.push(["test", ownerId]); return { provider: "fal", connected: true, hint: "1234", validated_at: new Date(0).toISOString() }; },
-    async disconnect(ownerId) { calls.push(["disconnect", ownerId]); saved = false; }
+    async disconnect(ownerId) { calls.push(["disconnect", ownerId]); saved = false; },
+    async decryptForOwner(ownerId) { calls.push(["decrypt", ownerId]); return { id: "cred", apiKey: "synthetic:key-1234" }; }
   };
   const server = createServer(createTestApp({ ownerId: "route-owner", falCredentials: service }));
   const origin = await listen(server);
@@ -117,6 +126,66 @@ test("credential routes are fail-closed, exact, owner-scoped, and redacted", asy
   }
 });
 
+test("disconnect succeeds with terminal generation history and stays busy for active jobs", async () => {
+  const vault = credentialVaultFromEnv({
+    FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION: "1",
+    FENGINE_CREDENTIAL_KEY_V1: Buffer.alloc(32, 9).toString("base64")
+  });
+  const terminalPool = fakePool({ activeGenerationCount: 0 });
+  const terminalService = new PostgresFalCredentialService(terminalPool, vault, pricingFetch());
+  await terminalService.connect("owner", "synthetic:key-1234");
+  // Terminal GenerationJob history does not increment activeGenerationCount.
+  await terminalService.disconnect("owner");
+  assert.deepEqual(await terminalService.status("owner"), { provider: "fal", connected: false });
+
+  const activePool = fakePool({ activeGenerationCount: 1 });
+  const activeService = new PostgresFalCredentialService(activePool, vault, pricingFetch());
+  await assert.rejects(() => activeService.connect("owner", "synthetic:key-1234"), FalCredentialBusyError);
+  activePool.state.activeGenerationCount = 0;
+  await activeService.connect("owner", "synthetic:key-1234");
+  activePool.state.activeGenerationCount = 1;
+  await assert.rejects(() => activeService.disconnect("owner"), FalCredentialBusyError);
+  assert.equal((await activeService.status("owner")).connected, true);
+
+  const busyServer = createServer(createTestApp({
+    falCredentials: {
+      async status() { return { provider: "fal", connected: true, hint: "1234", validated_at: new Date(0).toISOString() }; },
+      async connect() { throw new Error("unused"); },
+      async test() { throw new Error("unused"); },
+      async disconnect() { throw new FalCredentialBusyError("active FAL generation"); },
+      async decryptForOwner() { throw new Error("unused"); }
+    }
+  }));
+  const busyOrigin = await listen(busyServer);
+  try {
+    const response = await fetch(`${busyOrigin}/api/providers/fal/credential`, { method: "DELETE" });
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).type, "fal_credential_busy");
+  } finally {
+    await new Promise((resolve, reject) => busyServer.close((error) => error ? reject(error) : resolve()));
+  }
+
+  const terminalServer = createServer(createTestApp({
+    falCredentials: {
+      async status() { return { provider: "fal", connected: false }; },
+      async connect() { throw new Error("unused"); },
+      async test() { throw new Error("unused"); },
+      async disconnect() {},
+      async decryptForOwner() { throw new Error("unused"); }
+    }
+  }));
+  const terminalOrigin = await listen(terminalServer);
+  try {
+    assert.equal((await fetch(`${terminalOrigin}/api/providers/fal/credential`, { method: "DELETE" })).status, 204);
+    assert.deepEqual(await (await fetch(`${terminalOrigin}/api/providers/fal/credential`)).json(), {
+      provider: "fal",
+      connected: false
+    });
+  } finally {
+    await new Promise((resolve, reject) => terminalServer.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("credential route maps provider failures without reflecting upstream data", async () => {
   for (const [error, status, type] of [
     [new FalProviderError("credential"), 422, "invalid_provider_credential"],
@@ -126,7 +195,7 @@ test("credential route maps provider failures without reflecting upstream data",
       async status() { return { provider: "fal", connected: false }; },
       async connect() { throw error; },
       async test() { throw error; },
-      async disconnect() {}
+      async disconnect() {}, async decryptForOwner() { throw new Error("unused"); }
     } }));
     const origin = await listen(server);
     try {

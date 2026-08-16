@@ -440,6 +440,11 @@ export function buildRenderJob(
     ? [...plan.scenes].sort((a, b) => a.order - b.order)
     : [emptyScene];
   const clips = scenes.map((scene, index) => {
+    // Gray lavfi is only for explicit unit fixtures (emptyScene / no media_id).
+    // A declared media_id with no resolved input must fail closed, not substitute gray.
+    if (scene.media_id && !mediaInputs[scene.media_id]) {
+      throw new Error("scene media input missing");
+    }
     const media = scene.media_id ? mediaInputs[scene.media_id] : undefined;
     const path = join(tempDir, `scene-${index}.mp4`);
     const cues = scene.caption_cues ?? [];

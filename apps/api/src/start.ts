@@ -16,6 +16,7 @@ import {
   falByokEnabled
 } from "@f-engine/fal-host";
 import { PostgresFalCredentialService } from "./fal-credentials.js";
+import { PostgresFalGenerationService } from "./fal-generation.js";
 import {
   PexelsProviderError,
   PostgresPexelsCredentialService,
@@ -61,6 +62,9 @@ const credentialVault = falEnabled || pexelsEnabled ? credentialVaultFromEnv(pro
 const falCredentials = falEnabled
   ? new PostgresFalCredentialService(pool, credentialVault!)
   : undefined;
+const falGeneration = falCredentials
+  ? new PostgresFalGenerationService(pool, falCredentials)
+  : undefined;
 const pexelsCredentials = pexelsEnabled
   ? new PostgresPexelsCredentialService(pool, credentialVault!)
   : undefined;
@@ -96,6 +100,7 @@ if (process.env.FENGINE_LOCAL_AUTH === "1") {
     media,
     ready,
     falCredentials,
+    falGeneration,
     pexelsCredentials,
     apiKeys,
     hostUsage
@@ -106,6 +111,7 @@ if (process.env.FENGINE_LOCAL_AUTH === "1") {
     renders,
     media,
     falCredentials,
+    falGeneration,
     pexelsCredentials,
     apiKeys,
     hostUsage,

@@ -6,6 +6,7 @@ import {
   PutObjectCommand,
   S3Client
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { isProjectSnapshot, type ProjectSnapshot } from "@f-engine/contracts";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdtemp, rm, stat } from "node:fs/promises";
@@ -31,6 +32,8 @@ import {
   type MediaInput
 } from "./index.js";
 import type { InspectionJob, PreviewJob, QueueHandlers } from "./queue.js";
+import { processFalImageJob } from "./fal-image.js";
+import { processFalVideoJob } from "./fal-video.js";
 
 interface ObjectIdentity {
   etag: string;
@@ -43,7 +46,7 @@ interface InspectionResult {
   identity?: ObjectIdentity;
 }
 
-interface WorkerObjectStore {
+export interface WorkerObjectStore {
   inspect(objectKey: string, maxBytes: number, signal?: AbortSignal): Promise<InspectionResult>;
   seal(sourceKey: string, sealedKey: string, identity: ObjectIdentity, signal?: AbortSignal): Promise<ObjectIdentity>;
   downloadSealed(objectKey: string, destination: string, identity: ObjectIdentity, signal?: AbortSignal): Promise<void>;
@@ -55,6 +58,8 @@ interface WorkerObjectStore {
     contentLength: number,
     signal?: AbortSignal
   ): Promise<void>;
+  /** Short-lived HTTPS GET for sealed objects; used only for outbound FAL submit. */
+  signedGet(objectKey: string, expiresInSeconds?: number): Promise<string>;
 }
 
 class RenderCompletionRefusedError extends Error {}
@@ -102,6 +107,15 @@ export class S3WorkerObjectStore implements WorkerObjectStore {
     readonly bucket: string,
     readonly probeTimeoutMs = defaultMediaLimits.probeTimeoutMs
   ) {}
+
+  async signedGet(objectKey: string, expiresInSeconds = 300): Promise<string> {
+    return getSignedUrl(
+      this.client,
+      new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }),
+      { expiresIn: expiresInSeconds }
+    );
+  }
+
 
   async inspect(objectKey: string, maxBytes: number, signal?: AbortSignal): Promise<InspectionResult> {
     const head = await this.client.send(new HeadObjectCommand({
@@ -326,9 +340,11 @@ async function mediaInputsFor(
   signal: AbortSignal,
   limits: MediaLimits
 ): Promise<Record<string, MediaInput>> {
+  if (!snapshot.scenes.length) throw new Error("render input has no scenes");
   const inputs: Record<string, MediaInput> = {};
   for (const scene of snapshot.scenes) {
-    if (!scene.media_id || inputs[scene.media_id]) continue;
+    if (!scene.media_id) throw new Error("scene media is missing");
+    if (inputs[scene.media_id]) continue;
     const result = await pool.query<{
       sealedObjectKey: string;
       sealedEtag: string;
@@ -371,7 +387,8 @@ export function createQueueHandlers(
   pool: pg.Pool,
   store: WorkerObjectStore,
   _legacyProfile?: RenderProfile,
-  limits: MediaLimits = defaultMediaLimits
+  limits: MediaLimits = defaultMediaLimits,
+  env: Record<string, string | undefined> = process.env
 ): QueueHandlers {
   return {
     async inspect(job: InspectionJob, signal: AbortSignal) {
@@ -417,6 +434,11 @@ export function createQueueHandlers(
             `UPDATE "MediaAsset" SET state = 'quarantined', detected = $1
               WHERE id = $2 AND "ownerId" = $3 AND "projectId" = $4 AND state = 'inspecting'`,
             [inspection.detected, job.assetId, job.ownerId, job.projectId]
+          );
+          await pool.query(
+            `UPDATE "GenerationJob" SET state = 'failed', "failureCode" = 'inspection_rejected', "updatedAt" = NOW()
+              WHERE "resultMediaId" = $1 AND "ownerId" = $2 AND state = 'inspecting'`,
+            [job.assetId, job.ownerId]
           );
           return { state: "quarantined" };
         }
@@ -470,8 +492,19 @@ export function createQueueHandlers(
         ]
       );
       if (ready.rowCount !== 1) throw new Error("media seal state changed");
+      await pool.query(
+        `UPDATE "GenerationJob" SET state = 'ready', "updatedAt" = NOW()
+          WHERE "resultMediaId" = $1 AND "ownerId" = $2 AND state = 'inspecting'`,
+        [job.assetId, job.ownerId]
+      );
       await store.delete(asset.quarantineObjectKey);
       return { state: "ready" };
+    },
+    async generateFalImage(job, signal) {
+      return processFalImageJob(pool, store, job, signal, env);
+    },
+    async generateFalVideo(job, signal) {
+      return processFalVideoJob(pool, store, job, signal, env);
     },
     async render(job: PreviewJob, signal: AbortSignal) {
       let stored: Awaited<ReturnType<typeof storedRender>>;

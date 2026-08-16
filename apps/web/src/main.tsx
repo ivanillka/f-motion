@@ -4,10 +4,12 @@ import {
   ApiClient,
   ApiResponseError,
   buildStoryboardDraft,
+  conceptsFor,
   defaultVideoArchitecture,
   loadSceneMediaViews,
   recommendVideoArchitecture,
   sceneDurationForMedia,
+  type Concept,
   type ProjectSnapshot,
   type ProjectSummary,
   type Scene,
@@ -16,10 +18,9 @@ import {
 } from "./api";
 import { AuthConfigurationError, createAuthGateway } from "./auth";
 import { clearImportedProject, isImportedProjectId, rememberImportedProject } from "./imported-project";
-import { MarketingLanding } from "./MarketingLanding";
 import "./style.css";
 
-type Step = "marketing" | "sign-in" | "drafts" | "brief" | "architecture" | "media" | "editor" | "render" | "settings";
+type Step = "sign-in" | "drafts" | "brief" | "architecture" | "concepts" | "media" | "editor" | "render" | "settings";
 interface PexelsMatch {
   id: number;
   creator: string;
@@ -32,6 +33,28 @@ interface FalCredentialView {
   hint?: string;
   validated_at?: string;
 }
+interface FalImageQuote {
+  endpoint_id: string;
+  unit_price: number;
+  unit: string;
+  currency: string;
+  estimated_total: number | null;
+  estimated_total_explanation?: string;
+}
+interface GenerationJobView {
+  id: string;
+  project_id: string;
+  scene_id: string;
+  kind: "image" | "image_to_video";
+  endpoint_id: string;
+  state: string;
+  cancel_requested: boolean;
+  prompt: string;
+  quote: FalImageQuote;
+  quote_expires_at: string;
+  failure_code?: string;
+  result_media?: SceneMediaView;
+}
 interface PexelsCredentialView {
   provider: "pexels";
   connected: boolean;
@@ -42,19 +65,6 @@ interface FeatureLock {
   title: string;
   message: string;
   action?: "settings";
-}
-interface HostUsageView {
-  unit: "render_unit";
-  balance: number;
-  free_grant: number;
-  costs: { preview: number; final: number };
-}
-interface ApiKeyView {
-  id: string;
-  label: string;
-  hint: string;
-  created_at: string;
-  revoked_at?: string;
 }
 
 const architectureLabels = {
@@ -87,17 +97,17 @@ function App() {
   const [token, setToken] = useState("");
   const [authReady, setAuthReady] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
-  const [step, setStep] = useState<Step>("marketing");
+  const [step, setStep] = useState<Step>("sign-in");
   const [email, setEmail] = useState("");
-  const [awaitingEmail, setAwaitingEmail] = useState(false);
-  const [authCallbackPaste, setAuthCallbackPaste] = useState("");
   const [draft, setDraft] = useState(() => localStorage.getItem("fengine-draft") ?? "");
   const [architecture, setArchitecture] = useState<VideoArchitecture>(defaultVideoArchitecture);
+  const [conceptChoices, setConceptChoices] = useState<Concept[]>([]);
   const [project, setProject] = useState<ProjectSnapshot>();
   const [activeSceneId, setActiveSceneId] = useState("");
   const [drafts, setDrafts] = useState<ProjectSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [sceneMedia, setSceneMedia] = useState<Record<string, SceneMediaView>>({});
+  const [sceneProgress, setSceneProgress] = useState<Record<string, "finding" | "inspecting" | "ready" | "needs_media">>({});
   const mediaTransition = useRef(0);
   const searchTransition = useRef(0);
   const searchAbort = useRef<AbortController | null>(null);
@@ -109,16 +119,19 @@ function App() {
   const [falUnavailable, setFalUnavailable] = useState(false);
   const [falKey, setFalKey] = useState("");
   const [falBusy, setFalBusy] = useState(false);
+  const [falGenOpen, setFalGenOpen] = useState(false);
+  const [falGenPrompt, setFalGenPrompt] = useState("");
+  const [falGenJob, setFalGenJob] = useState<GenerationJobView>();
+  const [falGenBusy, setFalGenBusy] = useState(false);
+  const [falVideoOpen, setFalVideoOpen] = useState(false);
+  const [falVideoPrompt, setFalVideoPrompt] = useState("");
+  const [falVideoJob, setFalVideoJob] = useState<GenerationJobView>();
+  const [falVideoBusy, setFalVideoBusy] = useState(false);
   const [pexelsCredential, setPexelsCredential] = useState<PexelsCredentialView>();
   const [pexelsUnavailable, setPexelsUnavailable] = useState(false);
   const [pexelsKey, setPexelsKey] = useState("");
   const [pexelsBusy, setPexelsBusy] = useState(false);
   const [featureLock, setFeatureLock] = useState<FeatureLock>();
-  const [hostUsage, setHostUsage] = useState<HostUsageView>();
-  const [apiKeys, setApiKeys] = useState<ApiKeyView[]>([]);
-  const [apiKeyLabel, setApiKeyLabel] = useState("agent");
-  const [createdApiToken, setCreatedApiToken] = useState("");
-  const [apiKeysBusy, setApiKeysBusy] = useState(false);
   const api = useMemo(() => new ApiClient(
     () => tokenRef.current,
     () => {
@@ -128,7 +141,9 @@ function App() {
     }
   ), [authSetup.gateway]);
   const [conflict, setConflict] = useState<ProjectSnapshot>();
+  const [conflictNotice, setConflictNotice] = useState<{ sceneId?: string; operation: string }>();
   const [jobId, setJobId] = useState("");
+  const [renderKind, setRenderKind] = useState<"preview" | "final">("preview");
   const [progress, setProgress] = useState({ phase: "queued", percent: 0 });
   const [downloadUrl, setDownloadUrl] = useState("");
   const [previewRevision, setPreviewRevision] = useState<number>();
@@ -139,7 +154,26 @@ function App() {
     if (typeof sessionStorage === "undefined") return "";
     return rememberImportedProject(location.href, sessionStorage);
   });
-  const renderLabel = import.meta.env.VITE_RENDER_LABEL?.trim() || "720p preview";
+  const previewRenderLabel = import.meta.env.VITE_RENDER_LABEL?.trim() || "720p preview";
+  const renderLabel = renderKind === "final" ? "final export" : previewRenderLabel;
+  const renderHeading = renderKind === "final" ? "Final export" : "Accurate preview";
+  const downloadLabel = renderKind === "final" ? "Download export" : "Download preview";
+  const renderFailedLabel = renderKind === "final"
+    ? "Final export failed — try again or keep editing."
+    : "Accurate preview failed — try again or keep editing.";
+  const olderRenderNotice = renderKind === "final"
+    ? "Older export — regenerate after your edits."
+    : "Older preview — regenerate after your edits.";
+
+  function openConflict(snapshot: ProjectSnapshot, notice: { sceneId?: string; operation: string }) {
+    setConflict(snapshot);
+    setConflictNotice(notice);
+  }
+
+  function dismissConflict() {
+    setConflict(undefined);
+    setConflictNotice(undefined);
+  }
 
   function clearSessionState() {
     tokenRef.current = "";
@@ -149,32 +183,35 @@ function App() {
     setDrafts([]);
     mediaTransition.current += 1;
     setSceneMedia({});
+    setSceneProgress({});
     searchAbort.current?.abort();
     setCandidates([]);
-    setConflict(undefined);
+    dismissConflict();
     setJobId("");
+    setRenderKind("preview");
     setDownloadUrl("");
     setPreviewRevision(undefined);
     setPreviewMetadata({});
     setProgress({ phase: "queued", percent: 0 });
     setStatus("");
-    setAwaitingEmail(false);
-    setAuthCallbackPaste("");
     setFalCredential(undefined);
     setFalUnavailable(false);
     setFalKey("");
     setFalBusy(false);
+    setFalGenOpen(false);
+    setFalGenPrompt("");
+    setFalGenJob(undefined);
+    setFalGenBusy(false);
+    setFalVideoOpen(false);
+    setFalVideoPrompt("");
+    setFalVideoJob(undefined);
+    setFalVideoBusy(false);
     setPexelsCredential(undefined);
     setPexelsUnavailable(false);
     setPexelsKey("");
     setPexelsBusy(false);
     setFeatureLock(undefined);
-    setHostUsage(undefined);
-    setApiKeys([]);
-    setApiKeyLabel("agent");
-    setCreatedApiToken("");
-    setApiKeysBusy(false);
-    setStep("marketing");
+    setStep("sign-in");
   }
 
   useEffect(() => {
@@ -196,7 +233,7 @@ function App() {
         callback.searchParams.delete("code");
         history.replaceState(null, "", `${callback.pathname}${callback.search}${callback.hash}`);
       }
-      setStep((current) => current === "sign-in" || current === "marketing" ? "drafts" : current);
+      setStep((current) => current === "sign-in" ? "drafts" : current);
     });
   }, [authSetup.error, authSetup.gateway]);
 
@@ -216,15 +253,12 @@ function App() {
     if (!token) return;
     void loadFalCredential();
     void loadPexelsCredential();
-    void loadHostUsage();
-    void loadApiKeys();
   }, [token]);
 
   useEffect(() => {
     if (step !== "settings") {
       setFalKey("");
       setPexelsKey("");
-      setCreatedApiToken("");
     }
   }, [step]);
 
@@ -234,7 +268,6 @@ function App() {
     if (!token) {
       if (pendingId && authReady) {
         setStatus("Sign in to open the imported draft from Fotium.");
-        setStep("sign-in");
       }
       return;
     }
@@ -299,28 +332,11 @@ function App() {
       await authSetup.gateway.sendMagicLink(email);
       if (import.meta.env.DEV || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1") {
         setStatus("");
-        setAwaitingEmail(false);
       } else {
-        setAwaitingEmail(true);
-        setStatus("Email sent. If the link opens fotium.vip, copy that page URL and paste it below — do not sign in on Fotium.");
+        setStatus("Check your email for the sign-in link.");
       }
     } catch {
       setStatus("Sign-in link could not be sent.");
-    } finally {
-      setAuthBusy(false);
-    }
-  }
-
-  async function completeAuthCallbackPaste() {
-    if (!authSetup.gateway) return;
-    setAuthBusy(true);
-    try {
-      await authSetup.gateway.completeAuthCallback(authCallbackPaste);
-      setStatus("");
-      setAwaitingEmail(false);
-      setAuthCallbackPaste("");
-    } catch {
-      setStatus("That login URL could not be completed. Request a new email, open the link, copy the fotium.vip address bar, and paste it here on f-motion.com (same browser).");
     } finally {
       setAuthBusy(false);
     }
@@ -338,50 +354,76 @@ function App() {
     }
   }
 
-  async function initializeScene(snapshot: ProjectSnapshot): Promise<ProjectSnapshot> {
-    if (snapshot.scenes.length) return snapshot;
-    return api.command(snapshot.id, snapshot.revision, "select_concept", { concept_id: "direct" });
+  function briefForConcepts(): ProjectSnapshot["brief"] {
+    return {
+      purpose: draft,
+      audience: architecture.audience,
+      tone: `${architecture.tone}, ${architecture.pace}`
+    };
   }
 
-  async function prepareProject(): Promise<ProjectSnapshot> {
-    let current = project;
-    let createdNow = false;
-    if (!current) {
-      const body = await api.request<{ project: ProjectSnapshot }>("/api/projects", {
-        method: "POST",
-        body: JSON.stringify({
-          purpose: draft,
-          audience: architecture.audience,
-          tone: `${architecture.tone}, ${architecture.pace}`
-        })
-      });
-      current = body.project;
-      createdNow = true;
-      localStorage.setItem("fengine-project", current.id);
-    }
-    current = await initializeScene(current);
-    if (createdNow) {
-      current = await api.command(current.id, current.revision, "replace_storyboard", {
-        scenes: buildStoryboardDraft(draft, () => crypto.randomUUID(), architecture)
-      });
-    }
-    setProject(current);
-    setActiveSceneId((active) => current.scenes.some(({ id }) => id === active) ? active : (current.scenes[0]?.id ?? ""));
-    return current;
-  }
-
-  async function createStoryboard() {
+  async function continueToConcepts() {
     if (busy) return;
     mediaTransition.current += 1;
     setSceneMedia({});
+    setSceneProgress({});
     setBusy(true);
-    setStatus("Creating an editable storyboard…");
+    setStatus("Preparing story concepts…");
     try {
-      await prepareProject();
-      setStatus("Storyboard ready. Review each footage search, then choose media.");
-      setStep(architecture.media === "own" ? "media" : "editor");
+      let current = project;
+      if (!current) {
+        const body = await api.request<{ project: ProjectSnapshot; concepts?: Concept[] }>("/api/projects", {
+          method: "POST",
+          body: JSON.stringify(briefForConcepts())
+        });
+        current = body.project;
+        localStorage.setItem("fengine-project", current.id);
+        setProject(current);
+        setConceptChoices(body.concepts?.length ? body.concepts : [...conceptsFor(briefForConcepts())]);
+      } else {
+        setConceptChoices([...conceptsFor(current.brief.purpose ? current.brief : briefForConcepts())]);
+      }
+      setActiveSceneId("");
+      setStep("concepts");
+      setStatus("Licensed visuals are matched only after you choose a story approach.");
     } catch {
-      setStatus("Your storyboard could not be created. Please try again.");
+      setStatus("Story concepts could not be prepared. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function chooseConcept(conceptId: string) {
+    if (busy || !project) return;
+    mediaTransition.current += 1;
+    setSceneMedia({});
+    setSceneProgress({});
+    setBusy(true);
+    setStatus("Building the selected storyboard…");
+    try {
+      let current = project;
+      if (!current.scenes.length || current.selected_concept_id !== conceptId) {
+        if (current.scenes.length) {
+          // ponytail: empty projects are the concept gate; non-empty reselection stays replace-free.
+          setStatus("This draft already has scenes. Open it from Drafts to keep editing.");
+          return;
+        }
+        current = await api.command(current.id, current.revision, "select_concept", { concept_id: conceptId });
+      }
+      setProject(current);
+      setActiveSceneId(current.scenes[0]?.id ?? "");
+      if (architecture.media === "own") {
+        setStatus("Storyboard ready. Upload media for each scene.");
+        setStep("media");
+        return;
+      }
+      setStep("editor");
+      await fillStockStoryboard(current);
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.type : undefined;
+      setStatus(type === "pexels_not_connected"
+        ? "Connect your Pexels API key in Settings, or upload your own media."
+        : "Your storyboard could not be created. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -392,16 +434,22 @@ function App() {
     setSceneMedia({});
     setStatus("Opening draft…");
     try {
-      const { project: opened } = await api.getProject(projectId);
-      const initialized = await initializeScene(opened);
+      const found = await api.getProject(projectId);
+      const opened = found.project;
       if (transition !== mediaTransition.current) return false;
-      setProject(initialized);
-      setActiveSceneId(initialized.scenes[0]?.id ?? "");
-      localStorage.setItem("fengine-project", initialized.id);
-      setDraft(initialized.brief.purpose);
+      setProject(opened);
+      setActiveSceneId(opened.scenes[0]?.id ?? "");
+      localStorage.setItem("fengine-project", opened.id);
+      setDraft(opened.brief.purpose);
+      if (!opened.scenes.length) {
+        setConceptChoices(found.concepts?.length ? found.concepts : [...conceptsFor(opened.brief)]);
+        setStep("concepts");
+        setStatus("Licensed visuals are matched only after you choose a story approach.");
+        return true;
+      }
       let hydrationFailed = false;
       try {
-        const views = await loadSceneMediaViews(api, initialized);
+        const views = await loadSceneMediaViews(api, opened);
         if (transition !== mediaTransition.current) return false;
         setSceneMedia(views);
       } catch {
@@ -422,6 +470,7 @@ function App() {
     setProject(undefined);
     setActiveSceneId("");
     setSceneMedia({});
+    setSceneProgress({});
     setCandidates([]);
     setArchitecture(defaultVideoArchitecture);
     setDraft(localStorage.getItem("fengine-draft") ?? "");
@@ -447,7 +496,10 @@ function App() {
       setStatus("✓ All changes saved");
     } catch (error) {
       if (error instanceof ApiResponseError && error.status === 409) {
-        setConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot);
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          sceneId,
+          operation: "scene edits"
+        });
         return;
       }
       setStatus("Scene changes could not be saved.");
@@ -468,23 +520,68 @@ function App() {
         const { project: latest } = await api.getProject(projectId);
         const scene = latest.scenes.find(({ id }) => id === intendedSceneId);
         if (!scene) return false;
-        const updated = await api.command(projectId, latest.revision, "update_scene", {
-          scene: {
-            ...scene,
-            duration_ms: sceneDurationForMedia(media.detected?.duration_ms, scene.duration_ms),
-            media_id: assetId
+        try {
+          const updated = await api.command(projectId, latest.revision, "update_scene", {
+            scene: {
+              ...scene,
+              duration_ms: sceneDurationForMedia(media.detected?.duration_ms, scene.duration_ms),
+              media_id: assetId
+            }
+          });
+          setProject(updated);
+          setSceneMedia((current) => ({ ...current, [media.id]: media }));
+          setSceneProgress((current) => ({ ...current, [intendedSceneId]: "ready" }));
+          return true;
+        } catch (error) {
+          if (error instanceof ApiResponseError && error.status === 409) {
+            openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+              sceneId: intendedSceneId,
+              operation: "media replacement"
+            });
+            return false;
           }
-        });
-        setProject(updated);
-        setSceneMedia((current) => ({ ...current, [media.id]: media }));
-        setStep("editor");
-        return true;
+          throw error;
+        }
       }
       if (media.state !== "admitted" && media.state !== "inspecting") return false;
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
     setStatus("Media is still inspecting — try again in a moment.");
     return false;
+  }
+
+  async function fillStockStoryboard(snapshot: ProjectSnapshot): Promise<void> {
+    setSceneProgress(Object.fromEntries(
+      snapshot.scenes.map((scene) => [scene.id, scene.media_id ? "ready" as const : "finding" as const])
+    ));
+    setStatus("Finding licensed media for each scene…");
+    const body = await api.request<{
+      results: Array<{
+        scene_id: string;
+        state: "matched" | "no_result" | "skipped";
+        asset?: { id: string };
+      }>;
+    }>(`/api/projects/${snapshot.id}/media/pexels/storyboard`, {
+      method: "POST",
+      body: "{}"
+    });
+    for (const result of body.results) {
+      if (result.state === "skipped") continue;
+      if (result.state !== "matched" || !result.asset) {
+        setSceneProgress((current) => ({ ...current, [result.scene_id]: "needs_media" }));
+        continue;
+      }
+      setSceneProgress((current) => ({ ...current, [result.scene_id]: "inspecting" }));
+      const attached = await attachMediaWhenReady(result.asset.id, snapshot.id, result.scene_id);
+      if (!attached) setSceneProgress((current) => ({ ...current, [result.scene_id]: "needs_media" }));
+    }
+    const { project: refreshed } = await api.getProject(snapshot.id);
+    setProject(refreshed);
+    setSceneMedia(await loadSceneMediaViews(api, refreshed));
+    const readyCount = refreshed.scenes.filter((scene) => scene.media_id).length;
+    setStatus(readyCount === refreshed.scenes.length
+      ? "Licensed media attached for every scene. Review attribution, then render."
+      : `${readyCount} of ${refreshed.scenes.length} scenes have media. Find or upload the rest before rendering.`);
   }
 
   async function moveScene(sceneId: string, to: number) {
@@ -495,7 +592,10 @@ function App() {
       setStatus("✓ All changes saved");
     } catch (error) {
       if (error instanceof ApiResponseError && error.status === 409) {
-        setConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot);
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          sceneId,
+          operation: "scene reorder"
+        });
         return;
       }
       setStatus("Scene order could not be saved.");
@@ -516,8 +616,9 @@ function App() {
       setActiveSceneId(scene.id);
       setStatus("Scene added.");
     } catch (error) {
-      if (error instanceof ApiResponseError && error.status === 409) setConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot);
-      else setStatus("Scene could not be added.");
+      if (error instanceof ApiResponseError && error.status === 409) {
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, { operation: "adding a scene" });
+      } else setStatus("Scene could not be added.");
     }
   }
 
@@ -530,8 +631,12 @@ function App() {
       if (activeSceneId === sceneId) setActiveSceneId(updated.scenes[Math.min(index, updated.scenes.length - 1)]?.id ?? "");
       setStatus("Scene removed.");
     } catch (error) {
-      if (error instanceof ApiResponseError && error.status === 409) setConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot);
-      else setStatus("Scene could not be removed.");
+      if (error instanceof ApiResponseError && error.status === 409) {
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          sceneId,
+          operation: "removing a scene"
+        });
+      } else setStatus("Scene could not be removed.");
     }
   }
 
@@ -606,7 +711,10 @@ function App() {
       if (!uploaded.ok) throw new Error("Upload failed");
       await api.request(`/api/projects/${project.id}/media/${admission.asset_id}/complete`, { method: "POST" });
       setStatus("Media uploaded and queued for inspection.");
-      if (await attachMediaWhenReady(admission.asset_id, project.id, intendedSceneId)) setStatus("Media attached to this scene.");
+      if (await attachMediaWhenReady(admission.asset_id, project.id, intendedSceneId)) {
+        setStatus("Media attached to this scene.");
+        setStep("editor");
+      }
     } catch {
       setStatus("Media could not be uploaded. Check the file and try again.");
     } finally {
@@ -624,7 +732,10 @@ function App() {
       body: JSON.stringify(brief)
     });
     let updated = body.project;
-    updated = await api.command(updated.id, updated.revision, "select_concept", { concept_id: "direct" });
+    const conceptId = source.selected_concept_id
+      ?? conceptsFor(brief).find(({ id }) => id === "story")?.id
+      ?? conceptsFor(brief)[0].id;
+    updated = await api.command(updated.id, updated.revision, "select_concept", { concept_id: conceptId });
     const scenes = (source.scenes.length ? source.scenes : buildStoryboardDraft(brief.purpose, () => crypto.randomUUID())).map((scene, order) => {
       const { media_id: _mediaId, ...withoutMedia } = scene;
       return {
@@ -638,7 +749,7 @@ function App() {
     setProject(updated);
     setActiveSceneId(updated.scenes[0]?.id ?? "");
     localStorage.setItem("fengine-project", updated.id);
-    setConflict(undefined);
+    dismissConflict();
     setStep("editor");
     setStatus("Saved as a new project (media not copied).");
   }
@@ -693,11 +804,14 @@ function App() {
     }
   }
 
-  async function requestRender() {
+  async function requestRender(kind: "preview" | "final" = "preview") {
     if (!project) return;
+    setRenderKind(kind);
+    setDownloadUrl("");
+    setProgress({ phase: "queued", percent: 0 });
     const job = await api.request<{ job_id: string }>(`/api/projects/${project.id}/render`, {
       method: "POST",
-      body: JSON.stringify({ kind: "preview" })
+      body: JSON.stringify({ kind })
     });
     setJobId(job.job_id);
     setStep("render");
@@ -707,7 +821,7 @@ function App() {
   async function retryRender() {
     setDownloadUrl("");
     setProgress({ phase: "queued", percent: 0 });
-    await requestRender();
+    await requestRender(renderKind);
   }
 
   async function refreshPreviewUrl() {
@@ -716,7 +830,9 @@ function App() {
       const result = await api.request<{ url: string }>(`/api/render-jobs/${jobId}/download`);
       setDownloadUrl(result.url);
     } catch {
-      setStatus("Preview link expired and could not be refreshed.");
+      setStatus(renderKind === "final"
+        ? "Export link expired and could not be refreshed."
+        : "Preview link expired and could not be refreshed.");
     }
   }
 
@@ -736,55 +852,6 @@ function App() {
       setStatus("Sign out could not be completed. Please try again.");
     } finally {
       setAuthBusy(false);
-    }
-  }
-
-  async function loadHostUsage() {
-    try {
-      setHostUsage(await api.request<HostUsageView>("/api/me/usage"));
-    } catch {
-      setHostUsage(undefined);
-    }
-  }
-
-  async function loadApiKeys() {
-    try {
-      const view = await api.request<{ keys: ApiKeyView[] }>("/api/me/api-keys");
-      setApiKeys(view.keys.filter((key) => !key.revoked_at));
-    } catch {
-      setApiKeys([]);
-    }
-  }
-
-  async function createApiKey() {
-    setApiKeysBusy(true);
-    try {
-      const created = await api.request<ApiKeyView & { token: string }>("/api/me/api-keys", {
-        method: "POST",
-        body: JSON.stringify({ label: apiKeyLabel.trim() || "agent" })
-      });
-      setCreatedApiToken(created.token);
-      setStatus("API key created. Copy it now — it will not be shown again.");
-      await loadApiKeys();
-    } catch {
-      setStatus("API key could not be created.");
-    } finally {
-      setApiKeysBusy(false);
-    }
-  }
-
-  async function revokeApiKey(keyId: string) {
-    if (!window.confirm("Revoke this API key? Agents using it will stop working.")) return;
-    setApiKeysBusy(true);
-    try {
-      await api.request(`/api/me/api-keys/${keyId}`, { method: "DELETE" });
-      if (createdApiToken) setCreatedApiToken("");
-      setStatus("API key revoked.");
-      await loadApiKeys();
-    } catch {
-      setStatus("API key could not be revoked.");
-    } finally {
-      setApiKeysBusy(false);
     }
   }
 
@@ -934,10 +1001,353 @@ function App() {
       : { title: "Pexels stock is locked", message: "Connect your Pexels API key to search real stock video.", action: "settings" });
   }
 
+  function falJobStorageKey(projectId: string, sceneId: string) {
+    return `fengine-fal-job:${projectId}:${sceneId}`;
+  }
+
+  function falGenFailureMessage(job: GenerationJobView): string {
+    switch (job.failure_code) {
+      case "submission_uncertain":
+        return "FAL may have started this job. Check your FAL dashboard before generating again.";
+      case "inspection_rejected":
+        return "The generated image did not pass media inspection.";
+      case "credential":
+        return "FAL rejected the saved key. Replace or disconnect it in Settings.";
+      case "rate_limited":
+        return "FAL rate-limited this request. Wait a moment and try again.";
+      case "unsafe_output":
+        return "FAL blocked this output. Try a different prompt.";
+      default:
+        return "FAL generation failed. Your scene media was not changed.";
+    }
+  }
+
+  function openFalGenerate(scene: Scene) {
+    if (!falCredential?.connected || falUnavailable) {
+      showFalLock();
+      return;
+    }
+    setFalGenPrompt(scene.visual_prompt?.trim() || "");
+    setFalGenJob(undefined);
+    setFalGenOpen(true);
+    const projectId = project?.id;
+    if (!projectId) return;
+    const stored = localStorage.getItem(falJobStorageKey(projectId, scene.id));
+    if (!stored) return;
+    void (async () => {
+      try {
+        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${stored}`);
+        setFalGenJob(job);
+        setFalGenPrompt(job.prompt);
+        if (!["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(job.state)) {
+          void pollFalGeneration(job.id);
+        }
+      } catch {
+        localStorage.removeItem(falJobStorageKey(projectId, scene.id));
+      }
+    })();
+  }
+
+  async function quoteFalImage() {
+    if (!project || !activeScene) return;
+    const prompt = falGenPrompt.trim();
+    if (!prompt || prompt.length > 500) {
+      setStatus("Enter an image prompt between 1 and 500 characters.");
+      return;
+    }
+    setFalGenBusy(true);
+    setStatus("Requesting FAL price…");
+    try {
+      const job = await api.request<GenerationJobView>(
+        `/api/projects/${project.id}/scenes/${activeScene.id}/fal/image-quotes`,
+        { method: "POST", body: JSON.stringify({ prompt }) }
+      );
+      setFalGenJob(job);
+      localStorage.setItem(falJobStorageKey(project.id, activeScene.id), job.id);
+      setStatus("Review the FAL price, then confirm to generate one image.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "fal_not_connected"
+        ? "Connect your FAL API key in Settings first."
+        : type === "fal_generation_busy"
+          ? "Only one active FAL generation is allowed. Wait or cancel it."
+          : type === "invalid_provider_credential"
+            ? "FAL rejected the saved key. Replace it in Settings."
+            : "FAL could not price this image. Try again later.");
+    } finally {
+      setFalGenBusy(false);
+    }
+  }
+
+  async function confirmFalImage() {
+    if (!project || !activeScene || !falGenJob || falGenJob.state !== "quoted") return;
+    if (falGenJob.quote.estimated_total === null) return;
+    setFalGenBusy(true);
+    setStatus("Confirming FAL generation…");
+    try {
+      const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falGenJob.id}/confirm`, {
+        method: "POST",
+        body: JSON.stringify({ idempotency_key: crypto.randomUUID() })
+      });
+      setFalGenJob(job);
+      localStorage.setItem(falJobStorageKey(project.id, activeScene.id), job.id);
+      setStatus("FAL generation queued.");
+      void pollFalGeneration(job.id);
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "quote_expired"
+        ? "This quote expired. Request a new price."
+        : type === "quote_incomplete"
+          ? "FAL could not calculate a total for this model."
+          : "FAL generation could not be confirmed.");
+    } finally {
+      setFalGenBusy(false);
+    }
+  }
+
+  async function pollFalGeneration(jobId: string) {
+    const deadline = Date.now() + 12 * 60_000;
+    while (Date.now() < deadline) {
+      try {
+        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
+        setFalGenJob(job);
+        if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
+          if (job.state === "ready") setStatus("AI still ready — review it before attaching.");
+          else if (job.state === "cancelled") setStatus("FAL generation cancelled.");
+          else setStatus(falGenFailureMessage(job));
+          return;
+        }
+        setStatus(`FAL generation · ${job.state.replaceAll("_", " ")}`);
+      } catch {
+        setStatus("Could not refresh FAL generation status.");
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    setStatus("FAL generation is still running. Reopen Generate AI image to check again.");
+  }
+
+  async function cancelFalGeneration() {
+    if (!falGenJob) return;
+    setFalGenBusy(true);
+    try {
+      const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falGenJob.id}/cancel`, { method: "POST" });
+      setFalGenJob(job);
+      setStatus(job.state === "cancelled"
+        ? "FAL generation cancelled."
+        : "Cancel requested. FAL may still bill work that already started.");
+    } catch {
+      setStatus("FAL generation could not be cancelled.");
+    } finally {
+      setFalGenBusy(false);
+    }
+  }
+
+  async function useFalGeneratedMedia() {
+    if (!project || !falGenJob?.result_media || falGenJob.result_media.state !== "ready") return;
+    const scene = project.scenes.find(({ id }) => id === falGenJob.scene_id);
+    if (!scene) return;
+    setFalGenBusy(true);
+    setBusy(true);
+    try {
+      const media = falGenJob.result_media;
+      const updated = await api.command(project.id, project.revision, "update_scene", {
+        scene: {
+          ...scene,
+          duration_ms: sceneDurationForMedia(media.detected?.duration_ms, scene.duration_ms),
+          media_id: media.id
+        }
+      });
+      setProject(updated);
+      setSceneMedia((current) => ({ ...current, [media.id]: media }));
+      setSceneProgress((current) => ({ ...current, [scene.id]: "ready" }));
+      localStorage.removeItem(falJobStorageKey(project.id, scene.id));
+      setFalGenOpen(false);
+      setStatus(`Scene ${scene.order + 1} uses AI-generated with FAL still.`);
+    } catch (error) {
+      if (error instanceof ApiResponseError && error.status === 409) {
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          sceneId: scene.id,
+          operation: "AI media attach"
+        });
+        return;
+      }
+      setStatus("Generated still could not be attached.");
+    } finally {
+      setFalGenBusy(false);
+      setBusy(false);
+    }
+  }
+
+
+  function falVideoStorageKey(projectId: string, sceneId: string) {
+    return `fengine-fal-video:${projectId}:${sceneId}`;
+  }
+
+  function openFalAnimate(scene: Scene) {
+    if (!falCredential?.connected || falUnavailable) {
+      showFalLock();
+      return;
+    }
+    const media = scene.media_id ? sceneMedia[scene.media_id] : undefined;
+    const type = media?.detected?.type;
+    if (!media || media.state !== "ready" || type === "video/mp4") {
+      setStatus("Animate needs a ready still image on this scene.");
+      return;
+    }
+    setFalVideoPrompt("gentle camera drift, subtle motion");
+    setFalVideoJob(undefined);
+    setFalVideoOpen(true);
+    const projectId = project?.id;
+    if (!projectId) return;
+    const stored = localStorage.getItem(falVideoStorageKey(projectId, scene.id));
+    if (!stored) return;
+    void (async () => {
+      try {
+        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${stored}`);
+        setFalVideoJob(job);
+        setFalVideoPrompt(job.prompt);
+        if (!["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(job.state)) {
+          void pollFalVideo(job.id);
+        }
+      } catch {
+        localStorage.removeItem(falVideoStorageKey(projectId, scene.id));
+      }
+    })();
+  }
+
+  async function quoteFalVideo() {
+    if (!project || !activeScene?.media_id) return;
+    const prompt = falVideoPrompt.trim();
+    if (!prompt || prompt.length > 500) {
+      setStatus("Enter a motion prompt between 1 and 500 characters.");
+      return;
+    }
+    setFalVideoBusy(true);
+    setStatus("Requesting FAL video price…");
+    try {
+      const job = await api.request<GenerationJobView>(
+        `/api/projects/${project.id}/scenes/${activeScene.id}/fal/video-quotes`,
+        {
+          method: "POST",
+          body: JSON.stringify({ source_media_id: activeScene.media_id, motion_prompt: prompt })
+        }
+      );
+      setFalVideoJob(job);
+      localStorage.setItem(falVideoStorageKey(project.id, activeScene.id), job.id);
+      setStatus("Review the FAL price, then confirm to generate one 6-second video.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "fal_not_connected"
+        ? "Connect your FAL API key in Settings first."
+        : type === "fal_generation_busy"
+          ? "Only one active FAL generation is allowed. Wait or cancel it."
+          : "FAL could not price this video. Check that the scene still has a ready portrait image.");
+    } finally {
+      setFalVideoBusy(false);
+    }
+  }
+
+  async function confirmFalVideo() {
+    if (!project || !activeScene || !falVideoJob || falVideoJob.state !== "quoted") return;
+    if (falVideoJob.quote.estimated_total === null) return;
+    setFalVideoBusy(true);
+    setStatus("Confirming FAL video generation…");
+    try {
+      const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falVideoJob.id}/confirm`, {
+        method: "POST",
+        body: JSON.stringify({ idempotency_key: crypto.randomUUID() })
+      });
+      setFalVideoJob(job);
+      localStorage.setItem(falVideoStorageKey(project.id, activeScene.id), job.id);
+      setStatus("FAL video generation queued.");
+      void pollFalVideo(job.id);
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "quote_expired"
+        ? "This quote expired. Request a new price."
+        : type === "source_changed"
+          ? "The source image changed. Request a new price."
+          : "FAL video generation could not be confirmed.");
+    } finally {
+      setFalVideoBusy(false);
+    }
+  }
+
+  async function pollFalVideo(jobId: string) {
+    const deadline = Date.now() + 25 * 60_000;
+    while (Date.now() < deadline) {
+      try {
+        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
+        setFalVideoJob(job);
+        if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
+          if (job.state === "ready") setStatus("AI video ready — review it before attaching.");
+          else if (job.state === "cancelled") setStatus("FAL video generation cancelled.");
+          else setStatus(falGenFailureMessage(job));
+          return;
+        }
+        setStatus(`FAL video · ${job.state.replaceAll("_", " ")}`);
+      } catch {
+        setStatus("Could not refresh FAL video status.");
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    setStatus("FAL video is still running. Reopen Animate this image to check again.");
+  }
+
+  async function cancelFalVideo() {
+    if (!falVideoJob) return;
+    setFalVideoBusy(true);
+    try {
+      const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falVideoJob.id}/cancel`, { method: "POST" });
+      setFalVideoJob(job);
+      setStatus(job.state === "cancelled"
+        ? "FAL video generation cancelled."
+        : "Cancel requested. FAL may still bill work that already started.");
+    } catch {
+      setStatus("FAL video generation could not be cancelled.");
+    } finally {
+      setFalVideoBusy(false);
+    }
+  }
+
+  async function useFalVideoMedia() {
+    if (!project || !falVideoJob?.result_media || falVideoJob.result_media.state !== "ready") return;
+    const scene = project.scenes.find(({ id }) => id === falVideoJob.scene_id);
+    if (!scene) return;
+    setFalVideoBusy(true);
+    setBusy(true);
+    try {
+      const media = falVideoJob.result_media;
+      const updated = await api.command(project.id, project.revision, "update_scene", {
+        scene: { ...scene, media_id: media.id }
+      });
+      setProject(updated);
+      setSceneMedia((current) => ({ ...current, [media.id]: media }));
+      setSceneProgress((current) => ({ ...current, [scene.id]: "ready" }));
+      localStorage.removeItem(falVideoStorageKey(project.id, scene.id));
+      setFalVideoOpen(false);
+      setStatus(`Scene ${scene.order + 1} uses AI-generated FAL video. Preview may loop or trim to the scene duration.`);
+    } catch (error) {
+      if (error instanceof ApiResponseError && error.status === 409) {
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          sceneId: scene.id,
+          operation: "AI video attach"
+        });
+        return;
+      }
+      setStatus("Generated video could not be attached.");
+    } finally {
+      setFalVideoBusy(false);
+      setBusy(false);
+    }
+  }
+
   function showFalLock() {
     setFeatureLock(falCredential?.connected
-      ? { title: "AI generation is not live yet", message: "Your FAL key is connected. Nothing else is required for now." }
-      : { title: "FAL generation is locked", message: "Connect your FAL API key now. AI video and voice will unlock when the workflow launches.", action: "settings" });
+      ? { title: "Generate AI stills from a scene", message: "Open a scene in the storyboard and choose Generate AI image. Each still is quoted and confirmed before FAL charges your account." }
+      : { title: "FAL generation is locked", message: "Connect your FAL API key now. AI still generation unlocks in the storyboard after you connect.", action: "settings" });
   }
 
   function showFutureLock() {
@@ -952,16 +1362,39 @@ function App() {
   const activePreviewUrl = activeMedia?.previewUrl ?? activeMedia?.attribution?.previewUrl;
   const allScenesHaveMedia = Boolean(project?.scenes.length && project.scenes.every(({ media_id }) =>
     media_id && sceneMedia[media_id]?.state === "ready"));
+  const inApp = authReady && Boolean(token) && step !== "sign-in";
+  const createFlow = step === "brief" || step === "architecture" || step === "concepts" || step === "media" || step === "editor" || step === "render";
+  const projectTitle = project?.brief.purpose?.trim() || "Untitled draft";
+  const saveBusy = busy || status === "Saving…";
+  const saveLabel = saveBusy ? "Saving…" : (status.startsWith("✓") || !status ? "Saved" : status);
 
-  if (authReady && !token && step === "marketing") {
-    return <MarketingLanding onOpenStudio={() => setStep("sign-in")} />;
+  function goCreate() {
+    if (step === "drafts" || step === "settings") startCreate();
   }
 
-  return <main>
-    <header><strong>F-Motion</strong>
+  const appNav = inApp ? <>
+    <button type="button" aria-current={step === "drafts" ? "page" : undefined} onClick={() => setStep("drafts")}>Drafts</button>
+    <button type="button" aria-current={createFlow ? "page" : undefined} onClick={goCreate}>Create</button>
+    <button type="button" aria-current={step === "settings" ? "page" : undefined} onClick={() => setStep("settings")}>Settings</button>
+  </> : null;
+
+  return <div className={`app-shell${inApp ? " app-shell-signed" : ""}${step === "editor" ? " app-shell-editor" : ""}`}>
+    {inApp && <nav className="app-rail" aria-label="Primary">
+      <a className="rail-brand" href="/">F-MOTION</a>
+      {appNav}
+    </nav>}
+    <div className="app-stage">
+    <header>
+      <div className="header-identity">
+        <strong>F-Motion</strong>
+        {step === "editor" && project && <>
+          <span className="header-sep" aria-hidden="true">·</span>
+          <span className="project-title">{projectTitle}</span>
+          <span className="save-pill" data-busy={saveBusy || undefined}>{saveLabel}</span>
+        </>}
+      </div>
       <div className="header-actions">
-        {authReady && !token && <button className="secondary" onClick={() => setStep("marketing")}>Marketing</button>}
-        {authReady && token && step !== "sign-in" && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
+        {authReady && token && step !== "sign-in" && !inApp && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
         <span role="status">{online ? "● Connected" : "○ Reconnecting — draft kept locally"}</span>
       </div>
     </header>
@@ -973,30 +1406,22 @@ function App() {
         : "Sign in to keep projects private."}</p>
       <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
       <button disabled={authBusy || !authSetup.gateway || (Boolean(import.meta.env.VITE_SUPABASE_URL) && !email.trim())} onClick={() => void magicLink()}>Email me a magic link</button>
-      {(awaitingEmail || Boolean(import.meta.env.VITE_SUPABASE_URL)) && <>
-        <p>Shared Fotium auth often sends the email link to fotium.vip. Stay in this browser, copy the full fotium.vip URL from the address bar (it contains <code>?code=</code>), and paste it here.</p>
-        <label>Paste Fotium login URL<input
-          value={authCallbackPaste}
-          onChange={(event) => setAuthCallbackPaste(event.target.value)}
-          placeholder="https://fotium.vip/?code=…"
-        /></label>
-        <button className="secondary" disabled={authBusy || !authCallbackPaste.trim()} onClick={() => void completeAuthCallbackPaste()}>Complete login</button>
-      </>}
       {import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "1"
         ? <button className="secondary" disabled={authBusy || !authSetup.gateway} onClick={() => void googleSignIn()}>Continue with Google</button>
         : null}
       <p role="status">{status}</p>
-      <button className="secondary" onClick={() => setStep("marketing")}>Back to marketing</button>
     </section>}
     {authReady && step === "drafts" && <section>
-      <h1>Drafts</h1>
-      <p>Pick up where you left off or start a new video.</p>
+      <div className="drafts-hero">
+        <h1>Drafts</h1>
+        <p>Pick up where you left off or start a new video.</p>
+      </div>
       <aside className="provider-preview" aria-label="Creation sources">
         <button className="provider-preview-item" data-locked={!pexelsCredential?.connected} onClick={() => pexelsCredential?.connected ? setStep("settings") : showPexelsLock()}>
           <strong>Pexels</strong><span>Real stock video · {pexelsCredential?.connected ? "unlocked" : "locked"}</span>
         </button>
         <button className="provider-preview-item" data-locked onClick={showFalLock}>
-          <strong>FAL</strong><span>AI video + voice · locked</span>
+          <strong>FAL</strong><span>{falCredential?.connected && !falUnavailable ? "AI stills in storyboard" : "AI stills · locked"}</span>
         </button>
         <button className="provider-preview-item" data-locked onClick={showFutureLock}>
           <strong>More</strong><span>New providers · locked</span>
@@ -1005,11 +1430,15 @@ function App() {
       </aside>
       <button onClick={startCreate}>Create new video</button>
       {draftsLoading && <p role="status">Loading drafts…</p>}
-      {!draftsLoading && drafts.length === 0 && <p role="status">No drafts yet.</p>}
-      <div className="concepts">{drafts.map((item) =>
-        <button key={item.id} className="card" onClick={() => void openDraft(item.id)}>
+      {!draftsLoading && drafts.length === 0 && <div className="empty-drafts">
+        <p role="status">No drafts yet.</p>
+        <p>Describe what you want to make — F-Motion will recommend a video plan and storyboard.</p>
+        <button onClick={startCreate}>Create new video</button>
+      </div>}
+      <div className="concepts drafts-grid">{drafts.map((item) =>
+        <button key={item.id} className="card draft-card" onClick={() => void openDraft(item.id)}>
           <strong>{item.brief.purpose || "Untitled draft"}</strong>
-          <span>Revision {item.revision}</span>
+          <span className="draft-meta">Revision {item.revision}</span>
         </button>)}</div>
       <p role="status">{status}</p>
     </section>}
@@ -1059,9 +1488,29 @@ function App() {
         </select></label>
         </div>
       </details>
-      <button disabled={busy} onClick={() => void createStoryboard()}>{busy ? "Building video plan…" : "Build storyboard"}</button>
+      <button disabled={busy} onClick={() => void continueToConcepts()}>{busy ? "Preparing concepts…" : "Continue to story concepts"}</button>
       <button className="secondary" disabled={busy} onClick={() => setStep("brief")}>Back to description</button>
       <p role="status" aria-live="polite">{status}</p>
+    </section>}
+    {authReady && step === "concepts" && project && <section>
+      <h1>Choose a story approach</h1>
+      <p>Each option builds a different multi-scene plan. Licensed stock is matched only after you choose.</p>
+      <div className="concept-choices" aria-label="Story concepts">{conceptChoices.map((concept) =>
+        <button
+          key={concept.id}
+          className="card"
+          disabled={busy}
+          aria-label={`Choose ${concept.title} concept`}
+          onClick={() => void chooseConcept(concept.id)}
+        >
+          <strong>{concept.title}</strong>
+          <span>{concept.hook}</span>
+          <span>{concept.beat_summary}</span>
+          <span>About {concept.duration_seconds} seconds · {concept.scene_count} scenes</span>
+          <span>{concept.media_direction}</span>
+        </button>)}</div>
+      <p role="status" aria-live="polite">{status}</p>
+      <button className="secondary" disabled={busy} onClick={() => setStep("architecture")}>Back to video plan</button>
     </section>}
     {authReady && step === "media" && project && <section>
       <h1>Upload your media</h1>
@@ -1075,8 +1524,18 @@ function App() {
       <button className="secondary" disabled={busy} onClick={() => setStep("editor")}>Back to storyboard</button>
     </section>}
     {authReady && step === "editor" && project && activeScene && <section className="editor">
-      <h1>Storyboard</h1>
-      <p>Review each beat and its selected media. Replace it only when another visual fits better.</p>
+      <div className="editor-toolbar">
+        <div>
+          <h1>Storyboard</h1>
+          <p>Review each beat and its selected media. Replace it only when another visual fits better.</p>
+        </div>
+        <div className="editor-toolbar-actions">
+          <button disabled={!allScenesHaveMedia} onClick={() => void requestRender("preview")}>Generate accurate preview</button>
+          <button className="secondary" disabled={!allScenesHaveMedia} onClick={() => void requestRender("final")}>Export final</button>
+        </div>
+      </div>
+
+      <div className="studio-board">
       <nav className="scene-strip" aria-label="Storyboard scenes">{project.scenes.map((scene) => {
         const media = scene.media_id ? sceneMedia[scene.media_id] : undefined;
         const previewUrl = media?.previewUrl ?? media?.attribution?.previewUrl;
@@ -1093,33 +1552,57 @@ function App() {
           }}
         >
           {previewUrl
-            ? media?.detected?.type === "video/mp4"
+            ? (media?.detected?.type === "video/mp4"
               ? <video src={previewUrl} muted playsInline preload="metadata" />
-              : <img src={previewUrl} alt="" />
-            : <span className="scene-empty">{media ? "Media processing" : "No media"}</span>}
+              : <img src={previewUrl} alt="" />)
+            : (
+              <span className="scene-empty">
+                {sceneProgress[scene.id] === "finding" ? "Finding…"
+                  : sceneProgress[scene.id] === "inspecting" ? "Inspecting…"
+                    : sceneProgress[scene.id] === "needs_media" ? "Needs media"
+                      : media ? "Media processing" : "No media"}
+              </span>
+            )}
           <strong>Scene {scene.order + 1}</strong>
           <span>{scene.caption || scene.visual_prompt}</span>
+          {sceneProgress[scene.id] && !previewUrl ? (
+            <span className="scene-progress">
+              {sceneProgress[scene.id] === "finding" ? "finding"
+                : sceneProgress[scene.id] === "inspecting" ? "inspecting"
+                  : sceneProgress[scene.id] === "ready" ? "ready"
+                    : "needs media"}
+            </span>
+          ) : null}
         </button>;
       })}</nav>
 
       <div className="editor-grid" key={`${activeScene.id}:${project.revision}`}>
-        <div>
+        <div className="preview-panel">
           <p className="notice">Approximate composition — accurate rendered preview comes next.</p>
           <div className="preview" aria-label={`Approximate preview for scene ${activeSceneNumber}`}>
         {activePreviewUrl && (activeMedia?.detected?.type === "video/mp4"
           ? <video src={activePreviewUrl} muted loop playsInline controls preload="metadata" />
           : <img src={activePreviewUrl} alt={activeMedia?.attribution ? `Selected stock video by ${activeMedia.attribution.creator}` : "Selected gallery media"} />)}
-        {activeMedia && !activePreviewUrl && <span>{activeMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
-            {!activeMedia && <span>Choose stock or upload media</span>}
-            <span>{activeScene.caption}</span>
+        {activeMedia && !activePreviewUrl && <span className="media-placeholder">{activeMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
+            {!activeMedia && <span className="media-placeholder">Choose stock or upload media</span>}
+            {activeScene.caption ? <span className="caption-burn">{activeScene.caption}</span> : null}
+            <span
+              className="crop-guide"
+              style={{ left: `${activeScene.focal_x * 100}%`, top: `${activeScene.focal_y * 100}%` }}
+              aria-hidden="true"
+            />
           </div>
+          <p className="crop-hint">Crop focus · drag the focus sliders in the inspector</p>
           {activeMedia?.attribution && <p>
             Video by <a href={activeMedia.attribution.attributionUrl} target="_blank" rel="noreferrer">{activeMedia.attribution.creator}</a>
             {" · "}<a href="https://www.pexels.com" target="_blank" rel="noreferrer">Pexels</a>
           </p>}
+          {activeMedia?.generation?.source === "FAL" && <p>AI-generated with FAL{activeMedia.generation.derivedFromImage ? " · from your still" : ""} · {activeMedia.generation.model}</p>}
         </div>
 
         <div className="scene-controls">
+          <h2>Scene {activeSceneNumber}</h2>
+          <div className="inspector-block">
           <label htmlFor={`prompt-${activeScene.id}`}>Scene {activeSceneNumber} {activeMedia ? "visual note" : "footage search"}
             <textarea id={`prompt-${activeScene.id}`} maxLength={100} defaultValue={activeScene.visual_prompt ?? ""} onBlur={(event) => void saveScenePatch(activeScene.id, { visual_prompt: event.currentTarget.value.trim() })} />
             <small>{activeMedia
@@ -1132,6 +1615,8 @@ function App() {
           <label htmlFor={`duration-${activeScene.id}`}>Scene {activeSceneNumber} duration (seconds)
             <input id={`duration-${activeScene.id}`} type="number" min="0.5" max="15" step="0.1" defaultValue={activeScene.duration_ms / 1000} onBlur={(event) => void saveScenePatch(activeScene.id, { duration_ms: Math.round(event.currentTarget.valueAsNumber * 1000) })} />
           </label>
+          </div>
+          <div className="inspector-block">
           <label htmlFor={`motion-${activeScene.id}`}>Scene {activeSceneNumber} motion
             <select id={`motion-${activeScene.id}`} value={activeScene.motion} onChange={(event) => void saveScenePatch(activeScene.id, { motion: event.target.value as Scene["motion"] })}>
               <option value="none">None</option><option value="push">Push</option><option value="zoom">Zoom</option>
@@ -1147,12 +1632,30 @@ function App() {
             <input id={`audio-${activeScene.id}`} type="range" min="0" max="1" step="0.05" defaultValue={activeScene.audio_level} onBlur={(event) => void saveScenePatch(activeScene.id, { audio_level: event.currentTarget.valueAsNumber })} />
           </label>
           <button className="secondary" onClick={() => void saveScenePatch(activeScene.id, { audio_level: activeScene.audio_level === 0 ? 1 : 0 })}>{activeScene.audio_level === 0 ? `Unmute scene ${activeSceneNumber}` : `Mute scene ${activeSceneNumber}`}</button>
+          </div>
+          <div className="inspector-block">
           <button className={!pexelsCredential?.connected ? "locked-feature" : undefined}
             disabled={busy || (Boolean(pexelsCredential?.connected) && !activeScene.visual_prompt)}
             onClick={() => pexelsCredential?.connected ? void searchStock(activeScene.id) : showPexelsLock()}>
-            {!pexelsCredential?.connected ? "🔒 " : ""}Find licensed media for scene {activeSceneNumber}
+            {!pexelsCredential?.connected ? "🔒 " : ""}{activeMedia
+              ? `Find another licensed video for scene ${activeSceneNumber}`
+              : `Find licensed media for scene ${activeSceneNumber}`}
           </button>
+          <button className={!falCredential?.connected || falUnavailable ? "locked-feature" : undefined}
+            disabled={busy || falGenBusy}
+            onClick={() => openFalGenerate(activeScene)}>
+            {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Generate AI image for scene {activeSceneNumber}
+          </button>
+          {activeMedia?.state === "ready" && activeMedia.detected?.type !== "video/mp4" && (
+            <button className={!falCredential?.connected || falUnavailable ? "locked-feature" : undefined}
+              disabled={busy || falVideoBusy}
+              onClick={() => openFalAnimate(activeScene)}>
+              {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Animate this image for scene {activeSceneNumber}
+            </button>
+          )}
+          </div>
         </div>
+      </div>
       </div>
 
       {candidates.length > 0 && <div className="candidates" aria-label={`Licensed media options for scene ${activeSceneNumber}`}>{candidates.map((candidate) => <article key={candidate.id} className="candidate">
@@ -1174,66 +1677,155 @@ function App() {
       }} />
       <button className="secondary" disabled={busy} onClick={() => upload.current?.click()}>Upload media for scene {activeSceneNumber}</button>
       <p role="status">{status || "✓ All changes saved"}</p>
-      <button disabled={!allScenesHaveMedia} onClick={() => void requestRender()}>Generate accurate preview</button>
       {!allScenesHaveMedia && <p>{project.scenes.every(({ media_id }) => media_id)
         ? "Media is processing. Preview unlocks automatically when every scene is ready."
         : "Add media to every scene before rendering."}</p>}
-      {downloadUrl && <button className="secondary" onClick={() => setStep("render")}>View accurate preview{previewRevision !== project.revision ? " · older" : ""}</button>}
+      {downloadUrl && <button className="secondary" onClick={() => setStep("render")}>{renderKind === "final" ? "View final export" : "View accurate preview"}{previewRevision !== project.revision ? " · older" : ""}</button>}
       <button className="secondary" onClick={() => setStep("brief")}>Start a different description</button>
       <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
-      {conflict && <dialog open><h2>Newer changes exist</h2><p>Your changes were not merged.</p>
-        <button onClick={() => { setProject(conflict); setActiveSceneId(conflict.scenes.some(({ id }) => id === activeScene.id) ? activeScene.id : (conflict.scenes[0]?.id ?? "")); setConflict(undefined); }}>Reload latest</button>
+      {falGenOpen && activeScene && <dialog open aria-labelledby="fal-gen-title">
+        <h2 id="fal-gen-title">Generate AI image for scene {activeSceneNumber}</h2>
+        <p>Optional fallback after your own media or licensed Pexels search. One still uses Flux Schnell on FAL. Charged directly to your FAL account. F-Motion copies the result into private storage within an hour and does not keep FAL CDN copies longer than that preference.</p>
+        <label htmlFor="fal-gen-prompt">Image prompt
+          <textarea id="fal-gen-prompt" maxLength={500} value={falGenPrompt} disabled={falGenBusy || (falGenJob && !["quoted", "failed", "cancelled", "submission_uncertain", "ready"].includes(falGenJob.state))} onChange={(event) => setFalGenPrompt(event.target.value)} />
+        </label>
+        {falGenJob && <div className="notice">
+          <p>Model · Flux Schnell (fast still)</p>
+          <p>{falGenJob.quote.currency} {falGenJob.quote.unit_price} per {falGenJob.quote.unit}
+            {falGenJob.quote.estimated_total !== null
+              ? ` · estimated total ${falGenJob.quote.currency} ${falGenJob.quote.estimated_total}`
+              : ` · ${falGenJob.quote.estimated_total_explanation ?? "FAL could not calculate a total"}`}</p>
+          <p>Status · {falGenJob.state.replaceAll("_", " ")}</p>
+        </div>}
+        {falGenJob?.state === "ready" && falGenJob.result_media && (
+          <div>
+            {(falGenJob.result_media.previewUrl || falGenJob.result_media.attribution?.previewUrl)
+              ? <img src={falGenJob.result_media.previewUrl ?? falGenJob.result_media.attribution?.previewUrl} alt="Generated AI still preview" />
+              : <p>Generated still is ready for review.</p>}
+            <p>AI-generated with FAL</p>
+          </div>
+        )}
+        <div className="dialog-actions">
+          {(!falGenJob || ["failed", "cancelled", "submission_uncertain", "ready"].includes(falGenJob.state)) && (
+            <button disabled={falGenBusy || !falGenPrompt.trim()} onClick={() => void quoteFalImage()}>Get FAL price</button>
+          )}
+          {falGenJob?.state === "quoted" && (
+            <button disabled={falGenBusy || falGenJob.quote.estimated_total === null} onClick={() => void confirmFalImage()}>Generate one image</button>
+          )}
+          {falGenJob && !["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(falGenJob.state) && (
+            <button className="secondary" disabled={falGenBusy} onClick={() => void cancelFalGeneration()}>Cancel generation</button>
+          )}
+          {falGenJob?.state === "ready" && falGenJob.result_media?.state === "ready" && (
+            <>
+              <button disabled={falGenBusy || busy} onClick={() => void useFalGeneratedMedia()}>Use for scene {activeSceneNumber}</button>
+              <button className="secondary" disabled={falGenBusy} onClick={() => {
+                setFalGenJob(undefined);
+                setStatus("Current scene media kept.");
+              }}>Keep current media</button>
+              <button className="secondary" disabled={falGenBusy} onClick={() => {
+                setFalGenJob(undefined);
+                setStatus("Request a new FAL price to generate another still.");
+              }}>Generate another</button>
+            </>
+          )}
+          <button className="secondary" disabled={falGenBusy} onClick={() => setFalGenOpen(false)}>Close</button>
+        </div>
+      </dialog>}
+      {falVideoOpen && activeScene && <dialog open aria-labelledby="fal-video-title">
+        <h2 id="fal-video-title">Animate image for scene {activeSceneNumber}</h2>
+        <p>Creates one 6-second Hailuo video from the selected still. Charged directly to your FAL account. The accurate preview may loop or trim this clip to the scene duration.</p>
+        {activePreviewUrl && <img src={activePreviewUrl} alt="Source still for animation" />}
+        <label htmlFor="fal-video-prompt">Motion prompt
+          <textarea id="fal-video-prompt" maxLength={500} value={falVideoPrompt} disabled={falVideoBusy || (falVideoJob && !["quoted", "failed", "cancelled", "submission_uncertain", "ready"].includes(falVideoJob.state))} onChange={(event) => setFalVideoPrompt(event.target.value)} />
+        </label>
+        {falVideoJob && <div className="notice">
+          <p>Model · MiniMax Hailuo 2.3 Fast · 6 seconds</p>
+          <p>{falVideoJob.quote.currency} {falVideoJob.quote.unit_price} per {falVideoJob.quote.unit}
+            {falVideoJob.quote.estimated_total !== null
+              ? ` · estimated total ${falVideoJob.quote.currency} ${falVideoJob.quote.estimated_total}`
+              : ` · ${falVideoJob.quote.estimated_total_explanation ?? "FAL could not calculate a total"}`}</p>
+          <p>Status · {falVideoJob.state.replaceAll("_", " ")}</p>
+        </div>}
+        {falVideoJob?.state === "ready" && falVideoJob.result_media && (
+          <div>
+            {(falVideoJob.result_media.previewUrl)
+              ? <video src={falVideoJob.result_media.previewUrl} controls playsInline muted preload="metadata" />
+              : <p>Generated video is ready for review.</p>}
+            <p>AI-generated with FAL{falVideoJob.result_media.generation?.derivedFromImage ? " · from your still" : ""}</p>
+          </div>
+        )}
+        <div className="dialog-actions">
+          {(!falVideoJob || ["failed", "cancelled", "submission_uncertain", "ready"].includes(falVideoJob.state)) && (
+            <button disabled={falVideoBusy || !falVideoPrompt.trim()} onClick={() => void quoteFalVideo()}>Get FAL price</button>
+          )}
+          {falVideoJob?.state === "quoted" && (
+            <button disabled={falVideoBusy || falVideoJob.quote.estimated_total === null} onClick={() => void confirmFalVideo()}>Generate one 6-second video</button>
+          )}
+          {falVideoJob && !["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(falVideoJob.state) && (
+            <button className="secondary" disabled={falVideoBusy} onClick={() => void cancelFalVideo()}>Cancel generation</button>
+          )}
+          {falVideoJob?.state === "ready" && falVideoJob.result_media?.state === "ready" && (
+            <>
+              <button disabled={falVideoBusy || busy} onClick={() => void useFalVideoMedia()}>Use video for scene {activeSceneNumber}</button>
+              <button className="secondary" disabled={falVideoBusy} onClick={() => {
+                setFalVideoJob(undefined);
+                setStatus("Current image kept.");
+              }}>Keep image</button>
+              <button className="secondary" disabled={falVideoBusy} onClick={() => {
+                setFalVideoJob(undefined);
+                setStatus("Request a new FAL price to generate another video.");
+              }}>Generate another</button>
+            </>
+          )}
+          <button className="secondary" disabled={falVideoBusy} onClick={() => setFalVideoOpen(false)}>Close</button>
+        </div>
+      </dialog>}
+      {conflict && <dialog open><h2>Newer changes exist</h2>
+        <p>{(() => {
+          const scene = conflictNotice?.sceneId
+            ? (project?.scenes.find(({ id }) => id === conflictNotice.sceneId)
+              ?? conflict.scenes.find(({ id }) => id === conflictNotice.sceneId))
+            : undefined;
+          const where = scene ? ` on scene ${scene.order + 1}` : "";
+          const what = conflictNotice?.operation ?? "edits";
+          return `Your pending ${what}${where} was not merged. Reload the latest storyboard, or save your local scene edits as a new project.`;
+        })()}</p>
+        <button onClick={() => {
+          setProject(conflict);
+          setActiveSceneId(conflict.scenes.some(({ id }) => id === activeScene.id) ? activeScene.id : (conflict.scenes[0]?.id ?? ""));
+          dismissConflict();
+        }}>Reload latest</button>
         <button onClick={() => void saveAsNewProject()}>Save as new project</button>
       </dialog>}
     </section>}
-    {authReady && step === "render" && <section>
-      <h1>Accurate preview</h1>
-      <p role="status">{progress.phase === "failed" ? "Accurate preview failed — try again or keep editing." : `${progress.phase} · ${renderLabel}`}</p>
+    {authReady && step === "render" && <section className="export-surface">
+      <h1>{renderHeading}</h1>
+      {progress.phase === "queued" || progress.phase === "running" || progress.phase === "uploading" || progress.phase === "encoding" ? (
+        <p>Export setup · your storyboard is rendering. Keep this tab open until it finishes.</p>
+      ) : null}
+      <p role="status">{progress.phase === "failed" ? renderFailedLabel : `${progress.phase} · ${renderLabel}`}</p>
       <progress value={progress.percent} max="100">{progress.percent}%</progress>
+      {downloadUrl && progress.phase === "complete" && <div className="export-complete">
+        <strong>{renderKind === "final" ? "Export complete" : "Preview ready"}</strong>
+        <p>Download the MP4 or keep editing the storyboard.</p>
+      </div>}
       {downloadUrl && <video controls playsInline preload="metadata" src={downloadUrl} onError={() => void refreshPreviewUrl()}>
-        Your browser cannot play this MP4 preview. Use the download link instead.
+        Your browser cannot play this MP4. Use the download link instead.
       </video>}
       {downloadUrl && <p>{previewMetadata.width && previewMetadata.height ? `${previewMetadata.width}×${previewMetadata.height}` : "Rendered MP4"}
         {previewMetadata.duration_ms ? ` · ${(Number(previewMetadata.duration_ms) / 1000).toFixed(1)} seconds` : ""}
         {previewMetadata.audio_status ? ` · audio ${previewMetadata.audio_status}` : ""}</p>}
-      {previewRevision !== undefined && project && previewRevision !== project.revision && <p className="notice">Older preview — regenerate after your edits.</p>}
-      <div>
+      {previewRevision !== undefined && project && previewRevision !== project.revision && <p className="notice">{olderRenderNotice}</p>}
+      <div className="export-actions">
         <button disabled={progress.phase === "complete" || progress.phase === "cancelled" || progress.phase === "failed"} onClick={() => void cancelRender()}>Cancel render</button>
         {(progress.phase === "failed" || progress.phase === "cancelled") && <button onClick={() => void retryRender()}>Retry</button>}
-        <a href={downloadUrl} download><button disabled={!downloadUrl || progress.phase === "failed"}>Download preview</button></a>
+        <a href={downloadUrl} download><button disabled={!downloadUrl || progress.phase === "failed"}>{downloadLabel}</button></a>
       </div>
       <button className="secondary" onClick={() => setStep("editor")}>Keep editing</button>
     </section>}
     {authReady && step === "settings" && <section>
       <h1>Choose your video sources</h1>
       <p>Connect only the services you want to use. Each provider stays under your account and uses your own API key.</p>
-      <article className="settings-card" aria-labelledby="usage-settings-title">
-        <h2 id="usage-settings-title">Host API usage</h2>
-        <p>Renders consume free starter units on your F-Motion account, then paid top-ups. This meters host work only — FAL and Pexels stay on your own keys.</p>
-        {hostUsage
-          ? <p>{hostUsage.balance} {hostUsage.unit}s remaining · preview costs {hostUsage.costs.preview}, final costs {hostUsage.costs.final} · starter grant {hostUsage.free_grant}</p>
-          : <p className="notice">Usage balance is unavailable on this deployment.</p>}
-        <p><small>Paid top-up checkout is not wired yet; operators can credit balances server-side.</small></p>
-      </article>
-      <article className="settings-card" aria-labelledby="api-keys-settings-title">
-        <h2 id="api-keys-settings-title">Machine API keys</h2>
-        <p>Create a key for CLI, MCP, or agent tools. Send it as <code>Authorization: Bearer fm_…</code>. The secret is shown once.</p>
-        <label htmlFor="api-key-label">Label
-          <input id="api-key-label" value={apiKeyLabel} onChange={(event) => setApiKeyLabel(event.target.value)} maxLength={64} />
-        </label>
-        <div className="settings-actions">
-          <button disabled={apiKeysBusy} onClick={() => void createApiKey()}>Create API key</button>
-        </div>
-        {createdApiToken && <p role="status"><code>{createdApiToken}</code></p>}
-        {apiKeys.length === 0
-          ? <p role="status">No active API keys.</p>
-          : <ul>{apiKeys.map((key) =>
-            <li key={key.id}>
-              {key.label} · …{key.hint} · created {new Date(key.created_at).toLocaleString()}
-              {" "}
-              <button className="secondary" disabled={apiKeysBusy} onClick={() => void revokeApiKey(key.id)}>Revoke</button>
-            </li>)}</ul>}
-      </article>
       <div className="provider-onboarding" aria-label="Video source options">
         <article className={`provider-card ${pexelsCredential?.connected ? "provider-live" : "provider-locked"}`}>
           <span className={`provider-status ${pexelsCredential?.connected ? "" : "provider-soon"}`}>{pexelsCredential?.connected ? "Unlocked" : "Locked"}</span>
@@ -1244,12 +1836,14 @@ function App() {
             ? <a href="#pexels-settings-title">Manage Pexels</a>
             : <button className="lock-trigger" onClick={showPexelsLock}>Why is this locked?</button>}
         </article>
-        <article className="provider-card">
-          <span className="provider-status provider-soon">Locked</span>
+        <article className={`provider-card ${falCredential?.connected && !falUnavailable ? "provider-live" : "provider-locked"}`}>
+          <span className={`provider-status ${falCredential?.connected && !falUnavailable ? "" : "provider-soon"}`}>{falCredential?.connected && !falUnavailable ? "Unlocked" : "Locked"}</span>
           <h2>FAL</h2>
-          <strong>AI video + voice</strong>
-          <p>Connect your key now. AI video and voice generation will appear here after the generation workflow and cost confirmation are enabled.</p>
-          <button className="lock-trigger" onClick={showFalLock}>Why is this locked?</button>
+          <strong>AI stills</strong>
+          <p>Connect your key for AI still generation. Open a storyboard scene and choose Generate AI image to quote, confirm, and review one still.</p>
+          {falCredential?.connected && !falUnavailable
+            ? <a href="#fal-settings-title">Manage FAL</a>
+            : <button className="lock-trigger" onClick={showFalLock}>Why is this locked?</button>}
         </article>
         <article className="provider-card provider-future">
           <span className="provider-status provider-soon">Coming soon</span>
@@ -1282,7 +1876,7 @@ function App() {
       </article>
       <article className="settings-card" aria-labelledby="fal-settings-title">
         <h2 id="fal-settings-title">FAL generation</h2>
-        <p>Connect your own FAL API-scope key for the planned AI video and voice workflow. Future generation will be charged directly to your FAL account after you see the estimated cost and confirm it. Generation is not live yet, and F-Motion does not supply or share a FAL key.</p>
+        <p>Connect your own FAL API-scope key for AI still generation in the storyboard. Each image is charged directly to your FAL account after you see the estimated cost and confirm it. F-Motion does not supply or share a FAL key.</p>
         {falUnavailable && <p className="notice">FAL connection is unavailable here. Uploads, Pexels, editing, and rendering still work.</p>}
         {!falUnavailable && falCredential?.connected && <p>
           Connected · key ending …{falCredential.hint}
@@ -1319,7 +1913,9 @@ function App() {
       {featureLock.action === "settings" && <button onClick={() => { setFeatureLock(undefined); setStep("settings"); }}>Open provider settings</button>}
       <button className="secondary" onClick={() => setFeatureLock(undefined)}>Close</button>
     </dialog>}
-  </main>;
+    </div>
+    {inApp && <nav className="app-dock" aria-label="Primary">{appNav}</nav>}
+  </div>;
 }
 
 createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);

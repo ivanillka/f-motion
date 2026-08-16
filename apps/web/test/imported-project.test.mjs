@@ -23,13 +23,13 @@ test("imported project ids must look like UUIDs", () => {
 test("rememberImportedProject keeps ?project= across a redirect that drops the query", () => {
   const storage = memoryStorage();
   assert.equal(
-    rememberImportedProject("https://f-motion.com/?project=59af46af-b82d-5fda-a837-652b88dcb50f", storage),
+    rememberImportedProject("https://f-motion.com/app/?project=59af46af-b82d-5fda-a837-652b88dcb50f", storage),
     "59af46af-b82d-5fda-a837-652b88dcb50f"
   );
   assert.equal(
-    rememberImportedProject("https://f-motion.com/", storage),
+    rememberImportedProject("https://f-motion.com/app/", storage),
     "59af46af-b82d-5fda-a837-652b88dcb50f"
   );
   clearImportedProject(storage);
-  assert.equal(rememberImportedProject("https://f-motion.com/", storage), "");
+  assert.equal(rememberImportedProject("https://f-motion.com/app/", storage), "");
 });

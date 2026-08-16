@@ -1,0 +1,6 @@
+{
+  "event_id": "evt-1",
+  "phase": "preparing",
+  "percent": 10,
+  "additive_field": "ok"
+}
