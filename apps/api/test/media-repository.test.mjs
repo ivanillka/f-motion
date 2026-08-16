@@ -89,6 +89,28 @@ test("PrivateObjectStore uploads a multi-chunk stream with its known length", as
   assert.equal(input.ContentType, "video/mp4");
 });
 
+test("PrivateObjectStore copies and range-reads without buffering a full GetObject", async () => {
+  const commands = [];
+  const store = new PrivateObjectStore({
+    async send(command) {
+      commands.push(command);
+      if (command.constructor.name === "CopyObjectCommand") {
+        return { CopyObjectResult: { ETag: "\"copied\"" }, VersionId: "v1" };
+      }
+      return { Body: { transformToByteArray: async () => new Uint8Array([1, 2, 3]) } };
+    }
+  }, "bucket");
+  assert.deepEqual(await store.copy("projects/p/media-quarantine/a", "projects/p/media-sealed/a"), {
+    etag: "copied",
+    versionId: "v1"
+  });
+  assert.deepEqual([...await store.readPrefix("projects/p/media-quarantine/a", 64)], [1, 2, 3]);
+  assert.equal(commands[0].input.CopySource, "bucket/projects/p/media-quarantine/a");
+  assert.equal(commands[0].input.Key, "projects/p/media-sealed/a");
+  assert.equal(commands[1].input.Range, "bytes=0-63");
+  assert.equal("Body" in commands[0].input, false);
+});
+
 /** Fake pool backing both `insert` (top-level query) and `completeAdmission` (transaction). */
 function createFakeMediaPool() {
   const assets = new Map();

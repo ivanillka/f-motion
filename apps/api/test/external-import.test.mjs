@@ -177,6 +177,10 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     }
   };
   const stored = [];
+  const pngHeader = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d,
+    0x49, 0x48, 0x44, 0x52, 0, 0, 0, 2, 0, 0, 0, 3, 8, 2, 0, 0, 0
+  ]);
   const store = {
     async put(key, body, type, bytes) {
       if (key.includes(projectIdForExternalImport(
@@ -197,6 +201,13 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     },
     async read() {
       throw new Error("unexpected read");
+    },
+    async readPrefix() {
+      return pngHeader;
+    },
+    async copy(fromKey, toKey) {
+      stored.push({ key: toKey, type: "copy", bytes: 0, fromKey });
+      return { etag: "etag" };
     }
   };
   const requested = [];
@@ -342,6 +353,33 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     });
     assert.equal(webpRetry.status, 200);
     assert.equal(requested.length, webpBeforeRetry);
+
+    const inspectUrl = "https://media.fotium.vip/galleries/look/inspect.jpg";
+    const inspectExternalId = "followup:inspecting";
+    const inspectProjectId = projectIdForExternalImport(ownerId, inspectExternalId);
+    const inspectMediaId = projectIdForExternalImport(inspectProjectId, inspectUrl);
+    assets.set(inspectMediaId, {
+      id: inspectMediaId,
+      ownerId,
+      projectId: inspectProjectId,
+      quarantineObjectKey: `projects/${inspectProjectId}/media-quarantine/${inspectMediaId}`,
+      state: "inspecting",
+      declaredType: "image/png",
+      maxBytes: 1024
+    });
+    const requestedBeforeInspect = requested.length;
+    const inspectRes = await request({
+      ...baseBody,
+      external_id: inspectExternalId,
+      media_urls: [inspectUrl]
+    });
+    assert.equal(inspectRes.status, 201);
+    assert.equal(requested.length, requestedBeforeInspect);
+    assert.equal(assets.get(inspectMediaId).state, "ready");
+    assert.ok(stored.some((entry) =>
+      entry.fromKey === `projects/${inspectProjectId}/media-quarantine/${inspectMediaId}`
+      && entry.key === `projects/${inspectProjectId}/media-sealed/${inspectMediaId}`
+    ));
 
     // Queue Edit again with a new media pick must replace scene attachments.
     const influencerBody = {

@@ -1,8 +1,8 @@
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { CopyObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, open, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable, Transform } from "node:stream";
@@ -400,6 +400,27 @@ export class PrivateObjectStore {
     return bytes;
   }
 
+  async readPrefix(objectKey: string, maxBytes: number): Promise<Uint8Array> {
+    const result = await this.client.send(new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: objectKey,
+      Range: `bytes=0-${maxBytes - 1}`
+    }));
+    if (!result.Body) throw new Error("object body missing");
+    return result.Body.transformToByteArray();
+  }
+
+  async copy(fromKey: string, toKey: string): Promise<{ etag: string; versionId?: string }> {
+    const result = await this.client.send(new CopyObjectCommand({
+      Bucket: this.bucket,
+      Key: toKey,
+      CopySource: `${this.bucket}/${fromKey}`
+    }));
+    const etag = result.CopyObjectResult?.ETag?.replaceAll('"', "");
+    if (!etag) throw new Error("object identity missing");
+    return { etag, ...(result.VersionId ? { versionId: result.VersionId } : {}) };
+  }
+
   async exists(objectKey: string): Promise<boolean> {
     await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: objectKey }));
     return true;
@@ -585,29 +606,106 @@ export class ExternalMediaImportError extends Error {
   constructor(message = "external media import failed") { super(message); }
 }
 
-async function sealImportedStill(
+const stillHeaderBytes = 262_144;
+
+async function filePrefix(path: string, maxBytes: number): Promise<Uint8Array> {
+  const handle = await open(path, "r");
+  try {
+    const buffer = Buffer.alloc(maxBytes);
+    const { bytesRead } = await handle.read(buffer, 0, maxBytes, 0);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
+async function sha256File(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  await pipeline(createReadStream(path), hash);
+  return hash.digest("hex");
+}
+
+async function stillSizeFromPrefix(
+  declaredType: string,
+  read: (maxBytes: number) => Promise<Uint8Array>
+): Promise<{ width: number; height: number } | undefined> {
+  const size = stillSize(declaredType, await read(stillHeaderBytes));
+  if (size || declaredType !== "image/jpeg") return size;
+  return stillSize(declaredType, await read(1_048_576));
+}
+
+async function markSealedStill(
   ownerId: string,
   projectId: string,
   id: string,
   declaredType: string,
-  bytes: Uint8Array,
-  store: Pick<PrivateObjectStore, "put">,
+  byteLength: number,
+  size: { width: number; height: number },
+  sealed: { objectKey: string; etag: string; versionId?: string; sha256: string },
   repository: Pick<PostgresMediaRepository, "markImportedStillReady">
 ): Promise<StoredMedia> {
-  const size = stillSize(declaredType, bytes);
-  if (!size) throw new ExternalMediaImportError("external media dimensions rejected");
-  const objectKey = `projects/${projectId}/media-sealed/${id}`;
-  const sha256 = createHash("sha256").update(bytes).digest("hex");
-  const uploaded = await store.put(objectKey, bytes, declaredType, bytes.byteLength);
   const ready = await repository.markImportedStillReady(
     ownerId,
     projectId,
     id,
-    { objectKey, etag: uploaded.etag, versionId: uploaded.versionId, sha256 },
-    { type: declaredType, bytes: bytes.byteLength, width: size.width, height: size.height }
+    sealed,
+    { type: declaredType, bytes: byteLength, width: size.width, height: size.height }
   );
   if (!ready) throw new ExternalMediaImportError("external media is not reusable");
   return ready;
+}
+
+async function sealImportedStillFromFile(
+  ownerId: string,
+  projectId: string,
+  id: string,
+  declaredType: string,
+  path: string,
+  byteLength: number,
+  store: Pick<PrivateObjectStore, "put">,
+  repository: Pick<PostgresMediaRepository, "markImportedStillReady">
+): Promise<StoredMedia> {
+  const size = await stillSizeFromPrefix(declaredType, (maxBytes) => filePrefix(path, maxBytes));
+  if (!size) throw new ExternalMediaImportError("external media dimensions rejected");
+  const objectKey = `projects/${projectId}/media-sealed/${id}`;
+  const sha256 = await sha256File(path);
+  const upload = createReadStream(path);
+  try {
+    const uploaded = await store.put(objectKey, upload, declaredType, byteLength);
+    return markSealedStill(ownerId, projectId, id, declaredType, byteLength, size, {
+      objectKey,
+      etag: uploaded.etag,
+      versionId: uploaded.versionId,
+      sha256
+    }, repository);
+  } finally {
+    upload.destroy();
+    await finished(upload).catch(() => undefined);
+  }
+}
+
+/** ponytail: CopyObject + header range, not a full GET. Stream sha256 when f-motion-worker exists. */
+async function sealImportedStillFromObject(
+  ownerId: string,
+  projectId: string,
+  id: string,
+  declaredType: string,
+  fromKey: string,
+  byteLength: number,
+  store: Pick<PrivateObjectStore, "copy" | "readPrefix">,
+  repository: Pick<PostgresMediaRepository, "markImportedStillReady">
+): Promise<StoredMedia> {
+  const size = await stillSizeFromPrefix(declaredType, (maxBytes) => store.readPrefix(fromKey, maxBytes));
+  if (!size) throw new ExternalMediaImportError("external media dimensions rejected");
+  const objectKey = `projects/${projectId}/media-sealed/${id}`;
+  const copied = await store.copy(fromKey, objectKey);
+  const sha256 = createHash("sha256").update(`${fromKey}:${copied.etag}:${byteLength}`).digest("hex");
+  return markSealedStill(ownerId, projectId, id, declaredType, byteLength, size, {
+    objectKey,
+    etag: copied.etag,
+    versionId: copied.versionId,
+    sha256
+  }, repository);
 }
 
 /** Copies a trusted integration's allowlisted URL into quarantine; stills skip the worker. */
@@ -629,13 +727,13 @@ export async function importExternalMedia(
       (existing.state === "admitted" || existing.state === "inspecting")
       && existing.declaredType.startsWith("image/")
     ) {
-      const bytes = await store.read(existing.quarantineObjectKey, existing.maxBytes);
-      return sealImportedStill(
+      return sealImportedStillFromObject(
         ownerId,
         projectId,
         id,
         existing.declaredType,
-        bytes,
+        existing.quarantineObjectKey,
+        existing.maxBytes,
         store,
         repository
       );
@@ -669,7 +767,7 @@ export async function importExternalMedia(
     }
     const bytes = await spoolBoundedBody(response, path, maximumMediaBytes, controller.signal)
       .catch(() => { throw new ExternalMediaImportError("external media body rejected"); });
-    const head = new Uint8Array(await readFile(path).then((buffer) => buffer.subarray(0, 16)));
+    const head = await filePrefix(path, 16);
     const declaredType = resolveImportedMediaType(response.headers.get("content-type"), head);
     const asset: StoredMedia = {
       id,
@@ -689,7 +787,7 @@ export async function importExternalMedia(
     }
     await repository.insert(asset);
     if (declaredType.startsWith("image/")) {
-      return sealImportedStill(ownerId, projectId, id, declaredType, await readFile(path), store, repository);
+      return await sealImportedStillFromFile(ownerId, projectId, id, declaredType, path, bytes, store, repository);
     }
     if (!await repository.completeAdmission(ownerId, projectId, id)) throw new ExternalMediaImportError();
     return { ...asset, state: "inspecting" };

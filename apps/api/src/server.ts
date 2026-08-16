@@ -181,6 +181,20 @@ function pexelsQuery(value: unknown): string {
   return query;
 }
 
+async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const index = next;
+      next += 1;
+      if (index >= items.length) return;
+      out[index] = await fn(items[index]!);
+    }
+  }));
+  return out;
+}
+
 function buildApp(options: AppBaseOptions, identify: Identify) {
   const app = express();
   const projects = options.projects;
@@ -230,7 +244,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         if (draft.mediaUrls.some((url) => !externalMediaUrlAllowed(url, integration.mediaOrigins))) {
           return response.status(422).json({ type: "validation", message: "media origin is not allowed" });
         }
-        const imported = await Promise.all(draft.mediaUrls.map(async (url) => {
+        const imported = await mapLimit(draft.mediaUrls, 2, async (url) => {
           const id = mediaIdForExternalImport(projectId, url);
           try {
             await importExternalMedia(
@@ -250,7 +264,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
             console.error("external media import skipped", error instanceof Error ? error.message : error);
             return undefined;
           }
-        }));
+        });
         importedMediaIds.push(...imported.filter((id): id is string => Boolean(id)));
       }
       const textOnlyImportedDraft = project.scenes.length > 0 && project.scenes.every((scene) => !scene.media_id);
