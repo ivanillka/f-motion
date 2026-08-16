@@ -99,7 +99,6 @@ function App() {
   const [authBusy, setAuthBusy] = useState(false);
   const [step, setStep] = useState<Step>("sign-in");
   const [email, setEmail] = useState("");
-  const [otpCode, setOtpCode] = useState("");
   const [magicLinkPaste, setMagicLinkPaste] = useState("");
   const [awaitingEmail, setAwaitingEmail] = useState(false);
   const [draft, setDraft] = useState(() => localStorage.getItem("fengine-draft") ?? "");
@@ -214,7 +213,6 @@ function App() {
     setPexelsKey("");
     setPexelsBusy(false);
     setFeatureLock(undefined);
-    setOtpCode("");
     setMagicLinkPaste("");
     setAwaitingEmail(false);
     setStep("sign-in");
@@ -228,7 +226,7 @@ function App() {
     }
     const callbackError = authCallbackError(location.href);
     const expiredMessage = callbackError === "otp_expired" || callbackError === "access_denied"
-      ? "That sign-in link was already used or expired. Stay on this page, request a new email, and enter the code — do not open the link if it goes to Fotium."
+      ? "That sign-in link was already used or expired. Request a new email, then right-click Log In → Copy link and paste it here. Do not open the link if it goes to Fotium."
       : "";
     let pendingExpired = expiredMessage;
     if (pendingExpired) {
@@ -312,8 +310,12 @@ function App() {
       .then(({ projects }) => {
         if (!cancelled) setDrafts(projects);
       })
-      .catch(() => {
-        if (!cancelled) setStatus("Drafts could not be loaded.");
+      .catch((error) => {
+        if (!cancelled) {
+          setStatus(error instanceof ApiResponseError && error.status === 403
+            ? "This account is not invited to the hosted studio."
+            : "Drafts could not be loaded.");
+        }
       })
       .finally(() => {
         if (!cancelled) setDraftsLoading(false);
@@ -356,25 +358,10 @@ function App() {
         setAwaitingEmail(false);
       } else {
         setAwaitingEmail(true);
-        setStatus("Check your email. Enter the code or paste the login link here — do not open it if it sends you to Fotium.");
+        setStatus("Check your email. Right-click Log In → Copy link, then paste it here. Do not open the link if it goes to Fotium.");
       }
     } catch {
       setStatus("Sign-in link could not be sent.");
-    } finally {
-      setAuthBusy(false);
-    }
-  }
-
-  async function verifyOtp() {
-    if (!authSetup.gateway) return;
-    setAuthBusy(true);
-    try {
-      await authSetup.gateway.verifyEmailOtp(email, otpCode);
-      setStatus("");
-      setAwaitingEmail(false);
-      setOtpCode("");
-    } catch {
-      setStatus("That code could not be verified. Request a new email and try again.");
     } finally {
       setAuthBusy(false);
     }
@@ -1461,17 +1448,9 @@ function App() {
       <button disabled={authBusy || !authSetup.gateway || (Boolean(import.meta.env.VITE_SUPABASE_URL) && !email.trim())} onClick={() => void magicLink()}>Email me a magic link</button>
       {Boolean(import.meta.env.VITE_SUPABASE_URL) && <>
         <p>{awaitingEmail
-          ? "Email sent. Do not open the link if it goes to Fotium — enter the code or paste the login URL below."
-          : "If a login email already arrived, enter the code or paste the Log In link here (skip opening fotium.vip)."}</p>
-        <label>Email code<input
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          value={otpCode}
-          onChange={(event) => setOtpCode(event.target.value)}
-          placeholder="6-digit code from the email"
-        /></label>
-        <button className="secondary" disabled={authBusy || !email.trim() || !otpCode.trim()} onClick={() => void verifyOtp()}>Verify code</button>
-        <label>Or paste login link<input
+          ? "Email sent. The message is a link, not a code. Right-click Log In → Copy link address, paste it below. Do not open it if it goes to Fotium."
+          : "The email has a login link, not a code. Right-click Log In → Copy link and paste it here (skip opening fotium.vip)."}</p>
+        <label>Paste login link<input
           value={magicLinkPaste}
           onChange={(event) => setMagicLinkPaste(event.target.value)}
           placeholder="Right-click Log In in the email → Copy link"

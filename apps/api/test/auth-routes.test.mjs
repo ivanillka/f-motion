@@ -183,6 +183,53 @@ test("provisioning never reactivates a suspended or deletion-pending account", a
   }
 });
 
+test("a JWT from the extra hosted issuer is accepted", async () => {
+  const { privateKey, publicKey } = await generateKeyPair("RS256");
+  const jwk = { ...await exportJWK(publicKey), kid: "extra-key", alg: "RS256", use: "sig" };
+  const jwksServer = createServer((_request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ keys: [jwk] }));
+  });
+  const jwksOrigin = await listen(jwksServer);
+  const states = new Map([["active-owner", "active"]]);
+  const app = createApp({
+    projects: new ProjectService(),
+    authConfig: {
+      issuer: "https://issuer.example",
+      audience: "f-engine-reference",
+      jwksUrl: new URL("https://issuer.example/missing-jwks"),
+      extra: [{
+        issuer: "https://fotium.example",
+        audience: "f-engine-reference",
+        jwksUrl: new URL("/jwks", jwksOrigin)
+      }]
+    },
+    accountState: async (ownerId) => states.get(ownerId)
+  });
+  const apiServer = createServer(app);
+  const apiOrigin = await listen(apiServer);
+  try {
+    const token = await new SignJWT({})
+      .setProtectedHeader({ alg: "RS256", kid: "extra-key" })
+      .setIssuer("https://fotium.example")
+      .setAudience("f-engine-reference")
+      .setSubject("active-owner")
+      .setExpirationTime("5m")
+      .sign(privateKey);
+    const response = await fetch(`${apiOrigin}/api/projects`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "From extra issuer" })
+    });
+    assert.equal(response.status, 201);
+  } finally {
+    await Promise.all([
+      new Promise((resolve, reject) => apiServer.close((error) => error ? reject(error) : resolve())),
+      new Promise((resolve, reject) => jwksServer.close((error) => error ? reject(error) : resolve()))
+    ]);
+  }
+});
+
 test("an invalid JWT is rejected without provisioning a User row", async () => {
   const context = await fixture({ provision: true });
   try {

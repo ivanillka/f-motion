@@ -29,6 +29,14 @@ function required(name: string): string {
   return value;
 }
 
+function extraAuthIssuers(env: NodeJS.ProcessEnv) {
+  const issuer = env.SUPABASE_ISSUER_EXTRA?.trim();
+  const jwks = env.SUPABASE_JWKS_URL_EXTRA?.trim();
+  if (!issuer && !jwks) return undefined;
+  if (!issuer || !jwks) throw new Error("SUPABASE_ISSUER_EXTRA and SUPABASE_JWKS_URL_EXTRA must be set together");
+  return [{ issuer, audience: required("SUPABASE_AUDIENCE"), jwksUrl: new URL(jwks) }];
+}
+
 assertLocalAuthAllowed(process.env);
 assertNoSharedFalCredential(process.env);
 assertNoSharedPexelsCredential(process.env);
@@ -119,7 +127,8 @@ if (process.env.FENGINE_LOCAL_AUTH === "1") {
     authConfig: {
       issuer: required("SUPABASE_ISSUER"),
       audience: required("SUPABASE_AUDIENCE"),
-      jwksUrl: new URL(required("SUPABASE_JWKS_URL"))
+      jwksUrl: new URL(required("SUPABASE_JWKS_URL")),
+      extra: extraAuthIssuers(process.env)
     },
     accountState: async (ownerId) => {
       const result = await pool.query<{ state: string }>(

@@ -7,7 +7,16 @@ import {
 
 export { AccountUnavailableError } from "./access-policy.js";
 
-export interface AuthConfig { issuer: string; audience: string; jwksUrl: URL }
+export interface AuthIssuer {
+  issuer: string;
+  audience: string;
+  jwksUrl: URL;
+}
+
+export interface AuthConfig extends AuthIssuer {
+  /** Hosted studio currently signs in through Fotium's Supabase project. */
+  extra?: AuthIssuer[];
+}
 export type AccountStateLookup = (ownerId: string) => Promise<string | undefined>;
 export type EnsureUser = (ownerId: string) => Promise<void>;
 export type ApiKeyLookup = (token: string) => Promise<string | undefined>;
@@ -17,12 +26,21 @@ export class UnauthorizedError extends Error {
 }
 
 export async function verifyAccessToken(token: string, config: AuthConfig): Promise<JWTPayload> {
-  const { payload } = await jwtVerify(token, createRemoteJWKSet(config.jwksUrl), {
-    issuer: config.issuer,
-    audience: config.audience
-  });
-  if (!payload.sub) throw new Error("token has no subject");
-  return payload;
+  const issuers = [config, ...(config.extra ?? [])];
+  let last: unknown;
+  for (const candidate of issuers) {
+    try {
+      const { payload } = await jwtVerify(token, createRemoteJWKSet(candidate.jwksUrl), {
+        issuer: candidate.issuer,
+        audience: candidate.audience
+      });
+      if (!payload.sub) throw new Error("token has no subject");
+      return payload;
+    } catch (error) {
+      last = error;
+    }
+  }
+  throw last instanceof Error ? last : new Error("token has no subject");
 }
 
 export function assertAccountActive(state: string): void {

@@ -44,6 +44,7 @@ export function accessPolicyFromEnv(
 
 export function assertOwnerAdmitted(ownerId: string, policy: AccessPolicy): void {
   if (policy.mode === "invite_only" && !policy.allowedOwnerIds.has(ownerId.toLowerCase())) {
+    console.error("invite_only denied", ownerId);
     throw new AccountUnavailableError();
   }
 }
