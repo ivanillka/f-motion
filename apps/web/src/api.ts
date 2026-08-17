@@ -195,6 +195,29 @@ export class ApiClient {
   }
 }
 
+export function clampFocus(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return 0.5;
+  return Math.min(1, Math.max(0, n));
+}
+
+export function panFocus(
+  start: { x: number; y: number },
+  delta: { x: number; y: number }
+): { x: number; y: number } {
+  return { x: clampFocus(start.x - delta.x), y: clampFocus(start.y - delta.y) };
+}
+
+export function focusFromPoint(
+  point: { x: number; y: number },
+  box: { width: number; height: number }
+): { x: number; y: number } {
+  return {
+    x: clampFocus(box.width <= 0 ? 0.5 : point.x / box.width),
+    y: clampFocus(box.height <= 0 ? 0.5 : point.y / box.height)
+  };
+}
+
 export function scenePreviewUrl(media: SceneMediaView | undefined): string | undefined {
   return media?.previewUrl ?? media?.attribution?.previewUrl;
 }

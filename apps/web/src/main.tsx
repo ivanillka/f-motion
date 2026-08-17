@@ -5,12 +5,15 @@ import {
   ApiResponseError,
   buildStoryboardDraft,
   conceptsFor,
+  clampFocus,
   defaultVideoArchitecture,
+  focusFromPoint,
   formatPlayTime,
   livePlayhead,
   liveTimeline,
   loadSceneMediaViews,
   nextLiveSceneId,
+  panFocus,
   previousLiveSceneId,
   recommendVideoArchitecture,
   sceneDurationForMedia,
@@ -28,6 +31,15 @@ import { clearImportedProject, isImportedProjectId, rememberImportedProject } fr
 import "./style.css";
 
 type Step = "sign-in" | "drafts" | "brief" | "architecture" | "concepts" | "media" | "editor" | "render" | "settings";
+interface PreviewPanState {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startFocus: { x: number; y: number };
+  moved: boolean;
+  sceneId: string;
+  wasPlaying: boolean;
+}
 interface PexelsMatch {
   id: number;
   creator: string;
@@ -116,6 +128,8 @@ function App() {
   const [livePlaying, setLivePlaying] = useState(false);
   const [playSceneId, setPlaySceneId] = useState("");
   const [playTick, setPlayTick] = useState(0);
+  const [previewPanning, setPreviewPanning] = useState(false);
+  const previewPan = useRef<PreviewPanState | null>(null);
   const userPausedPreview = useRef(false);
   const sceneClock = useRef({ startedAt: 0, elapsedAtPause: 0 });
   const [drafts, setDrafts] = useState<ProjectSummary[]>([]);
@@ -1409,8 +1423,8 @@ function App() {
     && activeMedia.detected.width > activeMedia.detected.height
   );
   useEffect(() => {
-    if (!activeScene) return;
-    setCropFocus({ x: activeScene.focal_x, y: activeScene.focal_y });
+    if (!activeScene || previewPan.current) return;
+    setCropFocus({ x: clampFocus(activeScene.focal_x), y: clampFocus(activeScene.focal_y) });
   }, [activeScene?.id, activeScene?.focal_x, activeScene?.focal_y]);
   const allScenesHaveMedia = Boolean(project?.scenes.length && project.scenes.every(({ media_id }) =>
     media_id && sceneMedia[media_id]?.state === "ready"));
@@ -1421,9 +1435,13 @@ function App() {
     : activeScene;
   const previewMedia = previewScene?.media_id ? sceneMedia[previewScene.media_id] : undefined;
   const previewUrl = scenePreviewUrl(previewMedia);
+  const previewFocus = {
+    x: clampFocus(livePlaying ? previewScene?.focal_x ?? cropFocus.x : cropFocus.x),
+    y: clampFocus(livePlaying ? previewScene?.focal_y ?? cropFocus.y : cropFocus.y)
+  };
   const previewPosition = {
-    objectPosition: `${(livePlaying ? previewScene?.focal_x ?? cropFocus.x : cropFocus.x) * 100}% ${(livePlaying ? previewScene?.focal_y ?? cropFocus.y : cropFocus.y) * 100}%`,
-    transformOrigin: `${(livePlaying ? previewScene?.focal_x ?? cropFocus.x : cropFocus.x) * 100}% ${(livePlaying ? previewScene?.focal_y ?? cropFocus.y : cropFocus.y) * 100}%`,
+    objectPosition: `${previewFocus.x * 100}% ${previewFocus.y * 100}%`,
+    transformOrigin: `${previewFocus.x * 100}% ${previewFocus.y * 100}%`,
     ["--scene-ms" as string]: `${Math.max(500, previewScene?.duration_ms ?? 3000)}ms`
   };
   const previewMotion = livePlaying && previewScene && previewScene.motion !== "none" ? previewScene.motion : undefined;
@@ -1457,6 +1475,71 @@ function App() {
     userPausedPreview.current = true;
     armSceneClock(readSceneElapsed(), false);
     setLivePlaying(false);
+  }
+
+  function beginPreviewPan(event: { currentTarget: HTMLElement; pointerId: number; button: number; clientX: number; clientY: number; preventDefault: () => void }) {
+    if (!previewUrl || event.button !== 0) return;
+    const scene = previewScene ?? activeScene;
+    if (!scene) return;
+    const wasPlaying = livePlaying;
+    if (wasPlaying) pauseLivePreview();
+    if (scene.id !== activeSceneId) {
+      setActiveSceneId(scene.id);
+      setPlaySceneId(scene.id);
+    }
+    const startFocus = {
+      x: clampFocus(wasPlaying ? scene.focal_x : cropFocus.x),
+      y: clampFocus(wasPlaying ? scene.focal_y : cropFocus.y)
+    };
+    previewPan.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startFocus,
+      moved: false,
+      sceneId: scene.id,
+      wasPlaying
+    };
+    setCropFocus(startFocus);
+    setPreviewPanning(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function movePreviewPan(event: { currentTarget: HTMLElement; pointerId: number; clientX: number; clientY: number }) {
+    const pan = previewPan.current;
+    if (!pan || event.pointerId !== pan.pointerId) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    if (box.width <= 0 || box.height <= 0) return;
+    if (!pan.moved && Math.hypot(event.clientX - pan.startX, event.clientY - pan.startY) < 4) return;
+    pan.moved = true;
+    setCropFocus(panFocus(pan.startFocus, {
+      x: (event.clientX - pan.startX) / box.width,
+      y: (event.clientY - pan.startY) / box.height
+    }));
+  }
+
+  function endPreviewPan(event: { currentTarget: HTMLElement; pointerId: number; clientX: number; clientY: number }) {
+    const pan = previewPan.current;
+    if (!pan || event.pointerId !== pan.pointerId) return;
+    previewPan.current = null;
+    setPreviewPanning(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    const box = event.currentTarget.getBoundingClientRect();
+    const next = pan.moved
+      ? panFocus(pan.startFocus, {
+          x: box.width <= 0 ? 0 : (event.clientX - pan.startX) / box.width,
+          y: box.height <= 0 ? 0 : (event.clientY - pan.startY) / box.height
+        })
+      : pan.wasPlaying
+        ? pan.startFocus
+        : focusFromPoint({ x: event.clientX - box.left, y: event.clientY - box.top }, box);
+    setCropFocus(next);
+    if (pan.moved || !pan.wasPlaying) {
+      void saveScenePatch(pan.sceneId, { focal_x: next.x, focal_y: next.y });
+    }
   }
 
   function seekLivePreview(sceneId: string, elapsedMs = 0, playing = livePlaying) {
@@ -1743,8 +1826,8 @@ function App() {
         >
           {previewUrl
             ? (media?.detected?.type === "video/mp4"
-              ? <video src={previewUrl} muted playsInline preload="metadata" style={{ objectPosition: `${scene.focal_x * 100}% ${scene.focal_y * 100}%` }} />
-              : <img src={previewUrl} alt="" style={{ objectPosition: `${scene.focal_x * 100}% ${scene.focal_y * 100}%` }} />)
+              ? <video src={previewUrl} muted playsInline preload="metadata" style={{ objectPosition: `${clampFocus(scene.focal_x) * 100}% ${clampFocus(scene.focal_y) * 100}%` }} />
+              : <img src={previewUrl} alt="" style={{ objectPosition: `${clampFocus(scene.focal_x) * 100}% ${clampFocus(scene.focal_y) * 100}%` }} />)
             : (
               <span className="scene-empty">
                 {sceneProgress[scene.id] === "finding" ? "Finding…"
@@ -1769,14 +1852,18 @@ function App() {
       <div className="editor-grid" key={`${activeScene.id}:${project.revision}`}>
         <div className="preview-panel">
           <div
-            className={`preview${livePlaying ? " is-live" : ""}`}
+            className={`preview${livePlaying ? " is-live" : ""}${previewPanning ? " is-panning" : ""}${previewUrl ? " is-frameable" : ""}`}
             aria-label={livePlaying
               ? `Live preview · scene ${(previewScene?.order ?? 0) + 1}`
               : `Live preview for scene ${activeSceneNumber}`}
+            onPointerDown={beginPreviewPan}
+            onPointerMove={movePreviewPan}
+            onPointerUp={endPreviewPan}
+            onPointerCancel={endPreviewPan}
           >
         {previewUrl && (previewMedia?.detected?.type === "video/mp4"
-          ? <video key={previewScene?.id} src={previewUrl} muted playsInline autoPlay={livePlaying} loop={!livePlaying} controls={!livePlaying} preload="metadata" className={previewMotion ? `motion-${previewMotion}` : undefined} style={previewPosition} />
-          : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} className={previewMotion ? `motion-${previewMotion}` : undefined} style={previewPosition} />)}
+          ? <video key={previewScene?.id} src={previewUrl} muted playsInline autoPlay={livePlaying} loop={!livePlaying} controls={false} preload="metadata" draggable={false} className={previewMotion ? `motion-${previewMotion}` : undefined} style={previewPosition} />
+          : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} draggable={false} className={previewMotion ? `motion-${previewMotion}` : undefined} style={previewPosition} />)}
         {previewMedia && !previewUrl && <span className="media-placeholder">{previewMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
             {!previewMedia && <span className="media-placeholder">Choose stock or upload media</span>}
             {previewScene?.caption ? <span className="caption-burn">{previewScene.caption}</span> : null}
@@ -1828,8 +1915,8 @@ function App() {
           <p className="crop-hint">{livePlaying
             ? "Space plays or pauses · click the bar to scrub."
             : wideStill
-            ? "Wide still — drag horizontal focus to keep the subject in the 9:16 frame."
-            : "Crop focus · drag the focus sliders in the inspector"}</p>
+            ? "Wide still — drag to keep the subject in the 9:16 frame."
+            : "Drag the still to frame it."}</p>
           {activeMedia?.attribution && <p>
             Video by <a href={activeMedia.attribution.attributionUrl} target="_blank" rel="noreferrer">{activeMedia.attribution.creator}</a>
             {" · "}<a href="https://www.pexels.com" target="_blank" rel="noreferrer">Pexels</a>
@@ -1861,12 +1948,6 @@ function App() {
           </div>
           </div>
           <div className="inspector-block">
-          <label htmlFor={`focal-x-${activeScene.id}`}>Scene {activeSceneNumber} horizontal focus · {cropFocus.x.toFixed(2)}
-            <input id={`focal-x-${activeScene.id}`} type="range" min="0" max="1" step="0.05" value={cropFocus.x} onChange={(event) => { pauseLivePreview(); setCropFocus((current) => ({ ...current, x: event.currentTarget.valueAsNumber })); }} onBlur={(event) => void saveScenePatch(activeScene.id, { focal_x: event.currentTarget.valueAsNumber })} />
-          </label>
-          <label htmlFor={`focal-y-${activeScene.id}`}>Scene {activeSceneNumber} vertical focus · {cropFocus.y.toFixed(2)}
-            <input id={`focal-y-${activeScene.id}`} type="range" min="0" max="1" step="0.05" value={cropFocus.y} onChange={(event) => { pauseLivePreview(); setCropFocus((current) => ({ ...current, y: event.currentTarget.valueAsNumber })); }} onBlur={(event) => void saveScenePatch(activeScene.id, { focal_y: event.currentTarget.valueAsNumber })} />
-          </label>
           <label htmlFor={`audio-${activeScene.id}`}>Scene {activeSceneNumber} source audio · {Math.round(activeScene.audio_level * 100)}%
             <input id={`audio-${activeScene.id}`} type="range" min="0" max="1" step="0.05" defaultValue={activeScene.audio_level} onBlur={(event) => void saveScenePatch(activeScene.id, { audio_level: event.currentTarget.valueAsNumber })} />
           </label>

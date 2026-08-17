@@ -37,6 +37,11 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /useFalGeneratedMedia\(/);
   assert.match(source, /objectPosition/);
   assert.match(source, /Wide still/);
+  assert.match(source, /Drag the still to frame it/);
+  assert.match(source, /beginPreviewPan/);
+  assert.doesNotMatch(source, /horizontal focus/);
+  assert.doesNotMatch(source, /focus sliders/);
+  assert.doesNotMatch(source, /cropFocus\.x\.toFixed/);
   assert.match(source, /openFalAnimate\(/);
   assert.match(source, /confirmFalVideo\(/);
   assert.doesNotMatch(source, /useFalGeneratedMedia[\s\S]{0,80}pollFalGeneration/);
@@ -55,7 +60,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { formatPlayTime, livePlayhead, loadSceneMediaViews, nextLiveSceneId, scenePreviewUrl, seekLivePlayhead } = await vite.ssrLoadModule("/src/api.ts");
+    const { clampFocus, focusFromPoint, formatPlayTime, livePlayhead, loadSceneMediaViews, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -75,6 +80,12 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.deepEqual(Object.keys(second), ["b"]);
     assert.equal(second.b.attribution.creator, "Creator B");
 
+    assert.equal(clampFocus(undefined), 0.5);
+    assert.equal(clampFocus(Number.NaN), 0.5);
+    assert.equal(clampFocus(2), 1);
+    assert.equal(clampFocus(-0.2), 0);
+    assert.deepEqual(panFocus({ x: 0.5, y: 0.5 }, { x: 0.25, y: -0.1 }), { x: 0.25, y: 0.6 });
+    assert.deepEqual(focusFromPoint({ x: 20, y: 80 }, { width: 100, height: 100 }), { x: 0.2, y: 0.8 });
     assert.equal(nextLiveSceneId(["a", "b", "c"], "b"), "c");
     assert.equal(nextLiveSceneId(["a", "b", "c"], "c"), "a");
     assert.equal(scenePreviewUrl({ previewUrl: "https://media.example/still.jpg" }), "https://media.example/still.jpg");
@@ -112,6 +123,8 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.app-dock/);
   assert.match(css, /\.studio-board/);
   assert.match(css, /\.crop-guide/);
+  assert.match(css, /cursor: grab/);
+  assert.match(css, /cursor: grabbing/);
   assert.match(css, /preview-push/);
   assert.match(css, /preview-zoom/);
   assert.match(css, /\.play-progress/);

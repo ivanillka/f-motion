@@ -364,7 +364,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   padding: 0;
   overflow: hidden;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+  touch-action: none;
+  user-select: none;
 }
+.preview.is-frameable { cursor: grab; }
+.preview.is-panning { cursor: grabbing; }
 .preview > * { grid-area: 1 / 1; }
 .preview img, .preview video {
   width: 100%;
@@ -372,6 +376,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   object-fit: cover;
   max-height: none;
   border-radius: 0;
+  pointer-events: none;
 }
 .preview img.motion-push, .preview video.motion-push {
   animation: preview-push var(--scene-ms, 3s) linear forwards;
@@ -398,6 +403,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   text-shadow: 0 1px 2px #000;
   color: var(--text);
   font-size: 0.85rem;
+  pointer-events: none;
 }
 .preview .media-placeholder {
   z-index: 1;
