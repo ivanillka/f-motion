@@ -285,3 +285,16 @@ test("coverCropFilter offsets the crop by the focal point", () => {
     "crop=720:1280:(iw-ow)*0.5:(ih-oh)*0.5"
   ]);
 });
+test("update_soundtrack stores a stock bed on the brief and can clear it", () => {
+  const withBed = applyCommand(snapshot, command("update_soundtrack", {
+    soundtrack: { kind: "stock", stock_id: "pulse", bpm: 120, offset_ms: 0, level: 0.8 }
+  }));
+  assert.equal(withBed.brief.soundtrack?.stock_id, "pulse");
+  assert.equal(withBed.revision, 1);
+  const cleared = applyCommand(withBed, command("update_soundtrack", { soundtrack: null }, 1));
+  assert.equal(cleared.brief.soundtrack, undefined);
+  assert.throws(
+    () => applyCommand(snapshot, command("update_soundtrack", { soundtrack: { kind: "stock", stock_id: "nope", bpm: 120, offset_ms: 0, level: 1 } })),
+    /invalid soundtrack/
+  );
+});

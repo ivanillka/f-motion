@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { acceptsFixture, isProjectSnapshot, isStoryboardScenes, isStoryboardPlan, isSceneBrief } from "../dist/index.js";
+import { acceptsFixture, isProjectSnapshot, isSoundtrack, isStoryboardScenes, isStoryboardPlan, isSceneBrief } from "../dist/index.js";
 
 const fixture = async (name) => JSON.parse(await readFile(new URL(`../fixtures/${name}`, import.meta.url)));
 const inventory = JSON.parse(await readFile(new URL("../route-inventory.json", import.meta.url), "utf8"));
@@ -59,6 +59,20 @@ test("visual_prompt rejects blank, padded, and oversized values", () => {
   for (const prompt of ["", " padded ", "x".repeat(241)]) {
     assert.equal(isProjectSnapshot(snapshotWithPrompt(prompt)), false);
   }
+});
+
+test("brief soundtrack is optional and validated when present", () => {
+  const base = snapshotWithPrompt("remote island");
+  assert.equal(isSoundtrack({ kind: "stock", stock_id: "pulse", bpm: 120, offset_ms: 0, level: 0.8 }), true);
+  assert.equal(isSoundtrack({ kind: "stock", stock_id: "nope", bpm: 120, offset_ms: 0, level: 0.8 }), false);
+  assert.equal(isProjectSnapshot({
+    ...base,
+    brief: { ...base.brief, soundtrack: { kind: "stock", stock_id: "pulse", bpm: 120, offset_ms: 0, level: 0.8 } }
+  }), true);
+  assert.equal(isProjectSnapshot({
+    ...base,
+    brief: { ...base.brief, soundtrack: { kind: "stock", stock_id: "nope", bpm: 120, offset_ms: 0, level: 0.8 } }
+  }), false);
 });
 
 test("storyboard lifecycle validation enforces scene count, IDs, order, and prompts", () => {

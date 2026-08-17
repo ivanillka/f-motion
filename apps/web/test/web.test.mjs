@@ -38,7 +38,10 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /objectPosition/);
   assert.match(source, /Wide still/);
   assert.match(source, /Drag the still to frame it/);
-  assert.match(source, /beginPreviewPan/);
+  assert.match(source, /Upload music/);
+  assert.match(source, /Snap scenes to beat/);
+  assert.match(source, /Music bed/);
+  assert.match(source, /update_soundtrack/);
   assert.doesNotMatch(source, /horizontal focus/);
   assert.doesNotMatch(source, /focus sliders/);
   assert.doesNotMatch(source, /cropFocus\.x\.toFixed/);
@@ -60,7 +63,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { clampFocus, focusFromPoint, formatPlayTime, livePlayhead, loadSceneMediaViews, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead } = await vite.ssrLoadModule("/src/api.ts");
+    const { clampBpm, clampFocus, focusFromPoint, formatPlayTime, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, snapDurationToBeat } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -86,6 +89,9 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.equal(clampFocus(-0.2), 0);
     assert.deepEqual(panFocus({ x: 0.5, y: 0.5 }, { x: 0.25, y: -0.1 }), { x: 0.25, y: 0.6 });
     assert.deepEqual(focusFromPoint({ x: 20, y: 80 }, { width: 100, height: 100 }), { x: 0.2, y: 0.8 });
+    assert.equal(clampBpm(40), 60);
+    assert.equal(snapDurationToBeat(3750, 120), 4000);
+    assert.equal(musicLaneBeats(2000, 120).length, 5);
     assert.equal(nextLiveSceneId(["a", "b", "c"], "b"), "c");
     assert.equal(nextLiveSceneId(["a", "b", "c"], "c"), "a");
     assert.equal(scenePreviewUrl({ previewUrl: "https://media.example/still.jpg" }), "https://media.example/still.jpg");
@@ -125,6 +131,8 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.crop-guide/);
   assert.match(css, /cursor: grab/);
   assert.match(css, /cursor: grabbing/);
+  assert.match(css, /\.music-lane/);
+  assert.match(css, /minmax\(0, 1fr\) 232px/);
   assert.match(css, /preview-push/);
   assert.match(css, /preview-zoom/);
   assert.match(css, /\.play-progress/);

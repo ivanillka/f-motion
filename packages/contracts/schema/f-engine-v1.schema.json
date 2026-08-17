@@ -17,7 +17,8 @@
         "reorder_scene",
         "replace_storyboard",
         "add_scene",
-        "remove_scene"
+        "remove_scene",
+        "update_soundtrack"
       ]
     },
     "payload": { "type": "object" },
@@ -95,6 +96,16 @@
           "type": "object",
           "required": ["scene_id"],
           "properties": { "scene_id": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    {
+      "properties": {
+        "kind": { "const": "update_soundtrack" },
+        "payload": {
+          "type": "object",
+          "required": ["soundtrack"],
+          "properties": { "soundtrack": { "type": ["object", "null"] } }
         }
       }
     }

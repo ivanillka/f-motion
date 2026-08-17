@@ -262,6 +262,10 @@ export class PostgresProjectRepository implements ProjectRepository {
       await this.syncScenes(client, command.project_id, updated.scenes);
       return;
     }
+    if (command.kind === "update_soundtrack") {
+      await client.query(`UPDATE "Project" SET brief = $1 WHERE id = $2`, [updated.brief, command.project_id]);
+      return;
+    }
     if (command.kind !== "reorder_scene") throw new Error("unsupported command persistence");
     await client.query(`UPDATE "Scene" SET position = -position - 1 WHERE "projectId" = $1`, [command.project_id]);
     for (const scene of updated.scenes) {
@@ -323,7 +327,7 @@ export interface UploadAdmission {
 export class MediaService {
   readonly #assets = new Map<string, UploadAdmission>();
   admit(ownerId: string, projectId: string, declaredType: string, bytes: number): UploadAdmission & { method: "PUT"; expiresInSeconds: 300 } {
-    const allowed = new Set(["video/mp4", "image/jpeg", "image/png", "image/webp"]);
+    const allowed = new Set(["video/mp4", "image/jpeg", "image/png", "image/webp", "audio/mpeg", "audio/wav", "audio/mp4"]);
     if (!allowed.has(declaredType) || bytes <= 0 || bytes > 100_000_000) throw new Error("upload declaration rejected");
     const id = randomUUID();
     const asset: UploadAdmission = { id, ownerId, projectId, objectKey: `projects/${projectId}/media/${id}`, state: "admitted", declaredType, maxBytes: bytes };

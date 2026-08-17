@@ -20,10 +20,19 @@ export interface Scene {
   visual_prompt?: string;
 }
 
+export interface Soundtrack {
+  kind: "stock" | "upload";
+  bpm: number;
+  offset_ms: number;
+  level: number;
+  stock_id?: "pulse" | "drive" | "air";
+  media_id?: string;
+}
+
 export interface ProjectSnapshot {
   id: string;
   revision: number;
-  brief: { purpose: string; audience: string; tone: string };
+  brief: { purpose: string; audience: string; tone: string; soundtrack?: Soundtrack };
   selected_concept_id?: string;
   scenes: Scene[];
 }
@@ -291,12 +300,45 @@ export function seekLivePlayhead(
   return { sceneId: last.id, sceneElapsedMs: boundedSceneMs(last.duration_ms) };
 }
 
+export function clampBpm(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return 120;
+  return Math.min(200, Math.max(60, Math.round(n)));
+}
+
+export function beatMs(bpm: unknown): number {
+  return 60_000 / clampBpm(bpm);
+}
+
+export function snapDurationToBeat(durationMs: number, bpm: unknown): number {
+  const beat = beatMs(bpm);
+  const beats = Math.max(1, Math.round(boundedSceneMs(durationMs) / beat));
+  return boundedSceneMs(beats * beat);
+}
+
+export function musicLaneBeats(totalMs: number, bpm: unknown): number[] {
+  const beat = beatMs(bpm);
+  const marks: number[] = [];
+  for (let t = 0; t <= totalMs + 0.5; t += beat) marks.push(t / Math.max(1, totalMs));
+  return marks;
+}
+
+export const stockBeds = [
+  { id: "pulse" as const, label: "Pulse", hint: "Kick + hat" },
+  { id: "drive" as const, label: "Drive", hint: "Four on the floor" },
+  { id: "air" as const, label: "Air", hint: "Soft pad hits" }
+];
+
 /** Loads a fresh, project-scoped map so callers replace rather than merge stale media state. */
 export async function loadSceneMediaViews(
   api: Pick<ApiClient, "request">,
   project: ProjectSnapshot
 ): Promise<Record<string, SceneMediaView>> {
-  const mediaIds = [...new Set(project.scenes.flatMap(({ media_id: id }) => id ? [id] : []))];
+  const soundtrackId = project.brief.soundtrack?.kind === "upload" ? project.brief.soundtrack.media_id : undefined;
+  const mediaIds = [...new Set([
+    ...project.scenes.flatMap(({ media_id: id }) => id ? [id] : []),
+    ...(soundtrackId ? [soundtrackId] : [])
+  ])];
   const views = await Promise.all(mediaIds.map((id) =>
     api.request<SceneMediaView>(`/api/projects/${project.id}/media/${id}`)));
   return Object.fromEntries(views.map((view) => [view.id, view]));

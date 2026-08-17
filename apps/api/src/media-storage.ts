@@ -10,6 +10,7 @@ import { finished, pipeline } from "node:stream/promises";
 import type { Pool } from "pg";
 
 export const allowedMediaTypes = new Set(["video/mp4", "image/jpeg", "image/png", "image/webp"]);
+export const allowedAudioTypes = new Set(["audio/mpeg", "audio/wav", "audio/mp4", "audio/x-m4a"]);
 export const maximumMediaBytes = 100_000_000;
 
 const jpegStart = Buffer.from([0xff, 0xd8, 0xff]);
@@ -32,6 +33,21 @@ export function mediaTypeFromBytes(bytes: Uint8Array): string | undefined {
   }
   if (bytes.length >= 8 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
     return "video/mp4";
+  }
+  return undefined;
+}
+
+export function audioTypeFromBytes(bytes: Uint8Array, declared?: string): string | undefined {
+  if (bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) return "audio/mpeg";
+  if (bytes.length >= 2 && bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xe0) === 0xe0) return "audio/mpeg";
+  if (
+    bytes.length >= 12
+    && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+    && bytes[8] === 0x57 && bytes[9] === 0x41 && bytes[10] === 0x56 && bytes[11] === 0x45
+  ) return "audio/wav";
+  if (bytes.length >= 8 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70
+    && (declared === "audio/mp4" || declared === "audio/x-m4a")) {
+    return "audio/mp4";
   }
   return undefined;
 }
@@ -260,7 +276,9 @@ function safeFalGeneration(value: unknown): SceneMediaView["generation"] {
 export function sceneMediaView(asset: StoredMedia, previewUrl?: string): SceneMediaView {
   const detected = asset.detected && typeof asset.detected === "object"
     ? {
-        ...(allowedMediaTypes.has(asset.detected.type) ? { type: asset.detected.type } : {}),
+        ...(allowedMediaTypes.has(asset.detected.type) || allowedAudioTypes.has(asset.detected.type)
+          ? { type: asset.detected.type }
+          : {}),
         ...(Number.isInteger(asset.detected.bytes) && asset.detected.bytes > 0 ? { bytes: asset.detected.bytes } : {}),
         ...(Number.isInteger(asset.detected.width) && (asset.detected.width ?? 0) > 0 ? { width: asset.detected.width } : {}),
         ...(Number.isInteger(asset.detected.height) && (asset.detected.height ?? 0) > 0 ? { height: asset.detected.height } : {}),
@@ -485,6 +503,13 @@ export class PrivateObjectStore {
       if (status === 404) return false;
       throw error;
     }
+  }
+
+  async head(objectKey: string): Promise<{ contentLength: number }> {
+    const result = await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: objectKey }));
+    const contentLength = Number(result.ContentLength);
+    if (!Number.isInteger(contentLength) || contentLength <= 0) throw new Error("object length missing");
+    return { contentLength };
   }
 }
 
@@ -769,6 +794,35 @@ async function sealImportedStillFromObject(
     versionId: copied.versionId,
     sha256
   }, repository);
+}
+
+/** ponytail: copy+sniff, no ffprobe. Worker can measure duration when it exists. */
+export async function sealUploadedAudio(
+  ownerId: string,
+  projectId: string,
+  asset: StoredMedia,
+  store: Pick<PrivateObjectStore, "copy" | "readPrefix" | "head">,
+  repository: Pick<PostgresMediaRepository, "markImportedStillReady">
+): Promise<StoredMedia> {
+  const prefix = await store.readPrefix(asset.quarantineObjectKey, 64);
+  const type = audioTypeFromBytes(prefix, asset.declaredType);
+  if (!type || !allowedAudioTypes.has(asset.declaredType)) {
+    throw new ExternalMediaImportError("audio type rejected");
+  }
+  const { contentLength } = await store.head(asset.quarantineObjectKey);
+  if (contentLength > asset.maxBytes) throw new ExternalMediaImportError("audio body rejected");
+  const objectKey = `projects/${projectId}/media-sealed/${asset.id}`;
+  const copied = await store.copy(asset.quarantineObjectKey, objectKey);
+  const sha256 = createHash("sha256").update(`${asset.quarantineObjectKey}:${copied.etag}:${contentLength}`).digest("hex");
+  const ready = await repository.markImportedStillReady(
+    ownerId,
+    projectId,
+    asset.id,
+    { objectKey, etag: copied.etag, versionId: copied.versionId, sha256 },
+    { type, bytes: contentLength }
+  );
+  if (!ready) throw new ExternalMediaImportError("audio is not reusable");
+  return ready;
 }
 
 /** Reserved row so Edit can attach media_ids and reply before the host still is copied. */

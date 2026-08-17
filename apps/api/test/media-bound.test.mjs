@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  audioTypeFromBytes,
   maximumMediaBytes,
   mediaTypeFromBytes,
   resolveImportedMediaType,
@@ -84,6 +85,13 @@ test("imported media types prefer allowlisted headers and sniff still/video magi
   assert.equal(mediaTypeFromBytes(webp), "image/webp");
   assert.equal(mediaTypeFromBytes(mp4), "video/mp4");
   assert.equal(mediaTypeFromBytes(new Uint8Array([1, 2, 3])), undefined);
+  assert.equal(audioTypeFromBytes(new Uint8Array([0x49, 0x44, 0x33])), "audio/mpeg");
+  assert.equal(audioTypeFromBytes(new Uint8Array([0xff, 0xfb, 0x90, 0x00])), "audio/mpeg");
+  assert.equal(audioTypeFromBytes(new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45
+  ])), "audio/wav");
+  assert.equal(audioTypeFromBytes(mp4, "audio/mp4"), "audio/mp4");
+  assert.equal(audioTypeFromBytes(mp4), undefined);
   assert.equal(resolveImportedMediaType("image/jpg; charset=binary", new Uint8Array([1])), "image/jpeg");
   assert.equal(resolveImportedMediaType("application/octet-stream", webp), "image/webp");
   assert.throws(() => resolveImportedMediaType("text/html", new Uint8Array([1, 2, 3])), /type rejected/);

@@ -26,20 +26,33 @@ export interface Scene {
   caption_cues?: CaptionCue[];
 }
 
+export const stockBedIds = ["pulse", "drive", "air"] as const;
+export type StockBedId = (typeof stockBedIds)[number];
+
+export interface Soundtrack {
+  kind: "stock" | "upload";
+  bpm: number;
+  offset_ms: number;
+  level: number;
+  stock_id?: StockBedId;
+  media_id?: string;
+}
+
 export type CommandKind =
   | "select_concept"
   | "update_scene"
   | "reorder_scene"
   | "replace_storyboard"
   | "add_scene"
-  | "remove_scene";
+  | "remove_scene"
+  | "update_soundtrack";
 
 export interface ProjectSnapshot {
   schema_version: 1;
   id: string;
   owner_id: string;
   revision: number;
-  brief: { purpose: string; audience: string; tone: string };
+  brief: { purpose: string; audience: string; tone: string; soundtrack?: Soundtrack };
   selected_concept_id?: string;
   scenes: Scene[];
 }
@@ -78,6 +91,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+export function isSoundtrack(value: unknown): value is Soundtrack {
+  if (!isRecord(value)
+    || !isFiniteNumber(value.bpm)
+    || value.bpm < 60
+    || value.bpm > 200
+    || !isFiniteNumber(value.offset_ms)
+    || value.offset_ms < 0
+    || value.offset_ms > 600_000
+    || !isFiniteNumber(value.level)
+    || value.level < 0
+    || value.level > 1) {
+    return false;
+  }
+  if (value.kind === "stock") {
+    return (stockBedIds as readonly string[]).includes(String(value.stock_id));
+  }
+  if (value.kind === "upload") {
+    return typeof value.media_id === "string" && !!value.media_id && value.media_id.length <= 80;
+  }
+  return false;
 }
 
 function isCaptionCue(value: unknown, durationMs: number, previousEnd: number): value is CaptionCue {
@@ -205,6 +240,9 @@ export function isProjectSnapshot(value: unknown): value is ProjectSnapshot {
     || typeof value.brief.purpose !== "string"
     || typeof value.brief.audience !== "string"
     || typeof value.brief.tone !== "string"
+    || ("soundtrack" in value.brief
+      && value.brief.soundtrack != null
+      && !isSoundtrack(value.brief.soundtrack))
     || ("selected_concept_id" in value
       && (typeof value.selected_concept_id !== "string" || !value.selected_concept_id))
     || !Array.isArray(value.scenes)) {

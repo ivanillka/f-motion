@@ -1,4 +1,4 @@
-import { isStoryboardScenes, type CaptionCue, type CommandEnvelope, type ProjectSnapshot, type Scene } from "@f-engine/contracts";
+import { isSoundtrack, isStoryboardScenes, type CaptionCue, type CommandEnvelope, type ProjectSnapshot, type Scene } from "@f-engine/contracts";
 
 const MAX_STORYBOARD_SCENES = 8;
 
@@ -482,6 +482,18 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
         .map((scene, order) => ({ ...copyScene(scene), order })),
       revision: snapshot.revision + 1
     };
+  }
+  if (command.kind === "update_soundtrack") {
+    const raw = command.payload.soundtrack;
+    const brief = { ...snapshot.brief };
+    if (raw === null) {
+      delete brief.soundtrack;
+    } else if (isSoundtrack(raw)) {
+      brief.soundtrack = raw;
+    } else {
+      throw new Error("invalid soundtrack");
+    }
+    return { ...snapshot, brief, revision: snapshot.revision + 1 };
   }
   throw new Error("unknown command");
 }

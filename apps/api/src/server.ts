@@ -19,12 +19,15 @@ import {
   type ProjectRepository
 } from "./domain.js";
 import {
+  allowedAudioTypes,
   allowedMediaTypes,
+  ExternalMediaImportError,
   importExternalMedia,
   reserveExternalMedia,
   maximumMediaBytes,
   pexelsQueriesForBrief,
   sceneMediaView,
+  sealUploadedAudio,
   PexelsRequestError,
   type PexelsClient,
   type PostgresMediaRepository,
@@ -114,6 +117,18 @@ async function assertReadySceneMedia(
     : ["update_scene", "add_scene"].includes(command.kind)
       ? [command.payload.scene]
       : [];
+  if (command.kind === "update_soundtrack") {
+    const soundtrack = command.payload.soundtrack;
+    if (soundtrack && typeof soundtrack === "object" && !Array.isArray(soundtrack)
+      && (soundtrack as { kind?: unknown }).kind === "upload") {
+      const mediaId = (soundtrack as { media_id?: unknown }).media_id;
+      if (typeof mediaId !== "string" || !mediaId) throw new ValidationError("media_id invalid");
+      if (!media?.repository) throw new ValidationError("media_id not ready");
+      const asset = await media.repository.get(ownerId, command.project_id, mediaId);
+      if (!asset || asset.state !== "ready") throw new ValidationError("media_id not ready");
+    }
+    return;
+  }
   if (!Array.isArray(candidates)) return;
   for (const scene of candidates) {
     if (!scene || typeof scene !== "object" || Array.isArray(scene)) continue;
@@ -133,7 +148,7 @@ function commandEnvelope(value: unknown, projectId: string): CommandEnvelope {
     || !command.command_id
     || !Number.isInteger(command.base_revision)
     || typeof command.client_timestamp !== "string"
-    || !["select_concept", "update_scene", "reorder_scene", "replace_storyboard", "add_scene", "remove_scene"].includes(String(command.kind))
+    || !["select_concept", "update_scene", "reorder_scene", "replace_storyboard", "add_scene", "remove_scene", "update_soundtrack"].includes(String(command.kind))
     || !command.payload
     || typeof command.payload !== "object"
     || Array.isArray(command.payload)) {
@@ -673,7 +688,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       }
       const declaredType = String(request.body?.content_type ?? "");
       const maxBytes = Number(request.body?.bytes);
-      if (!allowedMediaTypes.has(declaredType)
+      if (!allowedMediaTypes.has(declaredType) && !allowedAudioTypes.has(declaredType)
         || !Number.isInteger(maxBytes)
         || maxBytes <= 0
         || maxBytes > maximumMediaBytes) {
@@ -706,12 +721,22 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const ownerId = String(response.locals.ownerId);
       const asset = await options.media.repository.get(ownerId, request.params.projectId, request.params.assetId);
       if (!asset) return response.status(404).json({ type: "not_found", message: "not found" });
-      await options.media.store.exists(asset.quarantineObjectKey);
+      if (!await options.media.store.exists(asset.quarantineObjectKey)) {
+        return response.status(404).json({ type: "not_found", message: "upload missing" });
+      }
+      if (allowedAudioTypes.has(asset.declaredType)) {
+        const ready = await sealUploadedAudio(ownerId, request.params.projectId, asset, options.media.store, options.media.repository);
+        const previewUrl = ready.sealedObjectKey ? await options.media.store.signedGet(ready.sealedObjectKey) : undefined;
+        return response.json(sceneMediaView(ready, previewUrl));
+      }
       if (!await options.media.repository.completeAdmission(ownerId, request.params.projectId, asset.id)) {
         return response.status(409).json({ type: "conflict", message: "media is not admissible" });
       }
       response.status(202).json({ asset_id: asset.id, state: "inspecting" });
     } catch (error) {
+      if (error instanceof ExternalMediaImportError) {
+        return response.status(422).json({ type: "validation", message: error.message });
+      }
       next(error);
     }
   });

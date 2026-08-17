@@ -6,12 +6,14 @@ import {
   buildStoryboardDraft,
   conceptsFor,
   clampFocus,
+  clampBpm,
   defaultVideoArchitecture,
   focusFromPoint,
   formatPlayTime,
   livePlayhead,
   liveTimeline,
   loadSceneMediaViews,
+  musicLaneBeats,
   nextLiveSceneId,
   panFocus,
   previousLiveSceneId,
@@ -19,11 +21,14 @@ import {
   sceneDurationForMedia,
   scenePreviewUrl,
   seekLivePlayhead,
+  snapDurationToBeat,
+  stockBeds,
   type Concept,
   type ProjectSnapshot,
   type ProjectSummary,
   type Scene,
   type SceneMediaView,
+  type Soundtrack,
   type VideoArchitecture
 } from "./api";
 import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOrigin } from "./auth";
@@ -31,6 +36,30 @@ import { clearImportedProject, isImportedProjectId, rememberImportedProject } fr
 import "./style.css";
 
 type Step = "sign-in" | "drafts" | "brief" | "architecture" | "concepts" | "media" | "editor" | "render" | "settings";
+function renderStockBar(ctx: AudioContext, id: Soundtrack["stock_id"], bpm: number): AudioBuffer {
+  const beat = 60 / clampBpm(bpm);
+  const bar = beat * 4;
+  const rate = ctx.sampleRate;
+  const buffer = ctx.createBuffer(1, Math.max(1, Math.floor(bar * rate)), rate);
+  const data = buffer.getChannelData(0);
+  const click = (at: number, amp: number, decay: number) => {
+    const start = Math.floor(at * rate);
+    const count = Math.floor(decay * rate);
+    for (let i = 0; i < count && start + i < data.length; i += 1) {
+      data[start + i] += amp * Math.sin((i / rate) * 140 * Math.PI * 2) * (1 - i / count);
+    }
+  };
+  for (let beatIndex = 0; beatIndex < 4; beatIndex += 1) {
+    const at = beatIndex * beat;
+    if (id === "air") click(at, 0.16, 0.14);
+    else {
+      click(at, 0.5, 0.07);
+      if (id === "pulse" && beatIndex % 2 === 1) click(at + beat * 0.5, 0.18, 0.03);
+      if (id === "drive") click(at + beat * 0.5, 0.2, 0.04);
+    }
+  }
+  return buffer;
+}
 interface PreviewPanState {
   pointerId: number;
   startX: number;
@@ -128,6 +157,7 @@ function App() {
   const [livePlaying, setLivePlaying] = useState(false);
   const [playSceneId, setPlaySceneId] = useState("");
   const [playTick, setPlayTick] = useState(0);
+  const [bedSeek, setBedSeek] = useState(0);
   const [previewPanning, setPreviewPanning] = useState(false);
   const previewPan = useRef<PreviewPanState | null>(null);
   const userPausedPreview = useRef(false);
@@ -177,6 +207,8 @@ function App() {
   const [previewRevision, setPreviewRevision] = useState<number>();
   const [previewMetadata, setPreviewMetadata] = useState<Record<string, string | number | boolean | null>>({});
   const upload = useRef<HTMLInputElement>(null);
+  const audioUpload = useRef<HTMLInputElement>(null);
+  const bedAudio = useRef<HTMLAudioElement | null>(null);
   const importedProjectRef = useRef("");
   const [pendingImportId, setPendingImportId] = useState(() => {
     if (typeof sessionStorage === "undefined") return "";
@@ -560,6 +592,99 @@ function App() {
         return;
       }
       setStatus("Scene changes could not be saved.");
+    }
+  }
+
+  async function saveSoundtrack(soundtrack: Soundtrack | null) {
+    if (!project) return;
+    setStatus("Saving…");
+    try {
+      const updated = await api.command(project.id, project.revision, "update_soundtrack", { soundtrack });
+      setProject(updated);
+      setStatus("✓ All changes saved");
+    } catch (error) {
+      if (error instanceof ApiResponseError && error.status === 409) {
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          operation: "music bed"
+        });
+        return;
+      }
+      setStatus("Music bed could not be saved.");
+    }
+  }
+
+  async function snapScenesToBeat() {
+    if (!project) return;
+    const bpm = clampBpm(project.brief.soundtrack?.bpm);
+    setStatus("Saving…");
+    try {
+      let current = project;
+      for (const scene of project.scenes) {
+        const duration_ms = snapDurationToBeat(scene.duration_ms, bpm);
+        if (duration_ms === scene.duration_ms) continue;
+        current = await api.command(current.id, current.revision, "update_scene", {
+          scene: { ...scene, duration_ms }
+        });
+      }
+      setProject(current);
+      setStatus("✓ Scenes snapped to the beat");
+    } catch (error) {
+      if (error instanceof ApiResponseError && error.status === 409) {
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          operation: "beat snap"
+        });
+        return;
+      }
+      setStatus("Scenes could not be snapped to the beat.");
+    }
+  }
+
+  async function admitAudioFile(file: File) {
+    if (!project) return;
+    const declared = file.type === "audio/x-m4a" || file.type === "audio/mp4" || file.type === "audio/mpeg" || file.type === "audio/wav" || file.type === "audio/x-wav"
+      ? (file.type === "audio/x-m4a" || file.type === "audio/mp4" ? "audio/mp4" : file.type === "audio/x-wav" ? "audio/wav" : file.type)
+      : "";
+    const fromName = file.name.toLowerCase().endsWith(".wav") ? "audio/wav"
+      : file.name.toLowerCase().endsWith(".m4a") ? "audio/mp4"
+        : file.name.toLowerCase().endsWith(".mp3") ? "audio/mpeg"
+          : "";
+    const type = declared || fromName;
+    if (!type) {
+      setStatus("Use an MP3, WAV, or M4A file you have permission to use.");
+      return;
+    }
+    setBusy(true);
+    setStatus("Uploading music…");
+    try {
+      const admission = await api.request<{ asset_id: string; upload_url: string }>(
+        `/api/projects/${project.id}/media/uploads`,
+        {
+          method: "POST",
+          body: JSON.stringify({ content_type: type, bytes: file.size })
+        }
+      );
+      const uploaded = await fetch(admission.upload_url, {
+        method: "PUT",
+        headers: { "content-type": type },
+        body: file
+      });
+      if (!uploaded.ok) throw new Error("Upload failed");
+      const ready = await api.request<SceneMediaView>(
+        `/api/projects/${project.id}/media/${admission.asset_id}/complete`,
+        { method: "POST" }
+      );
+      setSceneMedia((current) => ({ ...current, [ready.id]: ready }));
+      await saveSoundtrack({
+        kind: "upload",
+        media_id: ready.id,
+        bpm: clampBpm(project.brief.soundtrack?.bpm),
+        offset_ms: 0,
+        level: project.brief.soundtrack?.level ?? 0.8
+      });
+    } catch {
+      setStatus("Music could not be uploaded. Check the file and try again.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -1450,6 +1575,11 @@ function App() {
     : sceneClock.current.elapsedAtPause;
   const playhead = livePlayhead(project?.scenes ?? [], playSceneId || previewScene?.id || "", sceneElapsedMs);
   const timeline = liveTimeline(project?.scenes ?? []);
+  const soundtrack = project?.brief.soundtrack;
+  const soundtrackUrl = soundtrack?.kind === "upload" && soundtrack.media_id
+    ? scenePreviewUrl(sceneMedia[soundtrack.media_id])
+    : undefined;
+  const beatMarks = soundtrack ? musicLaneBeats(playhead.totalMs, soundtrack.bpm) : [];
 
   function readSceneElapsed(now = performance.now()) {
     return livePlaying
@@ -1547,6 +1677,7 @@ function App() {
     setPlaySceneId(sceneId);
     armSceneClock(elapsedMs, playing);
     setPlayTick(performance.now());
+    setBedSeek((current) => current + 1);
   }
 
   function stepLivePreview(direction: -1 | 1) {
@@ -1630,6 +1761,35 @@ function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [step, livePlaying, playSceneId, activeSceneId, project]);
+  useEffect(() => {
+    if (!livePlaying || soundtrack?.kind !== "stock") return;
+    const ctx = new AudioContext();
+    const src = ctx.createBufferSource();
+    src.buffer = renderStockBar(ctx, soundtrack.stock_id, soundtrack.bpm);
+    src.loop = true;
+    const gain = ctx.createGain();
+    gain.gain.value = soundtrack.level;
+    src.connect(gain).connect(ctx.destination);
+    const bar = (60 / clampBpm(soundtrack.bpm)) * 4;
+    src.start(0, ((playhead.offsetMs / 1000) + soundtrack.offset_ms / 1000) % bar);
+    return () => {
+      try { src.stop(); } catch { /* already stopped */ }
+      void ctx.close();
+    };
+  }, [livePlaying, soundtrack?.kind, soundtrack?.stock_id, soundtrack?.bpm, soundtrack?.level, soundtrack?.offset_ms, bedSeek]);
+  useEffect(() => {
+    const audio = bedAudio.current;
+    if (!audio) return;
+    audio.volume = soundtrack?.kind === "upload" ? soundtrack.level : 0;
+    audio.loop = true;
+    if (!livePlaying || soundtrack?.kind !== "upload" || !soundtrackUrl) {
+      audio.pause();
+      return;
+    }
+    const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
+    if (duration) audio.currentTime = ((playhead.offsetMs + soundtrack.offset_ms) / 1000) % duration;
+    void audio.play().catch(() => undefined);
+  }, [livePlaying, soundtrackUrl, soundtrack?.kind, soundtrack?.level, soundtrack?.offset_ms, bedSeek]);
   const inApp = authReady && Boolean(token) && step !== "sign-in";
   const createFlow = step === "brief" || step === "architecture" || step === "concepts" || step === "media" || step === "editor" || step === "render";
   const projectTitle = project?.brief.purpose?.trim() || "Untitled draft";
@@ -1911,6 +2071,65 @@ function App() {
                 </span>;
               })}
             </div>
+            <div className="music-lane" aria-label="Music bed">
+              {beatMarks.map((mark, index) =>
+                <span key={index} className="music-beat" style={{ left: `${mark * 100}%` }} />)}
+              <span className="music-lane-fill" style={{ width: playhead.totalMs ? `${(playhead.offsetMs / playhead.totalMs) * 100}%` : "0%" }} />
+            </div>
+            {soundtrackUrl && <audio ref={bedAudio} src={soundtrackUrl} preload="auto" hidden />}
+          </div>
+          <div className="music-dock">
+            <p className="crop-hint">{soundtrack
+              ? `${soundtrack.kind === "stock" ? stockBeds.find((bed) => bed.id === soundtrack.stock_id)?.label ?? "Stock" : "Uploaded"} · ${clampBpm(soundtrack.bpm)} BPM`
+              : "Add a music bed — stock beat or upload."}</p>
+            <div className="music-beds" role="group" aria-label="Stock music beds">
+              {stockBeds.map((bed) =>
+                <button
+                  key={bed.id}
+                  type="button"
+                  className={soundtrack?.kind === "stock" && soundtrack.stock_id === bed.id ? undefined : "secondary"}
+                  aria-pressed={soundtrack?.kind === "stock" && soundtrack.stock_id === bed.id}
+                  disabled={busy}
+                  onClick={() => void saveSoundtrack({
+                    kind: "stock",
+                    stock_id: bed.id,
+                    bpm: clampBpm(soundtrack?.bpm),
+                    offset_ms: 0,
+                    level: soundtrack?.level ?? 0.8
+                  })}
+                >{bed.label}</button>)}
+            </div>
+            <div className="inspector-pair">
+              <label htmlFor="music-bpm">BPM
+                <input id="music-bpm" type="number" min="60" max="200" step="1" defaultValue={clampBpm(soundtrack?.bpm)}
+                  onBlur={(event) => {
+                    const bpm = clampBpm(event.currentTarget.valueAsNumber);
+                    event.currentTarget.value = String(bpm);
+                    if (!soundtrack) {
+                      void saveSoundtrack({ kind: "stock", stock_id: "pulse", bpm, offset_ms: 0, level: 0.8 });
+                      return;
+                    }
+                    void saveSoundtrack({ ...soundtrack, bpm });
+                  }} />
+              </label>
+              <label htmlFor="music-level">Level · {Math.round((soundtrack?.level ?? 0.8) * 100)}%
+                <input id="music-level" type="range" min="0" max="1" step="0.05" defaultValue={soundtrack?.level ?? 0.8}
+                  onBlur={(event) => {
+                    if (!soundtrack) return;
+                    void saveSoundtrack({ ...soundtrack, level: event.currentTarget.valueAsNumber });
+                  }} />
+              </label>
+            </div>
+            <div className="scene-actions">
+              <input ref={audioUpload} hidden type="file" accept="audio/mpeg,audio/wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a" onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void admitAudioFile(file);
+              }} />
+              <button className="secondary" type="button" disabled={busy} onClick={() => audioUpload.current?.click()}>Upload music</button>
+              <button className="secondary" type="button" disabled={busy || !project.scenes.length} onClick={() => void snapScenesToBeat()}>Snap scenes to beat</button>
+              {soundtrack && <button className="secondary" type="button" disabled={busy} onClick={() => void saveSoundtrack(null)}>Remove bed</button>}
+            </div>
           </div>
           <p className="crop-hint">{livePlaying
             ? "Space plays or pauses · click the bar to scrub."
@@ -1927,20 +2146,17 @@ function App() {
         <div className="scene-controls">
           <h2>Scene {activeSceneNumber}</h2>
           <div className="inspector-block">
-          <label htmlFor={`prompt-${activeScene.id}`}>Scene {activeSceneNumber} {activeMedia ? "visual note" : "footage search"}
+          <label htmlFor={`prompt-${activeScene.id}`}>{activeMedia ? "Note" : "Search"}
             <textarea id={`prompt-${activeScene.id}`} maxLength={100} defaultValue={activeScene.visual_prompt ?? ""} onBlur={(event) => void saveScenePatch(activeScene.id, { visual_prompt: event.currentTarget.value.trim() })} />
-            <small>{activeMedia
-              ? "Existing media is selected. This note is only used if you search for a replacement."
-              : "Use concrete terms Pexels can match: subject, location, action, shot type, and mood. Maximum 100 characters."}</small>
           </label>
-          <label htmlFor={`caption-${activeScene.id}`}>Scene {activeSceneNumber} caption
+          <label htmlFor={`caption-${activeScene.id}`}>Caption
             <input id={`caption-${activeScene.id}`} maxLength={180} defaultValue={activeScene.caption} onBlur={(event) => void saveScenePatch(activeScene.id, { caption: event.currentTarget.value })} />
           </label>
           <div className="inspector-pair">
-          <label htmlFor={`duration-${activeScene.id}`}>Scene {activeSceneNumber} duration (seconds)
+          <label htmlFor={`duration-${activeScene.id}`}>Seconds
             <input id={`duration-${activeScene.id}`} type="number" min="0.5" max="15" step="0.1" defaultValue={activeScene.duration_ms / 1000} onBlur={(event) => void saveScenePatch(activeScene.id, { duration_ms: Math.round(event.currentTarget.valueAsNumber * 1000) })} />
           </label>
-          <label htmlFor={`motion-${activeScene.id}`}>Scene {activeSceneNumber} motion
+          <label htmlFor={`motion-${activeScene.id}`}>Motion
             <select id={`motion-${activeScene.id}`} value={activeScene.motion} onChange={(event) => void saveScenePatch(activeScene.id, { motion: event.target.value as Scene["motion"] })}>
               <option value="none">None</option><option value="push">Push</option><option value="zoom">Zoom</option>
             </select>
@@ -1948,7 +2164,7 @@ function App() {
           </div>
           </div>
           <div className="inspector-block">
-          <label htmlFor={`audio-${activeScene.id}`}>Scene {activeSceneNumber} source audio · {Math.round(activeScene.audio_level * 100)}%
+          <label htmlFor={`audio-${activeScene.id}`}>Clip audio · {Math.round(activeScene.audio_level * 100)}%
             <input id={`audio-${activeScene.id}`} type="range" min="0" max="1" step="0.05" defaultValue={activeScene.audio_level} onBlur={(event) => void saveScenePatch(activeScene.id, { audio_level: event.currentTarget.valueAsNumber })} />
           </label>
           <button className="secondary" onClick={() => void saveScenePatch(activeScene.id, { audio_level: activeScene.audio_level === 0 ? 1 : 0 })}>{activeScene.audio_level === 0 ? `Unmute scene ${activeSceneNumber}` : `Mute scene ${activeSceneNumber}`}</button>
@@ -1956,36 +2172,39 @@ function App() {
           <div className="inspector-block">
           <button className={!pexelsCredential?.connected ? "locked-feature" : undefined}
             disabled={busy || (Boolean(pexelsCredential?.connected) && !activeScene.visual_prompt)}
-            onClick={() => pexelsCredential?.connected ? void searchStock(activeScene.id) : showPexelsLock()}>
-            {!pexelsCredential?.connected ? "🔒 " : ""}{activeMedia
+            aria-label={activeMedia
               ? `Find another licensed video for scene ${activeSceneNumber}`
               : `Find licensed media for scene ${activeSceneNumber}`}
+            onClick={() => pexelsCredential?.connected ? void searchStock(activeScene.id) : showPexelsLock()}>
+            {!pexelsCredential?.connected ? "🔒 " : ""}{activeMedia ? "Find another licensed video" : "Find licensed media"}
           </button>
           <button className={!falCredential?.connected || falUnavailable ? "locked-feature" : undefined}
             disabled={busy || falGenBusy}
+            aria-label={`Generate AI image for scene ${activeSceneNumber}`}
             onClick={() => openFalGenerate(activeScene)}>
-            {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Generate AI image for scene {activeSceneNumber}
+            {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Generate AI image
           </button>
           {activeMedia?.state === "ready" && activeMedia.detected?.type !== "video/mp4" && (
             <button className={!falCredential?.connected || falUnavailable ? "locked-feature" : undefined}
               disabled={busy || falVideoBusy}
+              aria-label={`Animate this image for scene ${activeSceneNumber}`}
               onClick={() => openFalAnimate(activeScene)}>
-              {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Animate this image for scene {activeSceneNumber}
+              {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Animate this image
             </button>
           )}
           </div>
           <div className="inspector-block">
           <div className="scene-actions">
-            <button className="secondary" disabled={activeScene.order === 0} onClick={() => void moveScene(activeScene.id, activeScene.order - 1)}>Move scene {activeSceneNumber} earlier</button>
-            <button className="secondary" disabled={activeScene.order === project.scenes.length - 1} onClick={() => void moveScene(activeScene.id, activeScene.order + 1)}>Move scene {activeSceneNumber} later</button>
+            <button className="secondary" disabled={activeScene.order === 0} aria-label={`Move scene ${activeSceneNumber} earlier`} onClick={() => void moveScene(activeScene.id, activeScene.order - 1)}>Earlier</button>
+            <button className="secondary" disabled={activeScene.order === project.scenes.length - 1} aria-label={`Move scene ${activeSceneNumber} later`} onClick={() => void moveScene(activeScene.id, activeScene.order + 1)}>Later</button>
             <button className="secondary" disabled={project.scenes.length >= 8} onClick={() => void addScene()}>Add scene</button>
-            <button className="secondary" disabled={project.scenes.length <= 1} onClick={() => void removeScene(activeScene.id)}>Remove scene {activeSceneNumber}</button>
+            <button className="secondary" disabled={project.scenes.length <= 1} aria-label={`Remove scene ${activeSceneNumber}`} onClick={() => void removeScene(activeScene.id)}>Remove</button>
           </div>
           <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) void admitFile(file, activeScene.id);
           }} />
-          <button className="secondary" disabled={busy} onClick={() => upload.current?.click()}>Upload media for scene {activeSceneNumber}</button>
+          <button className="secondary" disabled={busy} aria-label={`Upload media for scene ${activeSceneNumber}`} onClick={() => upload.current?.click()}>Upload media</button>
           <p role="status">{status || "✓ All changes saved"}</p>
           {!allScenesHavePreview && <p>{project.scenes.every(({ media_id }) => media_id)
             ? "Media is processing. Live preview starts when every scene is ready."
