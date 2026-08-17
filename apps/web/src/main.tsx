@@ -1672,7 +1672,6 @@ function App() {
   };
   const previewPosition = {
     objectPosition: `${previewFocus.x * 100}% ${previewFocus.y * 100}%`,
-    transformOrigin: `${previewFocus.x * 100}% ${previewFocus.y * 100}%`,
     ["--scene-ms" as string]: `${Math.max(500, previewScene?.duration_ms ?? 3000)}ms`,
     ["--focus-x" as string]: `${previewFocus.x * 100}%`,
     ["--focus-y" as string]: `${previewFocus.y * 100}%`

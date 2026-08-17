@@ -426,20 +426,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   max-height: none;
   border-radius: 0;
   pointer-events: none;
-  animation: preview-cut 280ms ease-out;
+  transform-origin: 50% 50%;
 }
 .preview img.motion-push, .preview video.motion-push {
-  animation: preview-cut 280ms ease-out, preview-push var(--scene-ms, 3s) linear forwards;
+  animation: preview-push var(--scene-ms, 3s) linear forwards;
 }
 .preview img.motion-push.is-wide, .preview video.motion-push.is-wide {
-  animation: preview-cut 280ms ease-out, preview-push-wide var(--scene-ms, 3s) linear forwards;
+  animation: preview-push-wide var(--scene-ms, 3s) linear forwards;
 }
 .preview img.motion-zoom, .preview video.motion-zoom {
-  animation: preview-cut 280ms ease-out, preview-zoom var(--scene-ms, 3s) linear forwards;
-}
-@keyframes preview-cut {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  animation: preview-zoom var(--scene-ms, 3s) linear forwards;
 }
 .preview-grade {
   z-index: 3;
@@ -449,22 +445,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0%, transparent 18%, transparent 72%, rgba(0, 0, 0, 0.32) 100%);
 }
 @keyframes preview-push {
-  from { transform: scale(1.14) translate3d(0, 3%, 0); }
-  to { transform: scale(1.14) translate3d(0, -3%, 0); }
+  from { transform: scale(1.16) translate3d(0, 4%, 0); }
+  to { transform: scale(1.16) translate3d(0, -4%, 0); }
 }
 @keyframes preview-push-wide {
-  from {
-    transform: scale(1.08);
-    object-position: calc(var(--focus-x, 50%) + 32%) var(--focus-y, 50%);
-  }
-  to {
-    transform: scale(1.08);
-    object-position: calc(var(--focus-x, 50%) - 32%) var(--focus-y, 50%);
-  }
+  from { transform: scale(1.16) translate3d(6%, 0, 0); }
+  to { transform: scale(1.16) translate3d(-6%, 0, 0); }
 }
 @keyframes preview-zoom {
-  from { transform: scale(1); }
-  to { transform: scale(1.12); }
+  from { transform: scale(1.08); }
+  to { transform: scale(1.16); }
 }
 .preview .caption-burn {
   z-index: 4;

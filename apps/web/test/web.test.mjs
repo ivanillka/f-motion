@@ -178,9 +178,8 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /minmax\(0, 1fr\) 232px/);
   assert.match(css, /preview-push/);
   assert.match(css, /preview-push-wide/);
-  assert.match(css, /object-position: calc\(var\(--focus-x/);
-  assert.match(css, /preview-zoom/);
-  assert.match(css, /preview-cut/);
+  assert.match(css, /transform-origin: 50% 50%/);
+  assert.match(css, /preview-zoom \{\s*from \{ transform: scale\(1\.08\)/);
   assert.match(css, /\.preview-grade/);
   assert.match(css, /\.caption-burn/);
   assert.match(css, /\.look-title/);
