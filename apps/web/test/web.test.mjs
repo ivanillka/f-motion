@@ -115,6 +115,8 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /preview-push/);
   assert.match(css, /preview-zoom/);
   assert.match(css, /\.play-progress/);
+  assert.match(css, /\.editor-foot/);
+  assert.match(css, /\.inspector-pair/);
 });
 
 test("studio shell brands F-Motion and keeps real destinations only", async () => {
@@ -126,6 +128,7 @@ test("studio shell brands F-Motion and keeps real destinations only", async () =
   assert.match(source, /className="app-rail"/);
   assert.match(source, /className="app-dock"/);
   assert.match(source, /className="studio-board"/);
+  assert.match(source, /className="editor-foot"/);
   assert.match(source, /crop-guide/);
   assert.match(source, /href="\/"/);
   assert.doesNotMatch(source, /Assets|Effects|Pro Studio|multitrack/i);

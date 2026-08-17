@@ -1789,9 +1789,9 @@ function App() {
           <div className="play-transport">
             <div className="play-transport-row">
               <button className="secondary" type="button" disabled={!project.scenes.length} onClick={() => restartLivePreview()}>Restart</button>
-              <button className="secondary" type="button" disabled={!project.scenes.length} onClick={() => stepLivePreview(-1)}>Previous scene</button>
+              <button className="secondary" type="button" aria-label="Previous scene" disabled={!project.scenes.length} onClick={() => stepLivePreview(-1)}>Prev</button>
               <button type="button" disabled={!allScenesHavePreview} onClick={() => livePlaying ? pauseLivePreview() : playLivePreview()}>{livePlaying ? "Pause preview" : "Play preview"}</button>
-              <button className="secondary" type="button" disabled={!project.scenes.length} onClick={() => stepLivePreview(1)}>Next scene</button>
+              <button className="secondary" type="button" aria-label="Next scene" disabled={!project.scenes.length} onClick={() => stepLivePreview(1)}>Next</button>
               <span className="play-time">{formatPlayTime(playhead.offsetMs)} / {formatPlayTime(playhead.totalMs)}</span>
             </div>
             <div
@@ -1849,16 +1849,18 @@ function App() {
           <label htmlFor={`caption-${activeScene.id}`}>Scene {activeSceneNumber} caption
             <input id={`caption-${activeScene.id}`} maxLength={180} defaultValue={activeScene.caption} onBlur={(event) => void saveScenePatch(activeScene.id, { caption: event.currentTarget.value })} />
           </label>
+          <div className="inspector-pair">
           <label htmlFor={`duration-${activeScene.id}`}>Scene {activeSceneNumber} duration (seconds)
             <input id={`duration-${activeScene.id}`} type="number" min="0.5" max="15" step="0.1" defaultValue={activeScene.duration_ms / 1000} onBlur={(event) => void saveScenePatch(activeScene.id, { duration_ms: Math.round(event.currentTarget.valueAsNumber * 1000) })} />
           </label>
-          </div>
-          <div className="inspector-block">
           <label htmlFor={`motion-${activeScene.id}`}>Scene {activeSceneNumber} motion
             <select id={`motion-${activeScene.id}`} value={activeScene.motion} onChange={(event) => void saveScenePatch(activeScene.id, { motion: event.target.value as Scene["motion"] })}>
               <option value="none">None</option><option value="push">Push</option><option value="zoom">Zoom</option>
             </select>
           </label>
+          </div>
+          </div>
+          <div className="inspector-block">
           <label htmlFor={`focal-x-${activeScene.id}`}>Scene {activeSceneNumber} horizontal focus · {cropFocus.x.toFixed(2)}
             <input id={`focal-x-${activeScene.id}`} type="range" min="0" max="1" step="0.05" value={cropFocus.x} onChange={(event) => { pauseLivePreview(); setCropFocus((current) => ({ ...current, x: event.currentTarget.valueAsNumber })); }} onBlur={(event) => void saveScenePatch(activeScene.id, { focal_x: event.currentTarget.valueAsNumber })} />
           </label>
@@ -1891,6 +1893,23 @@ function App() {
             </button>
           )}
           </div>
+          <div className="inspector-block">
+          <div className="scene-actions">
+            <button className="secondary" disabled={activeScene.order === 0} onClick={() => void moveScene(activeScene.id, activeScene.order - 1)}>Move scene {activeSceneNumber} earlier</button>
+            <button className="secondary" disabled={activeScene.order === project.scenes.length - 1} onClick={() => void moveScene(activeScene.id, activeScene.order + 1)}>Move scene {activeSceneNumber} later</button>
+            <button className="secondary" disabled={project.scenes.length >= 8} onClick={() => void addScene()}>Add scene</button>
+            <button className="secondary" disabled={project.scenes.length <= 1} onClick={() => void removeScene(activeScene.id)}>Remove scene {activeSceneNumber}</button>
+          </div>
+          <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void admitFile(file, activeScene.id);
+          }} />
+          <button className="secondary" disabled={busy} onClick={() => upload.current?.click()}>Upload media for scene {activeSceneNumber}</button>
+          <p role="status">{status || "✓ All changes saved"}</p>
+          {!allScenesHavePreview && <p>{project.scenes.every(({ media_id }) => media_id)
+            ? "Media is processing. Live preview starts when every scene is ready."
+            : "Add media to every scene to play the live preview."}</p>}
+          </div>
         </div>
       </div>
       </div>
@@ -1901,25 +1920,11 @@ function App() {
         <button disabled={busy} onClick={() => void selectStock(activeScene.id, candidate)}>Select for scene {activeSceneNumber}</button>
       </article>)}</div>}
 
-      <div className="scene-actions">
-        <button className="secondary" disabled={activeScene.order === 0} onClick={() => void moveScene(activeScene.id, activeScene.order - 1)}>Move scene {activeSceneNumber} earlier</button>
-        <button className="secondary" disabled={activeScene.order === project.scenes.length - 1} onClick={() => void moveScene(activeScene.id, activeScene.order + 1)}>Move scene {activeSceneNumber} later</button>
-        <button className="secondary" disabled={project.scenes.length >= 8} onClick={() => void addScene()}>Add scene</button>
-        <button className="secondary" disabled={project.scenes.length <= 1} onClick={() => void removeScene(activeScene.id)}>Remove scene {activeSceneNumber}</button>
-      </div>
-
-      <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
-        const file = event.target.files?.[0];
-        if (file) void admitFile(file, activeScene.id);
-      }} />
-      <button className="secondary" disabled={busy} onClick={() => upload.current?.click()}>Upload media for scene {activeSceneNumber}</button>
-      <p role="status">{status || "✓ All changes saved"}</p>
-      {!allScenesHavePreview && <p>{project.scenes.every(({ media_id }) => media_id)
-        ? "Media is processing. Live preview starts when every scene is ready."
-        : "Add media to every scene to play the live preview."}</p>}
+      <div className="editor-foot">
       {downloadUrl && <button className="secondary" onClick={() => setStep("render")}>{renderKind === "final" ? "View final export" : "View accurate preview"}{previewRevision !== project.revision ? " · older" : ""}</button>}
       <button className="secondary" onClick={() => setStep("brief")}>Start a different description</button>
       <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
+      </div>
       {falGenOpen && activeScene && <dialog open aria-labelledby="fal-gen-title">
         <h2 id="fal-gen-title">Generate AI image for scene {activeSceneNumber}</h2>
         <p>Optional fallback after your own media or licensed Pexels search. One still uses Flux Schnell on FAL. Charged directly to your FAL account. F-Motion copies the result into private storage within an hour and does not keep FAL CDN copies longer than that preference.</p>
