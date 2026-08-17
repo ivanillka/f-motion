@@ -118,7 +118,8 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.editor-foot/);
   assert.match(css, /\.inspector-pair/);
   assert.match(css, /\.app-shell-editor \.app-stage \{\s*max-width: none;/);
-  assert.match(css, /align-items: center/);
+  assert.match(css, /margin-inline: auto/);
+  assert.doesNotMatch(css, /display: contents/);
 });
 
 test("studio shell brands F-Motion and keeps real destinations only", async () => {
