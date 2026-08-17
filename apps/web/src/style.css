@@ -469,14 +469,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .preview .look-poster {
   width: 100%;
   max-width: none;
-  padding: 28% 18px 14%;
-  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.82) 55%);
+  justify-self: stretch;
+  padding: 22% 16px 14px;
+  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.82) 62%);
   justify-items: start;
   text-align: left;
 }
+.preview .look-poster.overlay-bottom {
+  align-self: end;
+  margin-bottom: 0;
+}
 .preview .look-poster.overlay-top {
-  padding: 14% 18px 28%;
-  background: linear-gradient(0deg, transparent 0%, rgba(0, 0, 0, 0.82) 55%);
+  align-self: start;
+  margin-top: 0;
+  padding: 14px 16px 22%;
+  background: linear-gradient(0deg, transparent 0%, rgba(0, 0, 0, 0.82) 62%);
 }
 .preview .look-poster.overlay-center {
   width: 88%;
