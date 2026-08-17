@@ -48,6 +48,7 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Mixkit/);
   assert.match(source, /Trendy/);
   assert.match(source, /update_soundtrack/);
+  assert.doesNotMatch(source, /<audio controls/);
   const apiSource = await readFile(new URL("../src/api.ts", import.meta.url), "utf8");
   assert.match(apiSource, /Funkorama/);
   assert.match(apiSource, /stockBedUrl/);

@@ -169,6 +169,7 @@ function App() {
   const [candidates, setCandidates] = useState<PexelsMatch[]>([]);
   const [musicHits, setMusicHits] = useState<MixkitMatch[]>([]);
   const [musicQuery, setMusicQuery] = useState("trendy");
+  const [previewingId, setPreviewingId] = useState<number>();
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const [status, setStatus] = useState("");
@@ -208,6 +209,7 @@ function App() {
   const upload = useRef<HTMLInputElement>(null);
   const audioUpload = useRef<HTMLInputElement>(null);
   const bedAudio = useRef<HTMLAudioElement | null>(null);
+  const previewAudio = useRef<HTMLAudioElement | null>(null);
   const importedProjectRef = useRef("");
   const [pendingImportId, setPendingImportId] = useState(() => {
     if (typeof sessionStorage === "undefined") return "";
@@ -278,6 +280,7 @@ function App() {
     setAwaitingEmail(false);
     setMusicHits([]);
     setMusicQuery("trendy");
+    setPreviewingId(undefined);
     setStep("sign-in");
   }
 
@@ -658,8 +661,28 @@ function App() {
     }
   }
 
+  function stopMusicPreview() {
+    previewAudio.current?.pause();
+    setPreviewingId(undefined);
+  }
+
+  function toggleMusicPreview(hit: MixkitMatch) {
+    const audio = previewAudio.current;
+    if (!audio) return;
+    if (previewingId === hit.id && !audio.paused) {
+      stopMusicPreview();
+      return;
+    }
+    if (livePlaying) pauseLivePreview();
+    bedAudio.current?.pause();
+    audio.src = hit.previewUrl;
+    void audio.play().catch(() => undefined);
+    setPreviewingId(hit.id);
+  }
+
   async function searchLicensedMusic(query = musicQuery) {
     setMusicQuery(query);
+    stopMusicPreview();
     setStatus("Finding licensed music…");
     try {
       const body = await api.request<{ results: MixkitMatch[] }>(
@@ -676,6 +699,7 @@ function App() {
 
   async function useMixkitTrack(hit: MixkitMatch) {
     if (!project) return;
+    stopMusicPreview();
     setBusy(true);
     setStatus(`Copying ${hit.title} from Mixkit…`);
     try {
@@ -1654,12 +1678,12 @@ function App() {
       : undefined;
   const beatMarks = soundtrack ? musicLaneBeats(playhead.totalMs, soundtrack.bpm) : [];
   const soundtrackHint = !soundtrack
-    ? "Royalty-free Mixkit catalog — search trendy, hip hop, lo-fi. Export final mixes the bed into the file."
+    ? ""
     : soundtrack.kind === "stock"
-      ? `${stockBeds.find((bed) => bed.id === soundtrack.stock_id)?.label ?? "Catalog"} · ${clampBpm(soundtrack.bpm)} BPM · Export final mixes this bed`
+      ? `${stockBeds.find((bed) => bed.id === soundtrack.stock_id)?.label ?? "Catalog"} · Export final mixes this bed`
       : soundtrackMedia?.attribution?.source === "Mixkit"
-        ? `${soundtrackMedia.attribution.title ?? "Mixkit"} · ${soundtrackMedia.attribution.creator} · Mixkit · ${clampBpm(soundtrack.bpm)} BPM · Export final mixes this bed`
-        : `Uploaded · ${clampBpm(soundtrack.bpm)} BPM · Export final mixes this bed`;
+        ? `${soundtrackMedia.attribution.title ?? "Mixkit"} · ${soundtrackMedia.attribution.creator} · Mixkit · Export final mixes this bed`
+        : `Uploaded · Export final mixes this bed`;
 
   function readSceneElapsed(now = performance.now()) {
     return livePlaying
@@ -1861,6 +1885,9 @@ function App() {
     if (duration) audio.currentTime = ((playhead.offsetMs + (soundtrack?.offset_ms ?? 0)) / 1000) % duration;
     void audio.play().catch(() => undefined);
   }, [livePlaying, soundtrackUrl, soundtrack?.kind, soundtrack?.level, soundtrack?.offset_ms, bedSeek]);
+  useEffect(() => {
+    if (livePlaying) stopMusicPreview();
+  }, [livePlaying]);
   const inApp = authReady && Boolean(token) && step !== "sign-in";
   const createFlow = step === "brief" || step === "architecture" || step === "concepts" || step === "media" || step === "editor" || step === "render";
   const projectTitle = project?.brief.purpose?.trim() || "Untitled draft";
@@ -2150,7 +2177,6 @@ function App() {
             {soundtrackUrl && <audio ref={bedAudio} src={soundtrackUrl} preload="auto" hidden />}
           </div>
           <div className="music-dock">
-            <p className="crop-hint">{soundtrackHint}</p>
             <form
               className="music-search"
               onSubmit={(event) => {
@@ -2160,12 +2186,18 @@ function App() {
             >
               <input
                 aria-label="Search licensed music"
-                placeholder="Search trendy, hip hop, lo-fi…"
+                placeholder="Search music"
                 value={musicQuery}
                 onChange={(event) => setMusicQuery(event.target.value)}
               />
               <button className="secondary" type="submit">Search</button>
+              <button className="secondary" type="button" disabled={busy} onClick={() => audioUpload.current?.click()}>Upload music</button>
             </form>
+            <input ref={audioUpload} hidden type="file" accept="audio/mpeg,audio/wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a" onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void admitAudioFile(file);
+            }} />
             <div className="music-moods" role="group" aria-label="Licensed music catalog">
               {musicMoods.map(([label, query]) =>
                 <button
@@ -2180,18 +2212,20 @@ function App() {
               <ul className="music-results">
                 {musicHits.map((hit) => (
                   <li key={hit.id} className="music-hit">
-                    <div>
-                      <strong>{hit.title}</strong>
-                      <span>{hit.artist} · {hit.duration}</span>
-                    </div>
+                    <span>{hit.title} · {hit.artist} · {hit.duration}</span>
+                    <button
+                      type="button"
+                      className="secondary"
+                      aria-pressed={previewingId === hit.id}
+                      aria-label={`${previewingId === hit.id ? "Stop" : "Play"} ${hit.title}`}
+                      onClick={() => toggleMusicPreview(hit)}
+                    >{previewingId === hit.id ? "Stop" : "Play"}</button>
                     <button type="button" disabled={busy} onClick={() => void useMixkitTrack(hit)}>Use</button>
-                    <audio controls preload="none" src={hit.previewUrl} />
                   </li>
                 ))}
               </ul>
-            ) : (
-              <p className="crop-hint">Search for a vibe, or pick Trendy.</p>
-            )}
+            ) : null}
+            <audio ref={previewAudio} preload="none" hidden onEnded={() => setPreviewingId(undefined)} />
             <details className="music-classic">
               <summary>Classic beds</summary>
               <div className="music-beds" role="group" aria-label="Classic Kevin MacLeod beds">
@@ -2215,37 +2249,31 @@ function App() {
               <p className="crop-hint">Music by <a href="https://incompetech.com" target="_blank" rel="noreferrer">Kevin MacLeod</a>
                 {" · "}<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noreferrer">CC BY 3.0</a></p>
             </details>
-            <div className="inspector-pair">
-              <label htmlFor="music-bpm">BPM
-                <input id="music-bpm" type="number" min="60" max="200" step="1" defaultValue={clampBpm(soundtrack?.bpm)}
-                  onBlur={(event) => {
-                    const bpm = clampBpm(event.currentTarget.valueAsNumber);
-                    event.currentTarget.value = String(bpm);
-                    if (!soundtrack) {
-                      void saveSoundtrack({ kind: "stock", stock_id: "pulse", bpm, offset_ms: 0, level: 0.8 });
-                      return;
-                    }
-                    void saveSoundtrack({ ...soundtrack, bpm });
-                  }} />
-              </label>
-              <label htmlFor="music-level">Level · {Math.round((soundtrack?.level ?? 0.8) * 100)}%
-                <input id="music-level" type="range" min="0" max="1" step="0.05" defaultValue={soundtrack?.level ?? 0.8}
-                  onBlur={(event) => {
-                    if (!soundtrack) return;
-                    void saveSoundtrack({ ...soundtrack, level: event.currentTarget.valueAsNumber });
-                  }} />
-              </label>
-            </div>
-            <div className="scene-actions">
-              <input ref={audioUpload} hidden type="file" accept="audio/mpeg,audio/wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a" onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                if (file) void admitAudioFile(file);
-              }} />
-              <button className="secondary" type="button" disabled={busy} onClick={() => audioUpload.current?.click()}>Upload music</button>
-              <button className="secondary" type="button" disabled={busy || !project.scenes.length} onClick={() => void snapScenesToBeat()}>Snap scenes to beat</button>
-              {soundtrack && <button className="secondary" type="button" disabled={busy} onClick={() => void saveSoundtrack(null)}>Remove bed</button>}
-            </div>
+            {soundtrack ? (
+              <>
+                <p className="crop-hint">{soundtrackHint}</p>
+                <div className="inspector-pair">
+                  <label htmlFor="music-bpm">BPM
+                    <input id="music-bpm" type="number" min="60" max="200" step="1" defaultValue={clampBpm(soundtrack.bpm)}
+                      onBlur={(event) => {
+                        const bpm = clampBpm(event.currentTarget.valueAsNumber);
+                        event.currentTarget.value = String(bpm);
+                        void saveSoundtrack({ ...soundtrack, bpm });
+                      }} />
+                  </label>
+                  <label htmlFor="music-level">Level · {Math.round(soundtrack.level * 100)}%
+                    <input id="music-level" type="range" min="0" max="1" step="0.05" defaultValue={soundtrack.level}
+                      onBlur={(event) => {
+                        void saveSoundtrack({ ...soundtrack, level: event.currentTarget.valueAsNumber });
+                      }} />
+                  </label>
+                </div>
+                <div className="scene-actions">
+                  <button className="secondary" type="button" disabled={busy || !project.scenes.length} onClick={() => void snapScenesToBeat()}>Snap scenes to beat</button>
+                  <button className="secondary" type="button" disabled={busy} onClick={() => void saveSoundtrack(null)}>Remove bed</button>
+                </div>
+              </>
+            ) : null}
           </div>
           <p className="crop-hint">{livePlaying
             ? "Space plays or pauses · click the bar to scrub."
