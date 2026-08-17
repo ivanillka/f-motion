@@ -44,6 +44,12 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Licensed music catalog/);
   assert.match(source, /Add music/);
   assert.match(source, /musicOpen/);
+  assert.match(source, /showsPartnerBrands\(/);
+  assert.match(source, /VITE_PARTNER_BRAND_EMAIL/);
+  assert.match(source, /partner-brands/);
+  assert.match(source, /Your galleries/);
+  assert.match(source, /fotium\.vip/);
+  assert.doesNotMatch(source, /Fotium Motion|Fotium Studio/);
   assert.match(source, /Search licensed music/);
   assert.match(source, /Export final mixes this bed/);
   assert.match(source, /Kevin MacLeod/);
@@ -84,7 +90,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { clampBpm, clampFocus, focusFromPoint, formatPlayTime, isWideMedia, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, snapDurationToBeat, stockBedUrl } = await vite.ssrLoadModule("/src/api.ts");
+    const { clampBpm, clampFocus, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, stockBedUrl } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -118,6 +124,11 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.equal(musicLaneBeats(2000, 120).length, 5);
     assert.equal(stockBedUrl("pulse"), "/music/pulse.mp3");
     assert.equal(stockBedUrl(undefined), undefined);
+    const partnerToken = `x.${btoa(JSON.stringify({ email: "Owner@Example.com" })).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "")}.x`;
+    assert.equal(jwtEmail(partnerToken), "owner@example.com");
+    assert.equal(showsPartnerBrands(partnerToken, "owner@example.com"), true);
+    assert.equal(showsPartnerBrands(partnerToken, "other@example.com"), false);
+    assert.equal(showsPartnerBrands(partnerToken, ""), false);
     assert.equal(nextLiveSceneId(["a", "b", "c"], "b"), "c");
     assert.equal(nextLiveSceneId(["a", "b", "c"], "c"), "a");
     assert.equal(scenePreviewUrl({ previewUrl: "https://media.example/still.jpg" }), "https://media.example/still.jpg");
@@ -157,7 +168,8 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.crop-guide/);
   assert.match(css, /cursor: grab/);
   assert.match(css, /cursor: grabbing/);
-  assert.match(css, /\.music-lane/);
+  assert.match(css, /\.partner-brands/);
+  assert.match(css, /\.header-actions \.brand-mark/);
   assert.match(css, /\.music-dock > summary/);
   assert.match(css, /\.music-dock:not\(\[open\]\) > \*:not\(summary\) \{ display: none; \}/);
   assert.match(css, /minmax\(0, 1fr\) 232px/);
@@ -188,6 +200,7 @@ test("studio shell brands F-Motion and keeps real destinations only", async () =
   assert.match(source, /className="app-rail"/);
   assert.match(source, /className="app-dock"/);
   assert.match(source, /className="studio-board"/);
+  assert.match(source, /partner-brands/);
   assert.match(source, /className="editor-foot"/);
   assert.match(source, /crop-guide/);
   assert.match(source, /isWideMedia/);

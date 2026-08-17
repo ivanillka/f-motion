@@ -331,6 +331,23 @@ export function musicLaneBeats(totalMs: number, bpm: unknown): number[] {
   return marks;
 }
 
+export function jwtEmail(token: string): string {
+  const part = token.split(".")[1];
+  if (!part) return "";
+  try {
+    const padded = part.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(part.length / 4) * 4, "=");
+    const payload = JSON.parse(atob(padded)) as { email?: unknown };
+    return typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
+  } catch {
+    return "";
+  }
+}
+
+export function showsPartnerBrands(token: string, allowed: string): boolean {
+  const want = allowed.trim().toLowerCase();
+  return Boolean(want) && jwtEmail(token) === want;
+}
+
 export const stockBeds = [
   { id: "pulse" as const, label: "Funkorama", hint: "Kevin MacLeod", bpm: 115 },
   { id: "drive" as const, label: "Space Fighter Loop", hint: "Kevin MacLeod", bpm: 128 },

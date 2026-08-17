@@ -25,6 +25,7 @@ import {
   snapDurationToBeat,
   stockBedUrl,
   stockBeds,
+  showsPartnerBrands,
   type Concept,
   type ProjectSnapshot,
   type ProjectSummary,
@@ -1919,6 +1920,7 @@ function App() {
     if (livePlaying) stopMusicPreview();
   }, [livePlaying]);
   const inApp = authReady && Boolean(token) && step !== "sign-in";
+  const partnerBrands = showsPartnerBrands(token ?? "", String(import.meta.env.VITE_PARTNER_BRAND_EMAIL ?? ""));
   const createFlow = step === "brief" || step === "architecture" || step === "concepts" || step === "media" || step === "editor" || step === "render";
   const projectTitle = project?.brief.purpose?.trim() || "Untitled draft";
   const saveBusy = busy || status === "Saving…";
@@ -1950,6 +1952,13 @@ function App() {
         </>}
       </div>
       <div className="header-actions">
+        {partnerBrands && (
+          <span className="partner-brands" aria-label="Your source brands">
+            <button type="button" className={`brand-mark pexels${pexelsCredential?.connected ? " is-on" : ""}`} onClick={() => setStep("settings")}>Pexels</button>
+            <button type="button" className={`brand-mark fal${falCredential?.connected && !falUnavailable ? " is-on" : ""}`} onClick={() => setStep("settings")}>FAL</button>
+            <a className="brand-mark fotium is-on" href="https://fotium.vip" target="_blank" rel="noreferrer">Fotium</a>
+          </span>
+        )}
         {authReady && token && step !== "sign-in" && !inApp && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
         <span role="status">{online ? "● Connected" : "○ Reconnecting — draft kept locally"}</span>
       </div>
@@ -1979,12 +1988,18 @@ function App() {
         <button className="provider-preview-item" data-locked={!pexelsCredential?.connected} onClick={() => pexelsCredential?.connected ? setStep("settings") : showPexelsLock()}>
           <strong>Pexels</strong><span>Real stock video · {pexelsCredential?.connected ? "unlocked" : "locked"}</span>
         </button>
-        <button className="provider-preview-item" data-locked onClick={showFalLock}>
+        <button className="provider-preview-item" data-locked={!falCredential?.connected || falUnavailable} onClick={showFalLock}>
           <strong>FAL</strong><span>{falCredential?.connected && !falUnavailable ? "AI stills in storyboard" : "AI stills · locked"}</span>
         </button>
-        <button className="provider-preview-item" data-locked onClick={showFutureLock}>
-          <strong>More</strong><span>New providers · locked</span>
-        </button>
+        {partnerBrands ? (
+          <button className="provider-preview-item" type="button" onClick={() => setStep("settings")}>
+            <strong>Fotium</strong><span>Galleries · unlocked</span>
+          </button>
+        ) : (
+          <button className="provider-preview-item" data-locked onClick={showFutureLock}>
+            <strong>More</strong><span>New providers · locked</span>
+          </button>
+        )}
         <button className="secondary" onClick={() => setStep("settings")}>Choose video sources</button>
       </aside>
       <button onClick={startCreate}>Create new video</button>
@@ -2612,13 +2627,23 @@ function App() {
             ? <a href="#fal-settings-title">Manage FAL</a>
             : <button className="lock-trigger" onClick={showFalLock}>Why is this locked?</button>}
         </article>
-        <article className="provider-card provider-future">
-          <span className="provider-status provider-soon">Coming soon</span>
-          <h2>More providers</h2>
-          <strong>More ways to create</strong>
-          <p>Additional stock, AI video, voice, and media services can join the same provider flow.</p>
-          <button className="lock-trigger" onClick={showFutureLock}>Why is this locked?</button>
-        </article>
+        {partnerBrands ? (
+          <article className="provider-card provider-live">
+            <span className="provider-status">Unlocked</span>
+            <h2>Fotium</h2>
+            <strong>Your galleries</strong>
+            <p>Imported stills from Fotium open as F-Motion drafts. Other accounts do not see this source.</p>
+            <a href="https://fotium.vip" target="_blank" rel="noreferrer">Open Fotium</a>
+          </article>
+        ) : (
+          <article className="provider-card provider-future">
+            <span className="provider-status provider-soon">Coming soon</span>
+            <h2>More providers</h2>
+            <strong>More ways to create</strong>
+            <p>Additional stock, AI video, voice, and media services can join the same provider flow.</p>
+            <button className="lock-trigger" onClick={showFutureLock}>Why is this locked?</button>
+          </article>
+        )}
       </div>
       <p>Pexels videos require on-product attribution — see “Use video by … · Pexels” in the editor when you add stock footage.</p>
       <article className="settings-card" aria-labelledby="pexels-settings-title">
