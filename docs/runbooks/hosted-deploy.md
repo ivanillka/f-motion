@@ -7,11 +7,13 @@ statically-hosted web build. Never set `FENGINE_LOCAL_AUTH=1` or
 
 ## 0. Prerequisites
 
-- `Dockerfile`s: `apps/api/Dockerfile` (Node 24.15.0, no FFmpeg),
-  `apps/worker/Dockerfile` (Node 24.15.0 + FFmpeg 8.1.2, static build — see
+- `Dockerfile`s: `apps/api/Dockerfile` (Node 24.15.0 + FFmpeg 8.1.2; API
+  process never calls FFmpeg, worker process group does),
+  `apps/worker/Dockerfile` (worker-only image, same FFmpeg pin — see
   the Dockerfile header comment for why apt can't supply it yet).
-- Platform config: `fly.api.toml`, `fly.worker.toml` (Fly.io). Any host that
-  can run the two container images and inject env vars works instead —
+- Platform config: `fly.api.toml` (API + worker process groups on one Fly
+  app), optional `fly.worker.toml` for a dedicated worker app. Any host that
+  can run the two processes and inject env vars works instead —
   swap step 5 for that platform's deploy command.
 
 ## 1. Provision Postgres (session-mode)
@@ -160,7 +162,10 @@ their FAL dashboard before retrying. The worker never auto-resubmits that job
 ## 5. Deploy the API and worker images
 
 Using Fly.io with the provided configs (first time only needs `fly launch`
-to register the app names; already-registered apps just need `fly deploy`):
+to register the app name; already-registered apps just need `fly deploy`).
+`fly.api.toml` runs the renderer as a `worker` process group on the API app
+so Export final has a consumer without a second Fly app. `fly.worker.toml`
+stays available for a dedicated worker app.
 
 ```sh
 fly launch --config fly.api.toml --no-deploy
@@ -173,13 +178,6 @@ fly secrets set --config fly.api.toml \
   FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION=1 \
   FENGINE_CREDENTIAL_KEY_V1=<base64-from-openssl>
 fly deploy --config fly.api.toml
-
-fly launch --config fly.worker.toml --no-deploy
-fly secrets set --config fly.worker.toml \
-  QUEUE_DATABASE_URL=... R2_ENDPOINT=... R2_REGION=... R2_BUCKET=... \
-  R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... \
-  FENGINE_FAL_BYOK_ENABLED=1   FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION=1   FENGINE_CREDENTIAL_KEY_V1=<same-base64-as-api>
-fly deploy --config fly.worker.toml
 ```
 
 **Do not set `FENGINE_LOCAL_AUTH` as a secret on either app.** The API
@@ -377,7 +375,7 @@ the storage host, fix bucket CORS (§2) before debugging the API.
 | Var | Used by | Notes |
 |---|---|---|
 | `DATABASE_URL` | API | session-mode Postgres |
-| `QUEUE_DATABASE_URL` | worker | session-mode Postgres (pg-boss) |
+| `QUEUE_DATABASE_URL` | worker | session-mode Postgres (pg-boss); optional on the API app — worker falls back to `DATABASE_URL` |
 | `R2_ENDPOINT`, `R2_REGION`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | API + worker | private object storage |
 | `SUPABASE_ISSUER`, `SUPABASE_AUDIENCE`, `SUPABASE_JWKS_URL` | API | F-Motion JWT verification |
 | `SUPABASE_ISSUER_EXTRA`, `SUPABASE_JWKS_URL_EXTRA` | API | optional Fotium JWT when Edit hands off a logged-in session |

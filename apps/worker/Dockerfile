@@ -41,10 +41,12 @@ COPY packages/fmotion-cli/package.json packages/fmotion-cli/package.json
 COPY packages/fmotion-mcp/package.json packages/fmotion-mcp/package.json
 RUN npm ci
 COPY packages/contracts packages/contracts
+COPY packages/fal-host packages/fal-host
 COPY packages/reel-engine packages/reel-engine
 COPY apps/worker apps/worker
 RUN npm run build --workspace packages/contracts \
  && npm run build --workspace packages/reel-engine \
+ && npm run build --workspace packages/fal-host \
  && npm run build --workspace apps/worker
 
 FROM node:24.15.0-bookworm-slim AS runtime
@@ -64,6 +66,8 @@ COPY --from=build /repo/node_modules node_modules
 COPY --from=build /repo/package.json package.json
 COPY --from=build /repo/packages/contracts/package.json packages/contracts/package.json
 COPY --from=build /repo/packages/contracts/dist packages/contracts/dist
+COPY --from=build /repo/packages/fal-host/package.json packages/fal-host/package.json
+COPY --from=build /repo/packages/fal-host/dist packages/fal-host/dist
 COPY --from=build /repo/packages/reel-engine/package.json packages/reel-engine/package.json
 COPY --from=build /repo/packages/reel-engine/dist packages/reel-engine/dist
 COPY --from=build /repo/apps/worker/package.json apps/worker/package.json

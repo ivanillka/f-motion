@@ -1,6 +1,9 @@
-# Fly.io app config for the F-Motion API. Deploy with:
+# Fly.io app config for the F-Motion API + render worker. Deploy with:
 #   fly launch --config fly.api.toml --no-deploy   # first time, creates the app
 #   fly deploy  --config fly.api.toml
+#
+# The worker is a second process group on this app (not a separate Fly app).
+# HTTP health checks stay on `app` only. The `app` process never calls FFmpeg.
 #
 # Build context is the repo root (this file's directory) so the Dockerfile can
 # reach the npm workspace tree. Secrets (never set here — use `fly secrets
@@ -39,6 +42,16 @@ primary_region = "ams"
   RENDER_HEIGHT = "1280"
   FENGINE_PEXELS_BYOK_ENABLED = "1"
   FENGINE_FAL_BYOK_ENABLED = "0"
+  OUTBOX_RETENTION_HOURS = "168"
+  MEDIA_MAX_WIDTH = "4096"
+  MEDIA_MAX_HEIGHT = "4096"
+  MEDIA_MAX_PIXELS = "16000000"
+  MEDIA_MAX_VIDEO_DURATION_MS = "60000"
+  MEDIA_PROBE_TIMEOUT_MS = "10000"
+
+[processes]
+  app = "node apps/api/dist/start.js"
+  worker = "node apps/worker/dist/start.js"
 
 [http_service]
   internal_port = 3000
@@ -65,3 +78,9 @@ primary_region = "ams"
 [[vm]]
   size = "shared-cpu-1x"
   memory = "512mb"
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1024mb"
+  processes = ["worker"]

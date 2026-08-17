@@ -728,3 +728,14 @@ test("hosted worker can share the API database URL when QUEUE_DATABASE_URL is un
   const source = await readFile(new URL("../src/start.ts", import.meta.url), "utf8");
   assert.match(source, /QUEUE_DATABASE_URL\?\.trim\(\) \|\| required\("DATABASE_URL"\)/);
 });
+
+test("hosted Fly API app runs a worker process that can render", async () => {
+  const fly = await readFile(new URL("../../../fly.api.toml", import.meta.url), "utf8");
+  assert.match(fly, /worker = "node apps\/worker\/dist\/start\.js"/);
+  assert.match(fly, /\[http_service\][\s\S]*processes = \["app"\]/);
+  const docker = await readFile(new URL("../../api/Dockerfile", import.meta.url), "utf8");
+  assert.match(docker, /apps\/worker\/dist/);
+  assert.match(docker, /usr\/local\/bin\/ffmpeg/);
+  const workerDocker = await readFile(new URL("../Dockerfile", import.meta.url), "utf8");
+  assert.match(workerDocker, /packages\/fal-host\/dist/);
+});
