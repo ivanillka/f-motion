@@ -31,6 +31,8 @@ export interface MediaInput {
   type: string;
   // undefined hasAudio assumes audio present (backward-compatible unit fixtures).
   hasAudio?: boolean;
+  width?: number;
+  height?: number;
 }
 
 export interface MediaLimits {
@@ -243,17 +245,26 @@ function escapeAssText(value: string): string {
 const MOTION_FPS = 30;
 const MOTION_MAX_ZOOM = 1.08;
 
-function motionFilter(motion: "none" | "push" | "zoom", durationSeconds: number, width: number, height: number): string | undefined {
+function motionFilter(
+  motion: "none" | "push" | "zoom",
+  durationSeconds: number,
+  width: number,
+  height: number,
+  source?: Pick<MediaInput, "width" | "height">
+): string | undefined {
   if (motion === "none") return undefined;
   const frames = Math.max(2, Math.round(durationSeconds * MOTION_FPS));
   if (motion === "zoom") {
     const step = (MOTION_MAX_ZOOM - 1) / (frames - 1);
     return `zoompan=z='min(zoom+${step.toFixed(6)},${MOTION_MAX_ZOOM})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
   }
-  // ponytail: "push" is approximated as a small fixed-zoom horizontal pan rather than a
-  // true directional push transition. Ceiling: this pan. Upgrade: a real motion-graph
-  // per scene once multi-scene transitions land.
-  return `zoompan=z=${MOTION_MAX_ZOOM}:x='(iw-iw/zoom)*on/${frames - 1}':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+  // ponytail: "push" is a Ken Burns pan, not a transition. Wide sources pan X;
+  // tall/unknown pan Y so the extra cover-crop pixels actually move.
+  const wide = Boolean(source?.width && source.height && source.width > source.height);
+  if (wide) {
+    return `zoompan=z=${MOTION_MAX_ZOOM}:x='(iw-iw/zoom)*on/${frames - 1}':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+  }
+  return `zoompan=z=${MOTION_MAX_ZOOM}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*on/${frames - 1}':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
 }
 
 const CAPTION_ASS_STYLE =
@@ -356,7 +367,7 @@ export function sceneClipArguments(
 ): string[] {
   const duration = Math.max(0.2, scene.duration_ms / 1000);
   const captions = captionFilters(captionAssPath);
-  const motion = motionFilter(scene.motion, duration, plan.width, plan.height);
+  const motion = motionFilter(scene.motion, duration, plan.width, plan.height, media);
   if (media) {
     const cover = [
       ...coverCropFilter(plan.width, plan.height, scene.focal_x, scene.focal_y),

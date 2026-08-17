@@ -441,6 +441,17 @@ test("push motion pans within the frame instead of a no-op", () => {
   }, "preview.mp4", {}, "/tmp/job");
   assert.match(pushJob.clips[0].args.join(" "), /zoompan/);
 });
+test("push pans sideways on a wide still and vertically on a tall still", () => {
+  const scene = { ...snapshot.scenes[0], motion: "push", media_id: "asset-1" };
+  const wide = buildRenderJob({ ...snapshot, scenes: [scene] }, "preview.mp4", {
+    "asset-1": { path: "/tmp/wide.jpg", type: "image/jpeg", width: 1920, height: 1080 }
+  }, "/tmp/job");
+  assert.match(wide.clips[0].args.join(" "), /\(iw-iw\/zoom\)\*on\//);
+  const tall = buildRenderJob({ ...snapshot, scenes: [scene] }, "preview.mp4", {
+    "asset-1": { path: "/tmp/tall.jpg", type: "image/jpeg", width: 1080, height: 1920 }
+  }, "/tmp/job");
+  assert.match(tall.clips[0].args.join(" "), /\(ih-ih\/zoom\)\*on\//);
+});
 test("render job sorts scenes by order and gives each its own clip", () => {
   const twoScenes = {
     ...snapshot,

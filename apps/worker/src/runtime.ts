@@ -377,7 +377,9 @@ async function mediaInputsFor(
     inputs[scene.media_id] = {
       path,
       type: probed.type ?? asset.detected?.type ?? asset.declaredType,
-      hasAudio: probed.has_audio === true
+      hasAudio: probed.has_audio === true,
+      width: probed.width,
+      height: probed.height
     };
   }
   return inputs;

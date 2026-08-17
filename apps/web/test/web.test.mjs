@@ -134,6 +134,7 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.music-lane/);
   assert.match(css, /minmax\(0, 1fr\) 232px/);
   assert.match(css, /preview-push/);
+  assert.match(css, /preview-push-wide/);
   assert.match(css, /preview-zoom/);
   assert.match(css, /\.play-progress/);
   assert.match(css, /\.editor-foot/);

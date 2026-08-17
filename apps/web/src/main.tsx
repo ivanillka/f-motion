@@ -1569,7 +1569,16 @@ function App() {
     transformOrigin: `${previewFocus.x * 100}% ${previewFocus.y * 100}%`,
     ["--scene-ms" as string]: `${Math.max(500, previewScene?.duration_ms ?? 3000)}ms`
   };
+  const previewWide = Boolean(
+    previewMedia?.detected?.width
+    && previewMedia.detected.height
+    && previewMedia.detected.width > previewMedia.detected.height
+  );
   const previewMotion = livePlaying && previewScene && previewScene.motion !== "none" ? previewScene.motion : undefined;
+  const previewMotionClass = [
+    previewMotion ? `motion-${previewMotion}` : "",
+    previewWide ? "is-wide" : ""
+  ].filter(Boolean).join(" ") || undefined;
   const sceneElapsedMs = livePlaying
     ? sceneClock.current.elapsedAtPause + Math.max(0, playTick - sceneClock.current.startedAt)
     : sceneClock.current.elapsedAtPause;
@@ -2022,8 +2031,8 @@ function App() {
             onPointerCancel={endPreviewPan}
           >
         {previewUrl && (previewMedia?.detected?.type === "video/mp4"
-          ? <video key={previewScene?.id} src={previewUrl} muted playsInline autoPlay={livePlaying} loop={!livePlaying} controls={false} preload="metadata" draggable={false} className={previewMotion ? `motion-${previewMotion}` : undefined} style={previewPosition} />
-          : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} draggable={false} className={previewMotion ? `motion-${previewMotion}` : undefined} style={previewPosition} />)}
+          ? <video key={previewScene?.id} src={previewUrl} muted playsInline autoPlay={livePlaying} loop={!livePlaying} controls={false} preload="metadata" draggable={false} className={previewMotionClass} style={previewPosition} />
+          : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} draggable={false} className={previewMotionClass} style={previewPosition} />)}
         {previewMedia && !previewUrl && <span className="media-placeholder">{previewMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
             {!previewMedia && <span className="media-placeholder">Choose stock or upload media</span>}
             {previewScene?.caption ? <span className="caption-burn">{previewScene.caption}</span> : null}
@@ -2156,9 +2165,9 @@ function App() {
           <label htmlFor={`duration-${activeScene.id}`}>Seconds
             <input id={`duration-${activeScene.id}`} type="number" min="0.5" max="15" step="0.1" defaultValue={activeScene.duration_ms / 1000} onBlur={(event) => void saveScenePatch(activeScene.id, { duration_ms: Math.round(event.currentTarget.valueAsNumber * 1000) })} />
           </label>
-          <label htmlFor={`motion-${activeScene.id}`}>Motion
-            <select id={`motion-${activeScene.id}`} value={activeScene.motion} onChange={(event) => void saveScenePatch(activeScene.id, { motion: event.target.value as Scene["motion"] })}>
-              <option value="none">None</option><option value="push">Push</option><option value="zoom">Zoom</option>
+          <label htmlFor={`motion-${activeScene.id}`}>{wideStill ? "Pan" : "Motion"}
+            <select id={`motion-${activeScene.id}`} aria-label={`Scene ${activeSceneNumber} motion`} value={activeScene.motion} onChange={(event) => void saveScenePatch(activeScene.id, { motion: event.target.value as Scene["motion"] })}>
+              <option value="none">None</option><option value="push">{wideStill ? "Pan sideways" : "Push"}</option><option value="zoom">Zoom</option>
             </select>
           </label>
           </div>
