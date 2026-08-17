@@ -42,6 +42,8 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Snap scenes to beat/);
   assert.match(source, /Music bed/);
   assert.match(source, /Licensed music catalog/);
+  assert.match(source, /Add music/);
+  assert.match(source, /musicOpen/);
   assert.match(source, /Search licensed music/);
   assert.match(source, /Export final mixes this bed/);
   assert.match(source, /Kevin MacLeod/);
@@ -156,6 +158,8 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /cursor: grab/);
   assert.match(css, /cursor: grabbing/);
   assert.match(css, /\.music-lane/);
+  assert.match(css, /\.music-dock > summary/);
+  assert.match(css, /\.music-dock:not\(\[open\]\) > \*:not\(summary\) \{ display: none; \}/);
   assert.match(css, /minmax\(0, 1fr\) 232px/);
   assert.match(css, /preview-push/);
   assert.match(css, /preview-push-wide/);

@@ -607,6 +607,31 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   gap: 6px;
   width: 100%;
 }
+.music-dock:not([open]) > *:not(summary) { display: none; }
+.music-dock > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.music-dock > summary::-webkit-details-marker { display: none; }
+.music-dock > summary::after {
+  content: "Browse";
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+.music-dock.has-bed > summary::after { content: "Change"; }
+.music-dock[open] > summary::after { content: "Close"; }
 .music-search { display: flex; gap: 6px; }
 .music-search input { flex: 1; min-width: 0; }
 .music-search button, .music-moods button, .music-hit button {

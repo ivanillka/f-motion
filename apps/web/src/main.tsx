@@ -174,6 +174,7 @@ function App() {
   const [candidates, setCandidates] = useState<PexelsMatch[]>([]);
   const [musicHits, setMusicHits] = useState<MixkitMatch[]>([]);
   const [musicQuery, setMusicQuery] = useState("trendy");
+  const [musicOpen, setMusicOpen] = useState(false);
   const [previewingId, setPreviewingId] = useState<number>();
   const [overlayTitle, setOverlayTitle] = useState("");
   const [overlayCaption, setOverlayCaption] = useState("");
@@ -287,6 +288,7 @@ function App() {
     setAwaitingEmail(false);
     setMusicHits([]);
     setMusicQuery("trendy");
+    setMusicOpen(false);
     setPreviewingId(undefined);
     setOverlayTitle("");
     setOverlayCaption("");
@@ -355,22 +357,6 @@ function App() {
       setPexelsKey("");
     }
   }, [step]);
-
-  useEffect(() => {
-    if (step !== "editor" || !token) return;
-    let cancelled = false;
-    void api.request<{ results: MixkitMatch[] }>("/api/music/search?q=trendy")
-      .then((body) => {
-        if (!cancelled) {
-          setMusicHits(body.results);
-          setMusicQuery("trendy");
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setStatus("Licensed music search failed. Upload a track you have permission to use.");
-      });
-    return () => { cancelled = true; };
-  }, [step, token, project?.id]);
 
   useEffect(() => {
     const pendingId = rememberImportedProject(location.href, sessionStorage);
@@ -732,6 +718,7 @@ function App() {
         offset_ms: 0,
         level: project.brief.soundtrack?.level ?? 0.8
       })) {
+        setMusicOpen(false);
         setStatus(`Music bed: ${hit.title} · ${hit.artist} · Mixkit`);
       }
     } catch {
@@ -783,6 +770,7 @@ function App() {
         offset_ms: 0,
         level: project.brief.soundtrack?.level ?? 0.8
       });
+      setMusicOpen(false);
     } catch {
       setStatus("Music could not be uploaded. Check the file and try again.");
     } finally {
@@ -1721,6 +1709,11 @@ function App() {
       : soundtrackMedia?.attribution?.source === "Mixkit"
         ? `${soundtrackMedia.attribution.title ?? "Mixkit"} · ${soundtrackMedia.attribution.creator} · Mixkit · Export final mixes this bed`
         : `Uploaded · Export final mixes this bed`;
+  const musicLabel = !soundtrack
+    ? "Add music"
+    : soundtrack.kind === "stock"
+      ? (stockBeds.find((bed) => bed.id === soundtrack.stock_id)?.label ?? "Music bed")
+      : soundtrackMedia?.attribution?.title ?? "Uploaded music";
 
   function readSceneElapsed(now = performance.now()) {
     return livePlaying
@@ -2211,14 +2204,26 @@ function App() {
                 </span>;
               })}
             </div>
+            {soundtrack ? (
             <div className="music-lane" aria-label="Music bed">
               {beatMarks.map((mark, index) =>
                 <span key={index} className="music-beat" style={{ left: `${mark * 100}%` }} />)}
               <span className="music-lane-fill" style={{ width: playhead.totalMs ? `${(playhead.offsetMs / playhead.totalMs) * 100}%` : "0%" }} />
             </div>
+            ) : null}
             {soundtrackUrl && <audio ref={bedAudio} src={soundtrackUrl} preload="auto" hidden />}
           </div>
-          <div className="music-dock">
+          <details
+            className={`music-dock${soundtrack ? " has-bed" : ""}`}
+            open={musicOpen}
+            onToggle={(event) => {
+              const next = event.currentTarget.open;
+              setMusicOpen(next);
+              if (!next) stopMusicPreview();
+              else if (!musicHits.length) void searchLicensedMusic(musicQuery);
+            }}
+          >
+            <summary>{musicLabel}</summary>
             <form
               className="music-search"
               onSubmit={(event) => {
@@ -2279,13 +2284,16 @@ function App() {
                     aria-pressed={soundtrack?.kind === "stock" && soundtrack.stock_id === bed.id}
                     disabled={busy}
                     title={`${bed.label} · ${bed.hint}`}
-                    onClick={() => void saveSoundtrack({
-                      kind: "stock",
-                      stock_id: bed.id,
-                      bpm: clampBpm(soundtrack?.bpm ?? bed.bpm),
-                      offset_ms: 0,
-                      level: soundtrack?.level ?? 0.8
-                    })}
+                    onClick={() => {
+                      void saveSoundtrack({
+                        kind: "stock",
+                        stock_id: bed.id,
+                        bpm: clampBpm(soundtrack?.bpm ?? bed.bpm),
+                        offset_ms: 0,
+                        level: soundtrack?.level ?? 0.8
+                      });
+                      setMusicOpen(false);
+                    }}
                   >{bed.label}</button>)}
               </div>
               <p className="crop-hint">Music by <a href="https://incompetech.com" target="_blank" rel="noreferrer">Kevin MacLeod</a>
@@ -2316,7 +2324,7 @@ function App() {
                 </div>
               </>
             ) : null}
-          </div>
+          </details>
           <p className="crop-hint">{livePlaying
             ? "Space plays or pauses · click the bar to scrub."
             : wideStill
