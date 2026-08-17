@@ -418,10 +418,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   gap: 8px;
   justify-items: center;
   justify-self: center;
-  max-width: 86%;
+  max-width: 88%;
   pointer-events: none;
   text-align: center;
+  color: #fff;
 }
+.preview .caption-burn.is-ghost { opacity: 0.72; }
 .preview .caption-burn.overlay-bottom {
   align-self: end;
   margin-bottom: 8%;
@@ -432,12 +434,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   margin-top: 8%;
 }
 .preview .overlay-title {
-  font-size: clamp(1.35rem, 7vw, 2.1rem);
+  font-size: clamp(1.7rem, 9vw, 2.6rem);
   font-weight: 800;
-  letter-spacing: 0.01em;
-  line-height: 1.1;
+  letter-spacing: -0.03em;
+  line-height: 0.95;
   color: #fff;
-  text-shadow: 0 1px 0 #000, 0 10px 24px rgba(0, 0, 0, 0.65);
+  text-shadow: 0 1px 0 #000, 0 12px 28px rgba(0, 0, 0, 0.75);
 }
 .preview .overlay-caption {
   max-width: 100%;
@@ -451,25 +453,30 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   line-height: 1.25;
   text-shadow: 0 1px 2px #000;
 }
+.preview .look-title {
+  max-width: 92%;
+}
 .preview .look-title .overlay-title,
 .preview .look-title .overlay-caption {
   padding: 0;
   background: none;
   border-radius: 0;
-  font-size: clamp(1.5rem, 8vw, 2.35rem);
+  font-size: clamp(2rem, 11vw, 3.1rem);
   font-weight: 800;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
 }
 .preview .look-poster {
   width: 100%;
   max-width: none;
-  padding: 22% 16px 12%;
-  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.78) 58%);
+  padding: 28% 18px 14%;
+  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.82) 55%);
   justify-items: start;
   text-align: left;
 }
 .preview .look-poster.overlay-top {
-  padding: 12% 16px 22%;
-  background: linear-gradient(0deg, transparent 0%, rgba(0, 0, 0, 0.78) 58%);
+  padding: 14% 18px 28%;
+  background: linear-gradient(0deg, transparent 0%, rgba(0, 0, 0, 0.82) 55%);
 }
 .preview .look-poster.overlay-center {
   width: 88%;
@@ -478,12 +485,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   border-radius: 16px;
   background: rgba(0, 0, 0, 0.5);
 }
-.preview .look-poster .overlay-title { font-size: clamp(1.2rem, 6vw, 1.7rem); }
+.preview .look-poster .overlay-title {
+  font-size: clamp(1.45rem, 7vw, 2.1rem);
+  text-transform: none;
+  letter-spacing: -0.03em;
+}
 .preview .look-poster .overlay-caption {
   padding: 0;
   background: none;
   border-radius: 0;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   font-weight: 500;
   opacity: 0.92;
 }
@@ -649,6 +660,48 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .scene-controls textarea, .scene-controls input, .scene-controls select { padding: 6px 8px; }
 .scene-controls textarea { min-height: 40px; }
 .scene-controls button { min-height: 32px; padding: 5px 8px; font-size: 0.76rem; }
+.overlay-looks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.scene-controls .overlay-look-tile {
+  display: grid;
+  align-content: end;
+  gap: 2px;
+  min-height: 84px;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: #fff;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.72)),
+    linear-gradient(135deg, #5a6270, #1c1c1c);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-align: center;
+  text-shadow: 0 1px 2px #000;
+}
+.overlay-look-tile.look-title {
+  align-content: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+}
+.overlay-look-tile.look-poster {
+  justify-items: start;
+  text-align: left;
+  background:
+    linear-gradient(180deg, transparent 20%, rgba(0, 0, 0, 0.88) 70%),
+    linear-gradient(135deg, #5a6270, #1c1c1c);
+}
+.overlay-look-tile.look-poster strong { font-size: 0.78rem; }
+.overlay-look-tile.is-on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
 .overlay-places { display: flex; gap: 4px; }
 .overlay-places button { width: auto; min-height: 28px; padding: 3px 8px; font-size: 0.72rem; }
 .inspector-block {

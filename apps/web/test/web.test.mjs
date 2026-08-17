@@ -52,6 +52,9 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /htmlFor=\{`title-\$\{activeScene.id\}`\}/);
   assert.match(source, /Overlay look/);
   assert.match(source, /Lower third/);
+  assert.match(source, /overlay-look-tile/);
+  assert.match(source, /is-ghost/);
+  assert.match(source, /Your caption/);
   assert.match(source, /look-\$\{overlayLook\}/);
   assert.match(source, /overlay-title/);
   assert.match(source, /caption-burn/);
@@ -161,6 +164,7 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.caption-burn/);
   assert.match(css, /\.look-title/);
   assert.match(css, /\.look-poster/);
+  assert.match(css, /\.overlay-look-tile/);
   assert.match(css, /\.caption-burn \{\s*z-index: 4;/);
   assert.match(css, /\.overlay-places/);
   assert.match(css, /\.editor-foot/);

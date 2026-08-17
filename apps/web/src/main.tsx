@@ -1671,8 +1671,13 @@ function App() {
   const liveOverlay = previewScene?.id === activeScene?.id;
   const shownTitle = (liveOverlay ? overlayTitle : previewScene?.title ?? "").trim();
   const shownCaption = (liveOverlay ? overlayCaption : previewScene?.caption ?? "").trim();
-  const overlayHeadline = shownTitle || (overlayLook === "title" ? shownCaption : "");
-  const overlayLine = overlayLook === "title" && !shownTitle ? "" : shownCaption;
+  const overlayGhost = !shownTitle && !shownCaption && !livePlaying;
+  const overlayHeadline = shownTitle
+    || (overlayLook === "title" ? shownCaption : "")
+    || (overlayGhost && overlayLook !== "caption" ? "Title" : "");
+  const overlayLine = overlayLook === "title" && !shownTitle
+    ? ""
+    : shownCaption || (overlayGhost ? "Your caption" : "");
   const previewMedia = previewScene?.media_id ? sceneMedia[previewScene.media_id] : undefined;
   const previewUrl = scenePreviewUrl(previewMedia);
   const measuredPreview = previewSize?.url === previewUrl ? previewSize : undefined;
@@ -2157,7 +2162,7 @@ function App() {
         {previewMedia && !previewUrl && <span className="media-placeholder">{previewMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
             {!previewMedia && <span className="media-placeholder">Choose stock or upload media</span>}
             {(overlayHeadline || overlayLine) ? (
-              <div className={`caption-burn look-${overlayLook} overlay-${overlayPlace}`}>
+              <div className={`caption-burn look-${overlayLook} overlay-${overlayPlace}${overlayGhost ? " is-ghost" : ""}`}>
                 {overlayHeadline ? <strong className="overlay-title">{overlayHeadline}</strong> : null}
                 {overlayLine ? <span className="overlay-caption">{overlayLine}</span> : null}
               </div>
@@ -2328,22 +2333,27 @@ function App() {
           <h2>Scene {activeSceneNumber}</h2>
           <div className="inspector-block">
           <p className="crop-hint">Text on the clip</p>
+          <div className="overlay-looks" role="group" aria-label="Overlay look">
+            {overlayLooks.map(([label, look, place]) =>
+              <button
+                key={look}
+                type="button"
+                className={`overlay-look-tile look-${look}${(activeScene.overlay_look ?? "caption") === look ? " is-on" : ""}`}
+                aria-pressed={(activeScene.overlay_look ?? "caption") === look}
+                aria-label={label}
+                onClick={() => void saveScenePatch(activeScene.id, { overlay_look: look, overlay_place: place })}
+              >
+                {look === "title" ? <strong>Title</strong> : null}
+                {look === "poster" ? <><strong>Title</strong><span>Lower third</span></> : null}
+                {look === "caption" ? <span>Caption</span> : null}
+              </button>)}
+          </div>
           <label htmlFor={`title-${activeScene.id}`}>Title
             <input id={`title-${activeScene.id}`} maxLength={60} value={overlayTitle} onChange={(event) => setOverlayTitle(event.target.value)} onBlur={(event) => void saveScenePatch(activeScene.id, { title: event.currentTarget.value })} />
           </label>
           <label htmlFor={`caption-${activeScene.id}`}>Caption
             <input id={`caption-${activeScene.id}`} maxLength={180} value={overlayCaption} onChange={(event) => setOverlayCaption(event.target.value)} onBlur={(event) => void saveScenePatch(activeScene.id, { caption: event.currentTarget.value })} />
           </label>
-          <div className="overlay-places" role="group" aria-label="Overlay look">
-            {overlayLooks.map(([label, look, place]) =>
-              <button
-                key={look}
-                type="button"
-                className={(activeScene.overlay_look ?? "caption") === look ? undefined : "secondary"}
-                aria-pressed={(activeScene.overlay_look ?? "caption") === look}
-                onClick={() => void saveScenePatch(activeScene.id, { overlay_look: look, overlay_place: place })}
-              >{label}</button>)}
-          </div>
           <div className="overlay-places" role="group" aria-label="Overlay place">
             {([["Top", "top"], ["Middle", "center"], ["Bottom", "bottom"]] as const).map(([label, place]) =>
               <button
