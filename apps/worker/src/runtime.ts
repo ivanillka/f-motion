@@ -332,6 +332,58 @@ async function storedRender(pool: pg.Pool, job: PreviewJob): Promise<{
   return { snapshot: row.renderInput, profile: validateRenderProfile(row.renderProfile as RenderProfile), kind: row.kind };
 }
 
+async function loadSealedMedia(
+  pool: pg.Pool,
+  store: WorkerObjectStore,
+  snapshot: ProjectSnapshot,
+  mediaId: string,
+  directory: string,
+  signal: AbortSignal,
+  limits: MediaLimits,
+  kind: "scene" | "soundtrack"
+): Promise<MediaInput> {
+  const result = await pool.query<{
+    sealedObjectKey: string;
+    sealedEtag: string;
+    sealedVersionId: string | null;
+    sealedSha256: string;
+    declaredType: string;
+    maxBytes: number;
+    detected: DetectedMedia | null;
+  }>(
+    `SELECT "sealedObjectKey", "sealedEtag", "sealedVersionId", "sealedSha256",
+            "declaredType", "maxBytes", detected FROM "MediaAsset"
+      WHERE id = $1 AND "ownerId" = $2 AND "projectId" = $3 AND state = 'ready'`,
+    [mediaId, snapshot.owner_id, snapshot.id]
+  );
+  const asset = result.rows[0];
+  if (!asset?.sealedObjectKey || !asset.sealedEtag || !asset.sealedSha256) {
+    throw new Error(kind === "soundtrack" ? "soundtrack is not sealed" : "scene media is not sealed");
+  }
+  const path = join(directory, mediaId);
+  await store.downloadSealed(asset.sealedObjectKey, path, {
+    etag: asset.sealedEtag,
+    ...(asset.sealedVersionId ? { versionId: asset.sealedVersionId } : {}),
+    sha256: asset.sealedSha256
+  }, signal);
+  const probed = await probeMediaFile(path, signal, limits.probeTimeoutMs);
+  const detected = { ...probed, bytes: (await stat(path)).size };
+  if (kind === "soundtrack") {
+    if (probed.has_audio !== true) throw new Error("soundtrack has no audio");
+    return { path, type: asset.declaredType };
+  }
+  if (!inspectMedia(asset.declaredType, detected, asset.maxBytes, limits).accepted) {
+    throw new Error("media failed render validation");
+  }
+  return {
+    path,
+    type: probed.type ?? asset.detected?.type ?? asset.declaredType,
+    hasAudio: probed.has_audio === true,
+    width: probed.width,
+    height: probed.height
+  };
+}
+
 async function mediaInputsFor(
   pool: pg.Pool,
   store: WorkerObjectStore,
@@ -345,42 +397,17 @@ async function mediaInputsFor(
   for (const scene of snapshot.scenes) {
     if (!scene.media_id) throw new Error("scene media is missing");
     if (inputs[scene.media_id]) continue;
-    const result = await pool.query<{
-      sealedObjectKey: string;
-      sealedEtag: string;
-      sealedVersionId: string | null;
-      sealedSha256: string;
-      declaredType: string;
-      maxBytes: number;
-      detected: DetectedMedia | null;
-    }>(
-      `SELECT "sealedObjectKey", "sealedEtag", "sealedVersionId", "sealedSha256",
-              "declaredType", "maxBytes", detected FROM "MediaAsset"
-        WHERE id = $1 AND "ownerId" = $2 AND "projectId" = $3 AND state = 'ready'`,
-      [scene.media_id, snapshot.owner_id, snapshot.id]
+    inputs[scene.media_id] = await loadSealedMedia(
+      pool, store, snapshot, scene.media_id, directory, signal, limits, "scene"
     );
-    const asset = result.rows[0];
-    if (!asset?.sealedObjectKey || !asset.sealedEtag || !asset.sealedSha256) {
-      throw new Error("scene media is not sealed");
-    }
-    const path = join(directory, scene.media_id);
-    await store.downloadSealed(asset.sealedObjectKey, path, {
-      etag: asset.sealedEtag,
-      ...(asset.sealedVersionId ? { versionId: asset.sealedVersionId } : {}),
-      sha256: asset.sealedSha256
-    }, signal);
-    const probed = await probeMediaFile(path, signal, limits.probeTimeoutMs);
-    const detected = { ...probed, bytes: (await stat(path)).size };
-    if (!inspectMedia(asset.declaredType, detected, asset.maxBytes, limits).accepted) {
-      throw new Error("media failed render validation");
-    }
-    inputs[scene.media_id] = {
-      path,
-      type: probed.type ?? asset.detected?.type ?? asset.declaredType,
-      hasAudio: probed.has_audio === true,
-      width: probed.width,
-      height: probed.height
-    };
+  }
+  const soundtrackId = snapshot.brief.soundtrack?.kind === "upload"
+    ? snapshot.brief.soundtrack.media_id
+    : undefined;
+  if (soundtrackId && !inputs[soundtrackId]) {
+    inputs[soundtrackId] = await loadSealedMedia(
+      pool, store, snapshot, soundtrackId, directory, signal, limits, "soundtrack"
+    );
   }
   return inputs;
 }

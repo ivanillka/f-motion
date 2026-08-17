@@ -26,8 +26,17 @@ export interface Scene {
   caption_cues?: CaptionCue[];
 }
 
-export const stockBedIds = ["pulse", "drive", "air"] as const;
-export type StockBedId = (typeof stockBedIds)[number];
+export const stockBeds = [
+  { id: "pulse", title: "Funkorama", artist: "Kevin MacLeod", bpm: 115 },
+  { id: "drive", title: "Space Fighter Loop", artist: "Kevin MacLeod", bpm: 128 },
+  { id: "air", title: "Dreamy Flashback", artist: "Kevin MacLeod", bpm: 80 },
+  { id: "glow", title: "Easy Lemon", artist: "Kevin MacLeod", bpm: 110 },
+  { id: "night", title: "Wallpaper", artist: "Kevin MacLeod", bpm: 90 },
+  { id: "rise", title: "Hot Swing", artist: "Kevin MacLeod", bpm: 140 }
+] as const;
+export type StockBedId = (typeof stockBeds)[number]["id"];
+export const stockBedIds = stockBeds.map((bed) => bed.id);
+export const stockMusicCredit = "Music by Kevin MacLeod (incompetech.com) — CC BY 3.0";
 
 export interface Soundtrack {
   kind: "stock" | "upload";
@@ -107,7 +116,7 @@ export function isSoundtrack(value: unknown): value is Soundtrack {
     return false;
   }
   if (value.kind === "stock") {
-    return (stockBedIds as readonly string[]).includes(String(value.stock_id));
+    return typeof value.stock_id === "string" && (stockBedIds as readonly string[]).includes(value.stock_id);
   }
   if (value.kind === "upload") {
     return typeof value.media_id === "string" && !!value.media_id && value.media_id.length <= 80;

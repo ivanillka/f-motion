@@ -15,7 +15,8 @@ import {
   probeMediaFile,
   renderObjectKey,
   renderPhases,
-  renderPreview as renderPreviewWithProfile
+  renderPreview as renderPreviewWithProfile,
+  stockBedPath
 } from "../dist/index.js";
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
@@ -452,6 +453,39 @@ test("push pans sideways on a wide still and vertically on a tall still", () => 
   }, "/tmp/job");
   assert.match(tall.clips[0].args.join(" "), /\(ih-ih\/zoom\)\*on\//);
 });
+test("concat mixdown amixes an uploaded soundtrack under the cut", () => {
+  const withBed = {
+    ...snapshot,
+    brief: {
+      ...snapshot.brief,
+      soundtrack: { kind: "upload", media_id: "bed", bpm: 120, offset_ms: 0, level: 0.4 }
+    }
+  };
+  const job = buildRenderJob(withBed, "preview.mp4", {
+    bed: { path: "/tmp/bed.mp3", type: "audio/mpeg" }
+  }, "/tmp/job");
+  const concat = job.concatArgs.join(" ");
+  assert.match(concat, /amix=/);
+  assert.match(concat, /volume=0\.4/);
+  assert.match(concat, /\/tmp\/bed.mp3/);
+  assert.match(concat, /-stream_loop -1/);
+});
+test("concat mixdown uses the licensed catalog file for a stock bed", () => {
+  assert.match(stockBedPath("pulse") ?? "", /pulse\.mp3$/);
+  const withBed = {
+    ...snapshot,
+    brief: {
+      ...snapshot.brief,
+      soundtrack: { kind: "stock", stock_id: "pulse", bpm: 115, offset_ms: 0, level: 0.8 }
+    }
+  };
+  const job = buildRenderJob(withBed, "preview.mp4", {}, "/tmp/job");
+  const concat = job.concatArgs.join(" ");
+  assert.match(concat, /amix=/);
+  assert.match(concat, /pulse\.mp3/);
+  assert.match(concat, /Funkorama/);
+  assert.match(concat, /Kevin MacLeod/);
+});
 test("render job sorts scenes by order and gives each its own clip", () => {
   const twoScenes = {
     ...snapshot,
@@ -615,6 +649,36 @@ test("worker renders image-only scene with a silent audio pad", async () => {
   assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
   const audio = await probeAudioStream(output);
   assert.ok(audio, "expected a silent audio pad on still-only scenes");
+  assert.equal(audio.codec_name, "aac");
+});
+test("worker mixdown burns the soundtrack into the concat", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fengine-mixdown-"));
+  const bed = join(directory, "bed.wav");
+  await new Promise((resolve, reject) => {
+    const child = spawn("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=44100:duration=2",
+      "-c:a", "pcm_s16le", bed
+    ], { stdio: "ignore" });
+    child.once("error", reject);
+    child.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`)));
+  });
+  const output = join(directory, "preview.mp4");
+  const withBed = {
+    ...snapshot,
+    brief: {
+      ...snapshot.brief,
+      soundtrack: { kind: "upload", media_id: "bed", bpm: 120, offset_ms: 0, level: 1 }
+    },
+    scenes: [{ ...snapshot.scenes[0], media_id: "asset-1", duration_ms: 500, caption: "" }]
+  };
+  await renderPreview(output, withBed, undefined, {
+    "asset-1": { path: join(fixtures, "still.jpg"), type: "image/jpeg" },
+    bed: { path: bed, type: "audio/wav" }
+  });
+  const bytes = await readFile(output);
+  assert.ok(bytes.length > 1000);
+  const audio = await probeAudioStream(output);
+  assert.ok(audio, "expected mixed audio on the export");
   assert.equal(audio.codec_name, "aac");
 });
 test("worker renders zoompan motion (zoom and push) without ffmpeg errors", async () => {

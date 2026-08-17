@@ -68,5 +68,6 @@ COPY --from=build /repo/packages/reel-engine/package.json packages/reel-engine/p
 COPY --from=build /repo/packages/reel-engine/dist packages/reel-engine/dist
 COPY --from=build /repo/apps/worker/package.json apps/worker/package.json
 COPY --from=build /repo/apps/worker/dist apps/worker/dist
+COPY apps/web/public/music apps/worker/assets/music
 USER node
 CMD ["node", "apps/worker/dist/start.js"]

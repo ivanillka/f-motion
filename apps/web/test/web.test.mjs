@@ -41,7 +41,13 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Upload music/);
   assert.match(source, /Snap scenes to beat/);
   assert.match(source, /Music bed/);
+  assert.match(source, /Licensed music catalog/);
+  assert.match(source, /Export final mixes this bed/);
+  assert.match(source, /Kevin MacLeod/);
   assert.match(source, /update_soundtrack/);
+  const apiSource = await readFile(new URL("../src/api.ts", import.meta.url), "utf8");
+  assert.match(apiSource, /Funkorama/);
+  assert.match(apiSource, /stockBedUrl/);
   assert.doesNotMatch(source, /horizontal focus/);
   assert.doesNotMatch(source, /focus sliders/);
   assert.doesNotMatch(source, /cropFocus\.x\.toFixed/);
@@ -63,7 +69,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { clampBpm, clampFocus, focusFromPoint, formatPlayTime, isWideMedia, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, snapDurationToBeat } = await vite.ssrLoadModule("/src/api.ts");
+    const { clampBpm, clampFocus, focusFromPoint, formatPlayTime, isWideMedia, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, snapDurationToBeat, stockBedUrl } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -95,6 +101,8 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.equal(clampBpm(40), 60);
     assert.equal(snapDurationToBeat(3750, 120), 4000);
     assert.equal(musicLaneBeats(2000, 120).length, 5);
+    assert.equal(stockBedUrl("pulse"), "/music/pulse.mp3");
+    assert.equal(stockBedUrl(undefined), undefined);
     assert.equal(nextLiveSceneId(["a", "b", "c"], "b"), "c");
     assert.equal(nextLiveSceneId(["a", "b", "c"], "c"), "a");
     assert.equal(scenePreviewUrl({ previewUrl: "https://media.example/still.jpg" }), "https://media.example/still.jpg");
@@ -171,6 +179,7 @@ test("build puts marketing at site root and studio under /app", async () => {
   await access(new URL("index.html", dist));
   await access(new URL("app/index.html", dist));
   await access(new URL("_redirects", dist));
+  await access(new URL("music/pulse.mp3", dist));
   const home = await readFile(new URL("index.html", dist), "utf8");
   const redirects = await readFile(new URL("_redirects", dist), "utf8");
   const app = await readFile(new URL("app/index.html", dist), "utf8");

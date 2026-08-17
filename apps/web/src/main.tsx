@@ -23,6 +23,7 @@ import {
   scenePreviewUrl,
   seekLivePlayhead,
   snapDurationToBeat,
+  stockBedUrl,
   stockBeds,
   type Concept,
   type ProjectSnapshot,
@@ -37,30 +38,6 @@ import { clearImportedProject, isImportedProjectId, rememberImportedProject } fr
 import "./style.css";
 
 type Step = "sign-in" | "drafts" | "brief" | "architecture" | "concepts" | "media" | "editor" | "render" | "settings";
-function renderStockBar(ctx: AudioContext, id: Soundtrack["stock_id"], bpm: number): AudioBuffer {
-  const beat = 60 / clampBpm(bpm);
-  const bar = beat * 4;
-  const rate = ctx.sampleRate;
-  const buffer = ctx.createBuffer(1, Math.max(1, Math.floor(bar * rate)), rate);
-  const data = buffer.getChannelData(0);
-  const click = (at: number, amp: number, decay: number) => {
-    const start = Math.floor(at * rate);
-    const count = Math.floor(decay * rate);
-    for (let i = 0; i < count && start + i < data.length; i += 1) {
-      data[start + i] += amp * Math.sin((i / rate) * 140 * Math.PI * 2) * (1 - i / count);
-    }
-  };
-  for (let beatIndex = 0; beatIndex < 4; beatIndex += 1) {
-    const at = beatIndex * beat;
-    if (id === "air") click(at, 0.16, 0.14);
-    else {
-      click(at, 0.5, 0.07);
-      if (id === "pulse" && beatIndex % 2 === 1) click(at + beat * 0.5, 0.18, 0.03);
-      if (id === "drive") click(at + beat * 0.5, 0.2, 0.04);
-    }
-  }
-  return buffer;
-}
 interface PreviewPanState {
   pointerId: number;
   startX: number;
@@ -1587,7 +1564,9 @@ function App() {
   const soundtrack = project?.brief.soundtrack;
   const soundtrackUrl = soundtrack?.kind === "upload" && soundtrack.media_id
     ? scenePreviewUrl(sceneMedia[soundtrack.media_id])
-    : undefined;
+    : soundtrack?.kind === "stock"
+      ? stockBedUrl(soundtrack.stock_id)
+      : undefined;
   const beatMarks = soundtrack ? musicLaneBeats(playhead.totalMs, soundtrack.bpm) : [];
 
   function readSceneElapsed(now = performance.now()) {
@@ -1778,32 +1757,16 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [step, livePlaying, playSceneId, activeSceneId, project]);
   useEffect(() => {
-    if (!livePlaying || soundtrack?.kind !== "stock") return;
-    const ctx = new AudioContext();
-    const src = ctx.createBufferSource();
-    src.buffer = renderStockBar(ctx, soundtrack.stock_id, soundtrack.bpm);
-    src.loop = true;
-    const gain = ctx.createGain();
-    gain.gain.value = soundtrack.level;
-    src.connect(gain).connect(ctx.destination);
-    const bar = (60 / clampBpm(soundtrack.bpm)) * 4;
-    src.start(0, ((playhead.offsetMs / 1000) + soundtrack.offset_ms / 1000) % bar);
-    return () => {
-      try { src.stop(); } catch { /* already stopped */ }
-      void ctx.close();
-    };
-  }, [livePlaying, soundtrack?.kind, soundtrack?.stock_id, soundtrack?.bpm, soundtrack?.level, soundtrack?.offset_ms, bedSeek]);
-  useEffect(() => {
     const audio = bedAudio.current;
     if (!audio) return;
-    audio.volume = soundtrack?.kind === "upload" ? soundtrack.level : 0;
+    audio.volume = soundtrack ? soundtrack.level : 0;
     audio.loop = true;
-    if (!livePlaying || soundtrack?.kind !== "upload" || !soundtrackUrl) {
+    if (!livePlaying || !soundtrackUrl) {
       audio.pause();
       return;
     }
     const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
-    if (duration) audio.currentTime = ((playhead.offsetMs + soundtrack.offset_ms) / 1000) % duration;
+    if (duration) audio.currentTime = ((playhead.offsetMs + (soundtrack?.offset_ms ?? 0)) / 1000) % duration;
     void audio.play().catch(() => undefined);
   }, [livePlaying, soundtrackUrl, soundtrack?.kind, soundtrack?.level, soundtrack?.offset_ms, bedSeek]);
   const inApp = authReady && Boolean(token) && step !== "sign-in";
@@ -2096,9 +2059,9 @@ function App() {
           </div>
           <div className="music-dock">
             <p className="crop-hint">{soundtrack
-              ? `${soundtrack.kind === "stock" ? stockBeds.find((bed) => bed.id === soundtrack.stock_id)?.label ?? "Stock" : "Uploaded"} · ${clampBpm(soundtrack.bpm)} BPM`
-              : "Add a music bed — stock beat or upload."}</p>
-            <div className="music-beds" role="group" aria-label="Stock music beds">
+              ? `${soundtrack.kind === "stock" ? stockBeds.find((bed) => bed.id === soundtrack.stock_id)?.label ?? "Catalog" : "Uploaded"} · ${clampBpm(soundtrack.bpm)} BPM · Export final mixes this bed`
+              : "Licensed catalog or upload — Export final mixes the bed into the file."}</p>
+            <div className="music-beds" role="group" aria-label="Licensed music catalog">
               {stockBeds.map((bed) =>
                 <button
                   key={bed.id}
@@ -2106,15 +2069,18 @@ function App() {
                   className={soundtrack?.kind === "stock" && soundtrack.stock_id === bed.id ? undefined : "secondary"}
                   aria-pressed={soundtrack?.kind === "stock" && soundtrack.stock_id === bed.id}
                   disabled={busy}
+                  title={`${bed.label} · ${bed.hint}`}
                   onClick={() => void saveSoundtrack({
                     kind: "stock",
                     stock_id: bed.id,
-                    bpm: clampBpm(soundtrack?.bpm),
+                    bpm: clampBpm(soundtrack?.bpm ?? bed.bpm),
                     offset_ms: 0,
                     level: soundtrack?.level ?? 0.8
                   })}
                 >{bed.label}</button>)}
             </div>
+            <p className="crop-hint">Music by <a href="https://incompetech.com" target="_blank" rel="noreferrer">Kevin MacLeod</a>
+              {" · "}<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noreferrer">CC BY 3.0</a></p>
             <div className="inspector-pair">
               <label htmlFor="music-bpm">BPM
                 <input id="music-bpm" type="number" min="60" max="200" step="1" defaultValue={clampBpm(soundtrack?.bpm)}

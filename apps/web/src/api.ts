@@ -25,7 +25,7 @@ export interface Soundtrack {
   bpm: number;
   offset_ms: number;
   level: number;
-  stock_id?: "pulse" | "drive" | "air";
+  stock_id?: "pulse" | "drive" | "air" | "glow" | "night" | "rise";
   media_id?: string;
 }
 
@@ -328,10 +328,17 @@ export function musicLaneBeats(totalMs: number, bpm: unknown): number[] {
 }
 
 export const stockBeds = [
-  { id: "pulse" as const, label: "Pulse", hint: "Kick + hat" },
-  { id: "drive" as const, label: "Drive", hint: "Four on the floor" },
-  { id: "air" as const, label: "Air", hint: "Soft pad hits" }
+  { id: "pulse" as const, label: "Funkorama", hint: "Kevin MacLeod", bpm: 115 },
+  { id: "drive" as const, label: "Space Fighter Loop", hint: "Kevin MacLeod", bpm: 128 },
+  { id: "air" as const, label: "Dreamy Flashback", hint: "Kevin MacLeod", bpm: 80 },
+  { id: "glow" as const, label: "Easy Lemon", hint: "Kevin MacLeod", bpm: 110 },
+  { id: "night" as const, label: "Wallpaper", hint: "Kevin MacLeod", bpm: 90 },
+  { id: "rise" as const, label: "Hot Swing", hint: "Kevin MacLeod", bpm: 140 }
 ];
+
+export function stockBedUrl(id: Soundtrack["stock_id"]): string | undefined {
+  return id ? `/music/${id}.mp3` : undefined;
+}
 
 /** Loads a fresh, project-scoped map so callers replace rather than merge stale media state. */
 export async function loadSceneMediaViews(

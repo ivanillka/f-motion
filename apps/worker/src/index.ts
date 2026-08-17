@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { CaptionCue, ProjectSnapshot, Scene } from "@f-engine/contracts";
+import { fileURLToPath } from "node:url";
+import { stockBeds, type CaptionCue, type ProjectSnapshot, type Scene } from "@f-engine/contracts";
 import {
   coverCropFilter,
   renderPlan,
@@ -33,6 +35,14 @@ export interface MediaInput {
   hasAudio?: boolean;
   width?: number;
   height?: number;
+}
+
+export interface SoundtrackMix {
+  path: string;
+  level: number;
+  offsetMs: number;
+  title?: string;
+  artist?: string;
 }
 
 export interface MediaLimits {
@@ -331,7 +341,8 @@ const clipVideoEncode = ["-c:v", "h264", "-b:v", "4M", "-pix_fmt", "yuv420p", "-
 const clipAudioEncode = ["-c:a", "aac", "-ar", "44100", "-ac", "2"];
 const concatEncode = [...clipVideoEncode, ...clipAudioEncode];
 
-// ponytail: ducking waits for a licensed music bed (Gate 0). scene.ducking is persisted but unused.
+// ponytail: scene.ducking is unused. Mixdown is a straight amix of the licensed
+// bed under scene audio. Upgrade: sidechain duck when dialogue is present.
 function audioFilterArgs(audioLevel: number): string[] {
   const level = Math.min(1, Math.max(0, audioLevel));
   return level === 1 ? [] : ["-af", `volume=${level}`];
@@ -403,19 +414,83 @@ export function sceneClipArguments(
   ];
 }
 
+export function stockBedPath(id: string): string | undefined {
+  const path = join(fileURLToPath(new URL("../assets/music", import.meta.url)), `${id}.mp3`);
+  return existsSync(path) ? path : undefined;
+}
+
+export function resolveSoundtrackMix(
+  snapshot: ProjectSnapshot,
+  mediaInputs: Record<string, MediaInput>
+): SoundtrackMix | undefined {
+  const bed = snapshot.brief.soundtrack;
+  if (!bed) return undefined;
+  if (bed.kind === "upload") {
+    const input = bed.media_id ? mediaInputs[bed.media_id] : undefined;
+    if (!input) throw new Error("soundtrack media input missing");
+    return { path: input.path, level: bed.level, offsetMs: bed.offset_ms };
+  }
+  const catalog = stockBeds.find((item) => item.id === bed.stock_id);
+  const path = bed.stock_id ? stockBedPath(bed.stock_id) : undefined;
+  if (!path) throw new Error("stock music bed missing");
+  return {
+    path,
+    level: bed.level,
+    offsetMs: bed.offset_ms,
+    title: catalog?.title,
+    artist: catalog?.artist
+  };
+}
+
+function soundtrackMetadata(mix: SoundtrackMix): string[] {
+  const credit = mix.artist && mix.title
+    ? `${mix.title} by ${mix.artist} — CC BY 3.0`
+    : "Licensed soundtrack — CC BY 3.0";
+  return [
+    ...(mix.title ? ["-metadata", `title=${mix.title}`] : []),
+    ...(mix.artist ? ["-metadata", `artist=${mix.artist}`] : []),
+    "-metadata", `copyright=${credit}`
+  ];
+}
+
 export function concatArguments(
   listPath: string,
   plan: RenderPlan,
   snapshot: ProjectSnapshot,
-  outputPath: string
+  outputPath: string,
+  soundtrack?: SoundtrackMix
 ): string[] {
+  const comment = `comment=project ${snapshot.id} revision ${snapshot.revision}`;
+  const videoFilters = plan.watermark ? watermarkFilters(plan.watermark) : [];
+  if (!soundtrack) {
+    return [
+      "-y",
+      "-f", "concat",
+      "-safe", "0",
+      "-i", listPath,
+      ...vfArgs(videoFilters),
+      "-metadata", comment,
+      ...concatEncode,
+      outputPath
+    ];
+  }
+  const level = Math.min(1, Math.max(0, soundtrack.level));
+  const videoChain = videoFilters.length ? `[0:v]${videoFilters.join(",")}[v];` : "";
+  const audioChain = `[1:a]volume=${level}[bed];[0:a][bed]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]`;
+  const seek = soundtrack.offsetMs > 0 ? ["-ss", (soundtrack.offsetMs / 1000).toFixed(3)] : [];
   return [
     "-y",
     "-f", "concat",
     "-safe", "0",
     "-i", listPath,
-    ...vfArgs(plan.watermark ? watermarkFilters(plan.watermark) : []),
-    "-metadata", `comment=project ${snapshot.id} revision ${snapshot.revision}`,
+    ...seek,
+    "-stream_loop", "-1",
+    "-i", soundtrack.path,
+    "-filter_complex", `${videoChain}${audioChain}`,
+    "-map", videoFilters.length ? "[v]" : "0:v",
+    "-map", "[a]",
+    "-metadata", comment,
+    ...soundtrackMetadata(soundtrack),
     ...concatEncode,
     outputPath
   ];
@@ -472,7 +547,12 @@ export function buildRenderJob(
   });
   const listPath = join(tempDir, "concat-list.txt");
   const listContents = clips.map((clip) => concatListLine(clip.path)).join("");
-  return { clips, listPath, listContents, concatArgs: concatArguments(listPath, plan, snapshot, outputPath) };
+  return {
+    clips,
+    listPath,
+    listContents,
+    concatArgs: concatArguments(listPath, plan, snapshot, outputPath, resolveSoundtrackMix(snapshot, mediaInputs))
+  };
 }
 
 export async function renderPreview(

@@ -64,6 +64,7 @@ test("visual_prompt rejects blank, padded, and oversized values", () => {
 test("brief soundtrack is optional and validated when present", () => {
   const base = snapshotWithPrompt("remote island");
   assert.equal(isSoundtrack({ kind: "stock", stock_id: "pulse", bpm: 120, offset_ms: 0, level: 0.8 }), true);
+  assert.equal(isSoundtrack({ kind: "stock", stock_id: "glow", bpm: 110, offset_ms: 0, level: 0.8 }), true);
   assert.equal(isSoundtrack({ kind: "stock", stock_id: "nope", bpm: 120, offset_ms: 0, level: 0.8 }), false);
   assert.equal(isProjectSnapshot({
     ...base,
