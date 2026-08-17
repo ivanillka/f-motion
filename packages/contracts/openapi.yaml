@@ -737,6 +737,7 @@ components:
           items: { $ref: "#/components/schemas/CaptionCue" }
         title: { type: string, minLength: 1, maxLength: 60 }
         overlay_place: { type: string, enum: [bottom, center, top] }
+        overlay_look: { type: string, enum: [caption, title, poster] }
       additionalProperties: true
     CaptionCue:
       type: object

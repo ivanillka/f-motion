@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { stockBeds, type CaptionCue, type OverlayPlace, type ProjectSnapshot, type Scene } from "@f-engine/contracts";
+import { stockBeds, type CaptionCue, type OverlayLook, type OverlayPlace, type ProjectSnapshot, type Scene } from "@f-engine/contracts";
 import {
   coverCropFilter,
   renderPlan,
@@ -319,14 +319,28 @@ function assTimestamp(ms: number): string {
  */
 export function buildCaptionAss(
   cues: CaptionCue[],
-  overlay: { title?: string; place?: OverlayPlace; durationMs?: number } = {}
+  overlay: {
+    title?: string;
+    caption?: string;
+    place?: OverlayPlace;
+    look?: OverlayLook;
+    durationMs?: number;
+  } = {}
 ): string {
-  const title = overlay.title?.trim() ?? "";
-  const layout = overlayLayout(overlay.place, Boolean(title), cues.length > 0);
-  const titleEnd = overlay.durationMs ?? cues.at(-1)?.end_ms ?? 0;
+  const look = overlay.look === "title" || overlay.look === "poster" ? overlay.look : "caption";
+  let title = overlay.title?.trim() ?? "";
+  let captionCues = cues;
+  if (look === "title" && !title) {
+    title = overlay.caption?.trim() ?? "";
+    captionCues = [];
+  }
+  const place = overlay.place
+    ?? (look === "title" ? "center" : "bottom");
+  const layout = overlayLayout(place, Boolean(title), captionCues.length > 0);
+  const titleEnd = overlay.durationMs ?? captionCues.at(-1)?.end_ms ?? 0;
   const dialogues = [
     ...(title && titleEnd > 0 ? [assDialogue("Title", 0, titleEnd, title, layout.titleV, layout.an)] : []),
-    ...cues.map((cue) => assDialogue("Caption", cue.start_ms, cue.end_ms, cue.text, layout.captionV, layout.an))
+    ...captionCues.map((cue) => assDialogue("Caption", cue.start_ms, cue.end_ms, cue.text, layout.captionV, layout.an))
   ];
   return [
     "[Script Info]",
@@ -564,9 +578,16 @@ export function buildRenderJob(
     const path = join(tempDir, `scene-${index}.mp4`);
     const cues = scene.caption_cues ?? [];
     const title = scene.title?.trim();
-    const assPath = title || cues.length ? join(tempDir, `scene-${index}.ass`) : undefined;
-    const assContents = title || cues.length
-      ? buildCaptionAss(cues, { title, place: scene.overlay_place, durationMs: scene.duration_ms })
+    const look = scene.overlay_look;
+    const assPath = title || look === "title" || cues.length ? join(tempDir, `scene-${index}.ass`) : undefined;
+    const assContents = title || look === "title" || cues.length
+      ? buildCaptionAss(cues, {
+        title,
+        caption: scene.caption,
+        place: scene.overlay_place,
+        look,
+        durationMs: scene.duration_ms
+      })
       : undefined;
     return {
       scene,

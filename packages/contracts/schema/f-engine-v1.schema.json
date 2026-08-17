@@ -128,7 +128,8 @@
         "visual_prompt": { "type": "string", "minLength": 1, "maxLength": 240, "pattern": "^\\S(?:.*\\S)?$" },
         "caption_cues": { "type": "array" },
         "title": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^\\S(?:.*\\S)?$" },
-        "overlay_place": { "enum": ["bottom", "center", "top"] }
+        "overlay_place": { "enum": ["bottom", "center", "top"] },
+        "overlay_look": { "enum": ["caption", "title", "poster"] }
       },
       "additionalProperties": true
     }

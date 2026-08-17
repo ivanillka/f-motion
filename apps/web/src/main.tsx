@@ -62,6 +62,11 @@ interface MixkitMatch {
   page: string;
   previewUrl: string;
 }
+const overlayLooks = [
+  ["Caption", "caption", "bottom"],
+  ["Title", "title", "center"],
+  ["Lower third", "poster", "bottom"]
+] as const;
 const musicMoods = [
   ["Trendy", "trendy"],
   ["Hip hop", "hip hop"],
@@ -170,6 +175,8 @@ function App() {
   const [musicHits, setMusicHits] = useState<MixkitMatch[]>([]);
   const [musicQuery, setMusicQuery] = useState("trendy");
   const [previewingId, setPreviewingId] = useState<number>();
+  const [overlayTitle, setOverlayTitle] = useState("");
+  const [overlayCaption, setOverlayCaption] = useState("");
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const [status, setStatus] = useState("");
@@ -281,6 +288,8 @@ function App() {
     setMusicHits([]);
     setMusicQuery("trendy");
     setPreviewingId(undefined);
+    setOverlayTitle("");
+    setOverlayCaption("");
     setStep("sign-in");
   }
 
@@ -596,14 +605,18 @@ function App() {
   async function saveScenePatch(sceneId: string, patch: Partial<Scene>) {
     const scene = project?.scenes.find(({ id }) => id === sceneId);
     if (!project || !scene) return;
+    const next = { ...scene, ...patch, ...(patch.caption !== undefined ? { caption_cues: undefined } : {}) };
+    if (typeof next.title === "string") {
+      const title = next.title.trim();
+      if (title) next.title = title.slice(0, 60);
+      else delete next.title;
+    }
+    setProject({
+      ...project,
+      scenes: project.scenes.map((item) => item.id === sceneId ? next : item)
+    });
     setStatus("Saving…");
     try {
-      const next = { ...scene, ...patch, ...(patch.caption !== undefined ? { caption_cues: undefined } : {}) };
-      if (typeof next.title === "string") {
-        const title = next.title.trim();
-        if (title) next.title = title.slice(0, 60);
-        else delete next.title;
-      }
       const updated = await api.command(project.id, project.revision, "update_scene", { scene: next });
       setProject(updated);
       setStatus("✓ All changes saved");
@@ -1638,6 +1651,10 @@ function App() {
     if (!activeScene || previewPan.current) return;
     setCropFocus({ x: clampFocus(activeScene.focal_x), y: clampFocus(activeScene.focal_y) });
   }, [activeScene?.id, activeScene?.focal_x, activeScene?.focal_y]);
+  useEffect(() => {
+    setOverlayTitle(activeScene?.title ?? "");
+    setOverlayCaption(activeScene?.caption ?? "");
+  }, [activeScene?.id, activeScene?.title, activeScene?.caption]);
   const allScenesHaveMedia = Boolean(project?.scenes.length && project.scenes.every(({ media_id }) =>
     media_id && sceneMedia[media_id]?.state === "ready"));
   const allScenesHavePreview = Boolean(project?.scenes.length && project.scenes.every((scene) =>
@@ -1645,6 +1662,17 @@ function App() {
   const previewScene = livePlaying
     ? (project?.scenes.find(({ id }) => id === playSceneId) ?? activeScene)
     : activeScene;
+  const overlayLook = previewScene?.overlay_look === "title" || previewScene?.overlay_look === "poster"
+    ? previewScene.overlay_look
+    : "caption";
+  const overlayPlace = previewScene?.overlay_place === "top" || previewScene?.overlay_place === "center"
+    ? previewScene.overlay_place
+    : overlayLook === "title" ? "center" : "bottom";
+  const liveOverlay = previewScene?.id === activeScene?.id;
+  const shownTitle = (liveOverlay ? overlayTitle : previewScene?.title ?? "").trim();
+  const shownCaption = (liveOverlay ? overlayCaption : previewScene?.caption ?? "").trim();
+  const overlayHeadline = shownTitle || (overlayLook === "title" ? shownCaption : "");
+  const overlayLine = overlayLook === "title" && !shownTitle ? "" : shownCaption;
   const previewMedia = previewScene?.media_id ? sceneMedia[previewScene.media_id] : undefined;
   const previewUrl = scenePreviewUrl(previewMedia);
   const measuredPreview = previewSize?.url === previewUrl ? previewSize : undefined;
@@ -2128,10 +2156,10 @@ function App() {
           : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} draggable={false} className={previewMotionClass} style={previewPosition} onLoad={(event) => notePreviewPixels(previewUrl, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />)}
         {previewMedia && !previewUrl && <span className="media-placeholder">{previewMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
             {!previewMedia && <span className="media-placeholder">Choose stock or upload media</span>}
-            {(previewScene?.title || previewScene?.caption) ? (
-              <div className={`caption-burn overlay-${previewScene.overlay_place === "top" || previewScene.overlay_place === "center" ? previewScene.overlay_place : "bottom"}`}>
-                {previewScene.title ? <strong className="overlay-title">{previewScene.title}</strong> : null}
-                {previewScene.caption ? <span className="overlay-caption">{previewScene.caption}</span> : null}
+            {(overlayHeadline || overlayLine) ? (
+              <div className={`caption-burn look-${overlayLook} overlay-${overlayPlace}`}>
+                {overlayHeadline ? <strong className="overlay-title">{overlayHeadline}</strong> : null}
+                {overlayLine ? <span className="overlay-caption">{overlayLine}</span> : null}
               </div>
             ) : null}
             {!livePlaying && <span
@@ -2299,25 +2327,38 @@ function App() {
         <div className="scene-controls">
           <h2>Scene {activeSceneNumber}</h2>
           <div className="inspector-block">
-          <label htmlFor={`prompt-${activeScene.id}`}>{activeMedia ? "Note" : "Search"}
-            <textarea id={`prompt-${activeScene.id}`} maxLength={100} defaultValue={activeScene.visual_prompt ?? ""} onBlur={(event) => void saveScenePatch(activeScene.id, { visual_prompt: event.currentTarget.value.trim() })} />
-          </label>
+          <p className="crop-hint">Text on the clip</p>
           <label htmlFor={`title-${activeScene.id}`}>Title
-            <input id={`title-${activeScene.id}`} maxLength={60} defaultValue={activeScene.title ?? ""} onBlur={(event) => void saveScenePatch(activeScene.id, { title: event.currentTarget.value })} />
+            <input id={`title-${activeScene.id}`} maxLength={60} value={overlayTitle} onChange={(event) => setOverlayTitle(event.target.value)} onBlur={(event) => void saveScenePatch(activeScene.id, { title: event.currentTarget.value })} />
           </label>
           <label htmlFor={`caption-${activeScene.id}`}>Caption
-            <input id={`caption-${activeScene.id}`} maxLength={180} defaultValue={activeScene.caption} onBlur={(event) => void saveScenePatch(activeScene.id, { caption: event.currentTarget.value })} />
+            <input id={`caption-${activeScene.id}`} maxLength={180} value={overlayCaption} onChange={(event) => setOverlayCaption(event.target.value)} onBlur={(event) => void saveScenePatch(activeScene.id, { caption: event.currentTarget.value })} />
           </label>
+          <div className="overlay-places" role="group" aria-label="Overlay look">
+            {overlayLooks.map(([label, look, place]) =>
+              <button
+                key={look}
+                type="button"
+                className={(activeScene.overlay_look ?? "caption") === look ? undefined : "secondary"}
+                aria-pressed={(activeScene.overlay_look ?? "caption") === look}
+                onClick={() => void saveScenePatch(activeScene.id, { overlay_look: look, overlay_place: place })}
+              >{label}</button>)}
+          </div>
           <div className="overlay-places" role="group" aria-label="Overlay place">
             {([["Top", "top"], ["Middle", "center"], ["Bottom", "bottom"]] as const).map(([label, place]) =>
               <button
                 key={place}
                 type="button"
-                className={(activeScene.overlay_place ?? "bottom") === place ? undefined : "secondary"}
-                aria-pressed={(activeScene.overlay_place ?? "bottom") === place}
+                className={overlayPlace === place ? undefined : "secondary"}
+                aria-pressed={overlayPlace === place}
                 onClick={() => void saveScenePatch(activeScene.id, { overlay_place: place })}
               >{label}</button>)}
           </div>
+          </div>
+          <div className="inspector-block">
+          <label htmlFor={`prompt-${activeScene.id}`}>{activeMedia ? "Note" : "Search"}
+            <textarea id={`prompt-${activeScene.id}`} maxLength={100} defaultValue={activeScene.visual_prompt ?? ""} onBlur={(event) => void saveScenePatch(activeScene.id, { visual_prompt: event.currentTarget.value.trim() })} />
+          </label>
           <div className="inspector-pair">
           <label htmlFor={`duration-${activeScene.id}`}>Seconds
             <input id={`duration-${activeScene.id}`} type="number" min="0.5" max="15" step="0.1" defaultValue={activeScene.duration_ms / 1000} onBlur={(event) => void saveScenePatch(activeScene.id, { duration_ms: Math.round(event.currentTarget.valueAsNumber * 1000) })} />

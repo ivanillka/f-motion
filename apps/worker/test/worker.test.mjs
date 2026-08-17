@@ -352,6 +352,12 @@ test("title overlay burns above the caption and honors place", () => {
   const centered = buildCaptionAss([], { title: "Naplavka", place: "center", durationMs: 1000 });
   assert.match(centered, /\{\\an8\}Naplavka/);
   assert.doesNotMatch(centered, /^Dialogue:.*Caption,/m);
+  const titleLook = buildCaptionAss(
+    [{ text: "Open the full gallery.", start_ms: 0, end_ms: 500 }],
+    { look: "title", caption: "Open the full gallery.", durationMs: 500 }
+  );
+  assert.match(titleLook, /Title,,0,0,560,,\{\\an8\}Open the full gallery\./);
+  assert.doesNotMatch(titleLook, /^Dialogue:.*Caption,/m);
 });
 test("title-only scene still gets a subtitle filter", () => {
   const job = buildRenderJob({

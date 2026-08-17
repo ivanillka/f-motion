@@ -20,6 +20,7 @@ export interface Scene {
   visual_prompt?: string;
   title?: string;
   overlay_place?: "bottom" | "center" | "top";
+  overlay_look?: "caption" | "title" | "poster";
 }
 
 export interface Soundtrack {

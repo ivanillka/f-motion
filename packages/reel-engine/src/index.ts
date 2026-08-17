@@ -275,6 +275,10 @@ function boundedScene(scene: Scene): Scene {
     && scene.overlay_place !== "center" && scene.overlay_place !== "top") {
     throw new Error("invalid overlay place");
   }
+  if (scene.overlay_look !== undefined && scene.overlay_look !== "caption"
+    && scene.overlay_look !== "title" && scene.overlay_look !== "poster") {
+    throw new Error("invalid overlay look");
+  }
   if (scene.caption_cues && scene.caption_cues.length) validateCues(scene.caption_cues, scene.duration_ms);
   return scene;
 }
@@ -409,6 +413,8 @@ function validatedScene(value: unknown): Scene {
     || ("title" in scene && typeof scene.title !== "string")
     || ("overlay_place" in scene && scene.overlay_place !== "bottom"
       && scene.overlay_place !== "center" && scene.overlay_place !== "top")
+    || ("overlay_look" in scene && scene.overlay_look !== "caption"
+      && scene.overlay_look !== "title" && scene.overlay_look !== "poster")
     || ("caption_cues" in scene && !isValidCueShape(scene.caption_cues))) {
     throw new Error("invalid scene");
   }

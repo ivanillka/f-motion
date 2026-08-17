@@ -4,6 +4,8 @@ export type AccountState = "active" | "suspended" | "deletion_pending";
 export type MotionPreset = "none" | "push" | "zoom";
 export const overlayPlaces = ["bottom", "center", "top"] as const;
 export type OverlayPlace = (typeof overlayPlaces)[number];
+export const overlayLooks = ["caption", "title", "poster"] as const;
+export type OverlayLook = (typeof overlayLooks)[number];
 
 export interface CaptionCue {
   text: string;
@@ -30,6 +32,8 @@ export interface Scene {
   title?: string;
   /** Where title/caption sit; omitted means bottom. */
   overlay_place?: OverlayPlace;
+  /** Visual treatment; omitted means caption pill. */
+  overlay_look?: OverlayLook;
 }
 
 export const stockBeds = [
@@ -134,6 +138,10 @@ function isOverlayPlace(value: unknown): value is OverlayPlace {
   return value === "bottom" || value === "center" || value === "top";
 }
 
+function isOverlayLook(value: unknown): value is OverlayLook {
+  return value === "caption" || value === "title" || value === "poster";
+}
+
 function isCaptionCue(value: unknown, durationMs: number, previousEnd: number): value is CaptionCue {
   if (!isRecord(value)) return false;
   return typeof value.text === "string"
@@ -180,6 +188,7 @@ function isScene(value: unknown, order: number): value is Scene {
     return false;
   }
   if ("overlay_place" in value && !isOverlayPlace(value.overlay_place)) return false;
+  if ("overlay_look" in value && !isOverlayLook(value.overlay_look)) return false;
   if (!("caption_cues" in value)) return true;
   if (!Array.isArray(value.caption_cues)) return false;
   let previousEnd = 0;

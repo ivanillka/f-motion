@@ -71,6 +71,8 @@ test("title and overlay_place are additive and bounded", () => {
   assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, title: " padded " }] }), false);
   assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, title: "x".repeat(61) }] }), false);
   assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, overlay_place: "left" }] }), false);
+  assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, overlay_look: "poster" }] }), true);
+  assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, overlay_look: "neon" }] }), false);
 });
 
 test("brief soundtrack is optional and validated when present", () => {
