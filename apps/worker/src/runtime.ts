@@ -158,14 +158,15 @@ export class S3WorkerObjectStore implements WorkerObjectStore {
     objectKey: string,
     destination: string,
     etag: string,
-    versionId?: string,
+    _versionId?: string,
     signal?: AbortSignal
   ): Promise<void> {
+    // R2 returns a version token on Put/Copy, but GetObject VersionId errors
+    // with "versionId not implemented". Sealed keys are unique; If-Match is enough.
     const result = await this.client.send(new GetObjectCommand({
       Bucket: this.bucket,
       Key: objectKey,
-      IfMatch: etag,
-      ...(versionId ? { VersionId: versionId } : {})
+      IfMatch: etag
     }), { abortSignal: signal });
     if (!result.Body) throw new Error("object body missing");
     await pipeline(result.Body as Readable, createWriteStream(destination), { signal });

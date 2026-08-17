@@ -763,3 +763,13 @@ test("render download trusts etag when import stored a placeholder digest", asyn
   assert.match(fn, /await this\.download\(/);
   assert.doesNotMatch(fn, /sealed object identity mismatch/);
 });
+
+test("worker GetObject uses If-Match and omits VersionId for R2", async () => {
+  const source = await readFile(new URL("../src/runtime.ts", import.meta.url), "utf8");
+  const start = source.indexOf("private async download(");
+  const end = source.indexOf("async downloadSealed", start);
+  assert.ok(start >= 0 && end > start);
+  const fn = source.slice(start, end);
+  assert.match(fn, /IfMatch: etag/);
+  assert.doesNotMatch(fn, /VersionId: versionId/);
+});
