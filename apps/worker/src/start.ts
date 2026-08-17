@@ -14,7 +14,7 @@ function required(name: string): string {
   return value;
 }
 
-const connectionString = required("QUEUE_DATABASE_URL");
+const connectionString = process.env.QUEUE_DATABASE_URL?.trim() || required("DATABASE_URL");
 const mediaLimits = mediaLimitsFromEnv(process.env);
 const outboxRetentionHours = outboxRetentionHoursFromEnv(process.env);
 if (falByokEnabled(process.env)) {

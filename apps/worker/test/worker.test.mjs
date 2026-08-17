@@ -724,3 +724,7 @@ test("worker renders zoompan motion (zoom and push) without ffmpeg errors", asyn
     assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
   }
 });
+test("hosted worker can share the API database URL when QUEUE_DATABASE_URL is unset", async () => {
+  const source = await readFile(new URL("../src/start.ts", import.meta.url), "utf8");
+  assert.match(source, /QUEUE_DATABASE_URL\?\.trim\(\) \|\| required\("DATABASE_URL"\)/);
+});
