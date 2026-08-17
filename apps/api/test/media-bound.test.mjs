@@ -155,6 +155,7 @@ test("importMixkitTrack seals allowlisted MP3 and rejects other origins", async 
   const repository = {
     async insert(asset) { this.asset = asset; },
     async markImportedStillReady(_owner, _project, _id, sealed, detected) {
+      this.sealed = sealed;
       return { ...this.asset, state: "ready", sealedObjectKey: sealed.objectKey, detected };
     }
   };
@@ -170,6 +171,8 @@ test("importMixkitTrack seals allowlisted MP3 and rejects other origins", async 
   assert.equal(ready.attribution.title, track.title);
   assert.equal(ready.detected.type, "audio/mpeg");
   assert.equal(inserted[0].type, "audio/mpeg");
+  const { createHash } = await import("node:crypto");
+  assert.equal(repository.sealed.sha256, createHash("sha256").update(mp3).digest("hex"));
   await assert.rejects(
     () => importMixkitTrack(
       "owner",

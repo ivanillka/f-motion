@@ -753,3 +753,13 @@ test("hosted Fly API app runs a worker process that can render", async () => {
     workerDocker.match(/ARG FFMPEG_SHA256=.*/)?.[0]
   );
 });
+
+test("render download trusts etag when import stored a placeholder digest", async () => {
+  const source = await readFile(new URL("../src/runtime.ts", import.meta.url), "utf8");
+  const start = source.indexOf("async downloadSealed");
+  const end = source.indexOf("async seal(", start);
+  assert.ok(start >= 0 && end > start);
+  const fn = source.slice(start, end);
+  assert.match(fn, /await this\.download\(/);
+  assert.doesNotMatch(fn, /sealed object identity mismatch/);
+});

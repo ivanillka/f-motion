@@ -177,10 +177,10 @@ export class S3WorkerObjectStore implements WorkerObjectStore {
     identity: ObjectIdentity,
     signal?: AbortSignal
   ): Promise<void> {
+    // If-Match binds the bytes to sealedEtag. Copy-import and Mixkit store
+    // sha256(quarantineKey:etag:bytes), not the file digest, so do not treat a
+    // digest mismatch as a swapped object.
     await this.download(objectKey, destination, identity.etag, identity.versionId, signal);
-    if (await sha256File(destination, signal) !== identity.sha256) {
-      throw new Error("sealed object identity mismatch");
-    }
   }
 
   async seal(

@@ -142,7 +142,7 @@ export async function importMixkitTrack(
     await repository.insert(asset);
     const objectKey = `projects/${projectId}/media-sealed/${id}`;
     const copied = await store.copy(asset.quarantineObjectKey, objectKey);
-    const sha256 = createHash("sha256").update(`${asset.quarantineObjectKey}:${copied.etag}:${bytes}`).digest("hex");
+    const sha256 = createHash("sha256").update(await readFile(path)).digest("hex");
     const ready = await repository.markImportedStillReady(
       ownerId,
       projectId,
