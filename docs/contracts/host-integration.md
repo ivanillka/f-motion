@@ -25,7 +25,7 @@ profiles fail before FFmpeg arguments are created.
 
 The admitting API owns two profiles. `PREVIEW_RENDER_WIDTH` and
 `PREVIEW_RENDER_HEIGHT` default to 540×960; `RENDER_WIDTH` and `RENDER_HEIGHT`
-default to 720×1280. Each supports an optional matching `_WATERMARK`. The API
+default to 1080×1920. Each supports an optional matching `_WATERMARK`. The API
 validates and snapshots the selected profile with the immutable job. The worker
 revalidates that stored profile and never reads current profile environment
 values, so retries cannot silently change dimensions or watermark.

@@ -122,7 +122,7 @@ test("render state, SSE recovery, cancellation, and immutable result are owner-s
     )).rows[0].count), 1);
     const finalJob = await renders.create("owner", project.id, "final");
     assert.notEqual(finalJob.jobId, created.job_id);
-    assert.deepEqual(finalJob.renderProfile, { width: 720, height: 1280 });
+    assert.deepEqual(finalJob.renderProfile, { width: 1080, height: 1920 });
     assert.equal((await renders.cancel("owner", finalJob.jobId)).state, "cancelled");
     assert.equal(await renders.events("other", created.job_id), undefined);
     const queued = await renders.events("owner", created.job_id);

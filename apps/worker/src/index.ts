@@ -261,7 +261,16 @@ function escapeAssText(value: string): string {
 }
 
 const MOTION_FPS = 30;
-const MOTION_MAX_ZOOM = 1.08;
+// Match apps/web preview-zoom / preview-push: cover, then 1.08→1.16 (push holds 1.16).
+const MOTION_START_ZOOM = 1.08;
+const MOTION_MAX_ZOOM = 1.16;
+const MOTION_SAMPLE_SCALE = 2;
+
+function lanczosCoverCrop(width: number, height: number, focal_x: number, focal_y: number): string[] {
+  return coverCropFilter(width, height, focal_x, focal_y).map((part) =>
+    part.startsWith("scale=") && !part.includes("flags=") ? `${part}:flags=lanczos` : part
+  );
+}
 
 function motionFilter(
   motion: "none" | "push" | "zoom",
@@ -273,8 +282,8 @@ function motionFilter(
   if (motion === "none") return undefined;
   const frames = Math.max(2, Math.round(durationSeconds * MOTION_FPS));
   if (motion === "zoom") {
-    const step = (MOTION_MAX_ZOOM - 1) / (frames - 1);
-    return `zoompan=z='min(zoom+${step.toFixed(6)},${MOTION_MAX_ZOOM})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+    const step = (MOTION_MAX_ZOOM - MOTION_START_ZOOM) / (frames - 1);
+    return `zoompan=z='min(${MOTION_START_ZOOM}+${step.toFixed(6)}*on,${MOTION_MAX_ZOOM})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
   }
   // ponytail: "push" is a Ken Burns pan, not a transition. Wide sources pan X;
   // tall/unknown pan Y so the extra cover-crop pixels actually move.
@@ -387,9 +396,15 @@ function watermarkFilters(watermark: string): string[] {
 
 // `h264` lets FFmpeg select the available software encoder (libx264 in the
 // production GPL build and OpenH264 in the local development image).
-const clipVideoEncode = ["-c:v", "h264", "-b:v", "4M", "-pix_fmt", "yuv420p", "-movflags", "+faststart"];
+// ponytail: OpenH264 rejects `-crf`; raise bitrate instead. 8M is for 1080×1920.
+const clipVideoEncode = ["-c:v", "h264", "-b:v", "8M", "-pix_fmt", "yuv420p", "-movflags", "+faststart"];
 const clipAudioEncode = ["-c:a", "aac", "-ar", "44100", "-ac", "2"];
-const concatEncode = [...clipVideoEncode, ...clipAudioEncode];
+
+function concatOutputArgs(watermark: string | undefined, soundtrack?: SoundtrackMix): string[] {
+  if (watermark) return [...clipVideoEncode, ...clipAudioEncode];
+  if (soundtrack) return ["-c:v", "copy", ...clipAudioEncode, "-movflags", "+faststart"];
+  return ["-c:v", "copy", "-c:a", "copy", "-movflags", "+faststart"];
+}
 
 // ponytail: scene.ducking is unused. Mixdown is a straight amix of the licensed
 // bed under scene audio. Upgrade: sidechain duck when dialogue is present.
@@ -430,8 +445,10 @@ export function sceneClipArguments(
   const captions = captionFilters(captionAssPath);
   const motion = motionFilter(scene.motion, duration, plan.width, plan.height, media);
   if (media) {
+    // Ken Burns from a 2× cover so zoompan is not sampling an already-tiny crop.
+    const sample = motion ? MOTION_SAMPLE_SCALE : 1;
     const cover = [
-      ...coverCropFilter(plan.width, plan.height, scene.focal_x, scene.focal_y),
+      ...lanczosCoverCrop(plan.width * sample, plan.height * sample, scene.focal_x, scene.focal_y),
       ...(motion ? [motion] : []),
       ...captions
     ];
@@ -520,7 +537,7 @@ export function concatArguments(
       "-i", listPath,
       ...vfArgs(videoFilters),
       "-metadata", comment,
-      ...concatEncode,
+      ...concatOutputArgs(plan.watermark, soundtrack),
       outputPath
     ];
   }
@@ -541,7 +558,7 @@ export function concatArguments(
     "-map", "[a]",
     "-metadata", comment,
     ...soundtrackMetadata(soundtrack),
-    ...concatEncode,
+    ...concatOutputArgs(plan.watermark, soundtrack),
     outputPath
   ];
 }

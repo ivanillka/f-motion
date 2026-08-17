@@ -197,11 +197,11 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await expect(page.getByRole("status").filter({ hasText: "complete · final export" })).toBeVisible({ timeout: 90_000 });
   const finalDownload = page.getByRole("link").filter({ has: page.getByRole("button", { name: "Download export" }) });
   await expect(page.getByRole("button", { name: "Download export" })).toBeEnabled();
-  await expect(page.getByText("720×1280")).toBeVisible();
+  await expect(page.getByText("1080×1920")).toBeVisible();
   const finalHref = await finalDownload.getAttribute("href");
   expect(finalHref).toMatch(/^http:\/\/127\.0\.0\.1:43141\/downloads\//);
   const finalRendered = await page.request.get(finalHref!);
-  await expectRenderedProject(finalRendered, await projectDurationMs(page), { width: 720, height: 1280 });
+  await expectRenderedProject(finalRendered, await projectDurationMs(page), { width: 1080, height: 1920 });
 });
 
 test("licensed stock journey auto-matches distinct scenes then renders", async ({ page }) => {

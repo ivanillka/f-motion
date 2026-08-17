@@ -16,7 +16,7 @@ async function listen(server) {
 test("host-owned preview and final profiles are validated at API startup", () => {
   assert.deepEqual(renderProfilesFromEnv({}), {
     preview: { width: 540, height: 960 },
-    final: { width: 720, height: 1280 }
+    final: { width: 1080, height: 1920 }
   });
   assert.deepEqual(renderProfilesFromEnv({ PREVIEW_RENDER_WIDTH: "360", PREVIEW_RENDER_HEIGHT: "640", PREVIEW_RENDER_WATERMARK: "Preview" }).preview, {
     width: 360, height: 640, watermark: "Preview"
@@ -716,7 +716,7 @@ test("render routes accept only a trusted kind and allowlist playback metadata",
     assert.equal(acceptedFinal.status, 202);
     assert.deepEqual(admittedKinds, ["preview", "final"]);
     const profiles = renderProfilesFromEnv({});
-    assert.deepEqual(profiles.final, { width: 720, height: 1280 });
+    assert.deepEqual(profiles.final, { width: 1080, height: 1920 });
     const playback = await (await fetch(`${origin}/api/render-jobs/job/download`)).json();
     assert.equal(playback.kind, "preview");
     assert.equal(playback.stale, false);

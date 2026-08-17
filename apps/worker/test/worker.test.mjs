@@ -306,6 +306,7 @@ test("render job builds one deterministic-plan clip per scene", () => {
   assert.doesNotMatch(args, /-an/);
   assert.doesNotMatch(concat, /-an/);
   assert.match(args, /-c:v h264/);
+  assert.match(args, /-b:v 8M/);
   assert.match(concat, /-c:v h264/);
 });
 
@@ -320,6 +321,8 @@ test("host profile controls dimensions, watermark, and neutral metadata", () => 
   assert.match(custom.clips[0].args.join(" "), /1080x1920/);
   assert.doesNotMatch(custom.concatArgs.join(" "), /drawtext|drawbox/);
   assert.match(custom.concatArgs.join(" "), /comment=project project revision 3/);
+  assert.match(custom.concatArgs.join(" "), /-c:v copy/);
+  assert.doesNotMatch(custom.concatArgs.join(" "), /-c:v h264/);
 });
 test("render job applies volume filter for non-1.0 audio_level", () => {
   const half = { ...snapshot, scenes: [{ ...snapshot.scenes[0], audio_level: 0.5 }] };
@@ -461,12 +464,18 @@ test("render job clip crops around the scene's focal point", () => {
   }, "/tmp/job");
   assert.match(job.clips[0].args.join(" "), /crop=720:1280:\(iw-ow\)\*0\.8:\(ih-oh\)\*0\.2/);
 });
-test("zoom motion adds a bounded zoompan filter; none omits it", () => {
+test("zoom motion Ken Burns from a 2× cover matching the preview 1.08→1.16 range", () => {
   const zoomJob = buildRenderJob({
     ...snapshot,
-    scenes: [{ ...snapshot.scenes[0], motion: "zoom" }]
-  }, "preview.mp4", {}, "/tmp/job");
-  assert.match(zoomJob.clips[0].args.join(" "), /zoompan/);
+    scenes: [{ ...snapshot.scenes[0], motion: "zoom", media_id: "asset-1" }]
+  }, "preview.mp4", {
+    "asset-1": { path: "/tmp/tall.jpg", type: "image/jpeg", width: 1080, height: 1920 }
+  }, "/tmp/job");
+  const args = zoomJob.clips[0].args.join(" ");
+  assert.match(args, /crop=1440:2560:/);
+  assert.match(args, /min\(1\.08\+/);
+  assert.match(args, /1\.16/);
+  assert.match(args, /flags=lanczos/);
 
   const noneJob = buildRenderJob(snapshot, "preview.mp4", {}, "/tmp/job");
   assert.doesNotMatch(noneJob.clips[0].args.join(" "), /zoompan/);
@@ -477,6 +486,7 @@ test("push motion pans within the frame instead of a no-op", () => {
     scenes: [{ ...snapshot.scenes[0], motion: "push" }]
   }, "preview.mp4", {}, "/tmp/job");
   assert.match(pushJob.clips[0].args.join(" "), /zoompan/);
+  assert.match(pushJob.clips[0].args.join(" "), /z=1\.16/);
 });
 test("push pans sideways on a wide still and vertically on a tall still", () => {
   const scene = { ...snapshot.scenes[0], motion: "push", media_id: "asset-1" };
@@ -717,6 +727,45 @@ test("worker mixdown burns the soundtrack into the concat", async () => {
   assert.ok(audio, "expected mixed audio on the export");
   assert.equal(audio.codec_name, "aac");
 });
+test("final concat copies clip video and remuxes a soundtrack without a second video encode", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fengine-final-copy-"));
+  const bed = join(directory, "bed.wav");
+  await new Promise((resolve, reject) => {
+    const child = spawn("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=2",
+      "-c:a", "pcm_s16le", bed
+    ], { stdio: "ignore" });
+    child.once("error", reject);
+    child.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`)));
+  });
+  const output = join(directory, "final.mp4");
+  const finalProfile = { width: 720, height: 1280 };
+  const withBed = {
+    ...snapshot,
+    brief: {
+      ...snapshot.brief,
+      soundtrack: { kind: "upload", media_id: "bed", bpm: 120, offset_ms: 0, level: 1 }
+    },
+    scenes: [{ ...snapshot.scenes[0], media_id: "asset-1", duration_ms: 500, caption: "", motion: "zoom" }]
+  };
+  const media = {
+    "asset-1": { path: join(fixtures, "still.jpg"), type: "image/jpeg" },
+    bed: { path: bed, type: "audio/wav" }
+  };
+  const job = buildRenderJobWithProfile(withBed, output, media, directory, finalProfile);
+  assert.match(job.concatArgs.join(" "), /-c:v copy/);
+  assert.doesNotMatch(job.concatArgs.join(" "), /-c:v h264/);
+  await renderPreviewWithProfile(output, withBed, undefined, media, finalProfile);
+  const bytes = await readFile(output);
+  assert.ok(bytes.length > 1000);
+  assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
+  const probed = await probeMediaFile(output);
+  assert.equal(probed.width, 720);
+  assert.equal(probed.height, 1280);
+  const audio = await probeAudioStream(output);
+  assert.ok(audio, "expected mixed audio on the final export");
+  assert.equal(audio.codec_name, "aac");
+});
 test("worker renders zoompan motion (zoom and push) without ffmpeg errors", async () => {
   for (const motion of ["zoom", "push"]) {
     const directory = await mkdtemp(join(tmpdir(), `fengine-motion-${motion}-`));
@@ -740,7 +789,8 @@ test("hosted worker can share the API database URL when QUEUE_DATABASE_URL is un
 
 test("hosted Fly API app runs a worker process that can render", async () => {
   const fly = await readFile(new URL("../../../fly.api.toml", import.meta.url), "utf8");
-  assert.match(fly, /worker = "node apps\/worker\/dist\/start\.js"/);
+  assert.match(fly, /RENDER_WIDTH = "1080"/);
+  assert.match(fly, /RENDER_HEIGHT = "1920"/);
   assert.match(fly, /\[http_service\][\s\S]*processes = \["app"\]/);
   const docker = await readFile(new URL("../../api/Dockerfile", import.meta.url), "utf8");
   assert.match(docker, /apps\/worker\/dist/);

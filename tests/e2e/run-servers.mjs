@@ -32,7 +32,7 @@ const renders = {
       }
     }
     const jobId = randomUUID();
-    const renderProfile = kind === "final" ? { width: 720, height: 1280 } : { width: 540, height: 960, watermark: "Reference preview" };
+    const renderProfile = kind === "final" ? { width: 1080, height: 1920 } : { width: 540, height: 960, watermark: "Reference preview" };
     events.set(jobId, true);
     const response = await fetch("http://127.0.0.1:43141/jobs", {
       method: "POST",

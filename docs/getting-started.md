@@ -73,11 +73,11 @@ the authoritative admission check.
 
 ## 5. Configure rendering
 
-The reference worker defaults to 720×1280 with no watermark. Hosts may set:
+The reference worker defaults to 1080×1920 with no watermark. Hosts may set:
 
 ```dotenv
-RENDER_WIDTH=720
-RENDER_HEIGHT=1280
+RENDER_WIDTH=1080
+RENDER_HEIGHT=1920
 RENDER_WATERMARK=My preview
 ```
 

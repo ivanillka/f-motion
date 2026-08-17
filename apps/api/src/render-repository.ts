@@ -15,7 +15,7 @@ export function renderProfilesFromEnv(env: Record<string, string | undefined>): 
       ...(watermark ? { watermark } : {})
     });
   };
-  return { preview: profile("PREVIEW_RENDER", [540, 960]), final: profile("RENDER", [720, 1280]) };
+  return { preview: profile("PREVIEW_RENDER", [540, 960]), final: profile("RENDER", [1080, 1920]) };
 }
 
 export interface RenderEvent {
