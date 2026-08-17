@@ -297,6 +297,8 @@ test("render job builds one deterministic-plan clip per scene", () => {
   assert.match(args, /720x1280/);
   assert.match(args, /color=c=#202027/);
   assert.match(args, /subtitles=/);
+  assert.match(args, /fontsdir=/);
+  assert.match(job.clips[0].assContents ?? "", /Inter SemiBold/);
   assert.match(job.clips[0].assContents ?? "", /Project caption/);
   const concat = job.concatArgs.join(" ");
   assert.match(concat, /Reference preview/);
@@ -348,8 +350,9 @@ test("caption ass builder freezes the safe-area layout", () => {
   const ass = buildCaptionAss([{ text: "Project caption", start_ms: 0, end_ms: 500 }]);
   assert.match(ass, /PlayResX: 720/);
   assert.match(ass, /PlayResY: 1280/);
+  assert.match(ass, /Style: Caption,Inter SemiBold,/);
   assert.match(ass, /Style: Caption,.*,40,40,140,1$/m, "40px side inset, 140px bottom margin clears the watermark band");
-  assert.match(ass, /&H40000000/, "panel BackColour alpha 0x40 is ~75% opaque, above the 0.55 floor");
+  assert.match(ass, /&H61000000/, "pill BackColour alpha 0x61 is ~62% opaque, matching the editor overlay");
   assert.match(ass, /^Dialogue: 0,0:00:00\.00,0:00:00\.50,Caption,,0,0,0,,Project caption$/m);
 });
 test("title overlay burns above the caption and honors place", () => {
@@ -368,8 +371,19 @@ test("title overlay burns above the caption and honors place", () => {
     [{ text: "Open the full gallery.", start_ms: 0, end_ms: 500 }],
     { look: "title", caption: "Open the full gallery.", durationMs: 500 }
   );
-  assert.match(titleLook, /Title,,0,0,560,,\{\\an8\}Open the full gallery\./);
+  assert.match(titleLook, /Title,,0,0,560,,\{\\an8\}OPEN THE FULL GALLERY\./);
   assert.doesNotMatch(titleLook, /^Dialogue:.*Caption,/m);
+});
+test("poster overlay drops the caption pill and left-aligns", () => {
+  const ass = buildCaptionAss(
+    [{ text: "Lower line", start_ms: 0, end_ms: 500 }],
+    { title: "Naplavka", look: "poster", durationMs: 500 }
+  );
+  assert.match(ass, /Style: Title,Inter Display ExtraBold,/);
+  assert.match(ass, /Style: Caption,Inter SemiBold,/);
+  assert.doesNotMatch(ass, /Style: Caption,.*&H61000000/);
+  assert.match(ass, /\{\\an1\}Naplavka/);
+  assert.match(ass, /\{\\an1\}Lower line/);
 });
 test("title-only scene still gets a subtitle filter", () => {
   const job = buildRenderJob({
@@ -794,10 +808,12 @@ test("hosted Fly API app runs a worker process that can render", async () => {
   assert.match(fly, /\[http_service\][\s\S]*processes = \["app"\]/);
   const docker = await readFile(new URL("../../api/Dockerfile", import.meta.url), "utf8");
   assert.match(docker, /apps\/worker\/dist/);
+  assert.match(docker, /apps\/worker\/assets\/fonts/);
   assert.match(docker, /usr\/local\/bin\/ffmpeg/);
   assert.match(docker, /FFMPEG_RELEASE_TAG=autobuild-/);
   const workerDocker = await readFile(new URL("../Dockerfile", import.meta.url), "utf8");
   assert.match(workerDocker, /packages\/fal-host\/dist/);
+  assert.match(workerDocker, /apps\/worker\/assets\/fonts/);
   assert.equal(
     docker.match(/ARG FFMPEG_SHA256=.*/)?.[0],
     workerDocker.match(/ARG FFMPEG_SHA256=.*/)?.[0]

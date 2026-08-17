@@ -1,3 +1,18 @@
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../../worker/assets/fonts/Inter-SemiBold.ttf") format("truetype");
+}
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("../../worker/assets/fonts/InterDisplay-ExtraBold.ttf") format("truetype");
+}
+
 :root {
   color-scheme: dark;
   --bg: #111213;
@@ -466,6 +481,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   pointer-events: none;
   text-align: center;
   color: #fff;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
 .preview .caption-burn.is-ghost { opacity: 0.72; }
 .preview .caption-burn.overlay-bottom {
@@ -546,7 +562,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   background: none;
   border-radius: 0;
   font-size: 0.95rem;
-  font-weight: 500;
+  font-weight: 600;
   opacity: 0.92;
 }
 .preview .media-placeholder {

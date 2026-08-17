@@ -85,6 +85,7 @@ COPY --from=build /repo/apps/api/dist apps/api/dist
 COPY --from=build /repo/apps/worker/package.json apps/worker/package.json
 COPY --from=build /repo/apps/worker/dist apps/worker/dist
 COPY apps/web/public/music apps/worker/assets/music
+COPY apps/worker/assets/fonts apps/worker/assets/fonts
 USER node
 EXPOSE 3000
 CMD ["node", "apps/api/dist/start.js"]

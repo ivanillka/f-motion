@@ -294,12 +294,59 @@ function motionFilter(
   return `zoompan=z=${MOTION_MAX_ZOOM}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*on/${frames - 1}':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
 }
 
-const TITLE_ASS_STYLE =
-  "Style: Title,DejaVu Sans,48,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,3,0,2,40,40,140,1";
-const CAPTION_ASS_STYLE =
-  "Style: Caption,DejaVu Sans,36,&H00FFFFFF,&H000000FF,&H00000000,&H40000000,0,0,0,0,100,100,0,0,3,2,0,2,40,40,140,1";
+const overlayFontsDir = fileURLToPath(new URL("../assets/fonts", import.meta.url));
 
-function overlayLayout(place: OverlayPlace | undefined, hasTitle: boolean, hasCaption: boolean) {
+// Match apps/web overlay: Inter Display ExtraBold titles, Inter SemiBold
+// captions, pill panel ~62% black. ASS cannot round the pill.
+const TITLE_FONT = "Inter Display ExtraBold";
+const CAPTION_FONT = "Inter SemiBold";
+const ASS_WHITE = "&H00FFFFFF";
+const ASS_BLACK = "&H00000000";
+const CAPTION_PILL = "&H61000000";
+
+function assStyle(
+  name: string,
+  font: string,
+  size: number,
+  back: string,
+  spacing: number,
+  borderStyle: 1 | 3,
+  outline: number,
+  shadow: number
+): string {
+  return `Style: ${name},${font},${size},${ASS_WHITE},&H000000FF,${ASS_BLACK},${back},0,0,0,0,100,100,${spacing},0,${borderStyle},${outline},${shadow},2,40,40,140,1`;
+}
+
+function overlayAssStyles(look: OverlayLook): { title: string; caption: string } {
+  if (look === "title") {
+    return {
+      title: assStyle("Title", TITLE_FONT, 78, ASS_BLACK, -3, 1, 3, 2),
+      caption: assStyle("Caption", CAPTION_FONT, 26, CAPTION_PILL, 0, 3, 8, 0)
+    };
+  }
+  if (look === "poster") {
+    return {
+      title: assStyle("Title", TITLE_FONT, 52, ASS_BLACK, -2, 1, 2, 2),
+      caption: assStyle("Caption", CAPTION_FONT, 26, ASS_BLACK, 0, 1, 0, 1)
+    };
+  }
+  return {
+    title: assStyle("Title", TITLE_FONT, 64, ASS_BLACK, -2, 1, 2, 3),
+    caption: assStyle("Caption", CAPTION_FONT, 26, CAPTION_PILL, 0, 3, 8, 0)
+  };
+}
+
+function overlayLayout(
+  place: OverlayPlace | undefined,
+  hasTitle: boolean,
+  hasCaption: boolean,
+  look: OverlayLook
+) {
+  if (look === "poster") {
+    if (place === "top") return { an: 7, titleV: 36, captionV: hasTitle ? 110 : 36 };
+    if (place === "center") return { an: 4, titleV: hasCaption ? 24 : 0, captionV: hasTitle ? 24 : 0 };
+    return { an: 1, titleV: hasCaption ? 96 : 36, captionV: 36 };
+  }
   if (place === "top") return { an: 8, titleV: 88, captionV: hasTitle ? 176 : 88 };
   if (place === "center") return { an: 8, titleV: hasCaption ? 500 : 560, captionV: hasTitle ? 590 : 560 };
   return { an: 2, titleV: hasCaption ? 228 : 0, captionV: 0 };
@@ -351,9 +398,11 @@ export function buildCaptionAss(
     title = overlay.caption?.trim() ?? "";
     captionCues = [];
   }
+  if (look === "title" && title) title = title.toUpperCase();
   const place = overlay.place
     ?? (look === "title" ? "center" : "bottom");
-  const layout = overlayLayout(place, Boolean(title), captionCues.length > 0);
+  const layout = overlayLayout(place, Boolean(title), captionCues.length > 0, look);
+  const styles = overlayAssStyles(look);
   const titleEnd = overlay.durationMs ?? captionCues.at(-1)?.end_ms ?? 0;
   const dialogues = [
     ...(title && titleEnd > 0 ? [assDialogue("Title", 0, titleEnd, title, layout.titleV, layout.an)] : []),
@@ -369,8 +418,8 @@ export function buildCaptionAss(
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    TITLE_ASS_STYLE,
-    CAPTION_ASS_STYLE,
+    styles.title,
+    styles.caption,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -384,7 +433,8 @@ function vfArgs(filters: string[]): string[] {
 }
 
 function captionFilters(captionAssPath?: string): string[] {
-  return captionAssPath ? [`subtitles=${escapeFilterPath(captionAssPath)}`] : [];
+  if (!captionAssPath) return [];
+  return [`subtitles=${escapeFilterPath(captionAssPath)}:fontsdir=${escapeFilterPath(overlayFontsDir)}`];
 }
 
 function watermarkFilters(watermark: string): string[] {

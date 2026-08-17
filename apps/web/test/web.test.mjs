@@ -187,6 +187,9 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.look-poster\.overlay-bottom \{\s*align-self: end;\s*margin-bottom: 0;/);
   assert.match(css, /\.overlay-look-tile/);
   assert.match(css, /\.caption-burn \{\s*z-index: 4;/);
+  assert.match(css, /font-family: Inter/);
+  assert.match(css, /Inter-SemiBold\.ttf/);
+  assert.match(css, /InterDisplay-ExtraBold\.ttf/);
   assert.match(css, /\.overlay-places/);
   assert.match(css, /\.editor-foot/);
   assert.match(css, /\.inspector-pair/);
