@@ -445,7 +445,7 @@ export function resolveSoundtrackMix(
 function soundtrackMetadata(mix: SoundtrackMix): string[] {
   const credit = mix.artist && mix.title
     ? `${mix.title} by ${mix.artist} — CC BY 3.0`
-    : "Licensed soundtrack — CC BY 3.0";
+    : "Licensed soundtrack";
   return [
     ...(mix.title ? ["-metadata", `title=${mix.title}`] : []),
     ...(mix.artist ? ["-metadata", `artist=${mix.artist}`] : []),

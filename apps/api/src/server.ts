@@ -34,6 +34,13 @@ import {
   type PrivateObjectStore
 } from "./media-storage.js";
 import {
+  importMixkitTrack,
+  mixkitTrackById,
+  publicMixkitTrack,
+  searchMixkitCatalog,
+  musicSearchQuery
+} from "./mixkit-music.js";
+import {
   PostgresRenderRepository,
   RenderCapacityError,
   RenderInputIncompleteError,
@@ -751,6 +758,49 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         : undefined;
       response.json(sceneMediaView(asset, previewUrl));
     } catch (error) {
+      next(error);
+    }
+  });
+  app.get("/api/music/search", async (request, response, next) => {
+    try {
+      let query: string;
+      try {
+        query = musicSearchQuery(request.query.q);
+      } catch (error) {
+        return response.status(422).json({
+          type: "validation",
+          message: error instanceof Error ? error.message : "invalid music query"
+        });
+      }
+      response.json({ results: searchMixkitCatalog(query).map(publicMixkitTrack) });
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.post("/api/projects/:projectId/media/music", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      if (!await projects.get(ownerId, request.params.projectId)) {
+        return response.status(404).json({ type: "not_found", message: "not found" });
+      }
+      const track = mixkitTrackById((request.body as { mixkit_id?: unknown } | null)?.mixkit_id);
+      if (!track) {
+        return response.status(422).json({ type: "validation", message: "licensed track not in catalog" });
+      }
+      const asset = await importMixkitTrack(
+        ownerId,
+        request.params.projectId,
+        track,
+        options.media.store,
+        options.media.repository
+      );
+      const previewUrl = asset.sealedObjectKey ? await options.media.store.signedGet(asset.sealedObjectKey) : undefined;
+      response.json(sceneMediaView(asset, previewUrl));
+    } catch (error) {
+      if (error instanceof ExternalMediaImportError) {
+        return response.status(422).json({ type: "validation", message: error.message });
+      }
       next(error);
     }
   });

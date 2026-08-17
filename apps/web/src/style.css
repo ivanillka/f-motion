@@ -526,10 +526,50 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   gap: 6px;
   width: 100%;
 }
+.music-search { display: flex; gap: 6px; }
+.music-search input { flex: 1; min-width: 0; }
+.music-search button, .music-moods button, .music-hit button {
+  width: auto;
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+}
+.music-moods { display: flex; flex-wrap: wrap; gap: 6px; }
+.music-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+}
+.music-hit {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  align-items: center;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.music-hit div { display: grid; gap: 2px; min-width: 0; }
+.music-hit strong {
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.music-hit span { color: var(--muted); font-size: 0.68rem; }
+.music-hit audio { grid-column: 1 / -1; width: 100%; height: 28px; }
+.music-classic { font-size: 0.74rem; }
+.music-classic summary { cursor: pointer; color: var(--muted); }
 .music-beds {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  margin-top: 6px;
 }
 .music-beds button { width: auto; min-height: 32px; padding: 4px 10px; font-size: 0.78rem; }
 .scene-controls {

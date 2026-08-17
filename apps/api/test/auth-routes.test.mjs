@@ -88,6 +88,8 @@ test("all API routes reject requests without a Bearer token", async () => {
       [`${context.apiOrigin}/api/providers/pexels/credential`, { method: "GET" }],
       [`${context.apiOrigin}/api/providers/pexels/credential/test`, { method: "POST" }],
       [`${context.apiOrigin}/api/pexels/search?q=ocean`, { method: "GET" }],
+      [`${context.apiOrigin}/api/music/search?q=hip+hop`, { method: "GET" }],
+      [`${context.apiOrigin}/api/projects/project/media/music`, { method: "POST" }],
       [`${context.apiOrigin}/api/me/usage`, { method: "GET" }],
       [`${context.apiOrigin}/api/me/api-keys`, { method: "GET" }],
       [`${context.apiOrigin}/v1/projects`, { method: "GET" }],

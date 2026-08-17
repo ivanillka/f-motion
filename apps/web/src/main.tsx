@@ -53,6 +53,24 @@ interface PexelsMatch {
   attributionUrl: string;
   previewUrl: string;
 }
+interface MixkitMatch {
+  id: number;
+  title: string;
+  artist: string;
+  duration: string;
+  tags: string[];
+  page: string;
+  previewUrl: string;
+}
+const musicMoods = [
+  ["Trendy", "trendy"],
+  ["Hip hop", "hip hop"],
+  ["Lo-fi", "lo-fi"],
+  ["Pop", "pop"],
+  ["EDM", "edm"],
+  ["Cinematic", "cinematic"],
+  ["Chill", "chill"]
+] as const;
 interface FalCredentialView {
   provider: "fal";
   connected: boolean;
@@ -149,6 +167,8 @@ function App() {
   const searchTransition = useRef(0);
   const searchAbort = useRef<AbortController | null>(null);
   const [candidates, setCandidates] = useState<PexelsMatch[]>([]);
+  const [musicHits, setMusicHits] = useState<MixkitMatch[]>([]);
+  const [musicQuery, setMusicQuery] = useState("trendy");
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const [status, setStatus] = useState("");
@@ -256,6 +276,8 @@ function App() {
     setPexelsBusy(false);
     setFeatureLock(undefined);
     setAwaitingEmail(false);
+    setMusicHits([]);
+    setMusicQuery("trendy");
     setStep("sign-in");
   }
 
@@ -321,6 +343,22 @@ function App() {
       setPexelsKey("");
     }
   }, [step]);
+
+  useEffect(() => {
+    if (step !== "editor" || !token) return;
+    let cancelled = false;
+    void api.request<{ results: MixkitMatch[] }>("/api/music/search?q=trendy")
+      .then((body) => {
+        if (!cancelled) {
+          setMusicHits(body.results);
+          setMusicQuery("trendy");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setStatus("Licensed music search failed. Upload a track you have permission to use.");
+      });
+    return () => { cancelled = true; };
+  }, [step, token, project?.id]);
 
   useEffect(() => {
     const pendingId = rememberImportedProject(location.href, sessionStorage);
@@ -575,20 +613,22 @@ function App() {
   }
 
   async function saveSoundtrack(soundtrack: Soundtrack | null) {
-    if (!project) return;
+    if (!project) return false;
     setStatus("Saving…");
     try {
       const updated = await api.command(project.id, project.revision, "update_soundtrack", { soundtrack });
       setProject(updated);
       setStatus("✓ All changes saved");
+      return true;
     } catch (error) {
       if (error instanceof ApiResponseError && error.status === 409) {
         openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
           operation: "music bed"
         });
-        return;
+        return false;
       }
       setStatus("Music bed could not be saved.");
+      return false;
     }
   }
 
@@ -615,6 +655,48 @@ function App() {
         return;
       }
       setStatus("Scenes could not be snapped to the beat.");
+    }
+  }
+
+  async function searchLicensedMusic(query = musicQuery) {
+    setMusicQuery(query);
+    setStatus("Finding licensed music…");
+    try {
+      const body = await api.request<{ results: MixkitMatch[] }>(
+        `/api/music/search?q=${encodeURIComponent(query.trim() || "trendy")}`
+      );
+      setMusicHits(body.results);
+      setStatus(body.results.length
+        ? "Choose a licensed track, or upload your own."
+        : "No licensed tracks for that search. Try another vibe.");
+    } catch {
+      setStatus("Licensed music search failed. Upload a track you have permission to use.");
+    }
+  }
+
+  async function useMixkitTrack(hit: MixkitMatch) {
+    if (!project) return;
+    setBusy(true);
+    setStatus(`Copying ${hit.title} from Mixkit…`);
+    try {
+      const imported = await api.request<SceneMediaView>(`/api/projects/${project.id}/media/music`, {
+        method: "POST",
+        body: JSON.stringify({ mixkit_id: hit.id })
+      });
+      setSceneMedia((current) => ({ ...current, [imported.id]: imported }));
+      if (await saveSoundtrack({
+        kind: "upload",
+        media_id: imported.id,
+        bpm: clampBpm(project.brief.soundtrack?.bpm),
+        offset_ms: 0,
+        level: project.brief.soundtrack?.level ?? 0.8
+      })) {
+        setStatus(`Music bed: ${hit.title} · ${hit.artist} · Mixkit`);
+      }
+    } catch {
+      setStatus("That licensed track could not be added. Try another.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -1562,12 +1644,22 @@ function App() {
   const playhead = livePlayhead(project?.scenes ?? [], playSceneId || previewScene?.id || "", sceneElapsedMs);
   const timeline = liveTimeline(project?.scenes ?? []);
   const soundtrack = project?.brief.soundtrack;
+  const soundtrackMedia = soundtrack?.kind === "upload" && soundtrack.media_id
+    ? sceneMedia[soundtrack.media_id]
+    : undefined;
   const soundtrackUrl = soundtrack?.kind === "upload" && soundtrack.media_id
     ? scenePreviewUrl(sceneMedia[soundtrack.media_id])
     : soundtrack?.kind === "stock"
       ? stockBedUrl(soundtrack.stock_id)
       : undefined;
   const beatMarks = soundtrack ? musicLaneBeats(playhead.totalMs, soundtrack.bpm) : [];
+  const soundtrackHint = !soundtrack
+    ? "Royalty-free Mixkit catalog — search trendy, hip hop, lo-fi. Export final mixes the bed into the file."
+    : soundtrack.kind === "stock"
+      ? `${stockBeds.find((bed) => bed.id === soundtrack.stock_id)?.label ?? "Catalog"} · ${clampBpm(soundtrack.bpm)} BPM · Export final mixes this bed`
+      : soundtrackMedia?.attribution?.source === "Mixkit"
+        ? `${soundtrackMedia.attribution.title ?? "Mixkit"} · ${soundtrackMedia.attribution.creator} · Mixkit · ${clampBpm(soundtrack.bpm)} BPM · Export final mixes this bed`
+        : `Uploaded · ${clampBpm(soundtrack.bpm)} BPM · Export final mixes this bed`;
 
   function readSceneElapsed(now = performance.now()) {
     return livePlaying
@@ -2058,29 +2150,71 @@ function App() {
             {soundtrackUrl && <audio ref={bedAudio} src={soundtrackUrl} preload="auto" hidden />}
           </div>
           <div className="music-dock">
-            <p className="crop-hint">{soundtrack
-              ? `${soundtrack.kind === "stock" ? stockBeds.find((bed) => bed.id === soundtrack.stock_id)?.label ?? "Catalog" : "Uploaded"} · ${clampBpm(soundtrack.bpm)} BPM · Export final mixes this bed`
-              : "Licensed catalog or upload — Export final mixes the bed into the file."}</p>
-            <div className="music-beds" role="group" aria-label="Licensed music catalog">
-              {stockBeds.map((bed) =>
+            <p className="crop-hint">{soundtrackHint}</p>
+            <form
+              className="music-search"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void searchLicensedMusic(musicQuery);
+              }}
+            >
+              <input
+                aria-label="Search licensed music"
+                placeholder="Search trendy, hip hop, lo-fi…"
+                value={musicQuery}
+                onChange={(event) => setMusicQuery(event.target.value)}
+              />
+              <button className="secondary" type="submit">Search</button>
+            </form>
+            <div className="music-moods" role="group" aria-label="Licensed music catalog">
+              {musicMoods.map(([label, query]) =>
                 <button
-                  key={bed.id}
+                  key={query}
                   type="button"
-                  className={soundtrack?.kind === "stock" && soundtrack.stock_id === bed.id ? undefined : "secondary"}
-                  aria-pressed={soundtrack?.kind === "stock" && soundtrack.stock_id === bed.id}
-                  disabled={busy}
-                  title={`${bed.label} · ${bed.hint}`}
-                  onClick={() => void saveSoundtrack({
-                    kind: "stock",
-                    stock_id: bed.id,
-                    bpm: clampBpm(soundtrack?.bpm ?? bed.bpm),
-                    offset_ms: 0,
-                    level: soundtrack?.level ?? 0.8
-                  })}
-                >{bed.label}</button>)}
+                  className={musicQuery === query ? undefined : "secondary"}
+                  aria-pressed={musicQuery === query}
+                  onClick={() => void searchLicensedMusic(query)}
+                >{label}</button>)}
             </div>
-            <p className="crop-hint">Music by <a href="https://incompetech.com" target="_blank" rel="noreferrer">Kevin MacLeod</a>
-              {" · "}<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noreferrer">CC BY 3.0</a></p>
+            {musicHits.length ? (
+              <ul className="music-results">
+                {musicHits.map((hit) => (
+                  <li key={hit.id} className="music-hit">
+                    <div>
+                      <strong>{hit.title}</strong>
+                      <span>{hit.artist} · {hit.duration}</span>
+                    </div>
+                    <button type="button" disabled={busy} onClick={() => void useMixkitTrack(hit)}>Use</button>
+                    <audio controls preload="none" src={hit.previewUrl} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="crop-hint">Search for a vibe, or pick Trendy.</p>
+            )}
+            <details className="music-classic">
+              <summary>Classic beds</summary>
+              <div className="music-beds" role="group" aria-label="Classic Kevin MacLeod beds">
+                {stockBeds.map((bed) =>
+                  <button
+                    key={bed.id}
+                    type="button"
+                    className={soundtrack?.kind === "stock" && soundtrack.stock_id === bed.id ? undefined : "secondary"}
+                    aria-pressed={soundtrack?.kind === "stock" && soundtrack.stock_id === bed.id}
+                    disabled={busy}
+                    title={`${bed.label} · ${bed.hint}`}
+                    onClick={() => void saveSoundtrack({
+                      kind: "stock",
+                      stock_id: bed.id,
+                      bpm: clampBpm(soundtrack?.bpm ?? bed.bpm),
+                      offset_ms: 0,
+                      level: soundtrack?.level ?? 0.8
+                    })}
+                  >{bed.label}</button>)}
+              </div>
+              <p className="crop-hint">Music by <a href="https://incompetech.com" target="_blank" rel="noreferrer">Kevin MacLeod</a>
+                {" · "}<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noreferrer">CC BY 3.0</a></p>
+            </details>
             <div className="inspector-pair">
               <label htmlFor="music-bpm">BPM
                 <input id="music-bpm" type="number" min="60" max="200" step="1" defaultValue={clampBpm(soundtrack?.bpm)}

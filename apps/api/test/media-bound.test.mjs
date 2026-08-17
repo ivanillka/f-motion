@@ -116,3 +116,101 @@ test("stillSize reads PNG IHDR and WebP VP8X without ffprobe", () => {
   assert.deepEqual(stillSize("image/jpeg", vp8), { width: 2, height: 3 });
   assert.equal(stillSize("image/png", new Uint8Array([1, 2, 3])), undefined);
 });
+
+test("Mixkit catalog search ranks hip hop and aliases trendy", async () => {
+  const {
+    musicSearchQuery,
+    mixkitTrackById,
+    publicMixkitTrack,
+    searchMixkitCatalog
+  } = await import("../dist/mixkit-music.js");
+  const hip = searchMixkitCatalog("hip hop");
+  assert.ok(hip.length >= 8);
+  assert.ok(hip.some((track) => track.tags.includes("hip hop")));
+  const trendy = searchMixkitCatalog("trendy");
+  assert.ok(trendy.length >= 8);
+  assert.equal(musicSearchQuery("trendy"), musicSearchQuery(""));
+  assert.equal(musicSearchQuery("lofi"), "lo-fi");
+  assert.equal(mixkitTrackById(999999), undefined);
+  assert.ok(mixkitTrackById(hip[0].id));
+  assert.match(publicMixkitTrack(hip[0]).previewUrl, /^https:\/\/assets\.mixkit\.co\/music\/\d+\/\d+\.mp3$/);
+});
+
+test("importMixkitTrack seals allowlisted MP3 and rejects other origins", async () => {
+  const { importMixkitTrack, mixkitTrackById, mixkitAudioUrl } = await import("../dist/mixkit-music.js");
+  const { ExternalMediaImportError } = await import("../dist/media-storage.js");
+  const track = mixkitTrackById(445);
+  assert.ok(track);
+  const mp3 = Buffer.from("ID3" + "x".repeat(64));
+  const inserted = [];
+  const store = {
+    async put(key, _body, type, bytes) {
+      inserted.push({ key, type, bytes });
+      return { etag: "etag" };
+    },
+    async copy() {
+      return { etag: "copied", versionId: "v1" };
+    }
+  };
+  const repository = {
+    async insert(asset) { this.asset = asset; },
+    async markImportedStillReady(_owner, _project, _id, sealed, detected) {
+      return { ...this.asset, state: "ready", sealedObjectKey: sealed.objectKey, detected };
+    }
+  };
+  const ready = await importMixkitTrack(
+    "owner",
+    "project",
+    track,
+    store,
+    repository,
+    async () => new Response(mp3, { status: 200, headers: { "content-type": "audio/mpeg" } })
+  );
+  assert.equal(ready.attribution.source, "Mixkit");
+  assert.equal(ready.attribution.title, track.title);
+  assert.equal(ready.detected.type, "audio/mpeg");
+  assert.equal(inserted[0].type, "audio/mpeg");
+  await assert.rejects(
+    () => importMixkitTrack(
+      "owner",
+      "project",
+      track,
+      store,
+      repository,
+      async () => {
+        const response = new Response(mp3, { status: 200 });
+        Object.defineProperty(response, "url", { value: "https://evil.example/x.mp3" });
+        return response;
+      }
+    ),
+    (error) => error instanceof ExternalMediaImportError && /origin is not allowed/.test(error.message)
+  );
+  assert.match(mixkitAudioUrl(445), /445\/445\.mp3$/);
+});
+
+test("GET /api/music/search returns Mixkit preview URLs without fetching audio", async () => {
+  const { createServer } = await import("node:http");
+  const { createTestApp } = await import("../dist/server.js");
+  const { ProjectService } = await import("../dist/domain.js");
+  const server = createServer(createTestApp({ ownerId: "owner", projects: new ProjectService() }));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    const origin = `http://127.0.0.1:${address.port}`;
+    const response = await fetch(`${origin}/api/music/search?q=hip+hop`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.ok(body.results.length >= 8);
+    assert.match(body.results[0].previewUrl, /^https:\/\/assets\.mixkit\.co\/music\//);
+    assert.ok(body.results[0].title);
+    assert.ok(body.results[0].artist);
+    const unknown = await fetch(`${origin}/api/projects/missing/media/music`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mixkit_id: 1 })
+    });
+    assert.equal(unknown.status, 503);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});

@@ -54,10 +54,11 @@ export interface SceneMediaView {
     duration_ms?: number;
   };
   attribution?: {
-    source: "Pexels";
+    source: "Pexels" | "Mixkit";
     creator: string;
     attributionUrl: string;
     previewUrl?: string;
+    title?: string;
   };
   generation?: {
     source: "FAL";

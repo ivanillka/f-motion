@@ -203,6 +203,11 @@ export interface StoredMedia {
     url: string;
     previewUrl?: string;
   } | {
+    source: "Mixkit";
+    creator: string;
+    url: string;
+    title?: string;
+  } | {
     source: "FAL";
     model: string;
     generationJobId?: string;
@@ -222,10 +227,11 @@ export interface SceneMediaView {
     duration_ms?: number;
   };
   attribution?: {
-    source: "Pexels";
+    source: "Pexels" | "Mixkit";
     creator: string;
     attributionUrl: string;
     previewUrl?: string;
+    title?: string;
   };
   generation?: {
     source: "FAL";
@@ -246,19 +252,34 @@ function safeHttpsUrl(value: unknown): string | undefined {
   }
 }
 
-function safePexelsAttribution(value: unknown): SceneMediaView["attribution"] {
+function safeStockAttribution(value: unknown): SceneMediaView["attribution"] {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const attribution = value as Record<string, unknown>;
   const creator = typeof attribution.creator === "string" ? attribution.creator.trim() : "";
   const attributionUrl = safeHttpsUrl(attribution.url);
-  if (attribution.source !== "Pexels" || !creator || creator.length > 200 || !attributionUrl) return undefined;
+  if (!creator || creator.length > 200 || !attributionUrl) return undefined;
   const previewUrl = safeHttpsUrl(attribution.previewUrl);
-  return {
-    source: "Pexels",
-    creator,
-    attributionUrl,
-    ...(previewUrl ? { previewUrl } : {})
-  };
+  const title = typeof attribution.title === "string" ? attribution.title.trim() : "";
+  if (attribution.source === "Pexels") {
+    return {
+      source: "Pexels",
+      creator,
+      attributionUrl,
+      ...(previewUrl ? { previewUrl } : {})
+    };
+  }
+  if (attribution.source === "Mixkit") {
+    let host = "";
+    try { host = new URL(attributionUrl).hostname; } catch { return undefined; }
+    if (host !== "mixkit.co" && !host.endsWith(".mixkit.co")) return undefined;
+    return {
+      source: "Mixkit",
+      creator,
+      attributionUrl,
+      ...(title && title.length <= 80 ? { title } : {})
+    };
+  }
+  return undefined;
 }
 
 function safeFalGeneration(value: unknown): SceneMediaView["generation"] {
@@ -287,7 +308,7 @@ export function sceneMediaView(asset: StoredMedia, previewUrl?: string): SceneMe
           : {})
       }
     : undefined;
-  const attribution = safePexelsAttribution(asset.attribution);
+  const attribution = safeStockAttribution(asset.attribution);
   const generation = safeFalGeneration(asset.attribution);
   return {
     id: asset.id,

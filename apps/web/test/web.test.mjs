@@ -42,8 +42,11 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Snap scenes to beat/);
   assert.match(source, /Music bed/);
   assert.match(source, /Licensed music catalog/);
+  assert.match(source, /Search licensed music/);
   assert.match(source, /Export final mixes this bed/);
   assert.match(source, /Kevin MacLeod/);
+  assert.match(source, /Mixkit/);
+  assert.match(source, /Trendy/);
   assert.match(source, /update_soundtrack/);
   const apiSource = await readFile(new URL("../src/api.ts", import.meta.url), "utf8");
   assert.match(apiSource, /Funkorama/);

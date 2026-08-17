@@ -20,6 +20,8 @@
     { "method": "POST", "path": "/projects/{project_id}/media/uploads", "auth": "bearer" },
     { "method": "POST", "path": "/projects/{project_id}/media/{asset_id}/complete", "auth": "bearer" },
     { "method": "GET", "path": "/projects/{project_id}/media/{asset_id}", "auth": "bearer" },
+    { "method": "GET", "path": "/music/search", "auth": "bearer" },
+    { "method": "POST", "path": "/projects/{project_id}/media/music", "auth": "bearer" },
     { "method": "GET", "path": "/pexels/search", "auth": "bearer" },
     { "method": "POST", "path": "/projects/{project_id}/media/pexels", "auth": "bearer" },
     { "method": "POST", "path": "/projects/{project_id}/media/pexels/auto", "auth": "bearer" },

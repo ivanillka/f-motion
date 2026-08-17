@@ -316,6 +316,51 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "503": { $ref: "#/components/responses/Unavailable" }
+  /music/search:
+    get:
+      operationId: searchLicensedMusic
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string, maxLength: 80 }
+      responses:
+        "200":
+          description: Mixkit royalty-free tracks from the hosted catalog
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MusicSearchResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /projects/{project_id}/media/music:
+    post:
+      operationId: copyLicensedMusic
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mixkit_id]
+              additionalProperties: false
+              properties:
+                mixkit_id: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Sealed Mixkit audio ready to mix on export
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SceneMediaView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
   /pexels/search:
     get:
       operationId: searchPexels
@@ -794,6 +839,15 @@ components:
           additionalProperties: true
         previewUrl: { type: string }
       additionalProperties: true
+    MusicSearchResult:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
     PexelsSearchResult:
       type: object
       required: [results]
