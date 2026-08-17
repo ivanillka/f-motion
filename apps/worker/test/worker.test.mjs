@@ -736,6 +736,11 @@ test("hosted Fly API app runs a worker process that can render", async () => {
   const docker = await readFile(new URL("../../api/Dockerfile", import.meta.url), "utf8");
   assert.match(docker, /apps\/worker\/dist/);
   assert.match(docker, /usr\/local\/bin\/ffmpeg/);
+  assert.match(docker, /FFMPEG_RELEASE_TAG=autobuild-/);
   const workerDocker = await readFile(new URL("../Dockerfile", import.meta.url), "utf8");
   assert.match(workerDocker, /packages\/fal-host\/dist/);
+  assert.equal(
+    docker.match(/ARG FFMPEG_SHA256=.*/)?.[0],
+    workerDocker.match(/ARG FFMPEG_SHA256=.*/)?.[0]
+  );
 });

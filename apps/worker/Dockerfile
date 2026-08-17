@@ -10,11 +10,12 @@
 # (bookworm ships 5.1.x, trixie ships 7.1.x as of 2026-07). Pin the static
 # BtbN/FFmpeg-Builds "gpl" release build instead — it only links against
 # glibc/libgcc, so it drops into bookworm-slim with no extra apt packages.
-# Verify README's toolchain version before bumping these ARGs.
+# BtbN autobuild tags are pruned after about a week; re-pin from
+# https://github.com/BtbN/FFmpeg-Builds/releases if the curl 404s.
 FROM debian:bookworm-slim AS ffmpeg
-ARG FFMPEG_VERSION=n8.1.2-31-g8c9502e9b0
-ARG FFMPEG_RELEASE_TAG=autobuild-2026-07-24-13-32
-ARG FFMPEG_SHA256=67b4011d82c67586c3703c81d3c967a837319f75e5e61551f22a91588e440660
+ARG FFMPEG_VERSION=n8.1.2-44-g7c533d0f86
+ARG FFMPEG_RELEASE_TAG=autobuild-2026-08-16-13-00
+ARG FFMPEG_SHA256=17780994c4679806fb227676f66a0af30c6379afc770324829f48f2a379be558
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
  && rm -rf /var/lib/apt/lists/*
