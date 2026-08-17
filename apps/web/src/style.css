@@ -341,6 +341,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     top: 12px;
   }
 }
+.scene-strip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.scene-strip-actions button {
+  width: auto;
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+}
 .scene-card {
   min-height: 0;
   padding: 6px;

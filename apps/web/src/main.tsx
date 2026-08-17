@@ -177,7 +177,6 @@ function App() {
   const [musicQuery, setMusicQuery] = useState("trendy");
   const [musicOpen, setMusicOpen] = useState(false);
   const [previewingId, setPreviewingId] = useState<number>();
-  const [overlayTitle, setOverlayTitle] = useState("");
   const [overlayCaption, setOverlayCaption] = useState("");
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
@@ -291,7 +290,6 @@ function App() {
     setMusicQuery("trendy");
     setMusicOpen(false);
     setPreviewingId(undefined);
-    setOverlayTitle("");
     setOverlayCaption("");
     setStep("sign-in");
   }
@@ -1641,7 +1639,6 @@ function App() {
     setCropFocus({ x: clampFocus(activeScene.focal_x), y: clampFocus(activeScene.focal_y) });
   }, [activeScene?.id, activeScene?.focal_x, activeScene?.focal_y]);
   useEffect(() => {
-    setOverlayTitle(activeScene?.title ?? "");
     setOverlayCaption(activeScene?.caption ?? "");
   }, [activeScene?.id, activeScene?.title, activeScene?.caption]);
   const allScenesHaveMedia = Boolean(project?.scenes.length && project.scenes.every(({ media_id }) =>
@@ -1658,13 +1655,12 @@ function App() {
     ? previewScene.overlay_place
     : overlayLook === "title" ? "center" : "bottom";
   const liveOverlay = previewScene?.id === activeScene?.id;
-  const shownTitle = (liveOverlay ? overlayTitle : previewScene?.title ?? "").trim();
   const shownCaption = (liveOverlay ? overlayCaption : previewScene?.caption ?? "").trim();
-  const overlayGhost = !shownTitle && !shownCaption && !livePlaying;
-  const overlayHeadline = shownTitle
-    || (overlayLook === "title" ? shownCaption : "")
-    || (overlayGhost && overlayLook !== "caption" ? "Title" : "");
-  const overlayLine = overlayLook === "title" && !shownTitle
+  const overlayGhost = !shownCaption && !livePlaying;
+  const overlayHeadline = overlayLook === "title"
+    ? (shownCaption || (overlayGhost ? "Title" : ""))
+    : "";
+  const overlayLine = overlayLook === "title"
     ? ""
     : shownCaption || (overlayGhost ? "Your caption" : "");
   const previewMedia = previewScene?.media_id ? sceneMedia[previewScene.media_id] : undefined;
@@ -2140,7 +2136,7 @@ function App() {
               </span>
             )}
           <strong>Scene {scene.order + 1} · {(scene.duration_ms / 1000).toFixed(1)}s</strong>
-          <span>{scene.title || scene.caption || scene.visual_prompt}</span>
+          <span>{scene.caption || scene.visual_prompt}</span>
           {sceneProgress[scene.id] && !previewUrl ? (
             <span className="scene-progress">
               {sceneProgress[scene.id] === "finding" ? "finding"
@@ -2150,7 +2146,14 @@ function App() {
             </span>
           ) : null}
         </button>;
-      })}</nav>
+      })}
+          <div className="scene-strip-actions">
+            <button className="secondary" disabled={activeScene.order === 0} aria-label={`Move scene ${activeSceneNumber} earlier`} onClick={() => void moveScene(activeScene.id, activeScene.order - 1)}>Up</button>
+            <button className="secondary" disabled={activeScene.order === project.scenes.length - 1} aria-label={`Move scene ${activeSceneNumber} later`} onClick={() => void moveScene(activeScene.id, activeScene.order + 1)}>Down</button>
+            <button className="secondary" disabled={project.scenes.length >= 8} onClick={() => void addScene()}>Add scene</button>
+            <button className="secondary" disabled={project.scenes.length <= 1} aria-label={`Remove scene ${activeSceneNumber}`} onClick={() => void removeScene(activeScene.id)}>Remove</button>
+          </div>
+      </nav>
 
       <div className="editor-grid" key={`${activeScene.id}:${project.revision}`}>
         <div className="preview-panel">
@@ -2371,11 +2374,8 @@ function App() {
                 {look === "caption" ? <span>Caption</span> : null}
               </button>)}
           </div>
-          <label htmlFor={`title-${activeScene.id}`}>Title
-            <input id={`title-${activeScene.id}`} maxLength={60} value={overlayTitle} onChange={(event) => setOverlayTitle(event.target.value)} onBlur={(event) => void saveScenePatch(activeScene.id, { title: event.currentTarget.value })} />
-          </label>
           <label htmlFor={`caption-${activeScene.id}`}>Caption
-            <input id={`caption-${activeScene.id}`} maxLength={180} value={overlayCaption} onChange={(event) => setOverlayCaption(event.target.value)} onBlur={(event) => void saveScenePatch(activeScene.id, { caption: event.currentTarget.value })} />
+            <input id={`caption-${activeScene.id}`} aria-label={`Scene ${activeSceneNumber} caption`} maxLength={180} value={overlayCaption} onChange={(event) => setOverlayCaption(event.target.value)} onBlur={(event) => void saveScenePatch(activeScene.id, { caption: event.currentTarget.value })} />
           </label>
           <div className="overlay-places" role="group" aria-label="Overlay place">
             {([["Top", "top"], ["Middle", "center"], ["Bottom", "bottom"]] as const).map(([label, place]) =>
@@ -2389,9 +2389,11 @@ function App() {
           </div>
           </div>
           <div className="inspector-block">
-          <label htmlFor={`prompt-${activeScene.id}`}>{activeMedia ? "Note" : "Search"}
+          {!activeMedia && (
+          <label htmlFor={`prompt-${activeScene.id}`}>Search
             <textarea id={`prompt-${activeScene.id}`} maxLength={100} defaultValue={activeScene.visual_prompt ?? ""} onBlur={(event) => void saveScenePatch(activeScene.id, { visual_prompt: event.currentTarget.value.trim() })} />
           </label>
+          )}
           <div className="inspector-pair">
           <label htmlFor={`duration-${activeScene.id}`}>Seconds
             <input id={`duration-${activeScene.id}`} type="number" min="0.5" max="15" step="0.1" defaultValue={activeScene.duration_ms / 1000} onBlur={(event) => void saveScenePatch(activeScene.id, { duration_ms: Math.round(event.currentTarget.valueAsNumber * 1000) })} />
@@ -2433,13 +2435,6 @@ function App() {
             </button>
           )}
           </div>
-          <div className="inspector-block">
-          <div className="scene-actions">
-            <button className="secondary" disabled={activeScene.order === 0} aria-label={`Move scene ${activeSceneNumber} earlier`} onClick={() => void moveScene(activeScene.id, activeScene.order - 1)}>Earlier</button>
-            <button className="secondary" disabled={activeScene.order === project.scenes.length - 1} aria-label={`Move scene ${activeSceneNumber} later`} onClick={() => void moveScene(activeScene.id, activeScene.order + 1)}>Later</button>
-            <button className="secondary" disabled={project.scenes.length >= 8} onClick={() => void addScene()}>Add scene</button>
-            <button className="secondary" disabled={project.scenes.length <= 1} aria-label={`Remove scene ${activeSceneNumber}`} onClick={() => void removeScene(activeScene.id)}>Remove</button>
-          </div>
           <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) void admitFile(file, activeScene.id);
@@ -2451,7 +2446,6 @@ function App() {
             : "Add media to every scene to play the live preview."}</p>}
           </div>
         </div>
-      </div>
       </div>
 
       {candidates.length > 0 && <div className="candidates" aria-label={`Licensed media options for scene ${activeSceneNumber}`}>{candidates.map((candidate) => <article key={candidate.id} className="candidate">

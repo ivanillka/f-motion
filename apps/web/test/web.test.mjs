@@ -57,7 +57,10 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Trendy/);
   assert.match(source, /update_soundtrack/);
   assert.doesNotMatch(source, /<audio controls/);
-  assert.match(source, /htmlFor=\{`title-\$\{activeScene.id\}`\}/);
+  assert.match(source, /htmlFor=\{`caption-\$\{activeScene.id\}`\}/);
+  assert.match(source, /Scene \$\{activeSceneNumber\} caption/);
+  assert.doesNotMatch(source, /htmlFor=\{`title-\$\{activeScene.id\}`\}/);
+  assert.doesNotMatch(source, />Note</);
   assert.match(source, /Overlay look/);
   assert.match(source, /Lower third/);
   assert.match(source, /overlay-look-tile/);
@@ -168,7 +171,7 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.crop-guide/);
   assert.match(css, /cursor: grab/);
   assert.match(css, /cursor: grabbing/);
-  assert.match(css, /\.partner-brands/);
+  assert.match(css, /\.scene-strip-actions/);
   assert.match(css, /\.header-actions \.brand-mark/);
   assert.match(css, /\.music-dock > summary/);
   assert.match(css, /\.music-dock:not\(\[open\]\) > \*:not\(summary\) \{ display: none; \}/);
