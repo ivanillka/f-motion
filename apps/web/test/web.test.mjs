@@ -63,7 +63,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { clampBpm, clampFocus, focusFromPoint, formatPlayTime, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, snapDurationToBeat } = await vite.ssrLoadModule("/src/api.ts");
+    const { clampBpm, clampFocus, focusFromPoint, formatPlayTime, isWideMedia, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, snapDurationToBeat } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -87,6 +87,9 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.equal(clampFocus(Number.NaN), 0.5);
     assert.equal(clampFocus(2), 1);
     assert.equal(clampFocus(-0.2), 0);
+    assert.equal(isWideMedia(1920, 1080), true);
+    assert.equal(isWideMedia(1080, 1920), false);
+    assert.equal(isWideMedia(undefined, 1080), false);
     assert.deepEqual(panFocus({ x: 0.5, y: 0.5 }, { x: 0.25, y: -0.1 }), { x: 0.25, y: 0.6 });
     assert.deepEqual(focusFromPoint({ x: 20, y: 80 }, { width: 100, height: 100 }), { x: 0.2, y: 0.8 });
     assert.equal(clampBpm(40), 60);
@@ -135,6 +138,7 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /minmax\(0, 1fr\) 232px/);
   assert.match(css, /preview-push/);
   assert.match(css, /preview-push-wide/);
+  assert.match(css, /object-position: calc\(var\(--focus-x/);
   assert.match(css, /preview-zoom/);
   assert.match(css, /\.play-progress/);
   assert.match(css, /\.editor-foot/);
@@ -155,6 +159,8 @@ test("studio shell brands F-Motion and keeps real destinations only", async () =
   assert.match(source, /className="studio-board"/);
   assert.match(source, /className="editor-foot"/);
   assert.match(source, /crop-guide/);
+  assert.match(source, /isWideMedia/);
+  assert.match(source, /Pan sideways/);
   assert.match(source, /href="\/"/);
   assert.doesNotMatch(source, /Assets|Effects|Pro Studio|multitrack/i);
 });

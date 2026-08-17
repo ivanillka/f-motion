@@ -7,6 +7,7 @@ import {
   conceptsFor,
   clampFocus,
   clampBpm,
+  isWideMedia,
   defaultVideoArchitecture,
   focusFromPoint,
   formatPlayTime,
@@ -159,6 +160,7 @@ function App() {
   const [playTick, setPlayTick] = useState(0);
   const [bedSeek, setBedSeek] = useState(0);
   const [previewPanning, setPreviewPanning] = useState(false);
+  const [previewSize, setPreviewSize] = useState<{ url: string; width: number; height: number }>();
   const previewPan = useRef<PreviewPanState | null>(null);
   const userPausedPreview = useRef(false);
   const sceneClock = useRef({ startedAt: 0, elapsedAtPause: 0 });
@@ -1542,11 +1544,9 @@ function App() {
   const activeMediaId = activeScene?.media_id;
   const activeMedia = activeMediaId ? sceneMedia[activeMediaId] : undefined;
   const activePreviewUrl = scenePreviewUrl(activeMedia);
-  const wideStill = Boolean(
-    activeMedia?.detected?.width
-    && activeMedia.detected.height
-    && activeMedia.detected.width > activeMedia.detected.height
-  );
+  const measuredActive = previewSize?.url === activePreviewUrl ? previewSize : undefined;
+  const wideStill = isWideMedia(activeMedia?.detected?.width, activeMedia?.detected?.height)
+    || isWideMedia(measuredActive?.width, measuredActive?.height);
   useEffect(() => {
     if (!activeScene || previewPan.current) return;
     setCropFocus({ x: clampFocus(activeScene.focal_x), y: clampFocus(activeScene.focal_y) });
@@ -1560,6 +1560,7 @@ function App() {
     : activeScene;
   const previewMedia = previewScene?.media_id ? sceneMedia[previewScene.media_id] : undefined;
   const previewUrl = scenePreviewUrl(previewMedia);
+  const measuredPreview = previewSize?.url === previewUrl ? previewSize : undefined;
   const previewFocus = {
     x: clampFocus(livePlaying ? previewScene?.focal_x ?? cropFocus.x : cropFocus.x),
     y: clampFocus(livePlaying ? previewScene?.focal_y ?? cropFocus.y : cropFocus.y)
@@ -1567,13 +1568,12 @@ function App() {
   const previewPosition = {
     objectPosition: `${previewFocus.x * 100}% ${previewFocus.y * 100}%`,
     transformOrigin: `${previewFocus.x * 100}% ${previewFocus.y * 100}%`,
-    ["--scene-ms" as string]: `${Math.max(500, previewScene?.duration_ms ?? 3000)}ms`
+    ["--scene-ms" as string]: `${Math.max(500, previewScene?.duration_ms ?? 3000)}ms`,
+    ["--focus-x" as string]: `${previewFocus.x * 100}%`,
+    ["--focus-y" as string]: `${previewFocus.y * 100}%`
   };
-  const previewWide = Boolean(
-    previewMedia?.detected?.width
-    && previewMedia.detected.height
-    && previewMedia.detected.width > previewMedia.detected.height
-  );
+  const previewWide = isWideMedia(previewMedia?.detected?.width, previewMedia?.detected?.height)
+    || isWideMedia(measuredPreview?.width, measuredPreview?.height);
   const previewMotion = livePlaying && previewScene && previewScene.motion !== "none" ? previewScene.motion : undefined;
   const previewMotionClass = [
     previewMotion ? `motion-${previewMotion}` : "",
@@ -1614,6 +1614,13 @@ function App() {
     userPausedPreview.current = true;
     armSceneClock(readSceneElapsed(), false);
     setLivePlaying(false);
+  }
+
+  function notePreviewPixels(url: string | undefined, width: number, height: number) {
+    if (!url || width <= 0 || height <= 0) return;
+    setPreviewSize((current) => current?.url === url && current.width === width && current.height === height
+      ? current
+      : { url, width, height });
   }
 
   function beginPreviewPan(event: { currentTarget: HTMLElement; pointerId: number; button: number; clientX: number; clientY: number; preventDefault: () => void }) {
@@ -2031,8 +2038,8 @@ function App() {
             onPointerCancel={endPreviewPan}
           >
         {previewUrl && (previewMedia?.detected?.type === "video/mp4"
-          ? <video key={previewScene?.id} src={previewUrl} muted playsInline autoPlay={livePlaying} loop={!livePlaying} controls={false} preload="metadata" draggable={false} className={previewMotionClass} style={previewPosition} />
-          : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} draggable={false} className={previewMotionClass} style={previewPosition} />)}
+          ? <video key={previewScene?.id} src={previewUrl} muted playsInline autoPlay={livePlaying} loop={!livePlaying} controls={false} preload="metadata" draggable={false} className={previewMotionClass} style={previewPosition} onLoadedMetadata={(event) => notePreviewPixels(previewUrl, event.currentTarget.videoWidth, event.currentTarget.videoHeight)} />
+          : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} draggable={false} className={previewMotionClass} style={previewPosition} onLoad={(event) => notePreviewPixels(previewUrl, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />)}
         {previewMedia && !previewUrl && <span className="media-placeholder">{previewMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
             {!previewMedia && <span className="media-placeholder">Choose stock or upload media</span>}
             {previewScene?.caption ? <span className="caption-burn">{previewScene.caption}</span> : null}

@@ -398,8 +398,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   to { transform: scale(1.14) translate3d(0, -3%, 0); }
 }
 @keyframes preview-push-wide {
-  from { transform: scale(1.14) translate3d(6%, 0, 0); }
-  to { transform: scale(1.14) translate3d(-6%, 0, 0); }
+  from {
+    transform: scale(1.08);
+    object-position: calc(var(--focus-x, 50%) + 32%) var(--focus-y, 50%);
+  }
+  to {
+    transform: scale(1.08);
+    object-position: calc(var(--focus-x, 50%) - 32%) var(--focus-y, 50%);
+  }
 }
 @keyframes preview-zoom {
   from { transform: scale(1); }

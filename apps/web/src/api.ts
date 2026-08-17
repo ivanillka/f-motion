@@ -210,6 +210,10 @@ export function clampFocus(value: unknown): number {
   return Math.min(1, Math.max(0, n));
 }
 
+export function isWideMedia(width?: number, height?: number): boolean {
+  return Number.isFinite(width) && Number.isFinite(height) && Number(width) > Number(height);
+}
+
 export function panFocus(
   start: { x: number; y: number },
   delta: { x: number; y: number }
