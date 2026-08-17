@@ -2,6 +2,8 @@ export const contractVersion = 1 as const;
 
 export type AccountState = "active" | "suspended" | "deletion_pending";
 export type MotionPreset = "none" | "push" | "zoom";
+export const overlayPlaces = ["bottom", "center", "top"] as const;
+export type OverlayPlace = (typeof overlayPlaces)[number];
 
 export interface CaptionCue {
   text: string;
@@ -24,6 +26,10 @@ export interface Scene {
   visual_prompt?: string;
   /** Optional timed schedule over `caption`; absent/empty means "derive it". */
   caption_cues?: CaptionCue[];
+  /** Optional large overlay above `caption`. */
+  title?: string;
+  /** Where title/caption sit; omitted means bottom. */
+  overlay_place?: OverlayPlace;
 }
 
 export const stockBeds = [
@@ -124,6 +130,10 @@ export function isSoundtrack(value: unknown): value is Soundtrack {
   return false;
 }
 
+function isOverlayPlace(value: unknown): value is OverlayPlace {
+  return value === "bottom" || value === "center" || value === "top";
+}
+
 function isCaptionCue(value: unknown, durationMs: number, previousEnd: number): value is CaptionCue {
   if (!isRecord(value)) return false;
   return typeof value.text === "string"
@@ -163,6 +173,13 @@ function isScene(value: unknown, order: number): value is Scene {
       || value.visual_prompt.length > 240))) {
     return false;
   }
+  if ("title" in value && (typeof value.title !== "string"
+    || !value.title
+    || value.title !== value.title.trim()
+    || value.title.length > 60)) {
+    return false;
+  }
+  if ("overlay_place" in value && !isOverlayPlace(value.overlay_place)) return false;
   if (!("caption_cues" in value)) return true;
   if (!Array.isArray(value.caption_cues)) return false;
   let previousEnd = 0;

@@ -266,6 +266,15 @@ function boundedScene(scene: Scene): Scene {
     || scene.visual_prompt !== scene.visual_prompt.trim()
     || scene.visual_prompt.length > 240
   )) throw new Error("invalid visual prompt");
+  if (scene.title !== undefined && (
+    !scene.title
+    || scene.title !== scene.title.trim()
+    || scene.title.length > 60
+  )) throw new Error("invalid title");
+  if (scene.overlay_place !== undefined && scene.overlay_place !== "bottom"
+    && scene.overlay_place !== "center" && scene.overlay_place !== "top") {
+    throw new Error("invalid overlay place");
+  }
   if (scene.caption_cues && scene.caption_cues.length) validateCues(scene.caption_cues, scene.duration_ms);
   return scene;
 }
@@ -397,6 +406,9 @@ function validatedScene(value: unknown): Scene {
     || typeof scene.ducking !== "boolean"
     || ("media_id" in scene && (typeof scene.media_id !== "string" || !scene.media_id))
     || ("visual_prompt" in scene && typeof scene.visual_prompt !== "string")
+    || ("title" in scene && typeof scene.title !== "string")
+    || ("overlay_place" in scene && scene.overlay_place !== "bottom"
+      && scene.overlay_place !== "center" && scene.overlay_place !== "top")
     || ("caption_cues" in scene && !isValidCueShape(scene.caption_cues))) {
     throw new Error("invalid scene");
   }

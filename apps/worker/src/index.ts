@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { stockBeds, type CaptionCue, type ProjectSnapshot, type Scene } from "@f-engine/contracts";
+import { stockBeds, type CaptionCue, type OverlayPlace, type ProjectSnapshot, type Scene } from "@f-engine/contracts";
 import {
   coverCropFilter,
   renderPlan,
@@ -277,8 +277,28 @@ function motionFilter(
   return `zoompan=z=${MOTION_MAX_ZOOM}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*on/${frames - 1}':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
 }
 
+const TITLE_ASS_STYLE =
+  "Style: Title,DejaVu Sans,48,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,3,0,2,40,40,140,1";
 const CAPTION_ASS_STYLE =
   "Style: Caption,DejaVu Sans,36,&H00FFFFFF,&H000000FF,&H00000000,&H40000000,0,0,0,0,100,100,0,0,3,2,0,2,40,40,140,1";
+
+function overlayLayout(place: OverlayPlace | undefined, hasTitle: boolean, hasCaption: boolean) {
+  if (place === "top") return { an: 8, titleV: 88, captionV: hasTitle ? 176 : 88 };
+  if (place === "center") return { an: 8, titleV: hasCaption ? 500 : 560, captionV: hasTitle ? 590 : 560 };
+  return { an: 2, titleV: hasCaption ? 228 : 0, captionV: 0 };
+}
+
+function assDialogue(
+  style: string,
+  startMs: number,
+  endMs: number,
+  text: string,
+  marginV: number,
+  an: number
+): string {
+  const tag = an !== 2 ? `{\\an${an}}` : "";
+  return `Dialogue: 0,${assTimestamp(startMs)},${assTimestamp(endMs)},${style},,0,0,${marginV},,${tag}${escapeAssText(text)}`;
+}
 
 /** Formats milliseconds as an ASS timestamp: `h:mm:ss.cc` (centiseconds). */
 function assTimestamp(ms: number): string {
@@ -297,10 +317,17 @@ function assTimestamp(ms: number): string {
  * cue. Safe area: PlayRes 720x1280, 40px side margins, text bottom-anchored
  * 140px above the frame bottom so it clears the watermark band.
  */
-export function buildCaptionAss(cues: CaptionCue[]): string {
-  const dialogues = cues.map((cue) =>
-    `Dialogue: 0,${assTimestamp(cue.start_ms)},${assTimestamp(cue.end_ms)},Caption,,0,0,0,,${escapeAssText(cue.text)}`
-  );
+export function buildCaptionAss(
+  cues: CaptionCue[],
+  overlay: { title?: string; place?: OverlayPlace; durationMs?: number } = {}
+): string {
+  const title = overlay.title?.trim() ?? "";
+  const layout = overlayLayout(overlay.place, Boolean(title), cues.length > 0);
+  const titleEnd = overlay.durationMs ?? cues.at(-1)?.end_ms ?? 0;
+  const dialogues = [
+    ...(title && titleEnd > 0 ? [assDialogue("Title", 0, titleEnd, title, layout.titleV, layout.an)] : []),
+    ...cues.map((cue) => assDialogue("Caption", cue.start_ms, cue.end_ms, cue.text, layout.captionV, layout.an))
+  ];
   return [
     "[Script Info]",
     "ScriptType: v4.00+",
@@ -311,6 +338,7 @@ export function buildCaptionAss(cues: CaptionCue[]): string {
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    TITLE_ASS_STYLE,
     CAPTION_ASS_STYLE,
     "",
     "[Events]",
@@ -535,8 +563,11 @@ export function buildRenderJob(
     const media = scene.media_id ? mediaInputs[scene.media_id] : undefined;
     const path = join(tempDir, `scene-${index}.mp4`);
     const cues = scene.caption_cues ?? [];
-    const assPath = cues.length ? join(tempDir, `scene-${index}.ass`) : undefined;
-    const assContents = cues.length ? buildCaptionAss(cues) : undefined;
+    const title = scene.title?.trim();
+    const assPath = title || cues.length ? join(tempDir, `scene-${index}.ass`) : undefined;
+    const assContents = title || cues.length
+      ? buildCaptionAss(cues, { title, place: scene.overlay_place, durationMs: scene.duration_ms })
+      : undefined;
     return {
       scene,
       path,

@@ -49,6 +49,10 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Trendy/);
   assert.match(source, /update_soundtrack/);
   assert.doesNotMatch(source, /<audio controls/);
+  assert.match(source, /htmlFor=\{`title-\$\{activeScene.id\}`\}/);
+  assert.match(source, /Overlay place/);
+  assert.match(source, /overlay-title/);
+  assert.match(source, /caption-burn/);
   const apiSource = await readFile(new URL("../src/api.ts", import.meta.url), "utf8");
   assert.match(apiSource, /Funkorama/);
   assert.match(apiSource, /stockBedUrl/);
@@ -152,7 +156,9 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /preview-push-wide/);
   assert.match(css, /object-position: calc\(var\(--focus-x/);
   assert.match(css, /preview-zoom/);
-  assert.match(css, /\.play-progress/);
+  assert.match(css, /\.caption-burn/);
+  assert.match(css, /\.overlay-title/);
+  assert.match(css, /\.overlay-places/);
   assert.match(css, /\.editor-foot/);
   assert.match(css, /\.inspector-pair/);
   assert.match(css, /\.app-shell-editor \.app-stage \{\s*max-width: none;/);

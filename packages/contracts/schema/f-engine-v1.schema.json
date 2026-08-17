@@ -126,7 +126,9 @@
         "ducking": { "type": "boolean" },
         "media_id": { "type": "string", "minLength": 1 },
         "visual_prompt": { "type": "string", "minLength": 1, "maxLength": 240, "pattern": "^\\S(?:.*\\S)?$" },
-        "caption_cues": { "type": "array" }
+        "caption_cues": { "type": "array" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^\\S(?:.*\\S)?$" },
+        "overlay_place": { "enum": ["bottom", "center", "top"] }
       },
       "additionalProperties": true
     }

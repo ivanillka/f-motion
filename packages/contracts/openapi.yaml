@@ -735,6 +735,8 @@ components:
         caption_cues:
           type: array
           items: { $ref: "#/components/schemas/CaptionCue" }
+        title: { type: string, minLength: 1, maxLength: 60 }
+        overlay_place: { type: string, enum: [bottom, center, top] }
       additionalProperties: true
     CaptionCue:
       type: object

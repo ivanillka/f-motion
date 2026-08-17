@@ -18,6 +18,8 @@ export interface Scene {
   ducking: boolean;
   media_id?: string;
   visual_prompt?: string;
+  title?: string;
+  overlay_place?: "bottom" | "center" | "top";
 }
 
 export interface Soundtrack {

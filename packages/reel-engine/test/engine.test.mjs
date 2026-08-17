@@ -285,6 +285,17 @@ test("coverCropFilter offsets the crop by the focal point", () => {
     "crop=720:1280:(iw-ow)*0.5:(ih-oh)*0.5"
   ]);
 });
+test("update_scene stores a title and overlay place", () => {
+  const updated = applyCommand(snapshot, command("update_scene", {
+    scene: { ...snapshot.scenes[0], title: "Naplavka", overlay_place: "center" }
+  }));
+  assert.equal(updated.scenes[0].title, "Naplavka");
+  assert.equal(updated.scenes[0].overlay_place, "center");
+  assert.throws(
+    () => applyCommand(snapshot, command("update_scene", { scene: { ...snapshot.scenes[0], title: "" } })),
+    /invalid title/
+  );
+});
 test("update_soundtrack stores a stock bed on the brief and can clear it", () => {
   const withBed = applyCommand(snapshot, command("update_soundtrack", {
     soundtrack: { kind: "stock", stock_id: "pulse", bpm: 120, offset_ms: 0, level: 0.8 }

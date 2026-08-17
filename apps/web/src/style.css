@@ -413,16 +413,47 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .preview .caption-burn {
   z-index: 2;
-  align-self: end;
-  margin-bottom: 10%;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  justify-self: center;
   max-width: 86%;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.58);
-  text-shadow: 0 1px 2px #000;
-  color: var(--text);
-  font-size: 0.85rem;
   pointer-events: none;
+  text-align: center;
+}
+.preview .caption-burn.overlay-bottom {
+  align-self: end;
+  margin-bottom: 9%;
+}
+.preview .caption-burn.overlay-center { align-self: center; }
+.preview .caption-burn.overlay-top {
+  align-self: start;
+  margin-top: 8%;
+}
+.preview .overlay-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  color: #fff;
+  text-shadow: 0 1px 1px #000, 0 8px 18px rgba(0, 0, 0, 0.55);
+}
+.preview .overlay-caption {
+  max-width: 100%;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+  text-shadow: 0 1px 2px #000;
+}
+.preview .overlay-title + .overlay-caption {
+  padding: 5px 10px;
+  font-size: 0.76rem;
+  background: rgba(0, 0, 0, 0.42);
 }
 .preview .media-placeholder {
   z-index: 1;
@@ -586,6 +617,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .scene-controls textarea, .scene-controls input, .scene-controls select { padding: 6px 8px; }
 .scene-controls textarea { min-height: 40px; }
 .scene-controls button { min-height: 32px; padding: 5px 8px; font-size: 0.76rem; }
+.overlay-places { display: flex; gap: 4px; }
+.overlay-places button { width: auto; min-height: 28px; padding: 3px 8px; font-size: 0.72rem; }
 .inspector-block {
   display: grid;
   gap: 8px;

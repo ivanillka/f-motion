@@ -61,6 +61,18 @@ test("visual_prompt rejects blank, padded, and oversized values", () => {
   }
 });
 
+test("title and overlay_place are additive and bounded", () => {
+  const base = snapshotWithPrompt("remote island seen from above at dusk");
+  const scene = base.scenes[0];
+  assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, title: "Naplavka" }] }), true);
+  assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, overlay_place: "center" }] }), true);
+  assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, title: "Naplavka", overlay_place: "top" }] }), true);
+  assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, title: "" }] }), false);
+  assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, title: " padded " }] }), false);
+  assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, title: "x".repeat(61) }] }), false);
+  assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, overlay_place: "left" }] }), false);
+});
+
 test("brief soundtrack is optional and validated when present", () => {
   const base = snapshotWithPrompt("remote island");
   assert.equal(isSoundtrack({ kind: "stock", stock_id: "pulse", bpm: 120, offset_ms: 0, level: 0.8 }), true);

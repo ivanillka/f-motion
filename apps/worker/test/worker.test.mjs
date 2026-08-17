@@ -336,9 +336,30 @@ test("caption ass builder freezes the safe-area layout", () => {
   const ass = buildCaptionAss([{ text: "Project caption", start_ms: 0, end_ms: 500 }]);
   assert.match(ass, /PlayResX: 720/);
   assert.match(ass, /PlayResY: 1280/);
-  assert.match(ass, /,40,40,140,1$/m, "40px side inset, 140px bottom margin clears the watermark band");
+  assert.match(ass, /Style: Caption,.*,40,40,140,1$/m, "40px side inset, 140px bottom margin clears the watermark band");
   assert.match(ass, /&H40000000/, "panel BackColour alpha 0x40 is ~75% opaque, above the 0.55 floor");
   assert.match(ass, /^Dialogue: 0,0:00:00\.00,0:00:00\.50,Caption,,0,0,0,,Project caption$/m);
+});
+test("title overlay burns above the caption and honors place", () => {
+  const stacked = buildCaptionAss(
+    [{ text: "Open the full gallery.", start_ms: 0, end_ms: 500 }],
+    { title: "Naplavka", durationMs: 500 }
+  );
+  const lines = stacked.split("\n").filter((line) => line.startsWith("Dialogue:"));
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /Title,,0,0,228,,Naplavka$/);
+  assert.match(lines[1], /Caption,,0,0,0,,Open the full gallery\.$/);
+  const centered = buildCaptionAss([], { title: "Naplavka", place: "center", durationMs: 1000 });
+  assert.match(centered, /\{\\an8\}Naplavka/);
+  assert.doesNotMatch(centered, /^Dialogue:.*Caption,/m);
+});
+test("title-only scene still gets a subtitle filter", () => {
+  const job = buildRenderJob({
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], caption: "", title: "Naplavka" }]
+  }, "preview.mp4", {}, "/tmp/job");
+  assert.match(job.clips[0].args.join(" "), /subtitles=/);
+  assert.match(job.clips[0].assContents ?? "", /Title,,0,0,0,,Naplavka/);
 });
 test("caption ass builder emits one Dialogue line per timed cue", () => {
   const ass = buildCaptionAss([
