@@ -49,6 +49,7 @@ test("shared storyboard planning separates footage intent from copy and closes w
   assert.equal(scenes.length, 4);
   assert.match(scenes[0].visual_prompt, /editorial portrait photography/i);
   assert.equal(scenes.at(-1).caption, "Open the full gallery.");
+  assert.ok(scenes.every((scene) => scene.motion === "zoom"));
 });
 test("concept planner yields a stable 4–6 beat storyboard without provider vocabulary", () => {
   let id = 0;

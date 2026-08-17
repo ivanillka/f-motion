@@ -185,7 +185,7 @@ export function buildStoryboardDraft(
       duration_ms: durationBase + (order < totalDurationMs % visualPrompts.length ? 1 : 0),
       focal_x: 0.5,
       focal_y: 0.5,
-      motion: "none",
+      motion: "zoom",
       audio_level: 1,
       ducking: false
     };

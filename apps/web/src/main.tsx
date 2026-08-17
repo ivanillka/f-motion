@@ -879,7 +879,7 @@ function App() {
     const scene: Scene = {
       id: crypto.randomUUID(), order: activeIndex + 1, caption: "",
       visual_prompt: `${project.brief.purpose.slice(0, 210).trim()} — additional visual beat`,
-      duration_ms: 3000, focal_x: 0.5, focal_y: 0.5, motion: "none", audio_level: 1, ducking: false
+      duration_ms: 3000, focal_x: 0.5, focal_y: 0.5, motion: "zoom", audio_level: 1, ducking: false
     };
     try {
       const updated = await api.command(project.id, project.revision, "add_scene", { scene, at: activeIndex + 1 });
@@ -2172,6 +2172,7 @@ function App() {
           : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} draggable={false} className={previewMotionClass} style={previewPosition} onLoad={(event) => notePreviewPixels(previewUrl, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />)}
         {previewMedia && !previewUrl && <span className="media-placeholder">{previewMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
             {!previewMedia && <span className="media-placeholder">Choose stock or upload media</span>}
+            <span className="preview-grade" aria-hidden="true" />
             {(overlayHeadline || overlayLine) ? (
               <div className={`caption-burn look-${overlayLook} overlay-${overlayPlace}${overlayGhost ? " is-ghost" : ""}`}>
                 {overlayHeadline ? <strong className="overlay-title">{overlayHeadline}</strong> : null}

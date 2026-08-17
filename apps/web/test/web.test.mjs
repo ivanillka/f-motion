@@ -180,6 +180,8 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /preview-push-wide/);
   assert.match(css, /object-position: calc\(var\(--focus-x/);
   assert.match(css, /preview-zoom/);
+  assert.match(css, /preview-cut/);
+  assert.match(css, /\.preview-grade/);
   assert.match(css, /\.caption-burn/);
   assert.match(css, /\.look-title/);
   assert.match(css, /\.look-poster/);
@@ -207,7 +209,7 @@ test("studio shell brands F-Motion and keeps real destinations only", async () =
   assert.match(source, /className="editor-foot"/);
   assert.match(source, /crop-guide/);
   assert.match(source, /isWideMedia/);
-  assert.match(source, /Pan sideways/);
+  assert.match(source, /motion: "zoom"/);
   assert.match(source, /href="\/"/);
   assert.doesNotMatch(source, /Assets|Effects|Pro Studio|multitrack/i);
 });

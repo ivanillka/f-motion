@@ -426,15 +426,27 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   max-height: none;
   border-radius: 0;
   pointer-events: none;
+  animation: preview-cut 280ms ease-out;
 }
 .preview img.motion-push, .preview video.motion-push {
-  animation: preview-push var(--scene-ms, 3s) linear forwards;
+  animation: preview-cut 280ms ease-out, preview-push var(--scene-ms, 3s) linear forwards;
 }
 .preview img.motion-push.is-wide, .preview video.motion-push.is-wide {
-  animation-name: preview-push-wide;
+  animation: preview-cut 280ms ease-out, preview-push-wide var(--scene-ms, 3s) linear forwards;
 }
 .preview img.motion-zoom, .preview video.motion-zoom {
-  animation: preview-zoom var(--scene-ms, 3s) linear forwards;
+  animation: preview-cut 280ms ease-out, preview-zoom var(--scene-ms, 3s) linear forwards;
+}
+@keyframes preview-cut {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.preview-grade {
+  z-index: 3;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 46%, rgba(0, 0, 0, 0.38) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0%, transparent 18%, transparent 72%, rgba(0, 0, 0, 0.32) 100%);
 }
 @keyframes preview-push {
   from { transform: scale(1.14) translate3d(0, 3%, 0); }
