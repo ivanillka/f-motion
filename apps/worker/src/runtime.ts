@@ -539,7 +539,8 @@ export function createQueueHandlers(
       let stored: Awaited<ReturnType<typeof storedRender>>;
       try {
         stored = await storedRender(pool, job);
-      } catch {
+      } catch (error) {
+        console.error(`render ${job.jobId} failed: ${error instanceof Error ? error.message : "error"}`);
         await markFailed(pool, job.jobId);
         return { state: "failed" };
       }
@@ -625,6 +626,7 @@ export function createQueueHandlers(
           // Rendering had already started (past `preparing`): treat every failure here as
           // terminal so the client SSE stops waiting instead of polling to the 15m ceiling.
           await markFailed(pool, job.jobId);
+          console.error(`render ${job.jobId} failed: ${error instanceof Error ? error.message : "error"}`);
           if (cleanupError) throw cleanupError;
           if (error instanceof RenderCompletionRefusedError) return { state: "cancelled" };
           return { state: "failed" };

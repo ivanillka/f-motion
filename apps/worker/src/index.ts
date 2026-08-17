@@ -64,13 +64,21 @@ export const defaultMediaLimits: MediaLimits = {
   probeTimeoutMs: 10_000
 };
 
+const stillProbeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+function declaredMatchesDetected(declared: string, detected: string): boolean {
+  if (declared === detected) return true;
+  // Partner/CDN stills often arrive as WebP with a JPEG content-type.
+  return stillProbeTypes.has(declared) && stillProbeTypes.has(detected);
+}
+
 export function inspectMedia(
   declared: string,
   detected: DetectedMedia,
   maxBytes: number,
   limits: MediaLimits = defaultMediaLimits
 ): { accepted: boolean } {
-  if (!allowedProbeTypes.has(detected.type) || detected.type !== declared) {
+  if (!allowedProbeTypes.has(detected.type) || !declaredMatchesDetected(declared, detected.type)) {
     return { accepted: false };
   }
   if (detected.bytes <= 0 || detected.bytes > maxBytes) return { accepted: false };
