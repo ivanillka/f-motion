@@ -116,7 +116,9 @@ Until that field ships, hosts should poll SSE
 
 Queue scenarios live in Fotium. Each import should vary at least:
 
-- caption / CTA wording
+- caption / CTA wording (F-Motion will not burn queue wrappers or a generic
+  "open the gallery" line onto every reel; overlay copy is written from that
+  gallery's title and any unique caption)
 - `architecture.structure` + `tone` + `pace`
 - which media subset (smart / favorites / random / order)
 - publish targets: reel and/or gallery post and/or stories

@@ -85,10 +85,10 @@ test("video architecture creates concrete, bounded Pexels searches and complete 
   assert.ok(scenes.every(({ visual_prompt }) => visual_prompt.length <= 100));
   assert.deepEqual(scenes.map(({ caption }) => caption), [
     "A lighthouse keeps flashing on an empty island.",
-    "The first clue appears.",
-    "The pattern grows harder to explain.",
-    "The truth is finally revealed.",
-    "Some questions remain."
+    "",
+    "",
+    "",
+    ""
   ]);
   assert.deepEqual(scenes.map(({ duration_ms }) => duration_ms), Array(5).fill(6000));
 });
@@ -105,10 +105,10 @@ test("short vague input is not split into one-word scenes or sent to Pexels as e
   });
   assert.deepEqual(scenes.map(({ caption }) => caption), [
     "Mystery culs in europe.",
-    "The first clue appears.",
-    "The pattern grows harder to explain.",
-    "The truth is finally revealed.",
-    "Some questions remain."
+    "",
+    "",
+    "",
+    ""
   ]);
   assert.match(scenes[0].visual_prompt, /^mysterious hooded people european old town fog wide aerial establishing cinematic$/);
   assert.match(scenes[1].visual_prompt, /ancient symbol stone close up cinematic$/);

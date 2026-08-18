@@ -303,7 +303,11 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       // Queue Edit must land on the host's current media pick, not a stale attach.
       const hostMediaMismatch = importedMediaIds.length > 0 && project.scenes.length > 0 && project.scenes.some((scene, index) =>
         scene.media_id !== importedMediaIds[index % importedMediaIds.length]);
-      const rebuildImportedDraft = textOnlyImportedDraft || legacyMediaRepair || hostMediaMismatch;
+      const hostCopyMismatch = project.scenes.length > 0 && generatedScenes.some((scene, index) =>
+        scene.caption !== project.scenes[index]?.caption
+        || scene.overlay_look !== project.scenes[index]?.overlay_look
+        || scene.overlay_place !== project.scenes[index]?.overlay_place);
+      const rebuildImportedDraft = textOnlyImportedDraft || legacyMediaRepair || hostMediaMismatch || hostCopyMismatch;
       const currentScenes = rebuildImportedDraft
         ? generatedScenes.map((scene, index) => ({
             ...scene,

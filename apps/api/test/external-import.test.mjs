@@ -157,7 +157,9 @@ test("trusted imports create one editable project and retry idempotently", async
     const project = projects.get(ownerId, created.project_id);
     assert.equal(project.scenes.length, 4);
     assert.match(project.scenes[0].visual_prompt, /editorial portrait photography/i);
-    assert.equal(project.scenes.at(-1).caption, "Open the full gallery.");
+    assert.equal(project.scenes[0].caption, "A portrait series returns for one final look.");
+    assert.equal(project.scenes.at(-1).caption, "See Gallery follow-up.");
+    assert.doesNotMatch(project.scenes.map(({ caption }) => caption).join("\n"), /open the full gallery|the story begins/i);
 
     const second = await request();
     assert.equal(second.status, 200);
@@ -327,7 +329,8 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     assert.ok(project.scenes.every((scene) => scene.media_id));
     assert.notEqual(project.scenes[0].media_id, project.scenes[1].media_id);
     assert.equal(project.scenes[0].media_id, project.scenes[2].media_id);
-    assert.match(project.scenes.map(({ caption }) => caption).join(" "), /https:\/\//);
+    assert.match(project.scenes.map(({ caption }) => caption).join(" "), /One final look/);
+    assert.doesNotMatch(project.scenes.map(({ caption }) => caption).join(" "), /https:\/\//);
     await waitFor(() => stored.length === 4 && [...assets.values()].every((asset) => asset.state === "ready"), "gallery stills ready");
     assert.deepEqual(requested.map(({ redirect }) => redirect), ["follow", "follow"]);
     assert.ok([...assets.values()].every((asset) => asset.detected?.width === 2));

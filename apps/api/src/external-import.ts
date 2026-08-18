@@ -115,12 +115,10 @@ export function parseExternalDraft(value: unknown): ExternalDraft {
     120,
     externalId.replace(/^(followup|queue|task|influencer|fotium|imported):/i, "").trim() || "Imported draft"
   );
-  const goal = optionalText(body.goal, 80);
   const caption = optionalText(body.caption, 500);
   const callToAction = optionalText(field(body, "call_to_action", "callToAction"), 180);
   const visualHint = optionalText(field(body, "visual_hint", "visualHint"), 240);
-  const purpose = optionalText(body.purpose, 500)
-    ?? [title, goal, caption, callToAction].filter(Boolean).join(". ").slice(0, 500);
+  const purpose = optionalText(body.purpose, 500) ?? title;
   const architectureValue = body.architecture;
   const architectureBody = architectureValue && typeof architectureValue === "object" && !Array.isArray(architectureValue)
     ? architectureValue as Record<string, unknown>

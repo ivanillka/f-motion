@@ -48,8 +48,44 @@ test("shared storyboard planning separates footage intent from copy and closes w
   });
   assert.equal(scenes.length, 4);
   assert.match(scenes[0].visual_prompt, /editorial portrait photography/i);
-  assert.equal(scenes.at(-1).caption, "Open the full gallery.");
+  assert.equal(scenes[0].title, undefined);
+  assert.equal(scenes[0].caption, "A quiet portrait story unfolds.");
+  assert.equal(scenes[1].caption, "Small details reveal the setting.");
+  assert.equal(scenes.at(-1).caption, "See Portrait campaign.");
+  assert.doesNotMatch(scenes.map(({ caption }) => caption).join("\n"), /open the full gallery|the story begins/i);
   assert.ok(scenes.every((scene) => scene.motion === "zoom"));
+});
+test("imported galleries do not share queue-template overlay copy", () => {
+  const architecture = {
+    goal: "promote", audience: "social", structure: "story_arc", tone: "cinematic", pace: "balanced", durationSeconds: 15, media: "own"
+  };
+  let id = 0;
+  const girl = buildStoryboardDraft("Anonym Girl — December 2021", () => `g-${++id}`, architecture, {
+    caption: 'Still worth the two minutes: "Anonym Girl — December 2021".',
+    callToAction: "Open the full gallery."
+  });
+  id = 0;
+  const recap = buildStoryboardDraft("Anonym Girl — December 2021", () => `r-${++id}`, architecture, {
+    caption: "Weekly recap: Anonym Girl — December 2021",
+    callToAction: "Open the full gallery."
+  });
+  id = 0;
+  const naples = buildStoryboardDraft("Weekend in Naples — July 2019", () => `n-${++id}`, architecture, {
+    caption: "Weekly recap: Weekend in Naples — July 2019",
+    callToAction: "Open the full gallery."
+  });
+  assert.equal(girl[0].caption, "Anonym Girl");
+  assert.equal(girl[0].overlay_look, "title");
+  assert.equal(girl[1].caption, "December 2021");
+  assert.equal(girl.at(-1).caption, "See Anonym Girl.");
+  assert.deepEqual(girl.map(({ caption, title }) => ({ caption, title })), recap.map(({ caption, title }) => ({ caption, title })));
+  assert.equal(naples[0].caption, "Weekend in Naples");
+  assert.equal(naples.at(-1).caption, "See Weekend in Naples.");
+  assert.notDeepEqual(girl.map(({ caption, title }) => [title, caption]), naples.map(({ caption, title }) => [title, caption]));
+  assert.doesNotMatch(
+    [...girl, ...recap, ...naples].map(({ caption, title }) => `${title ?? ""} ${caption}`).join("\n"),
+    /still worth the two minutes|weekly recap|open the full gallery|the story begins/i
+  );
 });
 test("concept planner yields a stable 4–6 beat storyboard without provider vocabulary", () => {
   let id = 0;
@@ -86,9 +122,9 @@ test("direct, story, and rhythm concepts produce observably different multi-scen
   assert.deepEqual(plans.map((scenes) => scenes.reduce((sum, scene) => sum + scene.duration_ms, 0)), [15_000, 30_000, 45_000]);
   assert.notDeepEqual(plans[0].map(({ caption }) => caption), plans[1].map(({ caption }) => caption));
   assert.notDeepEqual(plans[1].map(({ visual_prompt }) => visual_prompt), plans[2].map(({ visual_prompt }) => visual_prompt));
-  assert.match(plans[0][0].caption, /problem|visible|launch/i);
-  assert.match(plans[1][0].caption, /story begins|launch/i);
-  assert.match(plans[2][0].caption, /started|launch/i);
+  assert.match(plans[0][0].caption, /launch/i);
+  assert.match(plans[1][0].caption, /launch/i);
+  assert.match(plans[2][0].caption, /launch/i);
 });
 test("select_concept seeds a multi-scene plan when the project is empty", () => {
   const empty = { ...snapshot, scenes: [] };

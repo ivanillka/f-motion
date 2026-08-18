@@ -67,13 +67,6 @@ const ARCHITECTURE_FOOTAGE: Record<VideoArchitecture["structure"], string[]> = {
   chronological: ["historic location wide", "early activity detail", "people making progress", "major change in action", "finished result detail", "modern location wide"]
 };
 
-const ARCHITECTURE_CAPTIONS: Record<VideoArchitecture["structure"], string[]> = {
-  story_arc: ["The story begins.", "One detail changes everything.", "The situation develops.", "A decisive turn arrives.", "The pieces come together.", "The final image stays with us."],
-  mystery: ["The mystery begins.", "The first clue appears.", "The pattern grows harder to explain.", "A hidden connection comes into view.", "The truth is finally revealed.", "Some questions remain."],
-  problem_solution: ["The problem is visible.", "Its impact becomes personal.", "The old approach falls short.", "A practical solution emerges.", "The change becomes clear.", "The result speaks for itself."],
-  chronological: ["This is where it started.", "The next step followed.", "Progress gathered momentum.", "Then came the turning point.", "The result took shape.", "This is where things stand today."]
-};
-
 const FOOTAGE_STOP_WORDS = new Set([
   "a", "an", "and", "are", "as", "at", "by", "create", "for", "from", "in", "into", "is", "it", "make",
   "of", "on", "or", "story", "the", "this", "through", "to", "video", "with", "without"
@@ -125,8 +118,84 @@ function footagePrompt(brief: string, cue: string, tone: VideoArchitecture["tone
 
 function subjectCaption(brief: string): string {
   const subject = brief.trim().replace(/[.!?]+$/u, "");
-  if (!subject) return "The story begins.";
+  if (!subject) return "";
   return `${subject.charAt(0).toLocaleUpperCase()}${subject.slice(1)}.`.slice(0, 180);
+}
+
+function stripOverlayNoise(value: string): string {
+  return value.replace(/https?:\/\/\S+/gi, "").replace(/\s+/gu, " ").trim();
+}
+
+function splitTitleParts(value: string): string[] {
+  return value.split(/\s*[—–|:]\s+/u).map((part) => part.trim()).filter((part) => part.length >= 2);
+}
+
+const QUEUE_WRAPPER = /^(?:still\s+worth(?:\s+the)?\s+two\s+minutes|worth(?:\s+the)?\s+two\s+minutes|weekly\s+recap|daily\s+recap|recap|(?:day|week)\s*\d+)\s*[:—–-]\s*/i;
+const GENERIC_CTA = /^(open|see|visit|view|watch|revisit)\s+(the\s+)?((full|complete|entire)\s+)?(gallery|piece|post|album)\b/i;
+
+function isGenericCta(value: string): boolean {
+  return GENERIC_CTA.test(stripOverlayNoise(value).replace(/[.!?]+$/u, ""));
+}
+
+function unwrapHostCopy(value: string, title: string): string {
+  let text = stripOverlayNoise(value);
+  text = text.replace(QUEUE_WRAPPER, "").trim();
+  text = text.replace(/^["“']+/u, "").replace(/["”']+[.,!?]*$/u, "").trim();
+  text = text.replace(/[.!?]+$/u, "").trim();
+  const titleNorm = stripOverlayNoise(title).replace(/[.!?]+$/u, "").toLocaleLowerCase();
+  const textNorm = text.toLocaleLowerCase();
+  if (!textNorm || textNorm === titleNorm) return "";
+  return text;
+}
+
+function tailoredCallToAction(callToAction: string | undefined, title: string): string | undefined {
+  const name = (splitTitleParts(title)[0] ?? title.trim()).slice(0, 48).replace(/[.!?]+$/u, "");
+  const trimmed = callToAction?.trim();
+  if (!trimmed) return undefined;
+  if (isGenericCta(trimmed) || !stripOverlayNoise(trimmed)) return name ? `See ${name}.` : undefined;
+  return stripOverlayNoise(trimmed).slice(0, 180);
+}
+
+function overlayHeadline(brief: string): string | undefined {
+  const parts = splitTitleParts(brief.trim());
+  if (parts.length > 1 && parts[0] && parts[0].length <= 60) return parts[0];
+  return undefined;
+}
+
+function fillCaptions(brief: string, source: StoryboardSource, sceneCount: number): string[] {
+  const lastCta = tailoredCallToAction(source.callToAction, brief);
+  const bodyCount = lastCta ? sceneCount - 1 : sceneCount;
+  const unwrapped = unwrapHostCopy(source.caption ?? "", brief);
+  const narrative = unwrapped || brief.trim();
+  const fragments = narrative
+    .split(/(?:[.!?]+(?:\s+|$)|[,;]\s*)/u)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 12 && !isGenericCta(part));
+  const titleParts = splitTitleParts(brief.trim());
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  const push = (value: string, asSentence: boolean) => {
+    const text = stripOverlayNoise(value).replace(/[.!?]+$/u, "").trim();
+    const key = text.toLocaleLowerCase();
+    if (text.length < 2 || seen.has(key) || isGenericCta(text)) return;
+    seen.add(key);
+    unique.push(asSentence ? subjectCaption(text) : text.slice(0, 180));
+  };
+  const joinedTitle = titleParts.join(" ").toLocaleLowerCase();
+  const briefNorm = stripOverlayNoise(brief).replace(/[.!?]+$/u, "").toLocaleLowerCase();
+  for (const fragment of fragments) {
+    const normalized = stripOverlayNoise(fragment).replace(/[.!?]+$/u, "").trim().toLocaleLowerCase();
+    if (normalized === briefNorm || normalized === joinedTitle) continue;
+    push(fragment, true);
+  }
+  for (const part of titleParts) push(part, titleParts.length === 1);
+  if (!unique.length && narrative) push(narrative, true);
+  const captions: string[] = [];
+  for (let order = 0; order < bodyCount; order += 1) {
+    captions.push(unique[order] ?? "");
+  }
+  if (lastCta) captions.push(lastCta);
+  return captions;
 }
 
 function promptWithRole(brief: string, role: string): string {
@@ -142,12 +211,12 @@ export function buildStoryboardDraft(
   architecture?: VideoArchitecture,
   source: StoryboardSource = {}
 ): Scene[] {
-  const narrative = source.caption?.trim() || brief;
+  const narrative = unwrapHostCopy(source.caption ?? "", brief) || brief;
   const visualSubject = [source.visualHint?.trim(), brief].filter(Boolean).join(" ");
   const fragments = narrative
     .split(/(?:[.!?]+(?:\s+|$)|[,;]\s*)/u)
     .map((part) => part.trim())
-    .filter((part) => part.length >= 12)
+    .filter((part) => part.length >= 12 && !isGenericCta(part))
     .slice(0, 6);
   const sceneCount = architecture ? (architecture.durationSeconds === 15 ? 4 : architecture.durationSeconds === 30 ? 5 : 6) : 0;
   const architectureSceneIndexes = architecture ? architectureIndexes(sceneCount) : [];
@@ -166,17 +235,18 @@ export function buildStoryboardDraft(
   let cursor = 0;
   const totalDurationMs = (architecture?.durationSeconds ?? visualPrompts.length * 3) * 1000;
   const durationBase = Math.floor(totalDurationMs / visualPrompts.length);
+  const overlayCaptions = architecture ? fillCaptions(brief, source, visualPrompts.length) : [];
+  const headline = architecture ? overlayHeadline(brief) : undefined;
   return visualPrompts.map((visual_prompt, order) => {
     const count = base + (remainder-- > 0 ? 1 : 0);
     const isLast = order === visualPrompts.length - 1;
-    const caption = isLast && source.callToAction?.trim()
-      ? source.callToAction.trim().slice(0, 180)
-      : architecture
-        ? (fragments[order] ? subjectCaption(fragments[order]) : (order === 0
-            ? subjectCaption(narrative)
-            : ARCHITECTURE_CAPTIONS[architecture.structure][architectureSceneIndexes[order] ?? 0] ?? "The story continues."))
+    const caption = architecture
+      ? overlayCaptions[order] ?? ""
+      : isLast && source.callToAction?.trim()
+        ? (tailoredCallToAction(source.callToAction, brief) ?? source.callToAction.trim().slice(0, 180))
         : words.slice(cursor, cursor + count).join(" ").slice(0, 180);
     cursor += count;
+    const titled = Boolean(headline && order === 0);
     return {
       id: makeId(),
       order,
@@ -187,7 +257,8 @@ export function buildStoryboardDraft(
       focal_y: 0.5,
       motion: "zoom",
       audio_level: 1,
-      ducking: false
+      ducking: false,
+      ...(titled ? { overlay_look: "title" as const, overlay_place: "center" as const } : {})
     };
   });
 }
