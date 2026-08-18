@@ -34,6 +34,7 @@ import {
 import type { InspectionJob, PreviewJob, QueueHandlers } from "./queue.js";
 import { processFalImageJob } from "./fal-image.js";
 import { processFalVideoJob } from "./fal-video.js";
+import { processFalSpeechJob } from "./fal-speech.js";
 
 interface ObjectIdentity {
   etag: string;
@@ -57,7 +58,7 @@ export interface WorkerObjectStore {
     contentType: string,
     contentLength: number,
     signal?: AbortSignal
-  ): Promise<void>;
+  ): Promise<{ etag: string; versionId?: string }>;
   /** Short-lived HTTPS GET for sealed objects; used only for outbound FAL submit. */
   signedGet(objectKey: string, expiresInSeconds?: number): Promise<string>;
 }
@@ -248,14 +249,26 @@ export class S3WorkerObjectStore implements WorkerObjectStore {
     contentType: string,
     contentLength: number,
     signal?: AbortSignal
-  ): Promise<void> {
-    await this.client.send(new PutObjectCommand({
+  ): Promise<{ etag: string; versionId?: string }> {
+    const uploaded = await this.client.send(new PutObjectCommand({
       Bucket: this.bucket,
       Key: objectKey,
       Body: body,
       ContentType: contentType,
       ContentLength: contentLength
     }), { abortSignal: signal });
+    let etag = uploaded.ETag;
+    let versionId = uploaded.VersionId;
+    if (!etag) {
+      const head = await this.client.send(new HeadObjectCommand({
+        Bucket: this.bucket,
+        Key: objectKey
+      }), { abortSignal: signal });
+      etag = head.ETag;
+      versionId = head.VersionId;
+    }
+    if (!etag) throw new Error("object identity missing");
+    return { etag, ...(versionId ? { versionId } : {}) };
   }
 
 }
@@ -541,6 +554,9 @@ export function createQueueHandlers(
     },
     async generateFalVideo(job, signal) {
       return processFalVideoJob(pool, store, job, signal, env);
+    },
+    async generateFalSpeech(job, signal) {
+      return processFalSpeechJob(pool, store, job, signal, env);
     },
     async render(job: PreviewJob, signal: AbortSignal) {
       let stored: Awaited<ReturnType<typeof storedRender>>;

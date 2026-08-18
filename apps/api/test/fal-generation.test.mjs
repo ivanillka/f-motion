@@ -49,6 +49,7 @@ function baseJob(overrides = {}) {
 
 function generationFakePool(initialJobs) {
   const jobs = new Map(initialJobs.map((job) => [job.id, structuredClone(job)]));
+  const outbox = [];
 
   function isActive(job) {
     return ACTIVE_STATES.includes(job.state)
@@ -93,13 +94,17 @@ function generationFakePool(initialJobs) {
       job.state = "queued";
       return { rowCount: 1 };
     }
-    if (sql.includes("INSERT INTO \"WorkOutbox\"")) return { rowCount: 1 };
+    if (sql.includes("INSERT INTO \"WorkOutbox\"")) {
+      outbox.push(params);
+      return { rowCount: 1 };
+    }
     if (sql.includes("FROM \"MediaAsset\"")) return { rows: [], rowCount: 0 };
     throw new Error(`unexpected sql: ${sql.slice(0, 140)}`);
   }
 
   return {
     jobs,
+    outbox,
     async query(sql, params = []) { return query(sql, params); },
     async connect() {
       return { async query(sql, params = []) { return query(sql, params); }, release() {} };
@@ -207,6 +212,12 @@ test("FAL generation routes stay unavailable when the service is disabled", asyn
     });
     assert.equal(response.status, 503);
     assert.equal((await response.json()).type, "provider_unavailable");
+    const speech = await fetch(`${origin}/api/projects/p1/fal/speech-quotes`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "hello" })
+    });
+    assert.equal(speech.status, 503);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
@@ -265,6 +276,142 @@ test("FAL video quote route is body-exact and owner-scoped", async () => {
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
+});
+
+test("FAL speech quote route is body-exact and owner-scoped", async () => {
+  const service = {
+    async quoteImage() { throw new Error("unused"); },
+    async quoteVideo() { throw new Error("unused"); },
+    async quoteSpeech(ownerId, projectId, prompt) {
+      assert.equal(ownerId, "authenticated-user");
+      assert.equal(projectId, "p1");
+      assert.equal(prompt, "Hello from the storyboard.");
+      return {
+        id: "sjob",
+        project_id: projectId,
+        scene_id: "scene-1",
+        kind: "speech",
+        endpoint_id: "fal-ai/kokoro/american-english",
+        state: "quoted",
+        cancel_requested: false,
+        prompt,
+        quote: {
+          endpoint_id: "fal-ai/kokoro/american-english",
+          unit_price: 0.02,
+          unit: "request",
+          currency: "USD",
+          estimated_total: 0.02
+        },
+        quote_expires_at: new Date(Date.now() + 60_000).toISOString()
+      };
+    },
+    async confirm() { throw new Error("unused"); },
+    async get() { return undefined; },
+    async cancel() { throw new Error("unused"); }
+  };
+  const server = createServer(createTestApp({ falGeneration: service }));
+  const origin = await listen(server);
+  try {
+    const ok = await fetch(`${origin}/api/projects/p1/fal/speech-quotes`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "Hello from the storyboard." })
+    });
+    assert.equal(ok.status, 201);
+    assert.equal((await ok.json()).kind, "speech");
+    const bad = await fetch(`${origin}/api/projects/p1/fal/speech-quotes`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "x", voice: "nope" })
+    });
+    assert.equal(bad.status, 422);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("quoteSpeech persists Kokoro and confirm enqueues generate-fal-speech", async () => {
+  const jobs = new Map();
+  async function query(sql, params = []) {
+    if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [], rowCount: 0 };
+    if (sql.includes("COUNT(*)") && sql.includes("FROM \"GenerationJob\"")) {
+      return { rows: [{ count: 0 }], rowCount: 1 };
+    }
+    if (sql.includes("FROM \"Project\"")) {
+      return { rows: [{ id: params[0] }], rowCount: 1 };
+    }
+    if (sql.includes("FROM \"Scene\"") && sql.includes("ORDER BY")) {
+      return { rows: [{ id: "scene-1" }], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO \"GenerationJob\"") && sql.includes("'speech'")) {
+      const job = {
+        id: params[0],
+        ownerId: params[1],
+        projectId: params[2],
+        sceneId: params[3],
+        kind: "speech",
+        endpointId: params[5],
+        prompt: params[6],
+        inputJson: JSON.parse(params[7]),
+        quoteJson: JSON.parse(params[8]),
+        quoteExpiresAt: params[9],
+        state: "quoted",
+        cancelRequested: false,
+        failureCode: null,
+        resultMediaId: null,
+        sourceMediaId: null,
+        providerRequestId: null,
+        idempotencyKey: params[10]
+      };
+      jobs.set(job.id, job);
+      return { rowCount: 1 };
+    }
+    if (sql.includes("FROM \"GenerationJob\"") && sql.includes("WHERE id = $1 AND \"ownerId\" = $2")) {
+      const job = jobs.get(params[0]);
+      if (!job || job.ownerId !== params[1]) return { rows: [], rowCount: 0 };
+      return { rows: [structuredClone(job)], rowCount: 1 };
+    }
+    if (sql.includes("FROM \"MediaAsset\"")) return { rows: [], rowCount: 0 };
+    throw new Error(`unexpected sql: ${sql.slice(0, 140)}`);
+  }
+  const pool = {
+    jobs,
+    async query(sql, params = []) { return query(sql, params); },
+    async connect() {
+      return { async query(sql, params = []) { return query(sql, params); }, release() {} };
+    }
+  };
+  const fetchImpl = async (url) => {
+    assert.match(String(url), /kokoro%2Famerican-english/);
+    return new Response(JSON.stringify({
+      prices: [{
+        endpoint_id: "fal-ai/kokoro/american-english",
+        unit_price: 0.02,
+        unit: "request",
+        currency: "USD"
+      }]
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const quoted = await new PostgresFalGenerationService(pool, stubCredentials, fetchImpl)
+    .quoteSpeech("owner", "project", "Hello from the storyboard.");
+  assert.equal(quoted.kind, "speech");
+  assert.equal(quoted.endpoint_id, "fal-ai/kokoro/american-english");
+  assert.equal(quoted.quote.estimated_total, 0.02);
+  assert.equal(quoted.scene_id, "scene-1");
+
+  const confirmPool = generationFakePool([baseJob({
+    state: "quoted",
+    kind: "speech",
+    endpointId: "fal-ai/kokoro/american-english",
+    prompt: "Hello from the storyboard."
+  })]);
+  const confirmed = await new PostgresFalGenerationService(confirmPool, stubCredentials).confirm(
+    "owner",
+    "job-1",
+    "11111111-1111-4111-8111-111111111111"
+  );
+  assert.equal(confirmed.state, "queued");
+  assert.equal(confirmPool.outbox[0][1], "generate-fal-speech");
 });
 
 test("confirm after disconnect fails closed as fal_not_connected", async () => {

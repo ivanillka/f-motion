@@ -18,7 +18,7 @@ const connectionString = process.env.QUEUE_DATABASE_URL?.trim() || required("DAT
 const mediaLimits = mediaLimitsFromEnv(process.env);
 const outboxRetentionHours = outboxRetentionHoursFromEnv(process.env);
 if (falByokEnabled(process.env)) {
-  // Worker decrypts owner FAL credentials for generate-fal-image. Same KEK as API.
+  // Worker decrypts owner FAL credentials for generate-fal-image / video / speech. Same KEK as API.
   credentialVaultFromEnv(process.env);
 }
 const pool = new pg.Pool({ connectionString });

@@ -104,7 +104,15 @@ import {
   falImageInput,
   imageResult,
   imageStatus,
-  submitImage
+  submitImage,
+  FAL_SPEECH_ENDPOINT_ID,
+  FAL_SPEECH_VOICE,
+  estimateSpeech,
+  falSpeechInput,
+  submitSpeech,
+  speechStatus,
+  speechResult,
+  cancelSpeech
 } from "../dist/index.js";
 
 test("estimateImage maps pricing units without inventing totals for megapixel billing", async () => {
@@ -193,4 +201,49 @@ test("video result host allowlist accepts falserverless GCS and rejects others",
     status: 200, headers: { "content-type": "application/json" }
   })), { status: "COMPLETED" });
   await cancelVideo("k", "req", async () => new Response(null, { status: 202 }));
+});
+
+test("estimateSpeech and submitSpeech pin Kokoro without inventing totals", async () => {
+  const quote = await estimateSpeech("synthetic:key", 40, async () => new Response(JSON.stringify({
+    prices: [{ endpoint_id: FAL_SPEECH_ENDPOINT_ID, unit_price: 0.02, unit: "request", currency: "USD" }]
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  assert.equal(quote.estimated_total, 0.02);
+  const per1k = await estimateSpeech("synthetic:key", 1500, async () => new Response(JSON.stringify({
+    prices: [{ endpoint_id: FAL_SPEECH_ENDPOINT_ID, unit_price: 0.01, unit: "1k characters", currency: "USD" }]
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  assert.equal(per1k.estimated_total, 0.02);
+  const unclear = await estimateSpeech("synthetic:key", 40, async () => new Response(JSON.stringify({
+    prices: [{ endpoint_id: FAL_SPEECH_ENDPOINT_ID, unit_price: 0.01, unit: "compute second", currency: "USD" }]
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  assert.equal(unclear.estimated_total, null);
+  let seen;
+  const submitted = await submitSpeech("k", { prompt: "  Hello from the storyboard.  " }, async (url, init) => {
+    seen = { url, init };
+    return new Response(JSON.stringify({ request_id: "s1" }), {
+      status: 200, headers: { "content-type": "application/json" }
+    });
+  });
+  assert.equal(submitted.request_id, "s1");
+  assert.equal(seen.url, `https://queue.fal.run/${FAL_SPEECH_ENDPOINT_ID}`);
+  assert.deepEqual(JSON.parse(seen.init.body), falSpeechInput("Hello from the storyboard."));
+  assert.equal(JSON.parse(seen.init.body).voice, FAL_SPEECH_VOICE);
+  assert.throws(() => falSpeechInput(""), (error) => error instanceof FalImageError && error.code === "invalid_request");
+  assert.throws(() => falSpeechInput("x".repeat(2001)), (error) => error instanceof FalImageError && error.code === "invalid_request");
+});
+
+test("speech result reads audio.url from fal.media and rejects other hosts", async () => {
+  const result = await speechResult("k", "req", async () => new Response(JSON.stringify({
+    audio: { url: "https://v3.fal.media/files/voice.wav" }
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  assert.equal(result.url, "https://v3.fal.media/files/voice.wav");
+  await assert.rejects(
+    speechResult("k", "req", async () => new Response(JSON.stringify({
+      audio: { url: "https://evil.example/voice.wav" }
+    }), { status: 200, headers: { "content-type": "application/json" } })),
+    (error) => error instanceof FalImageError && error.code === "unsafe_output"
+  );
+  assert.deepEqual(await speechStatus("k", "req", async () => new Response(JSON.stringify({ status: "COMPLETED" }), {
+    status: 200, headers: { "content-type": "application/json" }
+  })), { status: "COMPLETED" });
+  await cancelSpeech("k", "req", async () => new Response(null, { status: 202 }));
 });

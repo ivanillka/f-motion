@@ -2,12 +2,15 @@ import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import {
   FAL_IMAGE_ENDPOINT_ID,
+  FAL_SPEECH_ENDPOINT_ID,
   FAL_VIDEO_DURATION,
   FAL_VIDEO_ENDPOINT_ID,
   FalImageError,
   estimateImage,
+  estimateSpeech,
   estimateVideo,
   falImageInput,
+  falSpeechInput,
   type FalImageQuote
 } from "@f-engine/fal-host";
 import { sceneMediaView, type SceneMediaView, type StoredMedia } from "./media-storage.js";
@@ -32,7 +35,7 @@ export type GenerationJobState =
   | "failed"
   | "submission_uncertain";
 
-export type GenerationKind = "image" | "image_to_video";
+export type GenerationKind = "image" | "image_to_video" | "speech";
 
 export interface GenerationJobView {
   id: string;
@@ -59,6 +62,7 @@ export interface FalGenerationService {
     sourceMediaId: unknown,
     motionPrompt: unknown
   ): Promise<GenerationJobView>;
+  quoteSpeech(ownerId: string, projectId: string, prompt: unknown): Promise<GenerationJobView>;
   confirm(ownerId: string, jobId: string, idempotencyKey: unknown): Promise<GenerationJobView>;
   get(ownerId: string, jobId: string): Promise<GenerationJobView | undefined>;
   cancel(ownerId: string, jobId: string): Promise<GenerationJobView>;
@@ -108,10 +112,10 @@ function asDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
-function normalizePrompt(value: unknown): string {
+function normalizePrompt(value: unknown, maxLength = 500): string {
   if (typeof value !== "string") throw new FalGenerationValidationError("invalid prompt");
   const prompt = value.trim();
-  if (!prompt || prompt.length > 500) throw new FalGenerationValidationError("invalid prompt");
+  if (!prompt || prompt.length > maxLength) throw new FalGenerationValidationError("invalid prompt");
   return prompt;
 }
 
@@ -190,6 +194,20 @@ async function assertOwnedScene(pool: Pool, ownerId: string, projectId: string, 
     [sceneId, projectId]
   );
   if (!scene.rowCount) throw new FalGenerationNotFoundError("scene not found");
+}
+
+async function firstOwnedSceneId(pool: Pool, ownerId: string, projectId: string): Promise<string> {
+  const project = await pool.query(
+    `SELECT id FROM "Project" WHERE id = $1 AND "ownerId" = $2`,
+    [projectId, ownerId]
+  );
+  if (!project.rowCount) throw new FalGenerationNotFoundError("project not found");
+  const scene = await pool.query<{ id: string }>(
+    `SELECT id FROM "Scene" WHERE "projectId" = $1 ORDER BY position ASC LIMIT 1`,
+    [projectId]
+  );
+  if (!scene.rows[0]) throw new FalGenerationNotFoundError("scene not found");
+  return scene.rows[0].id;
 }
 
 export class PostgresFalGenerationService implements FalGenerationService {
@@ -362,6 +380,44 @@ export class PostgresFalGenerationService implements FalGenerationService {
     return this.viewFromRow(row);
   }
 
+  async quoteSpeech(ownerId: string, projectId: string, promptValue: unknown): Promise<GenerationJobView> {
+    const prompt = normalizePrompt(promptValue, 2000);
+    const sceneId = await firstOwnedSceneId(this.pool, ownerId, projectId);
+    if (await activeJobCount(this.pool, ownerId) > 0) {
+      throw new FalGenerationBusyError("active FAL generation");
+    }
+    let credential: { id: string; apiKey: string };
+    try {
+      credential = await this.credentials.decryptForOwner(ownerId);
+    } catch (error) {
+      if (error instanceof FalCredentialMissingError) throw error;
+      throw error;
+    }
+    let quote: FalImageQuote;
+    try {
+      quote = await estimateSpeech(credential.apiKey, prompt.length, this.fetchImpl);
+    } catch (error) {
+      if (error instanceof FalImageError) throw error;
+      throw error;
+    }
+    const id = randomUUID();
+    const inputJson = falSpeechInput(prompt);
+    const quoteExpiresAt = new Date(Date.now() + QUOTE_TTL_MS);
+    await this.pool.query(
+      `INSERT INTO "GenerationJob"
+         (id, "ownerId", "projectId", "sceneId", "credentialId", kind, "endpointId", prompt,
+          "inputJson", "quoteJson", "quoteExpiresAt", state, "idempotencyKey", "updatedAt")
+       VALUES ($1,$2,$3,$4,$5,'speech',$6,$7,$8,$9,$10,'quoted',$11,NOW())`,
+      [
+        id, ownerId, projectId, sceneId, credential.id, FAL_SPEECH_ENDPOINT_ID, prompt,
+        JSON.stringify(inputJson), JSON.stringify(quote), quoteExpiresAt, randomUUID()
+      ]
+    );
+    const row = await this.load(ownerId, id);
+    if (!row) throw new Error("generation job missing after insert");
+    return this.viewFromRow(row);
+  }
+
   async confirm(ownerId: string, jobId: string, idempotencyKeyValue: unknown): Promise<GenerationJobView> {
     const idempotencyKey = normalizeIdempotencyKey(idempotencyKeyValue);
     const client = await this.pool.connect();
@@ -395,7 +451,9 @@ export class PostgresFalGenerationService implements FalGenerationService {
         if (error instanceof FalCredentialMissingError) throw error;
         throw error;
       }
-      const outboxKind = row.kind === "image_to_video" ? "generate-fal-video" : "generate-fal-image";
+      const outboxKind = row.kind === "image_to_video" ? "generate-fal-video"
+        : row.kind === "speech" ? "generate-fal-speech"
+          : "generate-fal-image";
       if (row.kind === "image_to_video") {
         const snapshot = asVideoSnapshot(row.inputJson);
         if (!snapshot || !row.sourceMediaId) {

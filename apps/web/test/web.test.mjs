@@ -59,9 +59,15 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /update_voiceover/);
   assert.match(source, /Record voice-over/);
   assert.match(source, /Upload voice-over/);
+  assert.match(source, /Generate with FAL/);
+  assert.match(source, /Generate voice-over/);
+  assert.match(source, /Use as voice-over/);
   assert.match(source, /spoken subtitles/);
   assert.match(source, /Music ducks under the voice/);
-  assert.doesNotMatch(source, /ElevenLabs|elevenlabs|text-to-speech|TTS/);
+  assert.match(source, /Kokoro American English/);
+  assert.match(source, /openFalSpeech\(/);
+  assert.match(source, /useFalSpeechMedia\(/);
+  assert.doesNotMatch(source, /ElevenLabs|elevenlabs/);
   assert.doesNotMatch(source, /<audio controls/);
   assert.match(source, /htmlFor=\{`caption-\$\{activeScene.id\}`\}/);
   assert.match(source, /Scene \$\{activeSceneNumber\} caption/);

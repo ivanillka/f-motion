@@ -227,6 +227,7 @@ model WorkOutbox {
 enum GenerationKind {
   image
   image_to_video
+  speech
 }
 
 enum GenerationState {

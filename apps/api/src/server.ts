@@ -536,6 +536,24 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       next(error);
     }
   });
+  app.post("/api/projects/:projectId/fal/speech-quotes", async (request, response, next) => {
+    try {
+      if (!options.falGeneration) return falGenUnavailable(response);
+      if (!exactObject(request.body, ["prompt"])) {
+        return response.status(422).json({ type: "validation", message: "invalid prompt" });
+      }
+      const job = await options.falGeneration.quoteSpeech(
+        String(response.locals.ownerId),
+        request.params.projectId,
+        (request.body as { prompt?: unknown }).prompt
+      );
+      response.status(201).json(job);
+    } catch (error) {
+      const mapped = falGenerationHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
   app.post("/api/projects/:projectId/scenes/:sceneId/fal/video-quotes", async (request, response, next) => {
     try {
       if (!options.falGeneration) return falGenUnavailable(response);

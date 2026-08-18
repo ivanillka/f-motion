@@ -127,7 +127,7 @@ interface GenerationJobView {
   id: string;
   project_id: string;
   scene_id: string;
-  kind: "image" | "image_to_video";
+  kind: "image" | "image_to_video" | "speech";
   endpoint_id: string;
   state: string;
   cancel_requested: boolean;
@@ -227,6 +227,10 @@ function App() {
   const [falVideoPrompt, setFalVideoPrompt] = useState("");
   const [falVideoJob, setFalVideoJob] = useState<GenerationJobView>();
   const [falVideoBusy, setFalVideoBusy] = useState(false);
+  const [falSpeechOpen, setFalSpeechOpen] = useState(false);
+  const [falSpeechPrompt, setFalSpeechPrompt] = useState("");
+  const [falSpeechJob, setFalSpeechJob] = useState<GenerationJobView>();
+  const [falSpeechBusy, setFalSpeechBusy] = useState(false);
   const [pexelsCredential, setPexelsCredential] = useState<PexelsCredentialView>();
   const [pexelsUnavailable, setPexelsUnavailable] = useState(false);
   const [pexelsKey, setPexelsKey] = useState("");
@@ -1424,7 +1428,9 @@ function App() {
       case "unsafe_output":
         return "FAL blocked this output. Try a different prompt.";
       default:
-        return "FAL generation failed. Your scene media was not changed.";
+        return job.kind === "speech"
+          ? "FAL voice-over failed. Your current voice-over was not changed."
+          : "FAL generation failed. Your scene media was not changed.";
     }
   }
 
@@ -1746,6 +1752,176 @@ function App() {
       setStatus("Generated video could not be attached.");
     } finally {
       setFalVideoBusy(false);
+      setBusy(false);
+    }
+  }
+
+  function falSpeechStorageKey(projectId: string) {
+    return `fengine-fal-speech:${projectId}`;
+  }
+
+  function defaultVoicePrompt(snapshot: ProjectSnapshot): string {
+    return snapshot.scenes.map((scene) => scene.caption.trim()).filter(Boolean).join("\n").slice(0, 2000);
+  }
+
+  function openFalSpeech() {
+    if (!project) return;
+    if (!falCredential?.connected || falUnavailable) {
+      showFalLock();
+      return;
+    }
+    setFalSpeechPrompt(defaultVoicePrompt(project));
+    setFalSpeechJob(undefined);
+    setFalSpeechOpen(true);
+    setVoiceOpen(true);
+    const stored = localStorage.getItem(falSpeechStorageKey(project.id));
+    if (!stored) return;
+    void (async () => {
+      try {
+        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${stored}`);
+        if (job.kind !== "speech") {
+          localStorage.removeItem(falSpeechStorageKey(project.id));
+          return;
+        }
+        setFalSpeechJob(job);
+        setFalSpeechPrompt(job.prompt);
+        if (!["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(job.state)) {
+          void pollFalSpeech(job.id);
+        }
+      } catch {
+        localStorage.removeItem(falSpeechStorageKey(project.id));
+      }
+    })();
+  }
+
+  async function quoteFalSpeech() {
+    if (!project) return;
+    const prompt = falSpeechPrompt.trim();
+    if (!prompt || prompt.length > 2000) {
+      setStatus("Enter a voice-over script between 1 and 2000 characters.");
+      return;
+    }
+    setFalSpeechBusy(true);
+    setStatus("Requesting FAL price…");
+    try {
+      const job = await api.request<GenerationJobView>(
+        `/api/projects/${project.id}/fal/speech-quotes`,
+        { method: "POST", body: JSON.stringify({ prompt }) }
+      );
+      setFalSpeechJob(job);
+      localStorage.setItem(falSpeechStorageKey(project.id), job.id);
+      setStatus("Review the FAL price, then confirm to generate voice-over.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "fal_not_connected"
+        ? "Connect your FAL API key in Settings first."
+        : type === "fal_generation_busy"
+          ? "Only one active FAL generation is allowed. Wait or cancel it."
+          : type === "invalid_provider_credential"
+            ? "FAL rejected the saved key. Replace it in Settings."
+            : "FAL could not price this voice-over. Try again later.");
+    } finally {
+      setFalSpeechBusy(false);
+    }
+  }
+
+  async function confirmFalSpeech() {
+    if (!project || !falSpeechJob || falSpeechJob.state !== "quoted") return;
+    if (falSpeechJob.quote.estimated_total === null) return;
+    setFalSpeechBusy(true);
+    setStatus("Confirming FAL voice-over…");
+    try {
+      const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falSpeechJob.id}/confirm`, {
+        method: "POST",
+        body: JSON.stringify({ idempotency_key: crypto.randomUUID() })
+      });
+      setFalSpeechJob(job);
+      localStorage.setItem(falSpeechStorageKey(project.id), job.id);
+      setStatus("FAL voice-over queued.");
+      void pollFalSpeech(job.id);
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "quote_expired"
+        ? "This quote expired. Request a new price."
+        : type === "quote_incomplete"
+          ? "FAL could not calculate a total for this model."
+          : "FAL voice-over could not be confirmed.");
+    } finally {
+      setFalSpeechBusy(false);
+    }
+  }
+
+  async function pollFalSpeech(jobId: string) {
+    const deadline = Date.now() + 12 * 60_000;
+    while (Date.now() < deadline) {
+      try {
+        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
+        if (job.state === "ready" && job.result_media && project) {
+          try {
+            const media = await api.request<SceneMediaView>(
+              `/api/projects/${project.id}/media/${job.result_media.id}`
+            );
+            setFalSpeechJob({ ...job, result_media: media });
+          } catch {
+            setFalSpeechJob(job);
+          }
+        } else {
+          setFalSpeechJob(job);
+        }
+        if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
+          if (job.state === "ready") setStatus("AI voice-over ready — review it before attaching.");
+          else if (job.state === "cancelled") setStatus("FAL voice-over cancelled.");
+          else setStatus(falGenFailureMessage(job));
+          return;
+        }
+        setStatus(`FAL voice-over · ${job.state.replaceAll("_", " ")}`);
+      } catch {
+        setStatus("Could not refresh FAL voice-over status.");
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    setStatus("FAL voice-over is still running. Reopen Generate with FAL to check again.");
+  }
+
+  async function cancelFalSpeech() {
+    if (!falSpeechJob) return;
+    setFalSpeechBusy(true);
+    try {
+      const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falSpeechJob.id}/cancel`, { method: "POST" });
+      setFalSpeechJob(job);
+      setStatus(job.state === "cancelled"
+        ? "FAL voice-over cancelled."
+        : "Cancel requested. FAL may still bill work that already started.");
+    } catch {
+      setStatus("FAL voice-over could not be cancelled.");
+    } finally {
+      setFalSpeechBusy(false);
+    }
+  }
+
+  async function useFalSpeechMedia() {
+    if (!project || !falSpeechJob?.result_media || falSpeechJob.result_media.state !== "ready") return;
+    setFalSpeechBusy(true);
+    setBusy(true);
+    try {
+      const media = await api.request<SceneMediaView>(
+        `/api/projects/${project.id}/media/${falSpeechJob.result_media.id}`
+      );
+      setSceneMedia((current) => ({ ...current, [media.id]: media }));
+      const saved = await saveVoiceover({
+        media_id: media.id,
+        offset_ms: project.brief.voiceover?.offset_ms ?? 0,
+        level: project.brief.voiceover?.level ?? 1
+      });
+      if (!saved) return;
+      localStorage.removeItem(falSpeechStorageKey(project.id));
+      setFalSpeechOpen(false);
+      setStatus("Voice-over uses AI-generated FAL audio.");
+    } catch {
+      setStatus("Generated voice-over could not be attached.");
+    } finally {
+      setFalSpeechBusy(false);
       setBusy(false);
     }
   }
@@ -2404,7 +2580,7 @@ function App() {
             onToggle={(event) => setVoiceOpen(event.currentTarget.open)}
           >
             <summary>{recording ? "Recording voice-over" : voiceover ? "Voice-over" : "Add voice-over"}</summary>
-            <p className="crop-hint">Record or upload narration. Captions time as spoken subtitles on Play and Export. Music ducks under the voice.</p>
+            <p className="crop-hint">Record, upload, or generate with FAL. Captions time as spoken subtitles on Play and Export. Music ducks under the voice.</p>
             <div className="scene-actions">
               <button
                 type="button"
@@ -2415,6 +2591,7 @@ function App() {
               >{recording ? "Stop recording" : "Record voice-over"}</button>
               {recording ? <button className="secondary" type="button" onClick={() => cancelVoiceRecord()}>Discard</button> : null}
               <button className="secondary" type="button" disabled={busy || recording} onClick={() => voiceUpload.current?.click()}>Upload voice-over</button>
+              <button className="secondary" type="button" disabled={busy || recording} onClick={() => openFalSpeech()}>Generate with FAL</button>
             </div>
             <input ref={voiceUpload} hidden type="file" accept="audio/mpeg,audio/wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a" onChange={(event) => {
               const file = event.target.files?.[0];
@@ -2757,6 +2934,59 @@ function App() {
             </>
           )}
           <button className="secondary" disabled={falVideoBusy} onClick={() => setFalVideoOpen(false)}>Close</button>
+        </div>
+      </dialog>}
+      {falSpeechOpen && project && <dialog open aria-labelledby="fal-speech-title">
+        <h2 id="fal-speech-title">Generate voice-over</h2>
+        <p>Uses Kokoro American English on FAL. Charged directly to your FAL account. F-Motion copies the result into private storage.</p>
+        <label htmlFor="fal-speech-prompt">Voice-over script
+          <textarea id="fal-speech-prompt" maxLength={2000} value={falSpeechPrompt} disabled={falSpeechBusy || (falSpeechJob && !["quoted", "failed", "cancelled", "submission_uncertain", "ready"].includes(falSpeechJob.state))} onChange={(event) => setFalSpeechPrompt(event.target.value)} />
+        </label>
+        {falSpeechJob && <div className="notice">
+          <p>Model · Kokoro American English</p>
+          <p>{falSpeechJob.quote.currency} {falSpeechJob.quote.unit_price} per {falSpeechJob.quote.unit}
+            {falSpeechJob.quote.estimated_total !== null
+              ? ` · estimated total ${falSpeechJob.quote.currency} ${falSpeechJob.quote.estimated_total}`
+              : ` · ${falSpeechJob.quote.estimated_total_explanation ?? "FAL could not calculate a total"}`}</p>
+          <p>Status · {falSpeechJob.state.replaceAll("_", " ")}</p>
+        </div>}
+        {falSpeechJob?.state === "ready" && falSpeechJob.result_media && (
+          <div>
+            {falSpeechJob.result_media.previewUrl
+              ? <button type="button" onClick={() => {
+                const url = falSpeechJob.result_media?.previewUrl;
+                if (!url) return;
+                const audio = new Audio(url);
+                void audio.play();
+              }}>Play generated voice-over</button>
+              : <p>Generated voice-over is ready for review.</p>}
+            <p>AI-generated with FAL</p>
+          </div>
+        )}
+        <div className="dialog-actions">
+          {(!falSpeechJob || ["failed", "cancelled", "submission_uncertain", "ready"].includes(falSpeechJob.state)) && (
+            <button disabled={falSpeechBusy || !falSpeechPrompt.trim()} onClick={() => void quoteFalSpeech()}>Get FAL price</button>
+          )}
+          {falSpeechJob?.state === "quoted" && (
+            <button disabled={falSpeechBusy || falSpeechJob.quote.estimated_total === null} onClick={() => void confirmFalSpeech()}>Generate voice-over</button>
+          )}
+          {falSpeechJob && !["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(falSpeechJob.state) && (
+            <button className="secondary" disabled={falSpeechBusy} onClick={() => void cancelFalSpeech()}>Cancel generation</button>
+          )}
+          {falSpeechJob?.state === "ready" && falSpeechJob.result_media?.state === "ready" && (
+            <>
+              <button disabled={falSpeechBusy || busy} onClick={() => void useFalSpeechMedia()}>Use as voice-over</button>
+              <button className="secondary" disabled={falSpeechBusy} onClick={() => {
+                setFalSpeechJob(undefined);
+                setStatus("Current voice-over kept.");
+              }}>Keep current audio</button>
+              <button className="secondary" disabled={falSpeechBusy} onClick={() => {
+                setFalSpeechJob(undefined);
+                setStatus("Request a new FAL price to generate another voice-over.");
+              }}>Generate another</button>
+            </>
+          )}
+          <button className="secondary" disabled={falSpeechBusy} onClick={() => setFalSpeechOpen(false)}>Close</button>
         </div>
       </dialog>}
       {conflict && <dialog open><h2>Newer changes exist</h2>

@@ -483,6 +483,199 @@ export async function cancelVideo(
   }
 }
 
+/** Contract checked 2026-08-18 against fal.ai Kokoro American English docs. */
+export const FAL_SPEECH_ENDPOINT_ID = "fal-ai/kokoro/american-english";
+export const FAL_SPEECH_VOICE = "af_heart";
+export const FAL_SPEECH_MAX_PROMPT = 2000;
+export const FAL_SPEECH_MAX_BYTES = 25_000_000;
+const falSpeechPricingUrl =
+  "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai%2Fkokoro%2Famerican-english";
+const falSpeechQueueBase = `https://queue.fal.run/${FAL_SPEECH_ENDPOINT_ID}`;
+
+export type FalSpeechQuote = FalImageQuote;
+export type FalSpeechSubmitResult = FalImageSubmitResult;
+export type FalSpeechStatus = FalImageStatus;
+export type FalSpeechResult = FalImageResult;
+
+function normalizeSpeechPrompt(prompt: unknown): string {
+  if (typeof prompt !== "string") throw new FalImageError("invalid_request");
+  const trimmed = prompt.trim();
+  if (!trimmed || trimmed.length > FAL_SPEECH_MAX_PROMPT) throw new FalImageError("invalid_request");
+  return trimmed;
+}
+
+function pickSpeechPrice(body: unknown, promptLength: number): FalSpeechQuote {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new FalImageError("provider_unavailable");
+  }
+  const prices = (body as { prices?: unknown }).prices;
+  if (!Array.isArray(prices)) throw new FalImageError("provider_unavailable");
+  const match = prices.find((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+    const price = item as Record<string, unknown>;
+    return price.endpoint_id === FAL_SPEECH_ENDPOINT_ID
+      && typeof price.unit_price === "number"
+      && Number.isFinite(price.unit_price)
+      && price.unit_price >= 0
+      && typeof price.unit === "string"
+      && typeof price.currency === "string";
+  }) as { endpoint_id: string; unit_price: number; unit: string; currency: string } | undefined;
+  if (!match) throw new FalImageError("provider_unavailable");
+  const unit = match.unit.toLowerCase();
+  const perRequest = unit === "request" || unit === "requests" || unit === "audio" || unit === "audios"
+    || unit === "clip" || unit === "clips";
+  const perThousandChars = (unit.includes("character") || unit.includes("char"))
+    && (/1\s*k/.test(unit) || unit.includes("1000") || unit.includes("1,000"));
+  const perChar = (unit === "character" || unit === "characters" || unit === "char" || unit === "chars")
+    && !perThousandChars;
+  let estimated_total: number | null = null;
+  if (perRequest) estimated_total = match.unit_price;
+  else if (perThousandChars) estimated_total = match.unit_price * Math.max(1, Math.ceil(promptLength / 1000));
+  else if (perChar) estimated_total = match.unit_price * promptLength;
+  return {
+    endpoint_id: match.endpoint_id,
+    unit_price: match.unit_price,
+    unit: match.unit,
+    currency: match.currency,
+    estimated_total,
+    ...(estimated_total === null ? {
+      estimated_total_explanation: `FAL bills this model per ${match.unit}; a fixed dollar total is not computed for this voice-over.`
+    } : {})
+  };
+}
+
+export async function estimateSpeech(
+  credential: string,
+  promptLength: number,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falHttpTimeoutMs,
+  signal?: AbortSignal
+): Promise<FalSpeechQuote> {
+  if (!Number.isInteger(promptLength) || promptLength <= 0 || promptLength > FAL_SPEECH_MAX_PROMPT) {
+    throw new FalImageError("invalid_request");
+  }
+  const { status, body } = await falJson(credential, falSpeechPricingUrl, { method: "GET" }, fetchImpl, timeoutMs, signal);
+  if (status === 401 || status === 403) throw new FalImageError("credential");
+  if (status < 200 || status >= 300) throw new FalImageError(classifyHttp(status));
+  return pickSpeechPrice(body, promptLength);
+}
+
+export function falSpeechInput(prompt: string): Record<string, unknown> {
+  return {
+    prompt: normalizeSpeechPrompt(prompt),
+    voice: FAL_SPEECH_VOICE,
+    speed: 1
+  };
+}
+
+export async function submitSpeech(
+  credential: string,
+  input: { prompt: string },
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falHttpTimeoutMs,
+  signal?: AbortSignal
+): Promise<FalSpeechSubmitResult> {
+  const payload = falSpeechInput(input.prompt);
+  const { status, body } = await falJson(credential, falSpeechQueueBase, {
+    method: "POST",
+    headers: {
+      "X-Fal-Store-IO": "0",
+      "X-Fal-Object-Lifecycle-Preference": JSON.stringify({ expiration_duration_seconds: 3600 })
+    },
+    body: JSON.stringify(payload)
+  }, fetchImpl, timeoutMs, signal);
+  if (status === 401 || status === 403) throw new FalImageError("credential");
+  if (status === 429) throw new FalImageError("rate_limited");
+  if (status < 200 || status >= 300) throw new FalImageError(classifyHttp(status));
+  const requestId = body && typeof body === "object" && !Array.isArray(body)
+    ? (body as { request_id?: unknown }).request_id
+    : undefined;
+  if (typeof requestId !== "string" || !requestId.trim()) throw new FalImageError("provider_unavailable");
+  return { request_id: requestId.trim() };
+}
+
+export async function speechStatus(
+  credential: string,
+  requestId: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falHttpTimeoutMs,
+  signal?: AbortSignal
+): Promise<FalSpeechStatus> {
+  if (!requestId.trim()) throw new FalImageError("invalid_request");
+  const { status, body } = await falJson(
+    credential,
+    `${falSpeechQueueBase}/requests/${encodeURIComponent(requestId)}/status`,
+    { method: "GET" },
+    fetchImpl,
+    timeoutMs,
+    signal
+  );
+  if (status === 401 || status === 403) throw new FalImageError("credential");
+  if (status < 200 || status >= 300) throw new FalImageError(classifyHttp(status));
+  const state = body && typeof body === "object" && !Array.isArray(body)
+    ? String((body as { status?: unknown }).status ?? "")
+    : "";
+  if (state === "IN_QUEUE" || state === "IN_PROGRESS") return { status: state };
+  if (state === "COMPLETED") return { status: "COMPLETED" };
+  if (state === "FAILED") return { status: "FAILED", failureCode: "unsafe_output" };
+  throw new FalImageError("provider_unavailable");
+}
+
+function firstFalAudioUrl(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.audio) return firstFalAudioUrl(record.audio);
+  if (typeof record.url === "string") return record.url;
+  return undefined;
+}
+
+export async function speechResult(
+  credential: string,
+  requestId: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falHttpTimeoutMs,
+  signal?: AbortSignal
+): Promise<FalSpeechResult> {
+  if (!requestId.trim()) throw new FalImageError("invalid_request");
+  const { status, body } = await falJson(
+    credential,
+    `${falSpeechQueueBase}/requests/${encodeURIComponent(requestId)}`,
+    { method: "GET" },
+    fetchImpl,
+    timeoutMs,
+    signal
+  );
+  if (status === 401 || status === 403) throw new FalImageError("credential");
+  if (status < 200 || status >= 300) throw new FalImageError(classifyHttp(status));
+  const url = firstFalAudioUrl(body);
+  if (!url) throw new FalImageError("unsafe_output");
+  assertFalMediaUrl(url);
+  return { url };
+}
+
+export async function cancelSpeech(
+  credential: string,
+  requestId: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falHttpTimeoutMs,
+  signal?: AbortSignal
+): Promise<void> {
+  if (!requestId.trim()) throw new FalImageError("invalid_request");
+  const { status } = await falJson(
+    credential,
+    `${falSpeechQueueBase}/requests/${encodeURIComponent(requestId)}/cancel`,
+    { method: "PUT" },
+    fetchImpl,
+    timeoutMs,
+    signal
+  );
+  if (status === 401 || status === 403) throw new FalImageError("credential");
+  if (status === 404) return;
+  if (!status.toString().startsWith("2") && status !== 409) {
+    throw new FalImageError(classifyHttp(status));
+  }
+}
+
 export interface CredentialVault {
   activeVersion: number;
   keys: ReadonlyMap<number, Uint8Array>;
