@@ -530,6 +530,43 @@ test("concat mixdown amixes an uploaded soundtrack under the cut", () => {
   assert.match(concat, /\/tmp\/bed.mp3/);
   assert.match(concat, /-stream_loop -1/);
 });
+test("concat mixdown amixes a voice-over without looping and ducks the bed", () => {
+  const withVo = {
+    ...snapshot,
+    brief: {
+      ...snapshot.brief,
+      soundtrack: { kind: "upload", media_id: "bed", bpm: 120, offset_ms: 0, level: 0.4 },
+      voiceover: { media_id: "vo", offset_ms: 250, level: 1 }
+    }
+  };
+  const job = buildRenderJob(withVo, "preview.mp4", {
+    bed: { path: "/tmp/bed.mp3", type: "audio/mpeg" },
+    vo: { path: "/tmp/vo.wav", type: "audio/wav" }
+  }, "/tmp/job");
+  const concat = job.concatArgs.join(" ");
+  assert.match(concat, /\/tmp\/vo\.wav/);
+  assert.match(concat, /volume=1\[vo\]/);
+  assert.match(concat, /volume=0\.088\[bed\]/);
+  assert.match(concat, /amix=inputs=3/);
+  assert.match(concat, /-ss 0\.250/);
+  assert.doesNotMatch(concat, /-stream_loop -1 -i \/tmp\/vo\.wav/);
+});
+test("concat mixdown amixes a voice-over without a music bed", () => {
+  const withVo = {
+    ...snapshot,
+    brief: {
+      ...snapshot.brief,
+      voiceover: { media_id: "vo", offset_ms: 0, level: 0.9 }
+    }
+  };
+  const job = buildRenderJob(withVo, "preview.mp4", {
+    vo: { path: "/tmp/vo.wav", type: "audio/wav" }
+  }, "/tmp/job");
+  const concat = job.concatArgs.join(" ");
+  assert.match(concat, /volume=0\.9\[vo\]/);
+  assert.match(concat, /amix=inputs=2/);
+  assert.doesNotMatch(concat, /-stream_loop/);
+});
 test("concat mixdown uses the licensed catalog file for a stock bed", () => {
   assert.match(stockBedPath("pulse") ?? "", /pulse\.mp3$/);
   const withBed = {

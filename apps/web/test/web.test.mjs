@@ -56,6 +56,12 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Mixkit/);
   assert.match(source, /Trendy/);
   assert.match(source, /update_soundtrack/);
+  assert.match(source, /update_voiceover/);
+  assert.match(source, /Record voice-over/);
+  assert.match(source, /Upload voice-over/);
+  assert.match(source, /spoken subtitles/);
+  assert.match(source, /Music ducks under the voice/);
+  assert.doesNotMatch(source, /ElevenLabs|elevenlabs|text-to-speech|TTS/);
   assert.doesNotMatch(source, /<audio controls/);
   assert.match(source, /htmlFor=\{`caption-\$\{activeScene.id\}`\}/);
   assert.match(source, /Scene \$\{activeSceneNumber\} caption/);

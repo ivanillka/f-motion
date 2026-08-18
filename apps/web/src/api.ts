@@ -1,7 +1,10 @@
 import {
   buildStoryboardDraft,
   conceptsFor,
+  cueAtElapsed,
+  cuesForScene,
   defaultVideoArchitecture,
+  VOICEOVER_DUCK,
   type Concept,
   type VideoArchitecture
 } from "@f-engine/reel-engine";
@@ -32,10 +35,16 @@ export interface Soundtrack {
   media_id?: string;
 }
 
+export interface Voiceover {
+  media_id: string;
+  offset_ms: number;
+  level: number;
+}
+
 export interface ProjectSnapshot {
   id: string;
   revision: number;
-  brief: { purpose: string; audience: string; tone: string; soundtrack?: Soundtrack };
+  brief: { purpose: string; audience: string; tone: string; soundtrack?: Soundtrack; voiceover?: Voiceover };
   selected_concept_id?: string;
   scenes: Scene[];
 }
@@ -75,7 +84,10 @@ export interface SceneMediaView {
 export {
   buildStoryboardDraft,
   conceptsFor,
+  cueAtElapsed,
+  cuesForScene,
   defaultVideoArchitecture,
+  VOICEOVER_DUCK,
   type Concept,
   type VideoArchitecture
 };
@@ -367,9 +379,11 @@ export async function loadSceneMediaViews(
   project: ProjectSnapshot
 ): Promise<Record<string, SceneMediaView>> {
   const soundtrackId = project.brief.soundtrack?.kind === "upload" ? project.brief.soundtrack.media_id : undefined;
+  const voiceoverId = project.brief.voiceover?.media_id;
   const mediaIds = [...new Set([
     ...project.scenes.flatMap(({ media_id: id }) => id ? [id] : []),
-    ...(soundtrackId ? [soundtrackId] : [])
+    ...(soundtrackId ? [soundtrackId] : []),
+    ...(voiceoverId ? [voiceoverId] : [])
   ])];
   const views = await Promise.all(mediaIds.map((id) =>
     api.request<SceneMediaView>(`/api/projects/${project.id}/media/${id}`)));

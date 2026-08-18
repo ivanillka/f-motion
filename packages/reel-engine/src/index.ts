@@ -1,4 +1,4 @@
-import { isSoundtrack, isStoryboardScenes, type CaptionCue, type CommandEnvelope, type ProjectSnapshot, type Scene } from "@f-engine/contracts";
+import { isSoundtrack, isVoiceover, isStoryboardScenes, type CaptionCue, type CommandEnvelope, type ProjectSnapshot, type Scene } from "@f-engine/contracts";
 
 const MAX_STORYBOARD_SCENES = 8;
 
@@ -455,6 +455,17 @@ export function cuesForScene(scene: Scene): CaptionCue[] {
   return deriveCues(scene.caption, scene.duration_ms);
 }
 
+/** Active spoken subtitle at scene-local elapsed time. */
+export function cueAtElapsed(cues: CaptionCue[], elapsedMs: number): CaptionCue | undefined {
+  if (!cues.length) return undefined;
+  const t = Math.max(0, elapsedMs);
+  const last = cues[cues.length - 1];
+  return cues.find((cue) => t >= cue.start_ms && t < cue.end_ms) ?? (last && t >= last.start_ms ? last : undefined);
+}
+
+/** Music-bed gain while a voice-over is attached. ponytail: constant duck; upgrade to sidechain. */
+export const VOICEOVER_DUCK = 0.22;
+
 function isValidCueShape(value: unknown): boolean {
   return Array.isArray(value) && value.every((cue) =>
     cue
@@ -581,6 +592,18 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
       brief.soundtrack = raw;
     } else {
       throw new Error("invalid soundtrack");
+    }
+    return { ...snapshot, brief, revision: snapshot.revision + 1 };
+  }
+  if (command.kind === "update_voiceover") {
+    const raw = command.payload.voiceover;
+    const brief = { ...snapshot.brief };
+    if (raw === null) {
+      delete brief.voiceover;
+    } else if (isVoiceover(raw)) {
+      brief.voiceover = raw;
+    } else {
+      throw new Error("invalid voiceover");
     }
     return { ...snapshot, brief, revision: snapshot.revision + 1 };
   }

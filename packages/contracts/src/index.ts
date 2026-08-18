@@ -57,6 +57,13 @@ export interface Soundtrack {
   media_id?: string;
 }
 
+/** User-owned narration mixed over the cut. No generated TTS. */
+export interface Voiceover {
+  media_id: string;
+  offset_ms: number;
+  level: number;
+}
+
 export type CommandKind =
   | "select_concept"
   | "update_scene"
@@ -64,14 +71,15 @@ export type CommandKind =
   | "replace_storyboard"
   | "add_scene"
   | "remove_scene"
-  | "update_soundtrack";
+  | "update_soundtrack"
+  | "update_voiceover";
 
 export interface ProjectSnapshot {
   schema_version: 1;
   id: string;
   owner_id: string;
   revision: number;
-  brief: { purpose: string; audience: string; tone: string; soundtrack?: Soundtrack };
+  brief: { purpose: string; audience: string; tone: string; soundtrack?: Soundtrack; voiceover?: Voiceover };
   selected_concept_id?: string;
   scenes: Scene[];
 }
@@ -132,6 +140,19 @@ export function isSoundtrack(value: unknown): value is Soundtrack {
     return typeof value.media_id === "string" && !!value.media_id && value.media_id.length <= 80;
   }
   return false;
+}
+
+export function isVoiceover(value: unknown): value is Voiceover {
+  return isRecord(value)
+    && typeof value.media_id === "string"
+    && !!value.media_id
+    && value.media_id.length <= 80
+    && isFiniteNumber(value.offset_ms)
+    && value.offset_ms >= 0
+    && value.offset_ms <= 600_000
+    && isFiniteNumber(value.level)
+    && value.level >= 0
+    && value.level <= 1;
 }
 
 function isOverlayPlace(value: unknown): value is OverlayPlace {
@@ -278,6 +299,9 @@ export function isProjectSnapshot(value: unknown): value is ProjectSnapshot {
     || ("soundtrack" in value.brief
       && value.brief.soundtrack != null
       && !isSoundtrack(value.brief.soundtrack))
+    || ("voiceover" in value.brief
+      && value.brief.voiceover != null
+      && !isVoiceover(value.brief.voiceover))
     || ("selected_concept_id" in value
       && (typeof value.selected_concept_id !== "string" || !value.selected_concept_id))
     || !Array.isArray(value.scenes)) {

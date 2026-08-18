@@ -262,7 +262,7 @@ export class PostgresProjectRepository implements ProjectRepository {
       await this.syncScenes(client, command.project_id, updated.scenes);
       return;
     }
-    if (command.kind === "update_soundtrack") {
+    if (command.kind === "update_soundtrack" || command.kind === "update_voiceover") {
       await client.query(`UPDATE "Project" SET brief = $1 WHERE id = $2`, [updated.brief, command.project_id]);
       return;
     }

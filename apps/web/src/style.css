@@ -692,6 +692,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .music-dock.has-bed > summary::after { content: "Change"; }
 .music-dock[open] > summary::after { content: "Close"; }
+.music-dock.voice-dock > summary::after { content: "Record"; }
+.music-dock.voice-dock.has-bed > summary::after { content: "Change"; }
+.music-dock.voice-dock[open] > summary::after { content: "Close"; }
 .music-search { display: flex; gap: 6px; }
 .music-search input { flex: 1; min-width: 0; }
 .music-search button, .music-moods button, .music-hit button {

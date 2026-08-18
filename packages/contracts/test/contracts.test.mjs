@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { acceptsFixture, isProjectSnapshot, isSoundtrack, isStoryboardScenes, isStoryboardPlan, isSceneBrief } from "../dist/index.js";
+import { acceptsFixture, isProjectSnapshot, isSoundtrack, isVoiceover, isStoryboardScenes, isStoryboardPlan, isSceneBrief } from "../dist/index.js";
 
 const fixture = async (name) => JSON.parse(await readFile(new URL(`../fixtures/${name}`, import.meta.url)));
 const inventory = JSON.parse(await readFile(new URL("../route-inventory.json", import.meta.url), "utf8"));
@@ -87,6 +87,20 @@ test("brief soundtrack is optional and validated when present", () => {
   assert.equal(isProjectSnapshot({
     ...base,
     brief: { ...base.brief, soundtrack: { kind: "stock", stock_id: "nope", bpm: 120, offset_ms: 0, level: 0.8 } }
+  }), false);
+});
+
+test("brief voiceover is optional and validated when present", () => {
+  const base = snapshotWithPrompt("remote island");
+  assert.equal(isVoiceover({ media_id: "vo-1", offset_ms: 0, level: 1 }), true);
+  assert.equal(isVoiceover({ media_id: "", offset_ms: 0, level: 1 }), false);
+  assert.equal(isProjectSnapshot({
+    ...base,
+    brief: { ...base.brief, voiceover: { media_id: "vo-1", offset_ms: 0, level: 0.9 } }
+  }), true);
+  assert.equal(isProjectSnapshot({
+    ...base,
+    brief: { ...base.brief, voiceover: { media_id: "vo-1", offset_ms: -1, level: 1 } }
   }), false);
 });
 

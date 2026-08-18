@@ -7,6 +7,7 @@ import { stockBeds, type CaptionCue, type OverlayLook, type OverlayPlace, type P
 import {
   coverCropFilter,
   renderPlan,
+  VOICEOVER_DUCK,
   type RenderPlan,
   type RenderProfile
 } from "@f-engine/reel-engine";
@@ -450,14 +451,14 @@ function watermarkFilters(watermark: string): string[] {
 const clipVideoEncode = ["-c:v", "h264", "-b:v", "8M", "-pix_fmt", "yuv420p", "-movflags", "+faststart"];
 const clipAudioEncode = ["-c:a", "aac", "-ar", "44100", "-ac", "2"];
 
-function concatOutputArgs(watermark: string | undefined, soundtrack?: SoundtrackMix): string[] {
+function concatOutputArgs(watermark: string | undefined, mixdown?: boolean): string[] {
   if (watermark) return [...clipVideoEncode, ...clipAudioEncode];
-  if (soundtrack) return ["-c:v", "copy", ...clipAudioEncode, "-movflags", "+faststart"];
+  if (mixdown) return ["-c:v", "copy", ...clipAudioEncode, "-movflags", "+faststart"];
   return ["-c:v", "copy", "-c:a", "copy", "-movflags", "+faststart"];
 }
 
-// ponytail: scene.ducking is unused. Mixdown is a straight amix of the licensed
-// bed under scene audio. Upgrade: sidechain duck when dialogue is present.
+// ponytail: voice-over ducks the licensed bed by a constant gain while attached.
+// Upgrade: sidechaincompress when dialogue is actually present on the VO input.
 function audioFilterArgs(audioLevel: number): string[] {
   const level = Math.min(1, Math.max(0, audioLevel));
   return level === 1 ? [] : ["-af", `volume=${level}`];
@@ -559,6 +560,17 @@ export function resolveSoundtrackMix(
   };
 }
 
+export function resolveVoiceoverMix(
+  snapshot: ProjectSnapshot,
+  mediaInputs: Record<string, MediaInput>
+): SoundtrackMix | undefined {
+  const vo = snapshot.brief.voiceover;
+  if (!vo) return undefined;
+  const input = mediaInputs[vo.media_id];
+  if (!input) throw new Error("voiceover media input missing");
+  return { path: input.path, level: vo.level, offsetMs: vo.offset_ms };
+}
+
 function soundtrackMetadata(mix: SoundtrackMix): string[] {
   const credit = mix.artist && mix.title
     ? `${mix.title} by ${mix.artist} — CC BY 3.0`
@@ -575,11 +587,12 @@ export function concatArguments(
   plan: RenderPlan,
   snapshot: ProjectSnapshot,
   outputPath: string,
-  soundtrack?: SoundtrackMix
+  soundtrack?: SoundtrackMix,
+  voiceover?: SoundtrackMix
 ): string[] {
   const comment = `comment=project ${snapshot.id} revision ${snapshot.revision}`;
   const videoFilters = plan.watermark ? watermarkFilters(plan.watermark) : [];
-  if (!soundtrack) {
+  if (!soundtrack && !voiceover) {
     return [
       "-y",
       "-f", "concat",
@@ -587,28 +600,43 @@ export function concatArguments(
       "-i", listPath,
       ...vfArgs(videoFilters),
       "-metadata", comment,
-      ...concatOutputArgs(plan.watermark, soundtrack),
+      ...concatOutputArgs(plan.watermark, false),
       outputPath
     ];
   }
-  const level = Math.min(1, Math.max(0, soundtrack.level));
+  const extras: string[] = [];
+  const chains: string[] = [];
+  const mixInputs = ["[0:a]"];
+  let next = 1;
+  if (soundtrack) {
+    const level = Math.round(Math.min(1, Math.max(0, soundtrack.level)) * (voiceover ? VOICEOVER_DUCK : 1) * 1000) / 1000;
+    if (soundtrack.offsetMs > 0) extras.push("-ss", (soundtrack.offsetMs / 1000).toFixed(3));
+    extras.push("-stream_loop", "-1", "-i", soundtrack.path);
+    chains.push(`[${next}:a]volume=${level}[bed]`);
+    mixInputs.push("[bed]");
+    next += 1;
+  }
+  if (voiceover) {
+    const level = Math.min(1, Math.max(0, voiceover.level));
+    if (voiceover.offsetMs > 0) extras.push("-ss", (voiceover.offsetMs / 1000).toFixed(3));
+    extras.push("-i", voiceover.path);
+    chains.push(`[${next}:a]volume=${level}[vo]`);
+    mixInputs.push("[vo]");
+  }
   const videoChain = videoFilters.length ? `[0:v]${videoFilters.join(",")}[v];` : "";
-  const audioChain = `[1:a]volume=${level}[bed];[0:a][bed]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]`;
-  const seek = soundtrack.offsetMs > 0 ? ["-ss", (soundtrack.offsetMs / 1000).toFixed(3)] : [];
+  const audioChain = `${chains.join(";")};${mixInputs.join("")}amix=inputs=${mixInputs.length}:duration=first:dropout_transition=0:normalize=0[a]`;
   return [
     "-y",
     "-f", "concat",
     "-safe", "0",
     "-i", listPath,
-    ...seek,
-    "-stream_loop", "-1",
-    "-i", soundtrack.path,
+    ...extras,
     "-filter_complex", `${videoChain}${audioChain}`,
     "-map", videoFilters.length ? "[v]" : "0:v",
     "-map", "[a]",
     "-metadata", comment,
-    ...soundtrackMetadata(soundtrack),
-    ...concatOutputArgs(plan.watermark, soundtrack),
+    ...(soundtrack ? soundtrackMetadata(soundtrack) : []),
+    ...concatOutputArgs(plan.watermark, true),
     outputPath
   ];
 }
@@ -678,7 +706,14 @@ export function buildRenderJob(
     clips,
     listPath,
     listContents,
-    concatArgs: concatArguments(listPath, plan, snapshot, outputPath, resolveSoundtrackMix(snapshot, mediaInputs))
+    concatArgs: concatArguments(
+      listPath,
+      plan,
+      snapshot,
+      outputPath,
+      resolveSoundtrackMix(snapshot, mediaInputs),
+      resolveVoiceoverMix(snapshot, mediaInputs)
+    )
   };
 }
 

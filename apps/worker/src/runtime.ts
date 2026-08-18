@@ -341,7 +341,7 @@ async function loadSealedMedia(
   directory: string,
   signal: AbortSignal,
   limits: MediaLimits,
-  kind: "scene" | "soundtrack"
+  kind: "scene" | "soundtrack" | "voiceover"
 ): Promise<MediaInput> {
   const result = await pool.query<{
     sealedObjectKey: string;
@@ -359,7 +359,7 @@ async function loadSealedMedia(
   );
   const asset = result.rows[0];
   if (!asset?.sealedObjectKey || !asset.sealedEtag || !asset.sealedSha256) {
-    throw new Error(kind === "soundtrack" ? "soundtrack is not sealed" : "scene media is not sealed");
+    throw new Error(kind === "scene" ? "scene media is not sealed" : `${kind} is not sealed`);
   }
   const path = join(directory, mediaId);
   await store.downloadSealed(asset.sealedObjectKey, path, {
@@ -369,8 +369,8 @@ async function loadSealedMedia(
   }, signal);
   const probed = await probeMediaFile(path, signal, limits.probeTimeoutMs);
   const detected = { ...probed, bytes: (await stat(path)).size };
-  if (kind === "soundtrack") {
-    if (probed.has_audio !== true) throw new Error("soundtrack has no audio");
+  if (kind !== "scene") {
+    if (probed.has_audio !== true) throw new Error(`${kind} has no audio`);
     return { path, type: asset.declaredType };
   }
   if (!inspectMedia(asset.declaredType, detected, asset.maxBytes, limits).accepted) {
@@ -408,6 +408,12 @@ async function mediaInputsFor(
   if (soundtrackId && !inputs[soundtrackId]) {
     inputs[soundtrackId] = await loadSealedMedia(
       pool, store, snapshot, soundtrackId, directory, signal, limits, "soundtrack"
+    );
+  }
+  const voiceoverId = snapshot.brief.voiceover?.media_id;
+  if (voiceoverId && !inputs[voiceoverId]) {
+    inputs[voiceoverId] = await loadSealedMedia(
+      pool, store, snapshot, voiceoverId, directory, signal, limits, "voiceover"
     );
   }
   return inputs;

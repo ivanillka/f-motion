@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, validateCues, coverCropFilter } from "../dist/index.js";
+import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, validateCues, coverCropFilter } from "../dist/index.js";
 
 const snapshot = {
   schema_version: 1, id: "p1", owner_id: "u1", revision: 0,
@@ -276,6 +276,9 @@ test("a multi-sentence caption derives contiguous, non-overlapping cues within t
     assert.ok(cues[i].start_ms >= 0 && cues[i].end_ms <= 4000, "cue stays within scene duration");
     if (i > 0) assert.equal(cues[i].start_ms, cues[i - 1].end_ms, "cues are contiguous");
   }
+  assert.equal(cueAtElapsed(cues, 0)?.text, cues[0].text);
+  assert.equal(cueAtElapsed(cues, cues[0].end_ms)?.text, cues[1].text);
+  assert.equal(cueAtElapsed(cues, 4000)?.text, cues[cues.length - 1].text);
 });
 test("explicit caption_cues are validated and returned unchanged", () => {
   const explicit = [{ text: "Custom one", start_ms: 0, end_ms: 400 }, { text: "Custom two", start_ms: 400, end_ms: 1000 }];
@@ -344,5 +347,17 @@ test("update_soundtrack stores a stock bed on the brief and can clear it", () =>
   assert.throws(
     () => applyCommand(snapshot, command("update_soundtrack", { soundtrack: { kind: "stock", stock_id: "nope", bpm: 120, offset_ms: 0, level: 1 } })),
     /invalid soundtrack/
+  );
+});
+test("update_voiceover stores uploaded narration on the brief and can clear it", () => {
+  const withVo = applyCommand(snapshot, command("update_voiceover", {
+    voiceover: { media_id: "vo-1", offset_ms: 0, level: 1 }
+  }));
+  assert.equal(withVo.brief.voiceover?.media_id, "vo-1");
+  const cleared = applyCommand(withVo, command("update_voiceover", { voiceover: null }, 1));
+  assert.equal(cleared.brief.voiceover, undefined);
+  assert.throws(
+    () => applyCommand(snapshot, command("update_voiceover", { voiceover: { media_id: "", offset_ms: 0, level: 1 } })),
+    /invalid voiceover/
   );
 });

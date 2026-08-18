@@ -124,15 +124,21 @@ async function assertReadySceneMedia(
     : ["update_scene", "add_scene"].includes(command.kind)
       ? [command.payload.scene]
       : [];
-  if (command.kind === "update_soundtrack") {
-    const soundtrack = command.payload.soundtrack;
-    if (soundtrack && typeof soundtrack === "object" && !Array.isArray(soundtrack)
-      && (soundtrack as { kind?: unknown }).kind === "upload") {
-      const mediaId = (soundtrack as { media_id?: unknown }).media_id;
-      if (typeof mediaId !== "string" || !mediaId) throw new ValidationError("media_id invalid");
-      if (!media?.repository) throw new ValidationError("media_id not ready");
-      const asset = await media.repository.get(ownerId, command.project_id, mediaId);
-      if (!asset || asset.state !== "ready") throw new ValidationError("media_id not ready");
+  if (command.kind === "update_soundtrack" || command.kind === "update_voiceover") {
+    const payloadKey = command.kind === "update_soundtrack" ? "soundtrack" : "voiceover";
+    const attached = command.payload[payloadKey];
+    if (attached && typeof attached === "object" && !Array.isArray(attached)) {
+      const mediaId = payloadKey === "soundtrack"
+        ? (attached as { kind?: unknown; media_id?: unknown }).kind === "upload"
+          ? (attached as { media_id?: unknown }).media_id
+          : undefined
+        : (attached as { media_id?: unknown }).media_id;
+      if (mediaId !== undefined) {
+        if (typeof mediaId !== "string" || !mediaId) throw new ValidationError("media_id invalid");
+        if (!media?.repository) throw new ValidationError("media_id not ready");
+        const asset = await media.repository.get(ownerId, command.project_id, mediaId);
+        if (!asset || asset.state !== "ready") throw new ValidationError("media_id not ready");
+      }
     }
     return;
   }
@@ -155,7 +161,7 @@ function commandEnvelope(value: unknown, projectId: string): CommandEnvelope {
     || !command.command_id
     || !Number.isInteger(command.base_revision)
     || typeof command.client_timestamp !== "string"
-    || !["select_concept", "update_scene", "reorder_scene", "replace_storyboard", "add_scene", "remove_scene", "update_soundtrack"].includes(String(command.kind))
+    || !["select_concept", "update_scene", "reorder_scene", "replace_storyboard", "add_scene", "remove_scene", "update_soundtrack", "update_voiceover"].includes(String(command.kind))
     || !command.payload
     || typeof command.payload !== "object"
     || Array.isArray(command.payload)) {

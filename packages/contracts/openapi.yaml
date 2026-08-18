@@ -678,6 +678,8 @@ components:
         purpose: { type: string, minLength: 1 }
         audience: { type: string, minLength: 1 }
         tone: { type: string, minLength: 1 }
+        soundtrack: { type: object }
+        voiceover: { type: object }
     CreateProjectRequest:
       type: object
       required: [purpose]
@@ -756,7 +758,7 @@ components:
         client_timestamp: { type: string }
         kind:
           type: string
-          enum: [select_concept, update_scene, reorder_scene, replace_storyboard, add_scene, remove_scene, update_soundtrack]
+          enum: [select_concept, update_scene, reorder_scene, replace_storyboard, add_scene, remove_scene, update_soundtrack, update_voiceover]
         payload:
           oneOf:
             - $ref: "#/components/schemas/SelectConceptPayload"
@@ -766,6 +768,7 @@ components:
             - $ref: "#/components/schemas/AddScenePayload"
             - $ref: "#/components/schemas/RemoveScenePayload"
             - $ref: "#/components/schemas/UpdateSoundtrackPayload"
+            - $ref: "#/components/schemas/UpdateVoiceoverPayload"
     SelectConceptPayload:
       type: object
       required: [concept_id]
@@ -807,6 +810,13 @@ components:
       required: [soundtrack]
       properties:
         soundtrack:
+          nullable: true
+          type: object
+    UpdateVoiceoverPayload:
+      type: object
+      required: [voiceover]
+      properties:
+        voiceover:
           nullable: true
           type: object
     UploadDeclaration:

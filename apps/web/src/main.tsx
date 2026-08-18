@@ -26,13 +26,17 @@ import {
   stockBedUrl,
   stockBeds,
   showsPartnerBrands,
+  cueAtElapsed,
+  cuesForScene,
+  VOICEOVER_DUCK,
   type Concept,
   type ProjectSnapshot,
   type ProjectSummary,
   type Scene,
   type SceneMediaView,
   type Soundtrack,
-  type VideoArchitecture
+  type VideoArchitecture,
+  type Voiceover
 } from "./api";
 import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOrigin } from "./auth";
 import { clearImportedProject, isImportedProjectId, rememberImportedProject } from "./imported-project";
@@ -77,6 +81,34 @@ const musicMoods = [
   ["Cinematic", "cinematic"],
   ["Chill", "chill"]
 ] as const;
+function encodeWav(buffer: AudioBuffer): Blob {
+  const length = buffer.length;
+  const channels = buffer.numberOfChannels;
+  const bytes = new DataView(new ArrayBuffer(44 + length * 2));
+  const write = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i++) bytes.setUint8(offset + i, text.charCodeAt(i));
+  };
+  write(0, "RIFF");
+  bytes.setUint32(4, 36 + length * 2, true);
+  write(8, "WAVE");
+  write(12, "fmt ");
+  bytes.setUint32(16, 16, true);
+  bytes.setUint16(20, 1, true);
+  bytes.setUint16(22, 1, true);
+  bytes.setUint32(24, buffer.sampleRate, true);
+  bytes.setUint32(28, buffer.sampleRate * 2, true);
+  bytes.setUint16(32, 2, true);
+  bytes.setUint16(34, 16, true);
+  write(36, "data");
+  bytes.setUint32(40, length * 2, true);
+  for (let i = 0; i < length; i++) {
+    let sample = 0;
+    for (let channel = 0; channel < channels; channel++) sample += buffer.getChannelData(channel)[i] ?? 0;
+    sample = Math.max(-1, Math.min(1, channels ? sample / channels : 0));
+    bytes.setInt16(44 + i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+  }
+  return new Blob([bytes], { type: "audio/wav" });
+}
 interface FalCredentialView {
   provider: "fal";
   connected: boolean;
@@ -176,6 +208,8 @@ function App() {
   const [musicHits, setMusicHits] = useState<MixkitMatch[]>([]);
   const [musicQuery, setMusicQuery] = useState("trendy");
   const [musicOpen, setMusicOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
   const [previewingId, setPreviewingId] = useState<number>();
   const [overlayCaption, setOverlayCaption] = useState("");
   const [busy, setBusy] = useState(false);
@@ -216,8 +250,13 @@ function App() {
   const [previewMetadata, setPreviewMetadata] = useState<Record<string, string | number | boolean | null>>({});
   const upload = useRef<HTMLInputElement>(null);
   const audioUpload = useRef<HTMLInputElement>(null);
+  const voiceUpload = useRef<HTMLInputElement>(null);
   const bedAudio = useRef<HTMLAudioElement | null>(null);
+  const voiceAudio = useRef<HTMLAudioElement | null>(null);
   const previewAudio = useRef<HTMLAudioElement | null>(null);
+  const recordStream = useRef<MediaStream | null>(null);
+  const recorder = useRef<MediaRecorder | null>(null);
+  const recordChunks = useRef<Blob[]>([]);
   const importedProjectRef = useRef("");
   const [pendingImportId, setPendingImportId] = useState(() => {
     if (typeof sessionStorage === "undefined") return "";
@@ -637,6 +676,26 @@ function App() {
     }
   }
 
+  async function saveVoiceover(voiceover: Voiceover | null) {
+    if (!project) return false;
+    setStatus("Saving…");
+    try {
+      const updated = await api.command(project.id, project.revision, "update_voiceover", { voiceover });
+      setProject(updated);
+      setStatus("✓ All changes saved");
+      return true;
+    } catch (error) {
+      if (error instanceof ApiResponseError && error.status === 409) {
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          operation: "voice-over"
+        });
+        return false;
+      }
+      setStatus("Voice-over could not be saved.");
+      return false;
+    }
+  }
+
   async function snapScenesToBeat() {
     if (!project) return;
     const bpm = clampBpm(project.brief.soundtrack?.bpm);
@@ -727,7 +786,7 @@ function App() {
     }
   }
 
-  async function admitAudioFile(file: File) {
+  async function admitAudioFile(file: File, purpose: "music" | "voiceover" = "music") {
     if (!project) return;
     const declared = file.type === "audio/x-m4a" || file.type === "audio/mp4" || file.type === "audio/mpeg" || file.type === "audio/wav" || file.type === "audio/x-wav"
       ? (file.type === "audio/x-m4a" || file.type === "audio/mp4" ? "audio/mp4" : file.type === "audio/x-wav" ? "audio/wav" : file.type)
@@ -742,7 +801,7 @@ function App() {
       return;
     }
     setBusy(true);
-    setStatus("Uploading music…");
+    setStatus(purpose === "voiceover" ? "Uploading voice-over…" : "Uploading music…");
     try {
       const admission = await api.request<{ asset_id: string; upload_url: string }>(
         `/api/projects/${project.id}/media/uploads`,
@@ -762,17 +821,93 @@ function App() {
         { method: "POST" }
       );
       setSceneMedia((current) => ({ ...current, [ready.id]: ready }));
-      await saveSoundtrack({
-        kind: "upload",
-        media_id: ready.id,
-        bpm: clampBpm(project.brief.soundtrack?.bpm),
-        offset_ms: 0,
-        level: project.brief.soundtrack?.level ?? 0.8
-      });
-      setMusicOpen(false);
+      if (purpose === "voiceover") {
+        await saveVoiceover({
+          media_id: ready.id,
+          offset_ms: project.brief.voiceover?.offset_ms ?? 0,
+          level: project.brief.voiceover?.level ?? 1
+        });
+        setVoiceOpen(false);
+      } else {
+        await saveSoundtrack({
+          kind: "upload",
+          media_id: ready.id,
+          bpm: clampBpm(project.brief.soundtrack?.bpm),
+          offset_ms: 0,
+          level: project.brief.soundtrack?.level ?? 0.8
+        });
+        setMusicOpen(false);
+      }
     } catch {
-      setStatus("Music could not be uploaded. Check the file and try again.");
+      setStatus(purpose === "voiceover"
+        ? "Voice-over could not be uploaded. Check the file and try again."
+        : "Music could not be uploaded. Check the file and try again.");
     } finally {
+      setBusy(false);
+    }
+  }
+
+  function releaseRecorder() {
+    recorder.current = null;
+    recordStream.current?.getTracks().forEach((track) => track.stop());
+    recordStream.current = null;
+  }
+
+  async function startVoiceRecord() {
+    if (!project || recording || busy) return;
+    if (livePlaying) pauseLivePreview();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordStream.current = stream;
+      recordChunks.current = [];
+      const media = new MediaRecorder(stream);
+      media.ondataavailable = (event) => {
+        if (event.data.size) recordChunks.current.push(event.data);
+      };
+      media.onstop = () => {
+        void finishVoiceRecord(media.mimeType);
+      };
+      recorder.current = media;
+      media.start();
+      setRecording(true);
+      setVoiceOpen(true);
+      setStatus("Recording voice-over…");
+    } catch {
+      releaseRecorder();
+      setStatus("Microphone is blocked. Upload a WAV, MP3, or M4A instead.");
+    }
+  }
+
+  function stopVoiceRecord() {
+    if (recorder.current && recorder.current.state !== "inactive") recorder.current.stop();
+    else releaseRecorder();
+    setRecording(false);
+  }
+
+  function cancelVoiceRecord() {
+    if (recorder.current) recorder.current.onstop = null;
+    stopVoiceRecord();
+    recordChunks.current = [];
+    setStatus("Recording discarded.");
+  }
+
+  async function finishVoiceRecord(mimeType: string) {
+    const blob = new Blob(recordChunks.current, { type: mimeType || "audio/webm" });
+    recordChunks.current = [];
+    releaseRecorder();
+    if (blob.size < 800) {
+      setStatus("Recording was too short.");
+      return;
+    }
+    setBusy(true);
+    setStatus("Saving voice-over…");
+    try {
+      const context = new AudioContext();
+      const buffer = await context.decodeAudioData(await blob.arrayBuffer());
+      await context.close();
+      await admitAudioFile(new File([encodeWav(buffer)], "voiceover.wav", { type: "audio/wav" }), "voiceover");
+    } catch {
+      setStatus("Recording could not be saved. Upload a WAV, MP3, or M4A instead.");
       setBusy(false);
     }
   }
@@ -1657,12 +1792,6 @@ function App() {
   const liveOverlay = previewScene?.id === activeScene?.id;
   const shownCaption = (liveOverlay ? overlayCaption : previewScene?.caption ?? "").trim();
   const overlayGhost = !shownCaption && !livePlaying;
-  const overlayHeadline = overlayLook === "title"
-    ? (shownCaption || (overlayGhost ? "Title" : ""))
-    : "";
-  const overlayLine = overlayLook === "title"
-    ? ""
-    : shownCaption || (overlayGhost ? "Your caption" : "");
   const previewMedia = previewScene?.media_id ? sceneMedia[previewScene.media_id] : undefined;
   const previewUrl = scenePreviewUrl(previewMedia);
   const measuredPreview = previewSize?.url === previewUrl ? previewSize : undefined;
@@ -1710,6 +1839,17 @@ function App() {
     : soundtrack.kind === "stock"
       ? (stockBeds.find((bed) => bed.id === soundtrack.stock_id)?.label ?? "Music bed")
       : soundtrackMedia?.attribution?.title ?? "Uploaded music";
+  const voiceover = project?.brief.voiceover;
+  const voiceoverUrl = voiceover?.media_id ? scenePreviewUrl(sceneMedia[voiceover.media_id]) : undefined;
+  const spokenCue = previewScene && livePlaying
+    ? (cueAtElapsed(cuesForScene(previewScene), playhead.sceneElapsedMs)?.text ?? "")
+    : shownCaption;
+  const overlayHeadline = overlayLook === "title"
+    ? (shownCaption || (overlayGhost ? "Title" : ""))
+    : "";
+  const overlayLine = overlayLook === "title"
+    ? ""
+    : spokenCue || (overlayGhost ? "Your caption" : "");
 
   function readSceneElapsed(now = performance.now()) {
     return livePlaying
@@ -1901,7 +2041,7 @@ function App() {
   useEffect(() => {
     const audio = bedAudio.current;
     if (!audio) return;
-    audio.volume = soundtrack ? soundtrack.level : 0;
+    audio.volume = soundtrack ? soundtrack.level * (voiceover ? VOICEOVER_DUCK : 1) : 0;
     audio.loop = true;
     if (!livePlaying || !soundtrackUrl) {
       audio.pause();
@@ -1910,7 +2050,33 @@ function App() {
     const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
     if (duration) audio.currentTime = ((playhead.offsetMs + (soundtrack?.offset_ms ?? 0)) / 1000) % duration;
     void audio.play().catch(() => undefined);
-  }, [livePlaying, soundtrackUrl, soundtrack?.kind, soundtrack?.level, soundtrack?.offset_ms, bedSeek]);
+  }, [livePlaying, soundtrackUrl, soundtrack?.kind, soundtrack?.level, soundtrack?.offset_ms, voiceover, bedSeek]);
+  useEffect(() => {
+    const audio = voiceAudio.current;
+    if (!audio) return;
+    audio.volume = voiceover ? voiceover.level : 0;
+    audio.loop = false;
+    if (!livePlaying || !voiceoverUrl) {
+      audio.pause();
+      return;
+    }
+    const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
+    const at = (playhead.offsetMs + (voiceover?.offset_ms ?? 0)) / 1000;
+    if (!duration || at >= duration) {
+      audio.pause();
+      return;
+    }
+    audio.currentTime = at;
+    void audio.play().catch(() => undefined);
+  }, [livePlaying, voiceoverUrl, voiceover?.level, voiceover?.offset_ms, bedSeek]);
+  useEffect(() => {
+    if (!recording) return;
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      if (Date.now() - started >= 60_000) stopVoiceRecord();
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [recording]);
   useEffect(() => {
     if (livePlaying) stopMusicPreview();
   }, [livePlaying]);
@@ -2230,7 +2396,43 @@ function App() {
             </div>
             ) : null}
             {soundtrackUrl && <audio ref={bedAudio} src={soundtrackUrl} preload="auto" hidden />}
+            {voiceoverUrl && <audio ref={voiceAudio} src={voiceoverUrl} preload="auto" hidden />}
           </div>
+          <details
+            className={`music-dock voice-dock${voiceover ? " has-bed" : ""}`}
+            open={voiceOpen}
+            onToggle={(event) => setVoiceOpen(event.currentTarget.open)}
+          >
+            <summary>{recording ? "Recording voice-over" : voiceover ? "Voice-over" : "Add voice-over"}</summary>
+            <p className="crop-hint">Record or upload narration. Captions time as spoken subtitles on Play and Export. Music ducks under the voice.</p>
+            <div className="scene-actions">
+              <button
+                type="button"
+                className={recording ? undefined : "secondary"}
+                disabled={busy}
+                aria-pressed={recording}
+                onClick={() => recording ? stopVoiceRecord() : void startVoiceRecord()}
+              >{recording ? "Stop recording" : "Record voice-over"}</button>
+              {recording ? <button className="secondary" type="button" onClick={() => cancelVoiceRecord()}>Discard</button> : null}
+              <button className="secondary" type="button" disabled={busy || recording} onClick={() => voiceUpload.current?.click()}>Upload voice-over</button>
+            </div>
+            <input ref={voiceUpload} hidden type="file" accept="audio/mpeg,audio/wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a" onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void admitAudioFile(file, "voiceover");
+            }} />
+            {voiceover ? (
+              <>
+                <label htmlFor="voice-level">Level · {Math.round(voiceover.level * 100)}%
+                  <input id="voice-level" type="range" min="0" max="1" step="0.05" defaultValue={voiceover.level}
+                    onBlur={(event) => {
+                      void saveVoiceover({ ...voiceover, level: event.currentTarget.valueAsNumber });
+                    }} />
+                </label>
+                <button className="secondary" type="button" disabled={busy} onClick={() => void saveVoiceover(null)}>Remove voice-over</button>
+              </>
+            ) : null}
+          </details>
           <details
             className={`music-dock${soundtrack ? " has-bed" : ""}`}
             open={musicOpen}
@@ -2377,6 +2579,7 @@ function App() {
           <label htmlFor={`caption-${activeScene.id}`}>Caption
             <input id={`caption-${activeScene.id}`} aria-label={`Scene ${activeSceneNumber} caption`} maxLength={180} value={overlayCaption} onChange={(event) => setOverlayCaption(event.target.value)} onBlur={(event) => void saveScenePatch(activeScene.id, { caption: event.currentTarget.value })} />
           </label>
+          <p className="crop-hint">Play and Export time this caption as spoken subtitles.</p>
           <div className="overlay-places" role="group" aria-label="Overlay place">
             {([["Top", "top"], ["Middle", "center"], ["Bottom", "bottom"]] as const).map(([label, place]) =>
               <button
