@@ -22,6 +22,7 @@ import {
 const QUOTE_TTL_MS = 10 * 60_000;
 const ACTIVE_STATES = ["queued", "submitting", "running", "downloading", "inspecting"] as const;
 const SOURCE_STILL_MAX_BYTES = 25_000_000;
+const ANIMATABLE_STILL_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export type GenerationJobState =
   | "quoted"
@@ -327,8 +328,8 @@ export class PostgresFalGenerationService implements FalGenerationService {
       throw new FalGenerationValidationError("source media is not a ready sealed still");
     }
     const type = asset.detected?.type ?? asset.declaredType;
-    if (type !== "image/jpeg" && type !== "image/png") {
-      throw new FalGenerationValidationError("only ready JPEG or PNG stills can be animated");
+    if (!ANIMATABLE_STILL_TYPES.has(type)) {
+      throw new FalGenerationValidationError("only ready JPEG, PNG, or WebP stills can be animated");
     }
     const width = asset.detected?.width ?? 0;
     const height = asset.detected?.height ?? 0;

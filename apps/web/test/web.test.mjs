@@ -89,6 +89,8 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.doesNotMatch(source, /cropFocus\.x\.toFixed/);
   assert.match(source, /openFalAnimate\(/);
   assert.match(source, /confirmFalVideo\(/);
+  assert.match(source, /JPEG, PNG, or WebP portrait/);
+  assert.match(source, /type === "validation"/);
   assert.doesNotMatch(source, /useFalGeneratedMedia[\s\S]{0,80}pollFalGeneration/);
   assert.doesNotMatch(source, /Generation is not live yet/);
 

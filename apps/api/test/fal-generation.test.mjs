@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { FalCredentialMissingError } from "../dist/fal-credentials.js";
 import {
   FalGenerationBusyError,
+  FalGenerationValidationError,
   PostgresFalGenerationService,
   falGenerationHttpError
 } from "../dist/fal-generation.js";
@@ -276,6 +277,103 @@ test("FAL video quote route is body-exact and owner-scoped", async () => {
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
+});
+
+test("quoteVideo accepts ready WebP portraits and rejects non-still types", async () => {
+  const sourceId = "11111111-1111-4111-8111-111111111111";
+  const jobs = new Map();
+  let asset = {
+    id: sourceId,
+    state: "ready",
+    declaredType: "image/webp",
+    sealedSha256: "abc",
+    sealedObjectKey: "projects/project/media-sealed/still",
+    detected: { type: "image/webp", bytes: 12_000, width: 576, height: 1024 }
+  };
+
+  async function query(sql, params = []) {
+    if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [], rowCount: 0 };
+    if (sql.includes("COUNT(*)") && sql.includes("FROM \"GenerationJob\"")) {
+      return { rows: [{ count: 0 }], rowCount: 1 };
+    }
+    if (sql.includes("FROM \"Project\"")) {
+      return { rows: [{ id: params[0] }], rowCount: 1 };
+    }
+    if (sql.includes("FROM \"Scene\"")) {
+      return { rows: [{ id: params[0] }], rowCount: 1 };
+    }
+    if (sql.includes("FROM \"MediaAsset\"")) {
+      if (params[0] !== asset.id) return { rows: [], rowCount: 0 };
+      return { rows: [structuredClone(asset)], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO \"GenerationJob\"") && sql.includes("'image_to_video'")) {
+      const job = {
+        id: params[0],
+        ownerId: params[1],
+        projectId: params[2],
+        sceneId: params[3],
+        kind: "image_to_video",
+        endpointId: params[5],
+        prompt: params[6],
+        sourceMediaId: params[7],
+        inputJson: JSON.parse(params[8]),
+        quoteJson: JSON.parse(params[9]),
+        quoteExpiresAt: params[10],
+        state: "quoted",
+        cancelRequested: false,
+        failureCode: null,
+        resultMediaId: null,
+        providerRequestId: null,
+        idempotencyKey: params[11]
+      };
+      jobs.set(job.id, job);
+      return { rowCount: 1 };
+    }
+    if (sql.includes("FROM \"GenerationJob\"") && sql.includes("WHERE id = $1 AND \"ownerId\" = $2")) {
+      const job = jobs.get(params[0]);
+      if (!job || job.ownerId !== params[1]) return { rows: [], rowCount: 0 };
+      return { rows: [structuredClone(job)], rowCount: 1 };
+    }
+    throw new Error(`unexpected sql: ${sql.slice(0, 140)}`);
+  }
+
+  const pool = {
+    async query(sql, params = []) { return query(sql, params); },
+    async connect() {
+      return { async query(sql, params = []) { return query(sql, params); }, release() {} };
+    }
+  };
+  const fetchImpl = async (url) => {
+    assert.match(String(url), /hailuo-2\.3-fast/);
+    return new Response(JSON.stringify({
+      prices: [{
+        endpoint_id: "fal-ai/minimax/hailuo-2.3-fast/standard/image-to-video",
+        unit_price: 0.19,
+        unit: "video",
+        currency: "USD"
+      }]
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const service = new PostgresFalGenerationService(pool, stubCredentials, fetchImpl);
+  const quoted = await service.quoteVideo("owner", "project", "scene", sourceId, "gentle camera drift");
+  assert.equal(quoted.kind, "image_to_video");
+  assert.equal(quoted.source_media_id, sourceId);
+  assert.equal(quoted.quote.estimated_total, 0.19);
+  const stored = [...jobs.values()][0];
+  assert.equal(stored.inputJson.declared_type, "image/webp");
+  assert.equal(stored.inputJson.width, 576);
+  assert.equal(stored.inputJson.height, 1024);
+
+  asset = {
+    ...asset,
+    declaredType: "video/mp4",
+    detected: { type: "video/mp4", bytes: 12_000, width: 576, height: 1024 }
+  };
+  await assert.rejects(
+    () => service.quoteVideo("owner", "project", "scene", sourceId, "gentle camera drift"),
+    (error) => error instanceof FalGenerationValidationError
+      && error.message === "only ready JPEG, PNG, or WebP stills can be animated"
+  );
 });
 
 test("FAL speech quote route is body-exact and owner-scoped", async () => {

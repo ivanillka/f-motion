@@ -1650,11 +1650,18 @@ function App() {
       setStatus("Review the FAL price, then confirm to generate one 6-second video.");
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      const detail = error instanceof ApiResponseError && typeof error.body.message === "string"
+        ? error.body.message.trim()
+        : "";
       setStatus(type === "fal_not_connected"
         ? "Connect your FAL API key in Settings first."
         : type === "fal_generation_busy"
           ? "Only one active FAL generation is allowed. Wait or cancel it."
-          : "FAL could not price this video. Check that the scene still has a ready portrait image.");
+          : type === "invalid_provider_credential"
+            ? "FAL rejected the saved key. Replace it in Settings."
+            : type === "validation" && detail
+              ? detail
+              : "FAL could not price this video. Check that the scene still has a ready JPEG, PNG, or WebP portrait.");
     } finally {
       setFalVideoBusy(false);
     }
