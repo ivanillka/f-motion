@@ -327,8 +327,10 @@ function pickVideoPrice(body: unknown): FalVideoQuote {
   }) as { endpoint_id: string; unit_price: number; unit: string; currency: string } | undefined;
   if (!match) throw new FalImageError("provider_unavailable");
   const unit = match.unit.toLowerCase();
-  // Honest 6s total only when the unit is clearly one video / one request / 6 seconds.
-  const perSixSecond = unit === "video" || unit === "videos" || unit === "request" || unit === "requests"
+  // Honest 6s total only when the unit is clearly one pinned Hailuo clip.
+  // FAL sometimes labels the same per-clip rate as "units" instead of "video".
+  const perSixSecond = unit === "video" || unit === "videos" || unit === "unit" || unit === "units"
+    || unit === "request" || unit === "requests"
     || unit === "6 second" || unit === "6 seconds" || (unit.includes("6") && unit.includes("second"));
   return {
     endpoint_id: match.endpoint_id,

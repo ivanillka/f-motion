@@ -174,6 +174,10 @@ test("estimateVideo and submitVideo pin Hailuo 6s contract without inventing tot
     prices: [{ endpoint_id: FAL_VIDEO_ENDPOINT_ID, unit_price: 0.19, unit: "video", currency: "USD" }]
   }), { status: 200, headers: { "content-type": "application/json" } }));
   assert.equal(quote.estimated_total, 0.19);
+  const perUnit = await estimateVideo("synthetic:key", async () => new Response(JSON.stringify({
+    prices: [{ endpoint_id: FAL_VIDEO_ENDPOINT_ID, unit_price: 0.19, unit: "units", currency: "USD" }]
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  assert.equal(perUnit.estimated_total, 0.19);
   const unclear = await estimateVideo("synthetic:key", async () => new Response(JSON.stringify({
     prices: [{ endpoint_id: FAL_VIDEO_ENDPOINT_ID, unit_price: 0.01, unit: "compute second", currency: "USD" }]
   }), { status: 200, headers: { "content-type": "application/json" } }));
