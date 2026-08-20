@@ -207,12 +207,17 @@ and inject the same env vars works the same way — swap this step for
 ```sh
 VITE_SUPABASE_URL=https://<project>.supabase.co \
 VITE_SUPABASE_ANON_KEY=<anon-key> \
+VITE_PARTNER_BRAND_EMAIL=<partner-account-email> \
 npm run build --workspace apps/web
 ```
 
-Both web variables are required together. A hosted build fails closed at the
+Both web Supabase variables are required together. A hosted build fails closed at the
 sign-in screen when either is missing; it never falls back to demo auth. Add
 `VITE_ENABLE_GOOGLE_AUTH=1` only when step 3 configured that provider.
+`VITE_PARTNER_BRAND_EMAIL` must be the exact invitee email (for example the
+operator account) that may unlock Pexels, FAL, and Fotium. Other invited
+accounts only see the locked “More providers” card — they never inherit that
+account’s credentials, drafts, or partner sources.
 Magic links return a one-time `?code=...`; the official client completes the
 PKCE exchange on the same browser/device and then removes that parameter.
 
@@ -383,6 +388,7 @@ the storage host, fix bucket CORS (§2) before debugging the API.
 | `FENGINE_PEXELS_BYOK_ENABLED`, `FENGINE_FAL_BYOK_ENABLED` | API | enable owner-scoped provider connections |
 | `FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION`, `FENGINE_CREDENTIAL_KEY_V<n>` | API + worker (when FAL BYOK on) | encrypt/decrypt user provider credentials |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | web build | F-Motion Supabase client only |
+| `VITE_PARTNER_BRAND_EMAIL` | web build | exact email allowed to see Pexels / FAL / Fotium |
 | `VITE_ENABLE_GOOGLE_AUTH` | web build | optional UI flag after Google provider setup |
 | `FENGINE_LOCAL_AUTH` | — | must stay **unset** on every hosted process |
 | `VITE_ALLOW_DEMO_AUTH` | — | must stay **unset** on every hosted web build |

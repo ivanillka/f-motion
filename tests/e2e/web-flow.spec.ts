@@ -121,21 +121,18 @@ test("E2E worker rejects empty snapshots and missing fixture mappings", async ({
 });
 
 test("locked provider actions explain the blocker and next action", async ({ page }) => {
-  await page.route("**/api/providers/pexels/credential", async (route) => {
-    if (route.request().method() === "GET") {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ provider: "pexels", connected: false }) });
-    } else {
-      await route.continue();
-    }
-  });
   await signIn(page);
-  await page.getByRole("button", { name: /Pexels Real stock video · locked/ }).click();
-  await expect(page.getByRole("heading", { name: "Pexels stock is locked" })).toBeVisible();
-  await expect(page.getByText("Connect your Pexels API key to search real stock video.")).toBeVisible();
-  await page.getByRole("button", { name: "Open provider settings" }).click();
+  await page.getByRole("button", { name: /More New providers · locked/ }).click();
+  await expect(page.getByRole("heading", { name: "More providers are coming" })).toBeVisible();
+  await expect(page.getByText("This option is not available yet. No setup is required.")).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Choose video sources" }).click();
   await expect(page.getByRole("heading", { name: "Choose your video sources" })).toBeVisible();
-  await page.getByRole("button", { name: "Why is this locked?" }).first().click();
-  await expect(page.getByRole("heading", { name: "Pexels stock is locked" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "More providers" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pexels" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "FAL" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Why is this locked?" }).click();
+  await expect(page.getByRole("heading", { name: "More providers are coming" })).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
 });
 
