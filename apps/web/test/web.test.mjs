@@ -63,6 +63,10 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Your galleries/);
   assert.doesNotMatch(source, /100\.121\.204|tailf28d35|ubuntu-8gb-hel1/);
   assert.match(source, /VITE_PARTNER_GALLERY_URL/);
+  assert.match(source, /clearBrowserStudioCache\(/);
+  assert.match(source, /Partner media sources stay private/);
+  assert.match(source, /partnerBrands \? <>/);
+  assert.match(source, /credentialLoadId/);
   assert.doesNotMatch(source, /Fotium Motion|Fotium Studio/);
   assert.match(source, /Search licensed music/);
   assert.match(source, /Export final mixes this bed/);
