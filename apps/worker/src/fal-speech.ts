@@ -35,6 +35,7 @@ interface GenerationRow {
   sceneId: string;
   credentialId: string | null;
   prompt: string;
+  inputJson: { prompt?: unknown; voice?: unknown; speed?: unknown } | null;
   state: string;
   cancelRequested: boolean;
   providerRequestId: string | null;
@@ -53,7 +54,7 @@ function isWav(bytes: Uint8Array): boolean {
 
 async function loadJob(pool: pg.Pool, job: FalSpeechJob): Promise<GenerationRow | undefined> {
   const result = await pool.query<GenerationRow>(
-    `SELECT g.id, g."ownerId", g."projectId", g."sceneId", g."credentialId", g.prompt, g.state,
+    `SELECT g.id, g."ownerId", g."projectId", g."sceneId", g."credentialId", g.prompt, g."inputJson", g.state,
             g."cancelRequested", g."providerRequestId", g."resultMediaId",
             c.ciphertext, c.nonce, c."authTag", c."keyVersion"
        FROM "GenerationJob" g
@@ -182,7 +183,10 @@ export async function processFalSpeechJob(
     }
     if (!hasCredential(row)) return failMissingCredential(pool, job);
     const key = apiKey(row, env);
-    const submitted = await submitSpeech(key, { prompt: row.prompt }, fetchImpl, 30_000, signal);
+    const submitted = await submitSpeech(key, {
+      prompt: row.prompt,
+      voice: row.inputJson && typeof row.inputJson === "object" ? row.inputJson.voice : undefined
+    }, fetchImpl, 30_000, signal);
     await pool.query(
       `UPDATE "GenerationJob"
           SET "providerRequestId" = $1, state = 'running', "updatedAt" = NOW()

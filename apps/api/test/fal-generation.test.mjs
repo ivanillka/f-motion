@@ -216,7 +216,7 @@ test("FAL generation routes stay unavailable when the service is disabled", asyn
     const speech = await fetch(`${origin}/api/projects/p1/fal/speech-quotes`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prompt: "hello" })
+      body: JSON.stringify({ prompt: "hello", voice: "af_heart" })
     });
     assert.equal(speech.status, 503);
   } finally {
@@ -380,10 +380,11 @@ test("FAL speech quote route is body-exact and owner-scoped", async () => {
   const service = {
     async quoteImage() { throw new Error("unused"); },
     async quoteVideo() { throw new Error("unused"); },
-    async quoteSpeech(ownerId, projectId, prompt) {
+    async quoteSpeech(ownerId, projectId, prompt, voice) {
       assert.equal(ownerId, "authenticated-user");
       assert.equal(projectId, "p1");
       assert.equal(prompt, "Hello from the storyboard.");
+      assert.equal(voice, "am_adam");
       return {
         id: "sjob",
         project_id: projectId,
@@ -413,14 +414,14 @@ test("FAL speech quote route is body-exact and owner-scoped", async () => {
     const ok = await fetch(`${origin}/api/projects/p1/fal/speech-quotes`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prompt: "Hello from the storyboard." })
+      body: JSON.stringify({ prompt: "Hello from the storyboard.", voice: "am_adam" })
     });
     assert.equal(ok.status, 201);
     assert.equal((await ok.json()).kind, "speech");
     const bad = await fetch(`${origin}/api/projects/p1/fal/speech-quotes`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prompt: "x", voice: "nope" })
+      body: JSON.stringify({ prompt: "x" })
     });
     assert.equal(bad.status, 422);
   } finally {
@@ -491,11 +492,20 @@ test("quoteSpeech persists Kokoro and confirm enqueues generate-fal-speech", asy
     }), { status: 200, headers: { "content-type": "application/json" } });
   };
   const quoted = await new PostgresFalGenerationService(pool, stubCredentials, fetchImpl)
-    .quoteSpeech("owner", "project", "Hello from the storyboard.");
+    .quoteSpeech("owner", "project", "Hello from the storyboard.", "am_adam");
   assert.equal(quoted.kind, "speech");
   assert.equal(quoted.endpoint_id, "fal-ai/kokoro/american-english");
   assert.equal(quoted.quote.estimated_total, 0.02);
   assert.equal(quoted.scene_id, "scene-1");
+  const stored = [...jobs.values()][0];
+  assert.equal(stored.inputJson.voice, "am_adam");
+  assert.equal(stored.inputJson.prompt, "Hello from the storyboard.");
+
+  await assert.rejects(
+    () => new PostgresFalGenerationService(pool, stubCredentials, fetchImpl)
+      .quoteSpeech("owner", "project", "Hello", "not_a_voice"),
+    (error) => error instanceof FalGenerationValidationError && error.message === "invalid voice"
+  );
 
   const confirmPool = generationFakePool([baseJob({
     state: "quoted",
