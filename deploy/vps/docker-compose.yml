@@ -1,5 +1,6 @@
 # One-box F-Motion on a VPS (Postgres + MinIO + API + worker + web).
-# No Fly.io. No Fotium. Users bring their own Supabase + Pexels/FAL keys.
+# Open-source = single seat. Multi-user is the paid corporate product.
+# No Fly.io. No Fotium. The operator brings Supabase + BYOK Pexels/FAL keys.
 #
 # From the repository root:
 #   cp deploy/vps/.env.example deploy/vps/.env
@@ -91,6 +92,8 @@ services:
       R2_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-fengine-local-secret}
       R2_REGION: auto
       FENGINE_LOCAL_AUTH: "0"
+      FENGINE_ENV: ${FENGINE_ENV:-selfhost}
+      FENGINE_ACCESS_MODE: ${FENGINE_ACCESS_MODE:-single_user}
       FENGINE_PEXELS_BYOK_ENABLED: ${FENGINE_PEXELS_BYOK_ENABLED:-1}
       FENGINE_FAL_BYOK_ENABLED: ${FENGINE_FAL_BYOK_ENABLED:-1}
     healthcheck:

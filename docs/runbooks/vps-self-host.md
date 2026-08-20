@@ -1,89 +1,84 @@
-# One-box VPS self-host (open source)
+# VPS self-host (open source, single user)
 
-This path runs F-Motion on a single machine with Docker Compose:
+Run Frame Engine on one VPS with Docker Compose. This path is for **one operator**.
 
-- Postgres 17
-- MinIO (private object storage)
-- API + worker (same image; worker runs FFmpeg)
-- nginx web (marketing `/` + studio `/app/`)
+| Edition | Seats | How |
+|---------|-------|-----|
+| **Open source (this doc)** | 1 user | `FENGINE_ENV=selfhost` + `FENGINE_ACCESS_MODE=single_user` + one UUID |
+| **Corporate / paid** | Several users | Not this compose stack — contact sales / paid deployment |
 
-It is **not** the Fly.io / Cloudflare Pages hosted demo. It does **not** include
-Fotium partner branding, trusted import tokens, or shared provider keys.
-Each signed-in user connects their own Pexels and FAL credentials in Settings.
+Not included here: Fly.io, Fotium partner branding, shared Pexels/FAL server keys. Media providers use **BYOK** in the app.
 
-## What you still need outside the box
+## What you get
 
-1. A **Supabase** project you control (Auth only — magic link or Google).
-2. Optional: your own domain + TLS terminator in front of ports `8080` and
-   `9000` (or change the published ports in `.env`).
+| Service | Role |
+|---------|------|
+| `web` | Static SPA on `:8080` |
+| `api` | Fastify API |
+| `worker` | BullMQ jobs (export, AI, media) |
+| `postgres` | App DB |
+| `minio` | S3-compatible media (`:9000` API, `:9001` console) |
 
-Everything else — database, media, render queue, web UI — stays on the VPS.
+Auth still uses **your** Supabase project (email/password or magic link). The API admits **exactly one** user UUID.
+
+## Prerequisites
+
+- Docker Engine + Compose v2
+- A free [Supabase](https://supabase.com) project (Auth only is enough)
+- Ports free: `8080` (app), optionally `9000`/`9001` (MinIO)
 
 ## Install
 
-```sh
+```bash
+git clone <this-repo> && cd <this-repo>
 cp deploy/vps/.env.example deploy/vps/.env
-# Edit deploy/vps/.env:
-#   - Supabase issuer / JWKS / Vite public keys
-#   - FENGINE_ALLOWED_USER_IDS (your Supabase Auth user UUID)
-#   - FENGINE_CREDENTIAL_KEY_V1=$(openssl rand -base64 32)
-#   - FENGINE_WEB_ORIGIN and R2_PUBLIC_ENDPOINT to the browser-reachable host
+```
+
+Edit `deploy/vps/.env`:
+
+1. `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `FENGINE_CREDENTIAL_KEY_V1` (`openssl rand -base64 32`)
+2. Supabase URL + anon key (+ JWKS / issuer for the API)
+3. `FENGINE_ALLOWED_USER_IDS` = **one** UUID — create that user in Supabase Auth first, then paste their `id`
+4. Leave `FENGINE_ENV=selfhost` and `FENGINE_ACCESS_MODE=single_user`
+
+```bash
 bash scripts/vps-up.sh
+# or: npm run vps:up
 ```
 
-Open `http://YOUR_HOST:8080/app/` (or your `FENGINE_WEB_ORIGIN`).
+Open `http://YOUR_HOST:8080/app/` and sign in as that single user.
 
-In Supabase → Authentication → URL configuration, allow:
+## Credentials (BYOK)
 
-```text
-https://YOUR_HOST/app/
+In the app: **Settings → Credentials**. Store your own Pexels and/or FAL keys. They are encrypted with `FENGINE_CREDENTIAL_KEY_V1`. Do not put provider keys in `deploy/vps/.env`.
+
+## Single-seat enforcement
+
+The API refuses to start when:
+
+- `FENGINE_ENV=selfhost` but mode is not `single_user`, or
+- `single_user` has zero or more than one UUID in `FENGINE_ALLOWED_USER_IDS`
+
+Extra signed-in accounts are rejected at the API (`owner_not_admitted`). For several seats, use a paid / corporate deployment — do not widen this compose file.
+
+## Ops
+
+```bash
+cd deploy/vps
+docker compose --env-file .env logs -f api worker
+docker compose --env-file .env down
 ```
 
-(or `http://…` for a private LAN install).
+MinIO console: `http://YOUR_HOST:9001` (keys from `.env`).
 
-## Environment map
+Upgrade: `git pull` then `bash scripts/vps-up.sh` again (images rebuild).
 
-| Concern | Where |
-|---|---|
-| Supabase public keys | `VITE_*` (baked into the web image at build time) |
-| Supabase JWKS | API `SUPABASE_*` |
-| Invite allowlist | `FENGINE_ACCESS_MODE=invite_only` + `FENGINE_ALLOWED_USER_IDS` |
-| Object storage (server) | `R2_ENDPOINT=http://minio:9000` (compose sets this) |
-| Object storage (browser) | `R2_PUBLIC_ENDPOINT` (must be reachable from the browser) |
-| Provider spend | User BYOK in Settings (`FENGINE_*_BYOK_ENABLED=1`) |
+## TLS / domain
 
-Leave unset forever on this path:
+Put nginx/Caddy in front of `:8080` and terminate TLS. Set `CORS_ORIGIN` and `R2_PUBLIC_ENDPOINT` to the public origins users will use.
 
-- `VITE_PARTNER_BRAND_EMAIL` (Fotium chrome)
-- `FENGINE_IMPORT_*` / `SUPABASE_*_EXTRA` (Fotium handoff)
-- `FENGINE_LOCAL_AUTH` / `VITE_ALLOW_DEMO_AUTH`
-- `FENGINE_ENV=hosted` (Fly private demo mode)
-- `PEXELS_API_KEY` / `FAL_KEY` (shared keys — rejected at startup)
+## Not this path
 
-## Verify
-
-```sh
-curl -fsS http://127.0.0.1:8080/app/ | head
-docker compose -f deploy/vps/docker-compose.yml --env-file deploy/vps/.env ps
-```
-
-Sign in as an allowlisted user, attach a still, connect FAL/Pexels if you want
-AI or stock, and render a preview.
-
-## Upgrades
-
-Rebuild after pulling:
-
-```sh
-bash scripts/vps-up.sh
-```
-
-Migrations run automatically via the `migrate` service before API/worker start.
-
-## Security notes
-
-- Change `POSTGRES_PASSWORD` and `MINIO_ROOT_PASSWORD` before exposing a VPS.
-- Keep MinIO private except for the short-lived signed URLs the API issues.
-- Put TLS in front for any internet-facing install; then set
-  `FENGINE_WEB_ORIGIN` and `R2_PUBLIC_ENDPOINT` to `https://…`.
-- Disable open Supabase signup; the API allowlist is still authoritative.
+- Multi-user invite lists or open mode → corporate product
+- Fly.toml / GitHub Actions deploy → cloud SaaS
+- Fotium partner email gates → stripped from the web image build

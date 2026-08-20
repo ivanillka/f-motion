@@ -10,10 +10,10 @@ storage, or a hosted database.
 
 ## One-box VPS (Docker Compose)
 
-For an open-source install on a single VPS — Postgres, MinIO, API, worker, and
-web on one machine, **no Fly.io**, **no Fotium**, users bring their own
-Supabase + Pexels/FAL keys — see
-[`docs/runbooks/vps-self-host.md`](runbooks/vps-self-host.md) and run:
+For an open-source **single-seat** install on a VPS — Postgres, MinIO, API,
+worker, and web on one machine, **no Fly.io**, **no Fotium**, one operator
+brings their own Supabase + Pexels/FAL keys (multi-user is paid / corporate) —
+see [`docs/runbooks/vps-self-host.md`](runbooks/vps-self-host.md) and run:
 
 ```sh
 cp deploy/vps/.env.example deploy/vps/.env
