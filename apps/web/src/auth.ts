@@ -20,6 +20,8 @@ export interface AuthConfiguration {
   origin: string;
   allowDemo: boolean;
   allowSelfhost?: boolean;
+  /** Demo sessions only: email claim so partner UI gates can be exercised locally/e2e. */
+  demoEmail?: string;
 }
 
 interface AuthSessionLike {
@@ -242,14 +244,26 @@ class SelfhostAuthGateway implements AuthGateway {
   }
 }
 
-class DemoAuthGateway implements AuthGateway {
-  private readonly marker = "fengine-demo-session";
+function demoAccessToken(email?: string): string {
+  const want = email?.trim().toLowerCase();
+  if (!want) return `local-demo-${crypto.randomUUID()}`;
+  const payload = btoa(JSON.stringify({ email: want }))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/u, "");
+  return `demo.${payload}.local`;
+}
+sion";
   private readonly listeners = new Set<(session?: WebAuthSession) => void>();
-  private readonly token = `local-demo-${crypto.randomUUID()}`;
+  private readonly token: string;
   private readonly storage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
-  constructor(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">) {
+  constructor(
+    storage: Pick<Storage, "getItem" | "setItem" | "removeItem">,
+    demoEmail?: string
+  ) {
     this.storage = storage;
+    this.token = demoAccessToken(demoEmail);
   }
 
   subscribe(listener: (session?: WebAuthSession) => void): () => void {
@@ -322,5 +336,5 @@ export function createAuthGateway(
   const storage = dependencies.demoStorage
     ?? (typeof sessionStorage === "undefined" ? undefined : sessionStorage);
   if (!storage) throw new AuthConfigurationError();
-  return new DemoAuthGateway(storage);
+  return new DemoAuthGateway(storage, config.demoEmail);
 }
