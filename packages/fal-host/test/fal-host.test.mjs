@@ -115,12 +115,16 @@ import {
   cancelSpeech
 } from "../dist/index.js";
 
-test("estimateImage maps pricing units without inventing totals for megapixel billing", async () => {
+test("estimateImage maps megapixel billing to the pinned portrait still", async () => {
   const quote = await estimateImage("synthetic:key", async () => new Response(JSON.stringify({
-    prices: [{ endpoint_id: FAL_IMAGE_ENDPOINT_ID, unit_price: 0.003, unit: "megapixel", currency: "USD" }]
+    prices: [{ endpoint_id: FAL_IMAGE_ENDPOINT_ID, unit_price: 0.003, unit: "megapixels", currency: "USD" }]
   }), { status: 200, headers: { "content-type": "application/json" } }));
-  assert.equal(quote.estimated_total, null);
-  assert.match(quote.estimated_total_explanation ?? "", /megapixel/i);
+  assert.equal(quote.estimated_total, 0.003);
+  assert.equal(quote.estimated_total_explanation, undefined);
+  const unclear = await estimateImage("synthetic:key", async () => new Response(JSON.stringify({
+    prices: [{ endpoint_id: FAL_IMAGE_ENDPOINT_ID, unit_price: 0.01, unit: "compute second", currency: "USD" }]
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  assert.equal(unclear.estimated_total, null);
   const perImage = await estimateImage("synthetic:key", async () => new Response(JSON.stringify({
     prices: [{ endpoint_id: FAL_IMAGE_ENDPOINT_ID, unit_price: 0.02, unit: "image", currency: "USD" }]
   }), { status: 200, headers: { "content-type": "application/json" } }));

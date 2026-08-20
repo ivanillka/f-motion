@@ -2862,7 +2862,8 @@ function App() {
           </div>
         )}
         <div className="dialog-actions">
-          {(!falGenJob || ["failed", "cancelled", "submission_uncertain", "ready"].includes(falGenJob.state)) && (
+          {(!falGenJob || ["failed", "cancelled", "submission_uncertain", "ready"].includes(falGenJob.state)
+            || (falGenJob.state === "quoted" && falGenJob.quote.estimated_total === null)) && (
             <button disabled={falGenBusy || !falGenPrompt.trim()} onClick={() => void quoteFalImage()}>Get FAL price</button>
           )}
           {falGenJob?.state === "quoted" && (
@@ -2911,7 +2912,8 @@ function App() {
           </div>
         )}
         <div className="dialog-actions">
-          {(!falVideoJob || ["failed", "cancelled", "submission_uncertain", "ready"].includes(falVideoJob.state)) && (
+          {(!falVideoJob || ["failed", "cancelled", "submission_uncertain", "ready"].includes(falVideoJob.state)
+            || (falVideoJob.state === "quoted" && falVideoJob.quote.estimated_total === null)) && (
             <button disabled={falVideoBusy || !falVideoPrompt.trim()} onClick={() => void quoteFalVideo()}>Get FAL price</button>
           )}
           {falVideoJob?.state === "quoted" && (
@@ -2964,7 +2966,8 @@ function App() {
           </div>
         )}
         <div className="dialog-actions">
-          {(!falSpeechJob || ["failed", "cancelled", "submission_uncertain", "ready"].includes(falSpeechJob.state)) && (
+          {(!falSpeechJob || ["failed", "cancelled", "submission_uncertain", "ready"].includes(falSpeechJob.state)
+            || (falSpeechJob.state === "quoted" && falSpeechJob.quote.estimated_total === null)) && (
             <button disabled={falSpeechBusy || !falSpeechPrompt.trim()} onClick={() => void quoteFalSpeech()}>Get FAL price</button>
           )}
           {falSpeechJob?.state === "quoted" && (

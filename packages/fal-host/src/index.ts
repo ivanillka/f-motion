@@ -9,6 +9,10 @@ export const FAL_IMAGE_ENDPOINT_ID = "fal-ai/flux/schnell";
 const falEndpointId = FAL_IMAGE_ENDPOINT_ID;
 const falQueueBase = `https://queue.fal.run/${FAL_IMAGE_ENDPOINT_ID}`;
 const falImageMaxPrompt = 500;
+/** Contract checked 2026-08-20: fal.ai model-arguments lists portrait_16_9 as 576×1024. */
+export const FAL_IMAGE_SIZE = "portrait_16_9" as const;
+export const FAL_IMAGE_WIDTH = 576;
+export const FAL_IMAGE_HEIGHT = 1024;
 const falHttpTimeoutMs = 30_000;
 
 export type FalImageErrorCode =
@@ -31,7 +35,7 @@ export interface FalImageQuote {
   unit_price: number;
   unit: string;
   currency: string;
-  /** Honest total when the billing unit maps to one portrait image; otherwise null. */
+  /** Honest total for the pinned one-still request; null when the unit cannot be mapped. */
   estimated_total: number | null;
   estimated_total_explanation?: string;
 }
@@ -127,18 +131,22 @@ function pickPrice(body: unknown): FalImageQuote {
   }) as { endpoint_id: string; unit_price: number; unit: string; currency: string } | undefined;
   if (!match) throw new FalImageError("provider_unavailable");
   const unit = match.unit.toLowerCase();
-  // One portrait still is billed per megapixel on Flux Schnell; totals stay null
-  // unless the unit is an honest per-image / per-request charge.
   const perImage = unit === "image" || unit === "images" || unit === "request" || unit === "requests";
+  const perMegapixel = unit === "megapixel" || unit === "megapixels";
+  // FAL bills Flux Schnell by rounding pixels up to the next megapixel.
+  const billedMegapixels = Math.ceil((FAL_IMAGE_WIDTH * FAL_IMAGE_HEIGHT) / 1_000_000);
+  const estimated_total = perImage ? match.unit_price
+    : perMegapixel ? match.unit_price * billedMegapixels
+      : null;
   return {
     endpoint_id: match.endpoint_id,
     unit_price: match.unit_price,
     unit: match.unit,
     currency: match.currency,
-    estimated_total: perImage ? match.unit_price : null,
-    ...(perImage ? {} : {
+    estimated_total,
+    ...(estimated_total === null ? {
       estimated_total_explanation: `FAL bills this model per ${match.unit}; a fixed dollar total is not computed for one still.`
-    })
+    } : {})
   };
 }
 
@@ -157,7 +165,7 @@ export async function estimateImage(
 export function falImageInput(prompt: string): Record<string, unknown> {
   return {
     prompt: normalizeImagePrompt(prompt),
-    image_size: "portrait_16_9",
+    image_size: FAL_IMAGE_SIZE,
     num_images: 1,
     enable_safety_checker: true
   };
