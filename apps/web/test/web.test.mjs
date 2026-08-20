@@ -207,6 +207,8 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.inspector-pair/);
   assert.match(css, /\.app-shell-editor \.app-stage \{\s*max-width: none;/);
   assert.match(css, /margin-inline: auto/);
+  assert.match(css, /dialog\[open\][\s\S]{0,180}max-height: calc\(100dvh - 24px\)/);
+  assert.match(css, /dialog img/);
   assert.doesNotMatch(css, /display: contents/);
 });
 
