@@ -320,7 +320,9 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   await expect(page.getByText(/estimated total USD 0\.003/i)).toBeVisible();
   await expect(page.getByRole("button", { name: "Generate one image" })).toBeEnabled();
   await page.getByRole("button", { name: "Generate one image" }).click();
-  await expect(page.getByRole("button", { name: "Use for scene 1" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Ready — review")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Generate AI image for scene 1" }).click();
+  await expect(page.getByRole("button", { name: "Use for scene 1" })).toBeVisible();
   await expect(page.getByText("AI-generated with FAL").first()).toBeVisible();
   const mediaIdBefore = await page.evaluate(async () => {
     const projectId = localStorage.getItem("fengine-project");
