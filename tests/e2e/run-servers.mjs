@@ -348,7 +348,14 @@ const api = createTestApp({
   falCredentials,
   falGeneration
 }).listen(43140, "127.0.0.1");
-const web = spawn("npm", ["run", "dev", "--workspace", "apps/web", "--", "--host", "127.0.0.1", "--port", "4173"], { stdio: "inherit" });
+const web = spawn("npm", ["run", "dev", "--workspace", "apps/web", "--", "--host", "127.0.0.1", "--port", "4173"], {
+  stdio: "inherit",
+  env: {
+    ...process.env,
+    // Demo e2e sessions mint a JWT email claim matching this so partner UI is exercised.
+    VITE_PARTNER_BRAND_EMAIL: process.env.VITE_PARTNER_BRAND_EMAIL || "e2e-partner@example.com"
+  }
+});
 
 const stop = () => {
   web.kill("SIGTERM");

@@ -166,7 +166,8 @@ function App() {
           url: import.meta.env.VITE_SUPABASE_URL,
           publicKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
           origin: studioOrigin(location.href),
-          allowDemo: Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1"
+          allowDemo: Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1",
+          demoEmail: String(import.meta.env.VITE_PARTNER_BRAND_EMAIL ?? "")
         })
       };
     } catch (error) {
@@ -2445,13 +2446,13 @@ function App() {
         )}
         <button className="secondary" onClick={() => setStep("settings")}>Choose video sources</button>
       </aside>
-      <button onClick={startCreate}>Create new video</button>
       {draftsLoading && <p role="status">Loading drafts…</p>}
       {!draftsLoading && drafts.length === 0 && <div className="empty-drafts">
         <p role="status">No drafts yet.</p>
         <p>Describe what you want to make — F-Motion will recommend a video plan and storyboard.</p>
         <button onClick={startCreate}>Create new video</button>
       </div>}
+      {!draftsLoading && drafts.length > 0 && <button onClick={startCreate}>Create new video</button>}
       <div className="concepts drafts-grid">{drafts.map((item) =>
         <button key={item.id} className="card draft-card" onClick={() => void openDraft(item.id)}>
           <strong>{item.brief.purpose || "Untitled draft"}</strong>
