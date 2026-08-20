@@ -68,9 +68,13 @@ async function chooseConcept(page: Page, title: "Direct" | "Story" | "Rhythm"): 
   await page.getByRole("button", { name: `Choose ${title} concept` }).click();
 }
 
+function mediaFileInput(page: Page) {
+  return page.locator('input[type="file"][accept*="image/jpeg"]');
+}
+
 async function attachFixtureToScene(page: Page, sceneNumber: number): Promise<void> {
   await page.getByRole("button", { name: `Edit scene ${sceneNumber}` }).click();
-  const input = page.locator('input[type="file"]');
+  const input = mediaFileInput(page);
   await input.setInputFiles([]);
   await input.setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("status").filter({ hasText: "Media attached to this scene" })).toBeVisible();
