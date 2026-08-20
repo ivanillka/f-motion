@@ -253,7 +253,9 @@ function demoAccessToken(email?: string): string {
     .replace(/=+$/u, "");
   return `demo.${payload}.local`;
 }
-sion";
+
+class DemoAuthGateway implements AuthGateway {
+  private readonly marker = "fengine-demo-session";
   private readonly listeners = new Set<(session?: WebAuthSession) => void>();
   private readonly token: string;
   private readonly storage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
