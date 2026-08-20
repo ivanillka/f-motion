@@ -496,11 +496,36 @@ export async function cancelVideo(
 /** Contract checked 2026-08-18 against fal.ai Kokoro American English docs. */
 export const FAL_SPEECH_ENDPOINT_ID = "fal-ai/kokoro/american-english";
 export const FAL_SPEECH_VOICE = "af_heart";
+/** Kokoro American English VoiceEnum — keep in lockstep with fal.ai docs. */
+export const FAL_SPEECH_VOICES = [
+  "af_heart",
+  "af_alloy",
+  "af_aoede",
+  "af_bella",
+  "af_jessica",
+  "af_kore",
+  "af_nicole",
+  "af_nova",
+  "af_river",
+  "af_sarah",
+  "af_sky",
+  "am_adam",
+  "am_echo",
+  "am_eric",
+  "am_fenrir",
+  "am_liam",
+  "am_michael",
+  "am_onyx",
+  "am_puck",
+  "am_santa"
+] as const;
+export type FalSpeechVoice = (typeof FAL_SPEECH_VOICES)[number];
 export const FAL_SPEECH_MAX_PROMPT = 2000;
 export const FAL_SPEECH_MAX_BYTES = 25_000_000;
 const falSpeechPricingUrl =
   "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai%2Fkokoro%2Famerican-english";
 const falSpeechQueueBase = `https://queue.fal.run/${FAL_SPEECH_ENDPOINT_ID}`;
+const falSpeechVoiceSet = new Set<string>(FAL_SPEECH_VOICES);
 
 export type FalSpeechQuote = FalImageQuote;
 export type FalSpeechSubmitResult = FalImageSubmitResult;
@@ -512,6 +537,14 @@ function normalizeSpeechPrompt(prompt: unknown): string {
   const trimmed = prompt.trim();
   if (!trimmed || trimmed.length > FAL_SPEECH_MAX_PROMPT) throw new FalImageError("invalid_request");
   return trimmed;
+}
+
+export function normalizeSpeechVoice(voice: unknown): FalSpeechVoice {
+  if (voice === undefined || voice === null || voice === "") return FAL_SPEECH_VOICE;
+  if (typeof voice !== "string" || !falSpeechVoiceSet.has(voice)) {
+    throw new FalImageError("invalid_request");
+  }
+  return voice as FalSpeechVoice;
 }
 
 function pickSpeechPrice(body: unknown, promptLength: number): FalSpeechQuote {
@@ -570,22 +603,22 @@ export async function estimateSpeech(
   return pickSpeechPrice(body, promptLength);
 }
 
-export function falSpeechInput(prompt: string): Record<string, unknown> {
+export function falSpeechInput(prompt: string, voice?: unknown): Record<string, unknown> {
   return {
     prompt: normalizeSpeechPrompt(prompt),
-    voice: FAL_SPEECH_VOICE,
+    voice: normalizeSpeechVoice(voice),
     speed: 1
   };
 }
 
 export async function submitSpeech(
   credential: string,
-  input: { prompt: string },
+  input: { prompt: string; voice?: unknown },
   fetchImpl: typeof fetch = fetch,
   timeoutMs = falHttpTimeoutMs,
   signal?: AbortSignal
 ): Promise<FalSpeechSubmitResult> {
-  const payload = falSpeechInput(input.prompt);
+  const payload = falSpeechInput(input.prompt, input.voice);
   const { status, body } = await falJson(credential, falSpeechQueueBase, {
     method: "POST",
     headers: {

@@ -43,7 +43,9 @@ test("worker probes stored media and renders an immutable project result", async
       "../../../prisma/migrations/20260731000000_render_job_input/migration.sql",
       "../../../prisma/migrations/20260731000000_seal_inspected_media/migration.sql",
       "../../../prisma/migrations/20260801000000_coalesce_render_jobs/migration.sql",
-      "../../../prisma/migrations/20260801120000_render_kind_profile/migration.sql"
+      "../../../prisma/migrations/20260801120000_render_kind_profile/migration.sql",
+      "../../../prisma/migrations/20260802020000_fal_byok_credentials/migration.sql",
+      "../../../prisma/migrations/20260802180000_fal_image_generation/migration.sql"
     ]) {
       await pool.query(await readFile(new URL(path, import.meta.url), "utf8"));
     }

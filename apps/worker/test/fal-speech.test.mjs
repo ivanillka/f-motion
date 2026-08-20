@@ -24,6 +24,7 @@ function baseRow(overrides = {}) {
     sceneId: "scene",
     credentialId: "cred-1",
     prompt: "Hello from the storyboard.",
+    inputJson: { prompt: "Hello from the storyboard.", voice: "am_adam", speed: 1 },
     state: "queued",
     cancelRequested: false,
     providerRequestId: null,
@@ -155,6 +156,7 @@ test("queued speech submits once, seals wav, skips inspect-media", async () => {
     if (method === "POST" && String(url).includes("queue.fal.run") && !String(url).includes("/requests/")) {
       posts += 1;
       assert.match(String(url), /kokoro\/american-english/);
+      assert.equal(JSON.parse(String(init.body)).voice, "am_adam");
       return new Response(JSON.stringify({ request_id: "req-speech" }), {
         status: 200, headers: { "content-type": "application/json" }
       });

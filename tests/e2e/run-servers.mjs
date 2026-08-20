@@ -218,7 +218,7 @@ const falGeneration = {
     falJobs.set(job.id, job);
     return falJobView(job);
   },
-  async quoteSpeech(ownerId, projectId, prompt) {
+  async quoteSpeech(ownerId, projectId, prompt, voice) {
     const job = {
       id: randomUUID(),
       project_id: projectId,
@@ -228,6 +228,7 @@ const falGeneration = {
       state: "quoted",
       cancel_requested: false,
       prompt: String(prompt).trim(),
+      voice: voice == null ? "af_heart" : String(voice),
       quote: {
         endpoint_id: "fal-ai/kokoro/american-english",
         unit_price: 0.02,

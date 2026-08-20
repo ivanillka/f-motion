@@ -539,13 +539,15 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
   app.post("/api/projects/:projectId/fal/speech-quotes", async (request, response, next) => {
     try {
       if (!options.falGeneration) return falGenUnavailable(response);
-      if (!exactObject(request.body, ["prompt"])) {
+      if (!exactObject(request.body, ["prompt", "voice"])) {
         return response.status(422).json({ type: "validation", message: "invalid prompt" });
       }
+      const body = request.body as { prompt?: unknown; voice?: unknown };
       const job = await options.falGeneration.quoteSpeech(
         String(response.locals.ownerId),
         request.params.projectId,
-        (request.body as { prompt?: unknown }).prompt
+        body.prompt,
+        body.voice
       );
       response.status(201).json(job);
     } catch (error) {

@@ -11,6 +11,7 @@ import {
   estimateVideo,
   falImageInput,
   falSpeechInput,
+  normalizeSpeechVoice,
   type FalImageQuote
 } from "@f-engine/fal-host";
 import { sceneMediaView, type SceneMediaView, type StoredMedia } from "./media-storage.js";
@@ -63,7 +64,7 @@ export interface FalGenerationService {
     sourceMediaId: unknown,
     motionPrompt: unknown
   ): Promise<GenerationJobView>;
-  quoteSpeech(ownerId: string, projectId: string, prompt: unknown): Promise<GenerationJobView>;
+  quoteSpeech(ownerId: string, projectId: string, prompt: unknown, voice?: unknown): Promise<GenerationJobView>;
   confirm(ownerId: string, jobId: string, idempotencyKey: unknown): Promise<GenerationJobView>;
   get(ownerId: string, jobId: string): Promise<GenerationJobView | undefined>;
   cancel(ownerId: string, jobId: string): Promise<GenerationJobView>;
@@ -381,8 +382,20 @@ export class PostgresFalGenerationService implements FalGenerationService {
     return this.viewFromRow(row);
   }
 
-  async quoteSpeech(ownerId: string, projectId: string, promptValue: unknown): Promise<GenerationJobView> {
+  async quoteSpeech(
+    ownerId: string,
+    projectId: string,
+    promptValue: unknown,
+    voiceValue?: unknown
+  ): Promise<GenerationJobView> {
     const prompt = normalizePrompt(promptValue, 2000);
+    let voice: string;
+    try {
+      voice = normalizeSpeechVoice(voiceValue);
+    } catch (error) {
+      if (error instanceof FalImageError) throw new FalGenerationValidationError("invalid voice");
+      throw error;
+    }
     const sceneId = await firstOwnedSceneId(this.pool, ownerId, projectId);
     if (await activeJobCount(this.pool, ownerId) > 0) {
       throw new FalGenerationBusyError("active FAL generation");
@@ -402,7 +415,7 @@ export class PostgresFalGenerationService implements FalGenerationService {
       throw error;
     }
     const id = randomUUID();
-    const inputJson = falSpeechInput(prompt);
+    const inputJson = falSpeechInput(prompt, voice);
     const quoteExpiresAt = new Date(Date.now() + QUOTE_TTL_MS);
     await this.pool.query(
       `INSERT INTO "GenerationJob"
