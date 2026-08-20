@@ -437,28 +437,42 @@ export class PostgresMediaRepository {
 
 }
 
+/**
+ * Browser uploads/downloads use the signed URL host. On a one-box VPS the S3
+ * client talks to an internal Docker DNS name while browsers need the public
+ * host:port. Optional R2_PUBLIC_ENDPOINT rewrites only the URL origin.
+ */
+export function rewriteSignedObjectUrl(signedUrl: string, publicEndpoint?: string): string {
+  const publicBase = publicEndpoint?.trim();
+  if (!publicBase) return signedUrl;
+  const signed = new URL(signedUrl);
+  const published = new URL(publicBase);
+  return new URL(`${signed.pathname}${signed.search}${signed.hash}`, published.origin).toString();
+}
+
 export class PrivateObjectStore {
-  constructor(readonly client: S3Client, readonly bucket: string) {}
+  constructor(
+    readonly client: S3Client,
+    readonly bucket: string,
+    readonly publicEndpoint?: string
+  ) {}
+
+  private async signed(command: PutObjectCommand | GetObjectCommand) {
+    const url = await getSignedUrl(this.client, command, { expiresIn: 300 });
+    return rewriteSignedObjectUrl(url, this.publicEndpoint);
+  }
 
   signedPut(objectKey: string, contentType: string, contentLength: number) {
-    return getSignedUrl(
-      this.client,
-      new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: objectKey,
-        ContentType: contentType,
-        ContentLength: contentLength
-      }),
-      { expiresIn: 300 }
-    );
+    return this.signed(new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: objectKey,
+      ContentType: contentType,
+      ContentLength: contentLength
+    }));
   }
 
   signedGet(objectKey: string) {
-    return getSignedUrl(
-      this.client,
-      new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }),
-      { expiresIn: 300 }
-    );
+    return this.signed(new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }));
   }
 
   async put(

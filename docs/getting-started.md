@@ -8,6 +8,19 @@ If you only want to evaluate the workflow, use `npm run demo` from the root.
 That path requires no accounts and does not contact Supabase, Pexels, cloud
 storage, or a hosted database.
 
+## One-box VPS (Docker Compose)
+
+For an open-source install on a single VPS — Postgres, MinIO, API, worker, and
+web on one machine, **no Fly.io**, **no Fotium**, users bring their own
+Supabase + Pexels/FAL keys — see
+[`docs/runbooks/vps-self-host.md`](runbooks/vps-self-host.md) and run:
+
+```sh
+cp deploy/vps/.env.example deploy/vps/.env
+# edit deploy/vps/.env, then:
+bash scripts/vps-up.sh
+```
+
 ## 1. Prepare the local toolchain
 
 - Node 24.15.0 and npm 11.12.1

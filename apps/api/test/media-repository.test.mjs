@@ -10,7 +10,8 @@ import {
   PexelsRequestError,
   PostgresMediaRepository,
   PrivateObjectStore,
-  pexelsQueriesForBrief
+  pexelsQueriesForBrief,
+  rewriteSignedObjectUrl
 } from "../dist/media-storage.js";
 
 /** Fake pool that answers only the queries `completeAdmission` issues. */
@@ -74,6 +75,31 @@ test("signedPut binds the admitted byte ceiling and only targets quarantine", as
   assert.match(String(url.searchParams.get("X-Amz-SignedHeaders")), /content-length/);
   assert.match(decodeURIComponent(url.pathname), /\/media-quarantine\/a$/);
   assert.doesNotMatch(decodeURIComponent(url.pathname), /\/media\/a$/);
+});
+
+test("signed URLs can rewrite the internal object-store host for browsers", async () => {
+  assert.equal(
+    rewriteSignedObjectUrl("http://minio:9000/bucket/key?X-Amz-Signature=1", "http://127.0.0.1:9000"),
+    "http://127.0.0.1:9000/bucket/key?X-Amz-Signature=1"
+  );
+  assert.equal(
+    rewriteSignedObjectUrl("http://minio:9000/bucket/key?X-Amz-Signature=1", "https://media.example"),
+    "https://media.example/bucket/key?X-Amz-Signature=1"
+  );
+  assert.equal(
+    rewriteSignedObjectUrl("http://minio:9000/bucket/key?sig=1", undefined),
+    "http://minio:9000/bucket/key?sig=1"
+  );
+  const client = new S3Client({
+    region: "us-east-1",
+    endpoint: "http://minio:9000",
+    forcePathStyle: true,
+    credentials: { accessKeyId: "fengine", secretAccessKey: "fengine-secret" }
+  });
+  const store = new PrivateObjectStore(client, "bucket", "http://127.0.0.1:9000");
+  const url = new URL(await store.signedGet("projects/p/media-sealed/a"));
+  assert.equal(url.origin, "http://127.0.0.1:9000");
+  assert.match(decodeURIComponent(url.pathname), /\/media-sealed\/a$/);
 });
 
 test("PrivateObjectStore uploads a multi-chunk stream with its known length", async () => {
