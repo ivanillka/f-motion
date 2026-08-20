@@ -48,6 +48,10 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /VITE_PARTNER_BRAND_EMAIL/);
   assert.match(source, /partner-brands/);
   assert.match(source, /Your galleries/);
+  assert.match(source, /clearBrowserStudioCache\(/);
+  assert.match(source, /Partner media sources stay private/);
+  assert.match(source, /partnerBrands \? <>/);
+  assert.match(source, /credentialLoadId/);
   assert.match(source, /fotium\.vip/);
   assert.doesNotMatch(source, /Fotium Motion|Fotium Studio/);
   assert.match(source, /Search licensed music/);

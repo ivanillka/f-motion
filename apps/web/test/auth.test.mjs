@@ -189,6 +189,22 @@ test("demo sessions store only a marker and clear it on sign-out", async () => {
   unsubscribe();
 });
 
+test("demo sessions can mint a partner email claim for local UI gates", async () => {
+  const storage = memoryStorage();
+  const gateway = createAuthGateway(
+    { origin: "http://localhost:5173", allowDemo: true, demoEmail: " Partner@Example.com " },
+    { demoStorage: storage }
+  );
+  const sessions = [];
+  gateway.subscribe((session) => sessions.push(session?.accessToken));
+  await new Promise(queueMicrotask);
+  await gateway.sendMagicLink("");
+  const issued = sessions.at(-1);
+  assert.match(issued, /^demo\./);
+  const payload = JSON.parse(Buffer.from(issued.split(".")[1], "base64url").toString("utf8"));
+  assert.equal(payload.email, "partner@example.com");
+});
+
 test("demo session survives reload without persisting its bearer token", async () => {
   const storage = memoryStorage({ "fengine-demo-session": "1" });
   const gateway = createAuthGateway(
