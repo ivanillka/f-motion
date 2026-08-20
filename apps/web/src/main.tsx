@@ -228,8 +228,8 @@ function App() {
   const [falVideoPrompt, setFalVideoPrompt] = useState("");
   const [falVideoJob, setFalVideoJob] = useState<GenerationJobView>();
   const [falVideoBusy, setFalVideoBusy] = useState(false);
-  const falVideoPollRef = useRef<string>();
-  const falGenPollRef = useRef<string>();
+  const falVideoPollRef = useRef<string | undefined>(undefined);
+  const falGenPollRef = useRef<string | undefined>(undefined);
   const [falSpeechOpen, setFalSpeechOpen] = useState(false);
   const [falSpeechPrompt, setFalSpeechPrompt] = useState("");
   const [falSpeechJob, setFalSpeechJob] = useState<GenerationJobView>();
