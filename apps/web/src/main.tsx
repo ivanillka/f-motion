@@ -227,6 +227,8 @@ function App() {
   const [falVideoPrompt, setFalVideoPrompt] = useState("");
   const [falVideoJob, setFalVideoJob] = useState<GenerationJobView>();
   const [falVideoBusy, setFalVideoBusy] = useState(false);
+  const falVideoPollRef = useRef<string>();
+  const falGenPollRef = useRef<string>();
   const [falSpeechOpen, setFalSpeechOpen] = useState(false);
   const [falSpeechPrompt, setFalSpeechPrompt] = useState("");
   const [falSpeechJob, setFalSpeechJob] = useState<GenerationJobView>();
@@ -1415,6 +1417,14 @@ function App() {
     return `fengine-fal-job:${projectId}:${sceneId}`;
   }
 
+  function falGenerationActive(state: string) {
+    return !["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(state);
+  }
+
+  function falGenerationReviewable(job: GenerationJobView | undefined) {
+    return Boolean(job?.state === "ready" && job.result_media?.state === "ready");
+  }
+
   function falGenFailureMessage(job: GenerationJobView): string {
     switch (job.failure_code) {
       case "submission_uncertain":
@@ -1439,6 +1449,14 @@ function App() {
       showFalLock();
       return;
     }
+    if (falGenJob?.scene_id === scene.id) {
+      setFalGenPrompt(falGenJob.prompt);
+      setFalGenOpen(true);
+      if (falGenerationActive(falGenJob.state) && falGenPollRef.current !== falGenJob.id) {
+        void pollFalGeneration(falGenJob.id);
+      }
+      return;
+    }
     setFalGenPrompt(scene.visual_prompt?.trim() || "");
     setFalGenJob(undefined);
     setFalGenOpen(true);
@@ -1451,7 +1469,7 @@ function App() {
         const job = await api.request<GenerationJobView>(`/api/generation-jobs/${stored}`);
         setFalGenJob(job);
         setFalGenPrompt(job.prompt);
-        if (!["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(job.state)) {
+        if (falGenerationActive(job.state) && falGenPollRef.current !== job.id) {
           void pollFalGeneration(job.id);
         }
       } catch {
@@ -1503,7 +1521,8 @@ function App() {
       });
       setFalGenJob(job);
       localStorage.setItem(falJobStorageKey(project.id, activeScene.id), job.id);
-      setStatus("FAL generation queued.");
+      setFalGenOpen(false);
+      setStatus(`Generating still for scene ${activeScene.order + 1} in the background. You can keep editing.`);
       void pollFalGeneration(job.id);
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.body.type : undefined;
@@ -1518,25 +1537,31 @@ function App() {
   }
 
   async function pollFalGeneration(jobId: string) {
+    if (falGenPollRef.current === jobId) return;
+    falGenPollRef.current = jobId;
     const deadline = Date.now() + 12 * 60_000;
-    while (Date.now() < deadline) {
-      try {
-        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
-        setFalGenJob(job);
-        if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
-          if (job.state === "ready") setStatus("AI still ready — review it before attaching.");
-          else if (job.state === "cancelled") setStatus("FAL generation cancelled.");
-          else setStatus(falGenFailureMessage(job));
+    try {
+      while (Date.now() < deadline) {
+        try {
+          const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
+          setFalGenJob(job);
+          if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
+            if (job.state === "ready") setStatus("AI still ready — open Generate AI image to review it.");
+            else if (job.state === "cancelled") setStatus("FAL generation cancelled.");
+            else setStatus(falGenFailureMessage(job));
+            return;
+          }
+          setStatus(`FAL generation · ${job.state.replaceAll("_", " ")}`);
+        } catch {
+          setStatus("Could not refresh FAL generation status.");
           return;
         }
-        setStatus(`FAL generation · ${job.state.replaceAll("_", " ")}`);
-      } catch {
-        setStatus("Could not refresh FAL generation status.");
-        return;
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      setStatus("FAL generation is still running. Reopen Generate AI image to check again.");
+    } finally {
+      if (falGenPollRef.current === jobId) falGenPollRef.current = undefined;
     }
-    setStatus("FAL generation is still running. Reopen Generate AI image to check again.");
   }
 
   async function cancelFalGeneration() {
@@ -1607,6 +1632,14 @@ function App() {
       setStatus("Animate needs a ready still image on this scene.");
       return;
     }
+    if (falVideoJob?.scene_id === scene.id) {
+      setFalVideoPrompt(falVideoJob.prompt);
+      setFalVideoOpen(true);
+      if (falGenerationActive(falVideoJob.state) && falVideoPollRef.current !== falVideoJob.id) {
+        void pollFalVideo(falVideoJob.id);
+      }
+      return;
+    }
     setFalVideoPrompt("gentle camera drift, subtle motion");
     setFalVideoJob(undefined);
     setFalVideoOpen(true);
@@ -1619,7 +1652,7 @@ function App() {
         const job = await api.request<GenerationJobView>(`/api/generation-jobs/${stored}`);
         setFalVideoJob(job);
         setFalVideoPrompt(job.prompt);
-        if (!["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(job.state)) {
+        if (falGenerationActive(job.state) && falVideoPollRef.current !== job.id) {
           void pollFalVideo(job.id);
         }
       } catch {
@@ -1679,7 +1712,8 @@ function App() {
       });
       setFalVideoJob(job);
       localStorage.setItem(falVideoStorageKey(project.id, activeScene.id), job.id);
-      setStatus("FAL video generation queued.");
+      setFalVideoOpen(false);
+      setStatus(`Animating scene ${activeScene.order + 1} in the background. You can keep editing.`);
       void pollFalVideo(job.id);
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.body.type : undefined;
@@ -1694,25 +1728,31 @@ function App() {
   }
 
   async function pollFalVideo(jobId: string) {
+    if (falVideoPollRef.current === jobId) return;
+    falVideoPollRef.current = jobId;
     const deadline = Date.now() + 25 * 60_000;
-    while (Date.now() < deadline) {
-      try {
-        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
-        setFalVideoJob(job);
-        if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
-          if (job.state === "ready") setStatus("AI video ready — review it before attaching.");
-          else if (job.state === "cancelled") setStatus("FAL video generation cancelled.");
-          else setStatus(falGenFailureMessage(job));
+    try {
+      while (Date.now() < deadline) {
+        try {
+          const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
+          setFalVideoJob(job);
+          if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
+            if (job.state === "ready") setStatus("AI video ready — open Animate this image to review it.");
+            else if (job.state === "cancelled") setStatus("FAL video generation cancelled.");
+            else setStatus(falGenFailureMessage(job));
+            return;
+          }
+          setStatus(`FAL video · ${job.state.replaceAll("_", " ")}`);
+        } catch {
+          setStatus("Could not refresh FAL video status.");
           return;
         }
-        setStatus(`FAL video · ${job.state.replaceAll("_", " ")}`);
-      } catch {
-        setStatus("Could not refresh FAL video status.");
-        return;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      setStatus("FAL video is still running. Reopen Animate this image to check again.");
+    } finally {
+      if (falVideoPollRef.current === jobId) falVideoPollRef.current = undefined;
     }
-    setStatus("FAL video is still running. Reopen Animate this image to check again.");
   }
 
   async function cancelFalVideo() {
@@ -1949,9 +1989,34 @@ function App() {
   const activeMediaId = activeScene?.media_id;
   const activeMedia = activeMediaId ? sceneMedia[activeMediaId] : undefined;
   const activePreviewUrl = scenePreviewUrl(activeMedia);
+  const activeVideoPreparing = Boolean(activeScene && falVideoJob?.scene_id === activeScene.id && falGenerationActive(falVideoJob.state));
+  const activeImagePreparing = Boolean(activeScene && falGenJob?.scene_id === activeScene.id && falGenerationActive(falGenJob.state));
+  const activePreparing = activeVideoPreparing || activeImagePreparing;
   const measuredActive = previewSize?.url === activePreviewUrl ? previewSize : undefined;
   const wideStill = isWideMedia(activeMedia?.detected?.width, activeMedia?.detected?.height)
     || isWideMedia(measuredActive?.width, measuredActive?.height);
+  useEffect(() => {
+    if (!project?.id) return;
+    const projectId = project.id;
+    let cancelled = false;
+    void (async () => {
+      for (const scene of project.scenes) {
+        const stored = localStorage.getItem(falVideoStorageKey(projectId, scene.id));
+        if (!stored) continue;
+        try {
+          const job = await api.request<GenerationJobView>(`/api/generation-jobs/${stored}`);
+          if (cancelled || job.kind !== "image_to_video") return;
+          setFalVideoJob((current) => (current?.id === job.id ? current : job));
+          setFalVideoPrompt(job.prompt);
+          if (falGenerationActive(job.state)) void pollFalVideo(job.id);
+        } catch {
+          if (!cancelled) localStorage.removeItem(falVideoStorageKey(projectId, scene.id));
+        }
+        return;
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [project?.id]);
   useEffect(() => {
     if (!activeScene || previewPan.current) return;
     setCropFocus({ x: clampFocus(activeScene.focal_x), y: clampFocus(activeScene.focal_y) });
@@ -2458,12 +2523,21 @@ function App() {
       <nav className="scene-strip" aria-label="Storyboard scenes">{project.scenes.map((scene) => {
         const media = scene.media_id ? sceneMedia[scene.media_id] : undefined;
         const previewUrl = scenePreviewUrl(media);
+        const videoPreparing = falVideoJob?.scene_id === scene.id && falGenerationActive(falVideoJob.state);
+        const imagePreparing = falGenJob?.scene_id === scene.id && falGenerationActive(falGenJob.state);
+        const preparing = videoPreparing || imagePreparing;
+        const reviewReady = (!preparing && falVideoJob?.scene_id === scene.id && falGenerationReviewable(falVideoJob))
+          || (!preparing && falGenJob?.scene_id === scene.id && falGenerationReviewable(falGenJob));
         return <button
           key={scene.id}
-          className={`scene-card${scene.id === playSceneId ? " is-playing" : ""}`}
+          className={`scene-card${scene.id === playSceneId ? " is-playing" : ""}${preparing ? " is-preparing" : ""}${reviewReady ? " is-ready-review" : ""}`}
           aria-pressed={scene.id === activeScene.id}
           aria-current={scene.id === playSceneId ? "true" : undefined}
-          aria-label={`Edit scene ${scene.order + 1}`}
+          aria-label={preparing
+            ? `Scene ${scene.order + 1} · ${videoPreparing ? "animating" : "generating"}`
+            : reviewReady
+              ? `Scene ${scene.order + 1} · ready to review`
+              : `Edit scene ${scene.order + 1}`}
           onClick={() => {
             searchAbort.current?.abort();
             searchTransition.current += 1;
@@ -2485,7 +2559,11 @@ function App() {
             )}
           <strong>Scene {scene.order + 1} · {(scene.duration_ms / 1000).toFixed(1)}s</strong>
           <span>{scene.caption || scene.visual_prompt}</span>
-          {sceneProgress[scene.id] && !previewUrl ? (
+          {preparing ? (
+            <span className="scene-progress scene-preparing">{videoPreparing ? "Animating…" : "Generating…"}</span>
+          ) : reviewReady ? (
+            <span className="scene-progress">Ready — review</span>
+          ) : sceneProgress[scene.id] && !previewUrl ? (
             <span className="scene-progress">
               {sceneProgress[scene.id] === "finding" ? "finding"
                 : sceneProgress[scene.id] === "inspecting" ? "inspecting"
@@ -2506,7 +2584,7 @@ function App() {
       <div className="editor-grid" key={`${activeScene.id}:${project.revision}`}>
         <div className="preview-panel">
           <div
-            className={`preview${livePlaying ? " is-live" : ""}${previewPanning ? " is-panning" : ""}${previewUrl ? " is-frameable" : ""}`}
+            className={`preview${livePlaying ? " is-live" : ""}${previewPanning ? " is-panning" : ""}${previewUrl ? " is-frameable" : ""}${activePreparing && !livePlaying ? " is-preparing" : ""}`}
             aria-label={livePlaying
               ? `Live preview · scene ${(previewScene?.order ?? 0) + 1}`
               : `Live preview for scene ${activeSceneNumber}`}
@@ -2520,6 +2598,11 @@ function App() {
           : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} draggable={false} className={previewMotionClass} style={previewPosition} onLoad={(event) => notePreviewPixels(previewUrl, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />)}
         {previewMedia && !previewUrl && <span className="media-placeholder">{previewMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
             {!previewMedia && <span className="media-placeholder">Choose stock or upload media</span>}
+            {activePreparing && !livePlaying ? (
+              <span className="preview-preparing" aria-live="polite">
+                {activeVideoPreparing ? "Animating this still…" : "Generating a still…"}
+              </span>
+            ) : null}
             <span className="preview-grade" aria-hidden="true" />
             {(overlayHeadline || overlayLine) ? (
               <div className={`caption-burn look-${overlayLook} overlay-${overlayPlace}${overlayGhost ? " is-ghost" : ""}`}>
@@ -2892,7 +2975,9 @@ function App() {
               }}>Generate another</button>
             </>
           )}
-          <button className="secondary" disabled={falGenBusy} onClick={() => setFalGenOpen(false)}>Close</button>
+          <button className="secondary" disabled={falGenBusy} onClick={() => setFalGenOpen(false)}>
+            {falGenJob && falGenerationActive(falGenJob.state) ? "Continue editing" : "Close"}
+          </button>
         </div>
       </dialog>}
       {falVideoOpen && activeScene && <dialog open aria-labelledby="fal-video-title">
@@ -2942,7 +3027,9 @@ function App() {
               }}>Generate another</button>
             </>
           )}
-          <button className="secondary" disabled={falVideoBusy} onClick={() => setFalVideoOpen(false)}>Close</button>
+          <button className="secondary" disabled={falVideoBusy} onClick={() => setFalVideoOpen(false)}>
+            {falVideoJob && falGenerationActive(falVideoJob.state) ? "Continue editing" : "Close"}
+          </button>
         </div>
       </dialog>}
       {falSpeechOpen && project && <dialog open aria-labelledby="fal-speech-title">

@@ -398,6 +398,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   overflow: hidden;
 }
 .scene-progress { color: var(--accent-soft) !important; font-size: 0.72rem !important; text-transform: uppercase; letter-spacing: 0.06em; }
+.scene-card.is-preparing img,
+.scene-card.is-preparing video,
+.scene-card.is-preparing .scene-empty {
+  animation: scene-prepare-pulse 1.6s ease-in-out infinite;
+}
+.scene-card.is-ready-review {
+  border-color: color-mix(in srgb, var(--success) 55%, var(--border));
+}
+@keyframes scene-prepare-pulse {
+  50% { opacity: 0.42; }
+}
 
 .editor-grid {
   display: grid;
@@ -432,6 +443,25 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .preview.is-frameable { cursor: grab; }
 .preview.is-panning { cursor: grabbing; }
+.preview.is-preparing img,
+.preview.is-preparing video {
+  animation: scene-prepare-pulse 1.6s ease-in-out infinite;
+}
+.preview-preparing {
+  z-index: 5;
+  align-self: end;
+  justify-self: stretch;
+  margin: 0 12px 14px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--raised) 88%, transparent);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
 .preview > * { grid-area: 1 / 1; }
 .preview img, .preview video {
   z-index: 0;

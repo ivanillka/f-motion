@@ -91,6 +91,13 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /confirmFalVideo\(/);
   assert.match(source, /JPEG, PNG, or WebP portrait/);
   assert.match(source, /type === "validation"/);
+  assert.match(source, /falGenerationActive\(/);
+  assert.match(source, /Continue editing/);
+  assert.match(source, /Animating…/);
+  assert.match(source, /Animating scene \$\{activeScene\.order \+ 1\} in the background/);
+  assert.match(source, /setFalVideoOpen\(false\)/);
+  assert.match(source, /is-preparing/);
+  assert.match(source, /Ready — review/);
   assert.doesNotMatch(source, /useFalGeneratedMedia[\s\S]{0,80}pollFalGeneration/);
   assert.doesNotMatch(source, /Generation is not live yet/);
 
@@ -192,6 +199,9 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /minmax\(0, 1fr\) 232px/);
   assert.match(css, /preview-push/);
   assert.match(css, /preview-push-wide/);
+  assert.match(css, /scene-prepare-pulse/);
+  assert.match(css, /\.preview-preparing/);
+  assert.match(css, /\.scene-card\.is-preparing/);
   assert.match(css, /transform-origin: 50% 50%/);
   assert.match(css, /preview-zoom \{\s*from \{ transform: scale\(1\.08\)/);
   assert.match(css, /\.preview-grade/);
