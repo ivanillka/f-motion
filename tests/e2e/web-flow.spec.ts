@@ -320,7 +320,12 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   await expect(page.getByText(/estimated total USD 0\.003/i)).toBeVisible();
   await expect(page.getByRole("button", { name: "Generate one image" })).toBeEnabled();
   await page.getByRole("button", { name: "Generate one image" }).click();
-  await expect(page.getByRole("button", { name: "Use for scene 1" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({
+    hasText: /Generating still for scene 1 in the background/i
+  })).toBeVisible();
+  await expect(page.getByText("Ready — review")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Generate AI image for scene 1" }).click();
+  await expect(page.getByRole("button", { name: "Use for scene 1" })).toBeVisible();
   await expect(page.getByText("AI-generated with FAL").first()).toBeVisible();
   const mediaIdBefore = await page.evaluate(async () => {
     const projectId = localStorage.getItem("fengine-project");
@@ -372,7 +377,12 @@ test("FAL image-to-video quotes, confirms, and attaches only after review", asyn
   await page.getByRole("button", { name: "Get FAL price" }).click();
   await expect(page.getByText(/estimated total USD 0\.19/i)).toBeVisible();
   await page.getByRole("button", { name: "Generate one 6-second video" }).click();
-  await expect(page.getByRole("button", { name: "Use video for scene 1" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({
+    hasText: /Animating scene 1 in the background/i
+  })).toBeVisible();
+  await expect(page.getByText("Ready — review")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Animate this image for scene 1" }).click();
+  await expect(page.getByRole("button", { name: "Use video for scene 1" })).toBeVisible();
   await page.getByRole("button", { name: "Use video for scene 1" }).click();
   await expect(page.getByRole("status").filter({ hasText: /AI-generated FAL video/i })).toBeVisible();
 
