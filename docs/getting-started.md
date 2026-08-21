@@ -16,9 +16,8 @@ brings their own Supabase + Pexels/FAL keys (multi-user is paid / corporate) —
 see [`docs/runbooks/vps-self-host.md`](runbooks/vps-self-host.md) and run:
 
 ```sh
-cp deploy/vps/.env.example deploy/vps/.env
-# edit deploy/vps/.env, then:
-bash scripts/vps-up.sh
+./install.sh
+# first run writes deploy/vps/.env — fill Supabase + one owner UUID, then re-run
 ```
 
 ## 1. Prepare the local toolchain

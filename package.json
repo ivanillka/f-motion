@@ -23,6 +23,7 @@
     "smoke:pages": "node tools/deploy/smoke-pages.mjs",
     "smoke:agents": "node tests/agents/smoke.mjs",
     "demo": "npm run build --workspace apps/api && npm run build --workspace apps/worker && node tests/e2e/run-servers.mjs",
+    "install:oss": "bash install.sh",
     "vps:up": "bash scripts/vps-up.sh",
     "stack": "npm run build --workspace apps/api && npm run start --workspace apps/api",
     "test:e2e:web": "playwright test -c tests/e2e/playwright.config.ts",

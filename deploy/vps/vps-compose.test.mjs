@@ -12,8 +12,10 @@ test("VPS compose path is single-seat, BYOK, and Fotium-free", async () => {
   const compose = await readFile(join(vps, "docker-compose.yml"), "utf8");
   const envExample = await readFile(join(vps, ".env.example"), "utf8");
   const script = await readFile(join(root, "scripts/vps-up.sh"), "utf8");
+  const install = await readFile(join(root, "install.sh"), "utf8");
   const webDocker = await readFile(join(root, "apps/web/Dockerfile"), "utf8");
   const guide = await readFile(join(root, "docs/runbooks/vps-self-host.md"), "utf8");
+  const readme = await readFile(join(root, "README.md"), "utf8");
 
   assert.match(compose, /postgres:/);
   assert.match(compose, /minio:/);
@@ -39,12 +41,31 @@ test("VPS compose path is single-seat, BYOK, and Fotium-free", async () => {
   assert.match(script, /Fotium/);
   assert.match(script, /exactly one FENGINE_ALLOWED_USER_IDS/);
   assert.match(script, /single_user/);
+  assert.match(install, /Open-source F-Motion installer/);
+  assert.match(install, /scripts\/vps-up\.sh/);
+  assert.match(install, /single seat/);
+  assert.match(install, /FENGINE_ALLOWED_USER_IDS/);
+  assert.match(readme, /\.\/install\.sh/);
+  assert.match(guide, /\.\/install\.sh/);
   assert.match(webDocker, /VITE_PARTNER_BRAND_EMAIL=/);
   assert.match(webDocker, /VITE_ALLOW_DEMO_AUTH=/);
   assert.match(guide, /single user|single-seat|single seat/i);
   assert.match(guide, /corporate|paid/);
   assert.match(guide, /Fotium/);
   assert.match(guide, /Fly\.io/);
+});
+
+test("install.sh refuses placeholder env and prints next steps", () => {
+  const result = spawnSync("bash", ["install.sh"], {
+    cwd: root,
+    env: { ...process.env, PATH: process.env.PATH },
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(
+    `${result.stdout}${result.stderr}`,
+    /deploy\/vps\/\.env|Supabase|FENGINE_ALLOWED_USER_IDS|install\.sh|docker/i
+  );
 });
 
 test("vps-up refuses a missing env file", () => {

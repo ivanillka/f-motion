@@ -31,19 +31,20 @@ Auth still uses **your** Supabase project (email/password or magic link). The AP
 
 ```bash
 git clone <this-repo> && cd <this-repo>
-cp deploy/vps/.env.example deploy/vps/.env
+./install.sh
 ```
 
-Edit `deploy/vps/.env`:
+First run creates `deploy/vps/.env` and generates `FENGINE_CREDENTIAL_KEY_V1`.
+Edit that file:
 
-1. `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `FENGINE_CREDENTIAL_KEY_V1` (`openssl rand -base64 32`)
-2. Supabase URL + anon key (+ JWKS / issuer for the API)
-3. `FENGINE_ALLOWED_USER_IDS` = **one** UUID — create that user in Supabase Auth first, then paste their `id`
+1. Supabase URL + anon key (+ JWKS / issuer for the API)
+2. `FENGINE_ALLOWED_USER_IDS` = **one** UUID — create that user in Supabase Auth first, then paste their `id`
+3. Optional on a real VPS: change `POSTGRES_PASSWORD` / `MINIO_ROOT_PASSWORD`, set public `FENGINE_WEB_ORIGIN` and `R2_PUBLIC_ENDPOINT`
 4. Leave `FENGINE_ENV=selfhost` and `FENGINE_ACCESS_MODE=single_user`
 
 ```bash
-bash scripts/vps-up.sh
-# or: npm run vps:up
+./install.sh
+# equivalent: bash scripts/vps-up.sh   or   npm run vps:up
 ```
 
 Open `http://YOUR_HOST:8080/app/` and sign in as that single user.

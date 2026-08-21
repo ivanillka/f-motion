@@ -20,13 +20,20 @@ Choose one path:
    a session-only test identity, local fixture media, and local FFmpeg. It does
    not use Supabase, cloud storage, Pexels, or a hosted database.
 
-2. **Self-host with your own services**
+2. **Self-host the open-source single-seat box**
 
-   - **One-box VPS (Docker Compose, open-source single seat):** [VPS self-host](docs/runbooks/vps-self-host.md) —
-     Postgres, MinIO, API, worker, and web on one machine for **one** operator.
-     No Fly.io. No Fotium. Multi-user / team seats are the paid corporate product.
-     The operator brings Supabase Auth plus their own Pexels/FAL keys.
-   - **Manual durable stack:** [Self-host onboarding](docs/getting-started.md).
+   ```sh
+   git clone <this-repo> && cd <this-repo>
+   ./install.sh
+   ```
+
+   First run writes `deploy/vps/.env` and generates the credential key. Fill in
+   your Supabase project plus **one** owner user UUID, then run `./install.sh`
+   again. Studio: `http://127.0.0.1:8080/app/`.
+
+   Details: [VPS self-host](docs/runbooks/vps-self-host.md). No Fly.io. No Fotium.
+   Multi-user / team seats are the paid corporate product.
+   Manual durable stack: [Self-host onboarding](docs/getting-started.md).
 
    You create and control the Supabase, PostgreSQL, S3-compatible storage, and
    Pexels accounts. No maintainer credential, customer data, deployment
