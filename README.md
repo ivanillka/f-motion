@@ -20,16 +20,29 @@ Choose one path:
    a session-only test identity, local fixture media, and local FFmpeg. It does
    not use Supabase, cloud storage, Pexels, or a hosted database.
 
-2. **Self-host with your own services**
+2. **Self-host the open-source single-seat box**
 
-   Follow [Self-host onboarding](docs/getting-started.md). You create and
-   control the Supabase, PostgreSQL, S3-compatible storage, and Pexels
-   accounts. No maintainer credential, customer data, deployment identifier,
-   or private API endpoint is included. Every signed-in user connects their
-   own Pexels API key for stock search. If FAL credential support is enabled,
-   they also connect their own API-scope FAL key. One storyboard scene can
-   quote and confirm a Flux Schnell still, or animate one approved portrait still into a six-second video, charged directly to that FAL account.
-   The host never supplies a shared provider key.
+   ```sh
+   git clone <this-repo> && cd <this-repo>
+   ./install.sh
+   ```
+
+   First run writes `deploy/vps/.env` and generates the credential key. Fill in
+   your Supabase project plus **one** owner user UUID, then run `./install.sh`
+   again. Studio: `http://127.0.0.1:8080/app/`.
+
+   Details: [VPS self-host](docs/runbooks/vps-self-host.md). No Fly.io. No Fotium.
+   Multi-user / team seats are the paid corporate product.
+   Manual durable stack: [Self-host onboarding](docs/getting-started.md).
+
+   You create and control the Supabase, PostgreSQL, S3-compatible storage, and
+   Pexels accounts. No maintainer credential, customer data, deployment
+   identifier, or private API endpoint is included. The signed-in operator
+   connects their own Pexels API key for stock search. If FAL credential
+   support is enabled, they also connect their own API-scope FAL key. One
+   storyboard scene can quote and confirm a Flux Schnell still, or animate one
+   approved portrait still into a six-second video, charged directly to that
+   FAL account. The host never supplies a shared provider key.
 
 Never paste database, storage, or service-role credentials into the browser.
 The provider credentials accepted by the reference web client are a user's own

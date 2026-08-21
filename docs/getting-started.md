@@ -8,6 +8,18 @@ If you only want to evaluate the workflow, use `npm run demo` from the root.
 That path requires no accounts and does not contact Supabase, Pexels, cloud
 storage, or a hosted database.
 
+## One-box VPS (Docker Compose)
+
+For an open-source **single-seat** install on a VPS — Postgres, MinIO, API,
+worker, and web on one machine, **no Fly.io**, **no Fotium**, one operator
+brings their own Supabase + Pexels/FAL keys (multi-user is paid / corporate) —
+see [`docs/runbooks/vps-self-host.md`](runbooks/vps-self-host.md) and run:
+
+```sh
+./install.sh
+# first run writes deploy/vps/.env — fill Supabase + one owner UUID, then re-run
+```
+
 ## 1. Prepare the local toolchain
 
 - Node 24.15.0 and npm 11.12.1

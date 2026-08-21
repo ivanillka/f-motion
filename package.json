@@ -15,7 +15,7 @@
   ],
   "scripts": {
     "lint": "tsc -b --pretty false",
-    "test": "node --test prisma/*.test.mjs && npm test --workspaces --if-present",
+    "test": "node --test prisma/*.test.mjs deploy/vps/*.test.mjs && npm test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "build:pages": "npm run build --workspace apps/web && npm run verify:pages-artifact",
     "verify:pages-artifact": "node tools/deploy/verify-pages-artifact.mjs",
@@ -23,6 +23,8 @@
     "smoke:pages": "node tools/deploy/smoke-pages.mjs",
     "smoke:agents": "node tests/agents/smoke.mjs",
     "demo": "npm run build --workspace apps/api && npm run build --workspace apps/worker && node tests/e2e/run-servers.mjs",
+    "install:oss": "bash install.sh",
+    "vps:up": "bash scripts/vps-up.sh",
     "stack": "npm run build --workspace apps/api && npm run start --workspace apps/api",
     "test:e2e:web": "playwright test -c tests/e2e/playwright.config.ts",
     "test:package-consumer": "node --test tests/package-consumer.test.mjs"

@@ -100,3 +100,43 @@ test("unknown access modes fail startup", () => {
     /invalid FENGINE_ACCESS_MODE/
   );
 });
+
+test("selfhost open-source installs require single_user mode", () => {
+  assert.throws(
+    () => accessPolicyFromEnv({ FENGINE_ENV: "selfhost" }),
+    /selfhost requires FENGINE_ACCESS_MODE=single_user/
+  );
+  assert.throws(
+    () => accessPolicyFromEnv({
+      FENGINE_ENV: "selfhost",
+      FENGINE_ACCESS_MODE: "invite_only",
+      FENGINE_ALLOWED_USER_IDS: invited
+    }),
+    /selfhost requires FENGINE_ACCESS_MODE=single_user/
+  );
+});
+
+test("single_user admits exactly one configured Supabase subject", () => {
+  const policy = accessPolicyFromEnv({
+    FENGINE_ENV: "selfhost",
+    FENGINE_ACCESS_MODE: "single_user",
+    FENGINE_ALLOWED_USER_IDS: invited
+  });
+  assert.equal(policy.mode, "single_user");
+  assert.equal(policy.allowedOwnerIds.size, 1);
+  assert.doesNotThrow(() => assertOwnerAdmitted(invited, policy));
+  assert.throws(
+    () => assertOwnerAdmitted(second, policy),
+    AccountUnavailableError
+  );
+});
+
+test("single_user rejects multi-seat allowlists", () => {
+  assert.throws(
+    () => accessPolicyFromEnv({
+      FENGINE_ACCESS_MODE: "single_user",
+      FENGINE_ALLOWED_USER_IDS: `${invited},${second}`
+    }),
+    /single_user requires exactly one FENGINE_ALLOWED_USER_IDS entry/
+  );
+});

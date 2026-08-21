@@ -58,7 +58,7 @@ const objectStore = new PrivateObjectStore(new S3Client({
     accessKeyId: required("R2_ACCESS_KEY_ID"),
     secretAccessKey: required("R2_SECRET_ACCESS_KEY")
   }
-}), required("R2_BUCKET"));
+}), required("R2_BUCKET"), process.env.R2_PUBLIC_ENDPOINT?.trim() || undefined);
 
 const projects = new PostgresProjectRepository(pool);
 const renders = new PostgresRenderRepository(pool, renderProfilesFromEnv(process.env));

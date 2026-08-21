@@ -227,8 +227,8 @@ function App() {
   const [falVideoPrompt, setFalVideoPrompt] = useState("");
   const [falVideoJob, setFalVideoJob] = useState<GenerationJobView>();
   const [falVideoBusy, setFalVideoBusy] = useState(false);
-  const falVideoPollRef = useRef<string>();
-  const falGenPollRef = useRef<string>();
+  const falVideoPollRef = useRef<string | undefined>(undefined);
+  const falGenPollRef = useRef<string | undefined>(undefined);
   const [falSpeechOpen, setFalSpeechOpen] = useState(false);
   const [falSpeechPrompt, setFalSpeechPrompt] = useState("");
   const [falSpeechJob, setFalSpeechJob] = useState<GenerationJobView>();
@@ -2411,13 +2411,13 @@ function App() {
         )}
         <button className="secondary" onClick={() => setStep("settings")}>Choose video sources</button>
       </aside>
-      <button onClick={startCreate}>Create new video</button>
       {draftsLoading && <p role="status">Loading drafts…</p>}
       {!draftsLoading && drafts.length === 0 && <div className="empty-drafts">
         <p role="status">No drafts yet.</p>
         <p>Describe what you want to make — F-Motion will recommend a video plan and storyboard.</p>
         <button onClick={startCreate}>Create new video</button>
       </div>}
+      {!draftsLoading && drafts.length > 0 && <button onClick={startCreate}>Create new video</button>}
       <div className="concepts drafts-grid">{drafts.map((item) =>
         <button key={item.id} className="card draft-card" onClick={() => void openDraft(item.id)}>
           <strong>{item.brief.purpose || "Untitled draft"}</strong>
