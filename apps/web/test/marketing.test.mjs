@@ -6,10 +6,12 @@ test("marketing landing keeps Web and Integrate paths with studio CTA", async ()
   const source = await readFile(new URL("../src/MarketingLanding.tsx", import.meta.url), "utf8");
   for (const phrase of [
     "F-MOTION",
-    "Vertical reels from your own media",
+    "Brief to vertical reel",
     "Open studio",
     "See integration",
-    "Embed cinematic creation",
+    "Kokoro",
+    "Hailuo",
+    "Embed vertical reel creation",
     "Import &amp; open",
     "Render pipeline",
     "MCP agent loop",

@@ -231,6 +231,10 @@
     height: 1px;
     background: var(--mkt-border);
   }
+  .mkt-steps.mkt-features {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .mkt-steps.mkt-features::before { display: none; }
 }
 
 .mkt-step {
@@ -239,6 +243,14 @@
   gap: 1rem;
   justify-items: center;
   position: relative;
+}
+
+.mkt-features .mkt-step-num {
+  width: auto;
+  height: auto;
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border-radius: 999px;
 }
 
 .mkt-step-num {

@@ -235,7 +235,7 @@
           .from(hero.querySelector(".hero-plane"), { autoAlpha: 0, y: 40, scale: 1.02, duration: 0.85 }, "-=0.2");
       }
       gsap.utils.toArray(".section").forEach((section) => {
-        gsap.from(section.querySelectorAll("h2, .lede, .step, .keys-visual, .keys-copy, .studio-frame, .recipe, .diagram, .dx > *"), {
+        gsap.from(section.querySelectorAll("h2, .lede, .step, .feature-list li, .keys-visual, .keys-copy, .studio-frame, .recipe, .diagram, .dx > *"), {
           autoAlpha: 0,
           y: 32,
           duration: 0.65,

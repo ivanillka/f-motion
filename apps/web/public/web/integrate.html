@@ -26,8 +26,8 @@
   <main id="main">
     <section class="page-hero" aria-label="Integrate hero">
       <p class="live-pill"><i aria-hidden="true"></i> API V1 IS LIVE</p>
-      <h1>Embed cinematic creation in your product.</h1>
-      <p>Keep your upload, auth, and publishing infrastructure intact. Call the F-Motion render pipeline to generate high-fidelity reels from within your existing ecosystem.</p>
+      <h1>Embed vertical reel creation in your product.</h1>
+      <p>Keep your upload, auth, and publishing. Call F-Motion for plan → storyboard → render, then publish the finished reel back to your product.</p>
       <div class="cta-row">
         <!-- ponytail: partner intake not wired — mailto is the ceiling until API access form ships -->
         <a class="btn btn-primary" href="mailto:partners@f-motion.com?subject=F-Motion%20API%20access">Get API access</a>
@@ -44,7 +44,7 @@
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 12h10M10 6l6 6-6 6"/><path d="M20 5v14"/></svg>
             </div>
             <h3>Import &amp; Open</h3>
-            <p>Pass media URIs directly to the F-Motion web studio. Users edit in our environment; you receive the final render hook.</p>
+            <p>POST a draft plus media URLs into the studio. Creators finish the storyboard there; your host receives the finished render.</p>
             <a href="/app/">Open studio →</a>
           </article>
           <article class="recipe">
@@ -52,7 +52,7 @@
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="4" width="7" height="7" rx="1"/><rect x="3" y="13" width="7" height="7" rx="1"/><path d="M14 16.5h7M17.5 13v7"/></svg>
             </div>
             <h3>Render Pipeline</h3>
-            <p>Fully headless. Send raw assets and a timeline JSON definition; receive a mastered MP4 back via webhook.</p>
+            <p>API key → project commands → preview or final render → download. Metered in host render units; BYOK providers bill the owner directly.</p>
             <a href="mailto:partners@f-motion.com?subject=Render%20pipeline%20schema">Explore schema →</a>
           </article>
           <article class="recipe">
@@ -60,7 +60,7 @@
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 12h8M12 8v8"/></svg>
             </div>
             <h3>MCP Agent Loop</h3>
-            <p>Provide an LLM with the Model Context Protocol to iteratively craft, preview, and adjust timelines before rendering.</p>
+            <p>Drive create → command → render → wait from Cursor, OpenClaw, or Hermes with machine API keys over the Model Context Protocol.</p>
             <a class="cyan" href="mailto:partners@f-motion.com?subject=MCP%20guide">MCP Guide →</a>
           </article>
         </div>
@@ -90,20 +90,20 @@
       <div class="section-inner dx">
         <div>
           <h2 id="dx-heading">Developer Experience.</h2>
-          <p>Initiate an integration project in milliseconds. Our REST API uses standard bearer token authentication and accepts clean, strictly-typed JSON payloads for media definitions.</p>
+          <p>Trusted host import with a Bearer token, or owner API keys (<code>fm_…</code>). Idempotent on <code>external_id</code>. Preview and final renders are metered in host units; Pexels and FAL stay BYOK for the creator.</p>
           <ul class="dx-list">
             <li>
               <span class="check" aria-hidden="true">✓</span>
               <div>
-                <strong>Idempotent Requests</strong>
-                <span>Safely retry failed network calls without duplicating resources.</span>
+                <strong>Idempotent imports</strong>
+                <span>Retry safely with the same <code>external_id</code> without duplicating drafts.</span>
               </div>
             </li>
             <li>
               <span class="check" aria-hidden="true">✓</span>
               <div>
-                <strong>Webhooks</strong>
-                <span>Real-time status updates for lengthy render jobs.</span>
+                <strong>Studio handoff</strong>
+                <span>Open <code>projectUrl</code> so creators finish captions, media, audio, and export in F-Motion.</span>
               </div>
             </li>
           </ul>
@@ -111,15 +111,14 @@
         <div class="code" aria-label="Example cURL request">
           <div class="code-bar"><i></i><i></i><i></i><span style="margin-left:8px">cURL Request</span></div>
           <pre><code><span class="kw">curl</span> -X POST https://api.f-motion.com/v1/integrations/project-imports \
-  -H <span class="str">"Authorization: Bearer fm_live_…"</span> \
+  -H <span class="str">"Authorization: Bearer $FENGINE_IMPORT_TOKEN"</span> \
   -H <span class="str">"Content-Type: application/json"</span> \
   -d <span class="lit">'{
-    "client_reference": "usr_99812",
-    "media_assets": [
-      { "type": "video", "url": "s3://bucket/raw_1.mp4" },
-      { "type": "audio", "url": "https://host.com/track.wav" }
-    ],
-    "template_id": "tmpl_cinematic_01"
+    "external_id": "host:gallery:weekend",
+    "title": "Weekend portraits",
+    "caption": "Quiet frames from the session.",
+    "call_to_action": "Open the full gallery.",
+    "media_urls": ["https://cdn.example.com/galleries/weekend/1.jpg"]
   }'</span></code></pre>
         </div>
       </div>

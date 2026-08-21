@@ -33,8 +33,8 @@ export function MarketingLanding({
           <div key="web" className="mkt-fade">
             <section className="mkt-hero">
               <img className="mkt-hero-logo" src="/marketing/logo.png" alt="" width={192} height={192} />
-              <h1>Vertical reels from your own media.</h1>
-              <p className="mkt-chip">brief → storyboard → preview</p>
+              <h1>Brief to vertical reel.</h1>
+              <p className="mkt-chip">plan → storyboard → preview → export</p>
               <div className="mkt-hero-actions">
                 <button type="button" className="mkt-btn mkt-btn-primary mkt-btn-lg" onClick={onOpenStudio}>Open studio</button>
                 <button type="button" className="mkt-btn mkt-btn-ghost mkt-btn-lg" onClick={() => setTab("integrate")}>See integration</button>
@@ -45,19 +45,49 @@ export function MarketingLanding({
             </section>
 
             <section className="mkt-section">
-              <h2>The Pipeline</h2>
+              <h2>How a reel gets made</h2>
               <div className="mkt-steps">
                 <div className="mkt-step">
-                  <div className="mkt-step-num">01 Describe</div>
-                  <p>Draft your creative brief. Define mood, pacing, and the core message of the reel.</p>
+                  <div className="mkt-step-num">01 Plan</div>
+                  <p>Describe the subject and mood. Get a recommended video plan and three story concepts to accept or edit.</p>
                 </div>
                 <div className="mkt-step">
-                  <div className="mkt-step-num">02 Choose media</div>
-                  <p>Upload your own clips or connect BYOK stock. You keep the keys and the masters.</p>
+                  <div className="mkt-step-num">02 Assemble</div>
+                  <p>Own uploads or Pexels BYOK stock, Mixkit music, then record, upload, or generate Kokoro voice-over.</p>
                 </div>
                 <div className="mkt-step">
-                  <div className="mkt-step-num">03 Preview reel</div>
-                  <p>Review the storyboard and download an accurate vertical preview when it is ready.</p>
+                  <div className="mkt-step-num">03 Preview &amp; export</div>
+                  <p>Play the storyboard live with captions and motion, then render an accurate preview or final export.</p>
+                </div>
+              </div>
+            </section>
+
+            <section className="mkt-section">
+              <h2>Built for this workflow</h2>
+              <div className="mkt-steps mkt-features">
+                <div className="mkt-step">
+                  <div className="mkt-step-num">Storyboard</div>
+                  <p>Reorder scenes, edit captions and cues, set crop and motion, scrub a live playhead.</p>
+                </div>
+                <div className="mkt-step">
+                  <div className="mkt-step-num">Media</div>
+                  <p>JPEG, PNG, WebP, or MP4 uploads — or licensed Pexels search with your own key.</p>
+                </div>
+                <div className="mkt-step">
+                  <div className="mkt-step-num">Audio</div>
+                  <p>Mixkit beds or uploads, ducking under recorded, uploaded, or Kokoro FAL voice-over.</p>
+                </div>
+                <div className="mkt-step">
+                  <div className="mkt-step-num">FAL</div>
+                  <p>Flux Schnell stills and Hailuo six-second motion, quoted then confirmed on your FAL account.</p>
+                </div>
+                <div className="mkt-step">
+                  <div className="mkt-step-num">Metering</div>
+                  <p>Host render units for preview and export. Provider spend stays on your Pexels and FAL bills.</p>
+                </div>
+                <div className="mkt-step">
+                  <div className="mkt-step-num">Seats</div>
+                  <p>Open-source self-host is single seat. Multi-user is the corporate product.</p>
                 </div>
               </div>
             </section>
@@ -69,7 +99,7 @@ export function MarketingLanding({
                 </div>
                 <div>
                   <h2>Your media, your keys.</h2>
-                  <p>Pexels and FAL stay BYOK. F-Motion meters host render units — not provider credits — so your creative stack stays under your control.</p>
+                  <p>Pexels and FAL stay BYOK — validated, encrypted, never shown again. F-Motion meters host render units, not provider credits.</p>
                 </div>
               </div>
             </section>
@@ -77,7 +107,7 @@ export function MarketingLanding({
             <section className="mkt-section">
               <h2>From draft to download.</h2>
               <p style={{ textAlign: "center", color: "var(--mkt-muted)", maxWidth: "36rem", margin: "-1.5rem auto 2rem" }}>
-                A timeline built for vertical storytelling — calm, precise, private.
+                Live storyboard preview with soundtrack and voice-over — then an accurate vertical MP4.
               </p>
               <div className="mkt-frame">
                 <div className="mkt-frame-bar" aria-hidden="true"><i /><i /><i /></div>
@@ -86,7 +116,7 @@ export function MarketingLanding({
             </section>
 
             <section className="mkt-cta">
-              <h2>Ready to compile?</h2>
+              <h2>Open the studio.</h2>
               <button type="button" className="mkt-btn mkt-btn-primary mkt-btn-lg" onClick={onOpenStudio}>Open studio</button>
             </section>
           </div>
@@ -94,10 +124,10 @@ export function MarketingLanding({
           <div key="integrate" className="mkt-fade">
             <section className="mkt-int-hero">
               <div className="mkt-live">API v1 is live</div>
-              <h1>Embed cinematic creation in your product.</h1>
+              <h1>Embed vertical reel creation in your product.</h1>
               <p>
-                Keep your upload, auth, Immich/faces, and publishing. Call F-Motion for the reel —
-                then publish back to your gallery, feed, or stories.
+                Keep your upload, auth, and publishing. Call F-Motion for plan → storyboard → render —
+                then publish the finished reel back to your gallery, feed, or stories.
               </p>
               <div className="mkt-hero-actions">
                 <button type="button" className="mkt-btn mkt-btn-primary mkt-btn-lg" onClick={onOpenStudio}>Get API access</button>
@@ -147,11 +177,11 @@ export function MarketingLanding({
   -H "Authorization: Bearer $FENGINE_IMPORT_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "external_id": "fotium:gallery:weekend",
+    "external_id": "host:gallery:weekend",
     "title": "Weekend portraits",
     "caption": "Quiet frames from the session.",
     "call_to_action": "Open the full gallery.",
-    "media_urls": ["https://media.fotium.vip/galleries/weekend/1.jpg"]
+    "media_urls": ["https://cdn.example.com/galleries/weekend/1.jpg"]
   }'`}</code></pre>
               </div>
             </section>
