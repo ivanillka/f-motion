@@ -252,7 +252,7 @@ test("build puts marketing at site root and studio under /app", async () => {
   const home = await readFile(new URL("index.html", dist), "utf8");
   const redirects = await readFile(new URL("_redirects", dist), "utf8");
   const app = await readFile(new URL("app/index.html", dist), "utf8");
-  assert.match(home, /Vertical reels from your own media/);
+  assert.match(home, /Brief to vertical reel/);
   assert.match(home, /glitch-logo/);
   assert.match(home, /new URL\("\/app\/"/);
   assert.match(home, /searchParams\.set\("project"/);
@@ -269,11 +269,15 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   const css = await readFile(new URL("web.css", root), "utf8");
   const motion = await readFile(new URL("web-motion.js", root), "utf8");
   for (const phrase of [
-    "Vertical reels from your own media",
-    "brief → storyboard → preview",
+    "Brief to vertical reel",
+    "plan → storyboard → preview → export",
     "Open studio",
     "See integration",
     "Your media, your keys",
+    "Kokoro",
+    "Hailuo",
+    "Mixkit",
+    "Pexels",
     "./assets/hero-reel.jpg",
     "./assets/studio-ui.jpg"
   ]) {
@@ -282,7 +286,7 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.match(home, /new URL\("\/app\/"/);
   assert.match(home, /searchParams\.set\("project"/);
   for (const phrase of [
-    "Embed cinematic creation in your product",
+    "Embed vertical reel creation in your product",
     "Integration Recipes",
     "api.f-motion.com",
     "./assets/host-diagram.jpg",
