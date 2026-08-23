@@ -8,6 +8,8 @@
   handle /readyz {
     reverse_proxy 127.0.0.1:3000
   }
+  @one_url path /self-host /self-host/ /self-host.html /hosted /hosted/ /hosted.html /studio /studio/ /app /app/
+  redir @one_url / 301
   handle {
     root * /repo/apps/web/dist
     try_files {path} /index.html

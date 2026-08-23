@@ -169,6 +169,34 @@ test("auth client errors are propagated", async () => {
   await assert.rejects(gateway.sendMagicLink("person@example.com"), /rejected/);
 });
 
+test("self-host auth wins even when dummy Supabase settings are present", async () => {
+  const storage = memoryStorage();
+  let created = false;
+  const gateway = createAuthGateway(
+    {
+      url: "https://example.supabase.co",
+      publicKey: "public-key",
+      origin: "http://127.0.0.1:8080/",
+      allowDemo: false,
+      allowSelfhost: true
+    },
+    {
+      demoStorage: storage,
+      createClient() {
+        created = true;
+        throw new Error("must not construct Supabase");
+      }
+    }
+  );
+  assert.equal(typeof gateway.signInWithToken, "function");
+  await assert.rejects(gateway.sendMagicLink("person@example.com"), /operator token/);
+  await assert.rejects(gateway.signInWithGoogle(), /operator token/);
+  assert.equal(created, false);
+  const token = "b".repeat(32);
+  await gateway.signInWithToken(token);
+  assert.equal(storage.getItem("fengine-selfhost-token"), token);
+});
+
 test("self-host operator token stays in session storage and is the bearer", async () => {
   const storage = memoryStorage();
   const gateway = createAuthGateway(

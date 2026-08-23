@@ -3269,11 +3269,17 @@ const pageTitles: Record<string, string> = {
 };
 
 function documentTitleFor(pathname: string): string {
-  if (studioPath(pathname)) return "F-Motion — Studio";
+  if (import.meta.env.VITE_SELFHOST_AUTH === "1" || studioPath(pathname)) return "F-Motion — Studio";
   return pageTitles[pathname] ?? "F-Motion";
 }
 
+function leftoverMarketingPath(pathname: string): boolean {
+  return pathname === "/self-host" || pathname === "/self-host/" || pathname === "/self-host.html"
+    || pathname === "/hosted" || pathname === "/hosted/" || pathname === "/hosted.html";
+}
+
 function Root() {
+  const selfhost = import.meta.env.VITE_SELFHOST_AUTH === "1";
   const [path, setPath] = useState(() => window.location.pathname);
 
   useEffect(() => {
@@ -3287,6 +3293,14 @@ function Root() {
   }, [path]);
 
   useEffect(() => {
+    if (!selfhost || !leftoverMarketingPath(path)) return;
+    const here = new URL(window.location.href);
+    history.replaceState(null, "", `/${here.search}${here.hash}`);
+    setPath("/");
+  }, [path, selfhost]);
+
+  useEffect(() => {
+    if (selfhost) return;
     const here = new URL(window.location.href);
     const params = here.searchParams;
     const hash = new URLSearchParams(here.hash.replace(/^#/, ""));
@@ -3302,9 +3316,9 @@ function Root() {
     if (error) next.searchParams.set("error_code", error);
     history.replaceState(null, "", `${next.pathname}${next.search}${here.hash}`);
     setPath("/studio");
-  }, [path]);
+  }, [path, selfhost]);
 
-  if (studioPath(path)) return <App />;
+  if (selfhost || studioPath(path)) return <App />;
   return <MarketingApp path={path} />;
 }
 

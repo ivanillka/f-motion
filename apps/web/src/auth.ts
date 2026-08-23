@@ -222,12 +222,24 @@ class DemoAuthGateway implements AuthGateway {
   }
 }
 
+function sessionStorageOr(dependencies: AuthDependencies): Pick<Storage, "getItem" | "setItem" | "removeItem"> | undefined {
+  return dependencies.demoStorage
+    ?? (typeof sessionStorage === "undefined" ? undefined : sessionStorage);
+}
+
 export function createAuthGateway(
   config: AuthConfiguration,
   dependencies: AuthDependencies = {}
 ): AuthGateway {
   const url = config.url?.trim();
   const publicKey = config.publicKey?.trim();
+
+  if (config.allowSelfhost) {
+    const storage = sessionStorageOr(dependencies);
+    if (!storage) throw new AuthConfigurationError();
+    return new SelfhostAuthGateway(storage);
+  }
+
   if (Boolean(url) !== Boolean(publicKey)) throw new AuthConfigurationError();
 
   if (url && publicKey) {
@@ -245,13 +257,8 @@ export function createAuthGateway(
     return new SupabaseAuthGateway(client, callbackUrl(config.origin));
   }
 
-  const storage = dependencies.demoStorage
-    ?? (typeof sessionStorage === "undefined" ? undefined : sessionStorage);
-  if (config.allowSelfhost) {
-    if (!storage) throw new AuthConfigurationError();
-    return new SelfhostAuthGateway(storage);
-  }
   if (!config.allowDemo) throw new AuthConfigurationError();
+  const storage = sessionStorageOr(dependencies);
   if (!storage) throw new AuthConfigurationError();
   return new DemoAuthGateway(storage);
 }

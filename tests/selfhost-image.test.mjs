@@ -15,7 +15,24 @@ test("one-image files boot selfhost with a bootstrap token, not local auth", asy
   assert.match(entry, /\/usr\/lib\/postgresql\/\*\/bin/);
   assert.doesNotMatch(entry, /\bnpx prisma\b/);
   assert.match(docker, /VITE_SELFHOST_AUTH=1/);
+  assert.doesNotMatch(docker, /VITE_SUPABASE_URL/);
+  assert.doesNotMatch(docker, /VITE_SUPABASE_ANON_KEY/);
+  assert.doesNotMatch(docker, /VITE_ENABLE_GOOGLE_AUTH/);
   assert.match(docker, /deploy\/entrypoint.sh/);
   assert.match(compose, /dockerfile: deploy\/Dockerfile/);
   assert.match(compose, /8080:8080/);
+});
+
+test("one-image Caddy and runbook serve studio at /", async () => {
+  const caddy = await readFile(new URL("../deploy/Caddyfile", import.meta.url), "utf8");
+  const docs = await readFile(new URL("../docs/runbooks/self-host.md", import.meta.url), "utf8");
+  assert.match(caddy, /redir @one_url \/ 301/);
+  for (const path of ["/self-host", "/hosted", "/studio", "/app"]) {
+    assert.match(caddy, new RegExp(path.replace("/", "\\/")));
+  }
+  assert.match(docs, /Open `http:\/\/127\.0\.0\.1:8080\/` \(studio \+ operator token\)/);
+  assert.match(docs, /GET \/` — studio/);
+  assert.match(docs, /\/studio` may 301 to `\//);
+  assert.doesNotMatch(docs, /marketing home/);
+  assert.doesNotMatch(docs, /marketing at/);
 });
