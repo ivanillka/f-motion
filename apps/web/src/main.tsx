@@ -3288,7 +3288,7 @@ function App() {
             <div className="source-head">
               <div>
                 <h2>Fotium</h2>
-                <p>Imported galleries open as drafts on this studio.</p>
+                <p>Your galleries open as drafts on this studio.</p>
               </div>
               <span className="source-state">Connected</span>
             </div>
