@@ -6,7 +6,7 @@ test("one-image files boot selfhost with a bootstrap token, not local auth", asy
   const entry = await readFile(new URL("../deploy/entrypoint.sh", import.meta.url), "utf8");
   const docker = await readFile(new URL("../deploy/Dockerfile", import.meta.url), "utf8");
   const compose = await readFile(new URL("../docker-compose.yml", import.meta.url), "utf8");
-  assert.match(entry, /FENGINE_ENV=\$\{FENGINE_ENV:-selfhost\}/);
+  assert.match(entry, /FENGINE_ENV="\$\{FENGINE_ENV:-selfhost\}"/);
   assert.match(entry, /FENGINE_BOOTSTRAP_TOKEN/);
   assert.match(entry, /unset FENGINE_LOCAL_AUTH/);
   assert.match(entry, /prisma migrate deploy/);

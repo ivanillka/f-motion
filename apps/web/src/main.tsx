@@ -230,8 +230,8 @@ function App() {
   const [falVideoPrompt, setFalVideoPrompt] = useState("");
   const [falVideoJob, setFalVideoJob] = useState<GenerationJobView>();
   const [falVideoBusy, setFalVideoBusy] = useState(false);
-  const falVideoPollRef = useRef<string>();
-  const falGenPollRef = useRef<string>();
+  const falVideoPollRef = useRef<string | undefined>(undefined);
+  const falGenPollRef = useRef<string | undefined>(undefined);
   const [falSpeechOpen, setFalSpeechOpen] = useState(false);
   const [falSpeechPrompt, setFalSpeechPrompt] = useState("");
   const [falSpeechJob, setFalSpeechJob] = useState<GenerationJobView>();
@@ -3263,28 +3263,29 @@ function studioPath(pathname: string): boolean {
 }
 
 function Root() {
-  const [path, setPath] = useState(() => location.pathname);
+  const [path, setPath] = useState(() => window.location.pathname);
 
   useEffect(() => {
-    const sync = () => setPath(location.pathname);
+    const sync = () => setPath(window.location.pathname);
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, []);
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+    const here = new URL(window.location.href);
+    const params = here.searchParams;
+    const hash = new URLSearchParams(here.hash.replace(/^#/, ""));
     const id = params.get("project") ?? "";
     const code = params.get("code") ?? "";
     const error = params.get("error_code") ?? params.get("error") ?? hash.get("error_code") ?? hash.get("error") ?? "";
     const fromMarketing = path === "/" && (/^[0-9a-f-]{36}$/i.test(id) || code || error);
     const fromLegacy = path === "/app" || path.startsWith("/app/");
     if (!fromMarketing && !fromLegacy) return;
-    const next = new URL("/studio", location.origin);
+    const next = new URL("/studio", here.origin);
     if (/^[0-9a-f-]{36}$/i.test(id)) next.searchParams.set("project", id);
     if (code) next.searchParams.set("code", code);
     if (error) next.searchParams.set("error_code", error);
-    history.replaceState(null, "", `${next.pathname}${next.search}${location.hash}`);
+    history.replaceState(null, "", `${next.pathname}${next.search}${here.hash}`);
     setPath("/studio");
   }, [path]);
 
