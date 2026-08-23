@@ -3,8 +3,8 @@
 This path boots studio, API, FFmpeg worker, PostgreSQL, and MinIO from a
 single container. It is not the hosted f-motion.com deploy.
 
-Never set `FENGINE_LOCAL_AUTH=1`. Self-host uses `FENGINE_ENV=selfhost` and
-`FENGINE_BOOTSTRAP_TOKEN`.
+Never set `FENGINE_LOCAL_AUTH=1`. Self-host uses `FENGINE_ENV=selfhost` and a
+single owner account created in the studio on first open.
 
 ## Start
 
@@ -19,20 +19,19 @@ docker build -f deploy/Dockerfile -t f-motion .
 docker run --rm -p 8080:8080 -v fmotion-data:/data f-motion
 ```
 
-Open `http://127.0.0.1:8080/` (studio + operator token).
-The first boot prints an operator token. Enter it on the studio sign-in page.
+Open `http://127.0.0.1:8080/` and create the owner (name, email, password).
+Then connect optional Pexels or FAL keys, or skip to drafts.
 
-Persist `/data` or drafts and the token file are lost.
+Persist `/data` or drafts and the owner account are lost.
 
 ## Environment names (values stay on the host)
 
 | Name | Role |
 |---|---|
 | `FENGINE_ENV` / `FMOTION_ENV` | Must be `selfhost` |
-| `FENGINE_BOOTSTRAP_TOKEN` | Optional override; generated into `/data/secrets/bootstrap` if unset |
-| `FENGINE_PEXELS_BYOK_ENABLED` | `1` to let the operator connect a Pexels key later |
-| `FENGINE_FAL_BYOK_ENABLED` | `1` to let the operator connect a FAL key later |
-| `FENGINE_CREDENTIAL_KEY_V<n>` | Required only if a BYOK flag is `1` |
+| `FENGINE_PEXELS_BYOK_ENABLED` | Defaults to `1` so the owner can connect a Pexels key |
+| `FENGINE_FAL_BYOK_ENABLED` | Defaults to `1` so the owner can connect a FAL key |
+| `FENGINE_CREDENTIAL_KEY_V<n>` | Generated into `/data/secrets/credential-key` if unset |
 | `DATABASE_URL` | Defaults to the embedded Postgres |
 | `R2_*` | Defaults to the embedded MinIO |
 
@@ -47,4 +46,4 @@ startup reject shared provider keys.
 `/studio` may 301 to `/`.
 
 `docker compose up` was booted to those two checks. Persist `/data` across
-restarts so the operator token file survives.
+restarts so the owner account survives.

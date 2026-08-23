@@ -34,8 +34,8 @@ FLUTTER_BIN=/absolute/path/to/flutter apps/mobile/tool/flutter_from_root.sh test
 - Do not add shared provider keys. Pexels and FAL stay owner-scoped or optional.
 - Do not invent prices, credit packs, MCP product APIs, or NLE/multitrack UI.
 - Hosted (`FENGINE_ENV=hosted`) must keep `FENGINE_LOCAL_AUTH` unset.
-- Self-host (`FENGINE_ENV=selfhost`) uses `FENGINE_BOOTSTRAP_TOKEN`, not local
-  demo auth.
+- Self-host (`FENGINE_ENV=selfhost`) uses a single owner account created on
+  first open, not local demo auth and not a bootstrap token.
 
 By contributing, you agree your work is licensed under Apache-2.0. See
 `CODE_OF_CONDUCT.md`.

@@ -179,9 +179,9 @@ docker build -f deploy/Dockerfile -t f-motion .
 docker run --rm -p 8080:8080 -v fmotion-data:/data f-motion`}</code></pre>
         </div>
         <p className="mkt-note">
-          On first boot the container prints an operator token. Sign in at
-          {" "}/studio with that token. The published container registry is not
-          the install path yet — build from the repo. Details live in docs/runbooks/self-host.md.
+          On first open, create the single owner account and connect optional
+          Pexels or FAL keys. The published container registry is not the
+          install path yet — build from the repo. Details live in docs/runbooks/self-host.md.
         </p>
       </section>
 

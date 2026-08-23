@@ -231,6 +231,8 @@ test("studio shell brands F-Motion and keeps real destinations only", async () =
   assert.match(html, /<meta name="description"/);
   assert.match(source, /<strong>F-Motion<\/strong>/);
   assert.match(source, /Make a vertical preview/);
+  assert.match(source, /Create your studio/);
+  assert.doesNotMatch(source, /operator token/);
   assert.match(source, /F-Motion — Studio/);
   assert.doesNotMatch(source, /F-Engine Reference/);
   assert.match(source, /className="app-rail"/);

@@ -6,7 +6,7 @@ import { externalImportConfigFromEnv } from "./external-import.js";
 import { PostgresProjectRepository } from "./domain.js";
 import { freeRenderUnitsFromEnv, PostgresHostUsageService } from "./host-usage.js";
 import { assertLocalAuthAllowed } from "./local-auth.js";
-import { assertSelfhostConfig, engineEnv } from "./selfhost-auth.js";
+import { assertSelfhostConfig, engineEnv, PostgresSelfhostOwner } from "./selfhost-auth.js";
 import { PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
 import { PostgresRenderRepository, renderProfilesFromEnv } from "./render-repository.js";
 import { createApp, createTestApp } from "./server.js";
@@ -94,17 +94,9 @@ const ready = async () => {
 };
 
 if (engineEnv(process.env) === "selfhost") {
-  const bootstrapToken = assertSelfhostConfig(process.env);
-  const ownerId = "selfhost-operator";
-  await pool.query(
-    `INSERT INTO "User" (id, state) VALUES ($1, 'active')
-     ON CONFLICT (id) DO UPDATE SET state = 'active'`,
-    [ownerId]
-  );
-  await hostUsage.ensureFreeGrant(ownerId);
+  assertSelfhostConfig(process.env);
   createTestApp({
-    ownerId,
-    bootstrapToken,
+    ownerAuth: new PostgresSelfhostOwner(pool, hostUsage),
     projects,
     renders,
     media,

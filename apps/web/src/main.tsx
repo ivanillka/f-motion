@@ -178,12 +178,17 @@ function App() {
     }
   }, []);
   const tokenRef = useRef("");
+  const justOnboarded = useRef(false);
   const [token, setToken] = useState("");
   const [authReady, setAuthReady] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [step, setStep] = useState<Step>("sign-in");
   const [email, setEmail] = useState("");
-  const [operatorToken, setOperatorToken] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [selfhostGate, setSelfhostGate] = useState<"checking" | "setup" | "login">("checking");
+  const [onboardSources, setOnboardSources] = useState(false);
   const [awaitingEmail, setAwaitingEmail] = useState(false);
   const [draft, setDraft] = useState(() => localStorage.getItem("fengine-draft") ?? "");
   const [architecture, setArchitecture] = useState<VideoArchitecture>(defaultVideoArchitecture);
@@ -339,6 +344,11 @@ function App() {
     setMusicOpen(false);
     setPreviewingId(undefined);
     setOverlayCaption("");
+    setPassword("");
+    setConfirmPassword("");
+    setDisplayName("");
+    setSelfhostGate("checking");
+    setOnboardSources(false);
     setStep("sign-in");
   }
 
@@ -376,9 +386,32 @@ function App() {
         callback.searchParams.delete("code");
         history.replaceState(null, "", `${callback.pathname}${callback.search}${callback.hash}`);
       }
+      if (justOnboarded.current) {
+        justOnboarded.current = false;
+        setOnboardSources(true);
+        setStep("settings");
+        return;
+      }
       setStep((current) => current === "sign-in" ? "drafts" : current);
     });
   }, [authSetup.error, authSetup.gateway]);
+
+  useEffect(() => {
+    if (import.meta.env.VITE_SELFHOST_AUTH !== "1") return;
+    if (!authReady || token || !authSetup.gateway?.setupNeeded) return;
+    let cancelled = false;
+    void authSetup.gateway.setupNeeded().then((needed) => {
+      if (!cancelled) setSelfhostGate(needed ? "setup" : "login");
+    }).catch(() => {
+      if (!cancelled) {
+        setSelfhostGate("login");
+        setStatus("Could not check this install.");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, token, authSetup.gateway]);
 
   useEffect(() => {
     const up = () => setOnline(true);
@@ -505,14 +538,33 @@ function App() {
     }
   }
 
-  async function operatorSignIn() {
-    if (!authSetup.gateway?.signInWithToken) return;
+  async function setupOwner() {
+    if (!authSetup.gateway?.setupAccount) return;
+    if (password !== confirmPassword) {
+      setStatus("Passwords do not match.");
+      return;
+    }
     setAuthBusy(true);
     try {
-      await authSetup.gateway.signInWithToken(operatorToken);
+      justOnboarded.current = true;
+      await authSetup.gateway.setupAccount(email, password, displayName);
       setStatus("");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Operator token was rejected.");
+      justOnboarded.current = false;
+      setStatus(error instanceof Error ? error.message : "Could not create the owner account.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function passwordSignIn() {
+    if (!authSetup.gateway?.signInWithPassword) return;
+    setAuthBusy(true);
+    try {
+      await authSetup.gateway.signInWithPassword(email, password);
+      setStatus("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Email or password was rejected.");
     } finally {
       setAuthBusy(false);
     }
@@ -2390,16 +2442,31 @@ function App() {
     </header>
     {!authReady && <section><p role="status">Checking session…</p></section>}
     {authReady && step === "sign-in" && <section>
-      <h1>Make a vertical preview</h1>
+      <h1>{import.meta.env.VITE_SELFHOST_AUTH === "1"
+        ? selfhostGate === "setup" ? "Create your studio" : "Open your studio"
+        : "Make a vertical preview"}</h1>
       <p>{pendingImportId
         ? "Sign in to open the imported draft from Fotium."
         : import.meta.env.VITE_SELFHOST_AUTH === "1"
-          ? "Enter the operator token printed when this image first started."
+          ? selfhostGate === "setup"
+            ? "Step 1 of 2 — create the single owner for this install. No one else can join later."
+            : selfhostGate === "checking"
+              ? "Checking this install…"
+              : "Sign in with the owner email and password you created on first open."
           : "Write a brief, pick a story, add your clips. Sign in to keep projects private. Nothing publishes itself."}</p>
-      {import.meta.env.VITE_SELFHOST_AUTH === "1" ? <>
-        <label>Operator token<input type="password" autoComplete="current-password" value={operatorToken} onChange={(event) => setOperatorToken(event.target.value)} /></label>
-        <button disabled={authBusy || !authSetup.gateway?.signInWithToken || operatorToken.trim().length < 32} onClick={() => void operatorSignIn()}>Open with operator token</button>
-      </> : <>
+      {import.meta.env.VITE_SELFHOST_AUTH === "1" ? (
+        selfhostGate === "checking" ? null : selfhostGate === "setup" ? <>
+          <label>Name<input type="text" autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
+          <label>Email<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+          <label>Password<input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+          <label>Confirm password<input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
+          <button disabled={authBusy || !authSetup.gateway?.setupAccount || !email.trim() || password.length < 8} onClick={() => void setupOwner()}>Create owner and continue</button>
+        </> : <>
+          <label>Email<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+          <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+          <button disabled={authBusy || !authSetup.gateway?.signInWithPassword || !email.trim() || password.length < 8} onClick={() => void passwordSignIn()}>Open studio</button>
+        </>
+      ) : <>
         <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
         <button disabled={authBusy || !authSetup.gateway || (Boolean(import.meta.env.VITE_SUPABASE_URL) && !email.trim())} onClick={() => void magicLink()}>Email me a magic link</button>
         {Boolean(import.meta.env.VITE_SUPABASE_URL) && <p>{awaitingEmail
@@ -3154,7 +3221,9 @@ function App() {
     </section>}
     {authReady && step === "settings" && <section>
       <h1>Choose your video sources</h1>
-      <p>Connect only the services you want to use. Each provider stays under your account and uses your own API key.</p>
+      <p>{onboardSources
+        ? "Step 2 of 2 — connect only the keys you want. You can skip this and add them later."
+        : "Connect only the services you want to use. Each provider stays under your account and uses your own API key."}</p>
       <div className="provider-onboarding" aria-label="Video source options">
         <article className={`provider-card ${pexelsCredential?.connected ? "provider-live" : "provider-locked"}`}>
           <span className={`provider-status ${pexelsCredential?.connected ? "" : "provider-soon"}`}>{pexelsCredential?.connected ? "Unlocked" : "Locked"}</span>
@@ -3243,7 +3312,7 @@ function App() {
       <p>Privacy and terms will ship with Gate 0 launch policy evidence.</p>
       <p role="status" aria-live="polite">{status}</p>
       <button disabled={authBusy} onClick={() => void signOut()}>Sign out</button>
-      <button className="secondary" onClick={() => { setFalKey(""); setPexelsKey(""); setStep("drafts"); }}>Back to drafts</button>
+      <button className="secondary" onClick={() => { setFalKey(""); setPexelsKey(""); setOnboardSources(false); setStep("drafts"); }}>{onboardSources ? "Continue to drafts" : "Back to drafts"}</button>
     </section>}
     {featureLock && <dialog open aria-labelledby="feature-lock-title">
       <span className="lock-label">Locked</span>

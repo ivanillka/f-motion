@@ -169,6 +169,28 @@ test("auth client errors are propagated", async () => {
   await assert.rejects(gateway.sendMagicLink("person@example.com"), /rejected/);
 });
 
+function fakeSelfhostApi() {
+  const owners = [];
+  return async (url, init = {}) => {
+    const method = init.method ?? "GET";
+    if (url === "/api/setup" && method === "GET") {
+      return { ok: true, status: 200, json: async () => ({ needed: owners.length === 0 }) };
+    }
+    if ((url === "/api/setup" && method === "POST") || (url === "/api/auth/login" && method === "POST")) {
+      const body = JSON.parse(init.body);
+      if (url === "/api/setup") {
+        if (owners.length) return { ok: false, status: 409, json: async () => ({ message: "This install already has an owner." }) };
+        owners.push(body.email);
+      } else if (!owners.includes(body.email)) {
+        return { ok: false, status: 401, json: async () => ({ message: "authentication required" }) };
+      }
+      return { ok: true, status: url === "/api/setup" ? 201 : 200, json: async () => ({ access_token: "fms_session" }) };
+    }
+    if (url === "/api/auth/logout") return { ok: true, status: 204, json: async () => ({}) };
+    throw new Error(`unexpected ${method} ${url}`);
+  };
+}
+
 test("self-host auth wins even when dummy Supabase settings are present", async () => {
   const storage = memoryStorage();
   let created = false;
@@ -182,35 +204,37 @@ test("self-host auth wins even when dummy Supabase settings are present", async 
     },
     {
       demoStorage: storage,
+      fetchImpl: fakeSelfhostApi(),
       createClient() {
         created = true;
         throw new Error("must not construct Supabase");
       }
     }
   );
-  assert.equal(typeof gateway.signInWithToken, "function");
-  await assert.rejects(gateway.sendMagicLink("person@example.com"), /operator token/);
-  await assert.rejects(gateway.signInWithGoogle(), /operator token/);
+  assert.equal(typeof gateway.setupAccount, "function");
+  assert.equal(typeof gateway.signInWithPassword, "function");
+  await assert.rejects(gateway.sendMagicLink("person@example.com"), /email and password/);
+  await assert.rejects(gateway.signInWithGoogle(), /email and password/);
   assert.equal(created, false);
-  const token = "b".repeat(32);
-  await gateway.signInWithToken(token);
-  assert.equal(storage.getItem("fengine-selfhost-token"), token);
+  assert.equal(await gateway.setupNeeded(), true);
+  await gateway.setupAccount("owner@example.com", "secret-pass", "Ada");
+  assert.equal(storage.getItem("fengine-selfhost-token"), "fms_session");
 });
 
-test("self-host operator token stays in session storage and is the bearer", async () => {
+test("self-host owner password stays in session storage and is the bearer", async () => {
   const storage = memoryStorage();
+  const fetchImpl = fakeSelfhostApi();
   const gateway = createAuthGateway(
-    { origin: "http://127.0.0.1:8080/studio", allowDemo: false, allowSelfhost: true },
-    { demoStorage: storage }
+    { origin: "http://127.0.0.1:8080/", allowDemo: false, allowSelfhost: true },
+    { demoStorage: storage, fetchImpl }
   );
   const sessions = [];
   const unsubscribe = gateway.subscribe((session) => sessions.push(session?.accessToken));
   await new Promise(queueMicrotask);
   assert.equal(sessions[0], undefined);
-  const token = "a".repeat(32);
-  await gateway.signInWithToken(token);
-  assert.equal(sessions.at(-1), token);
-  assert.equal(storage.getItem("fengine-selfhost-token"), token);
+  await gateway.setupAccount("owner@example.com", "secret-pass", "Ada");
+  assert.equal(sessions.at(-1), "fms_session");
+  assert.equal(storage.getItem("fengine-selfhost-token"), "fms_session");
   await gateway.signOut();
   assert.equal(storage.getItem("fengine-selfhost-token"), null);
   assert.equal(sessions.at(-1), undefined);

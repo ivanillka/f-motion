@@ -11,8 +11,8 @@ services:
       - fmotion-data:/data
     environment:
       FENGINE_ENV: selfhost
-      FENGINE_PEXELS_BYOK_ENABLED: "0"
-      FENGINE_FAL_BYOK_ENABLED: "0"
+      FENGINE_PEXELS_BYOK_ENABLED: "1"
+      FENGINE_FAL_BYOK_ENABLED: "1"
 
 volumes:
   fmotion-data:

@@ -33,8 +33,8 @@ docker build -f deploy/Dockerfile -t f-motion .
 docker run --rm -p 8080:8080 -v fmotion-data:/data f-motion
 ```
 
-Open `http://127.0.0.1:8080/` (studio + operator token). The container prints
-an operator token on first boot. Details: [docs/runbooks/self-host.md](docs/runbooks/self-host.md).
+Open `http://127.0.0.1:8080/` and create the single owner account. Details:
+[docs/runbooks/self-host.md](docs/runbooks/self-host.md).
 
 ## Try it locally (no accounts)
 

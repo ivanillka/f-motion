@@ -5,20 +5,21 @@ set -euo pipefail
 DATA="${FMOTION_DATA:-/data}"
 mkdir -p "$DATA/postgres" "$DATA/minio" "$DATA/secrets"
 
-token_file="$DATA/secrets/bootstrap"
-if [[ ! -s "$token_file" ]]; then
-  openssl rand -hex 24 > "$token_file"
-  echo "F-Motion operator token (save this; shown once): $(cat "$token_file")"
-else
-  echo "F-Motion operator token is stored in $token_file"
-fi
-
 export FENGINE_ENV="${FENGINE_ENV:-selfhost}"
 export FMOTION_ENV="${FMOTION_ENV:-selfhost}"
 export NODE_ENV=production
-export FENGINE_BOOTSTRAP_TOKEN="${FENGINE_BOOTSTRAP_TOKEN:-$(cat "$token_file")}"
-export FMOTION_BOOTSTRAP_TOKEN="${FMOTION_BOOTSTRAP_TOKEN:-$FENGINE_BOOTSTRAP_TOKEN}"
 unset FENGINE_LOCAL_AUTH || true
+unset FENGINE_BOOTSTRAP_TOKEN || true
+unset FMOTION_BOOTSTRAP_TOKEN || true
+
+credential_key_file="$DATA/secrets/credential-key"
+if [[ ! -s "$credential_key_file" ]]; then
+  node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64'))" > "$credential_key_file"
+fi
+export FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION="${FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION:-1}"
+export FENGINE_CREDENTIAL_KEY_V1="${FENGINE_CREDENTIAL_KEY_V1:-$(cat "$credential_key_file")}"
+export FENGINE_PEXELS_BYOK_ENABLED="${FENGINE_PEXELS_BYOK_ENABLED:-1}"
+export FENGINE_FAL_BYOK_ENABLED="${FENGINE_FAL_BYOK_ENABLED:-1}"
 
 export POSTGRES_USER="${POSTGRES_USER:-fmotion}"
 export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-fmotion}"
