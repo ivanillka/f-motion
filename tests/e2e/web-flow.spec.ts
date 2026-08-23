@@ -70,7 +70,7 @@ async function chooseConcept(page: Page, title: "Direct" | "Story" | "Rhythm"): 
 
 async function attachFixtureToScene(page: Page, sceneNumber: number): Promise<void> {
   await page.getByRole("button", { name: `Edit scene ${sceneNumber}` }).click();
-  const input = page.locator('input[type="file"]').first();
+  const input = page.locator('input[type="file"][accept*="image/jpeg"]');
   await input.setInputFiles([]);
   await input.setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("status").filter({ hasText: "Media attached to this scene" })).toBeVisible();
@@ -166,7 +166,7 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await chooseConcept(page, "Direct");
 
   await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
-  await page.locator('input[type="file"]').first().setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await page.locator('input[type="file"][accept*="image/jpeg"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
   for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
@@ -311,7 +311,7 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   await page.getByLabel("Where should visuals come from?").selectOption("own");
   await chooseConcept(page, "Direct");
   await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
-  await page.locator('input[type="file"]').first().setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await page.locator('input[type="file"][accept*="image/jpeg"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
   for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
@@ -364,7 +364,7 @@ test("FAL image-to-video quotes, confirms, and attaches only after review", asyn
   await page.getByLabel("Where should visuals come from?").selectOption("own");
   await chooseConcept(page, "Direct");
   await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
-  await page.locator('input[type="file"]').first().setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await page.locator('input[type="file"][accept*="image/jpeg"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
   for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
