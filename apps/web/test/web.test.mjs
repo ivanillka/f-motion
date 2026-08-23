@@ -255,8 +255,11 @@ test("build puts the SPA at site root and redirects /app to /studio", async () =
   assert.match(home, /<div id="root">/);
   assert.match(home, /<title>F-Motion<\/title>/);
   assert.match(redirects, /\/app \/studio\s+301/);
-  assert.match(redirects, /\/studio \/index.html\s+200/);
-  assert.match(redirects, /\/self-host \/index.html\s+200/);
+  assert.doesNotMatch(redirects, /\/index\.html\s+200/);
+  for (const page of ["self-host.html", "hosted.html", "studio.html"]) {
+    const copy = await readFile(new URL(page, dist), "utf8");
+    assert.equal(copy, home);
+  }
 });
 
 test("legal pages and marketing assets stay local with no CDN Tailwind", async () => {

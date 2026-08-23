@@ -2,7 +2,7 @@
  * After Vite build: SPA owns /, /self-host, /hosted, /studio.
  * Keep legal pages from public/web/ and send /app to /studio.
  */
-import { writeFile, access } from "node:fs/promises";
+import { copyFile, writeFile, access } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,6 +23,14 @@ async function main() {
     throw new Error("Missing dist/index.html — run vite build first");
   }
 
+  // Cloudflare Pages Pretty URLs 308 /index.html → /. A 200 rewrite to
+  // /index.html therefore bounces /studio (and friends) to /. Copy the SPA
+  // shell to the pretty-URL filenames so those paths stay 200.
+  const spa = resolve(dist, "index.html");
+  for (const page of ["self-host", "hosted", "studio"]) {
+    await copyFile(spa, resolve(dist, `${page}.html`));
+  }
+
   await writeFile(
     resolve(dist, "_redirects"),
     [
@@ -33,10 +41,6 @@ async function main() {
       "/web/ / 301",
       "/web/index.html / 301",
       "/web/integrate.html /self-host 301",
-      "/self-host /index.html 200",
-      "/hosted /index.html 200",
-      "/studio /index.html 200",
-      "/studio/* /index.html 200",
       ""
     ].join("\n")
   );
