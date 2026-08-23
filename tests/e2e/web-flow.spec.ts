@@ -291,9 +291,9 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   await expect(page.locator("body")).not.toContainText(/local-demo-|access_token/i);
   await page.getByRole("button", { name: "Settings" }).first().click();
   await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page.getByRole("heading", { name: "Shape a vertical video" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Make a vertical preview" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Shape a vertical video" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Make a vertical preview" })).toBeVisible();
 });
 
 test("FAL still generation quotes, confirms, and attaches only after review", async ({ page }) => {
