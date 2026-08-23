@@ -2603,7 +2603,7 @@ function App() {
         <button className="provider-preview-item" data-locked={!pixabayCredential?.connected} onClick={() => pixabayCredential?.connected ? setStep("settings") : showStockLock()}>
           <strong>Pixabay</strong><span>Stock video and stills · {pixabayCredential?.connected ? "unlocked" : "locked"}</span>
         </button>
-        <button className="provider-preview-item" data-locked={!falCredential?.connected || falUnavailable} onClick={showFalLock()}>
+        <button className="provider-preview-item" data-locked={!falCredential?.connected || falUnavailable} onClick={showFalLock}>
           <strong>FAL</strong><span>{falCredential?.connected && !falUnavailable ? "AI stills in storyboard" : "AI stills · locked"}</span>
         </button>
         {partnerBrands ? (
