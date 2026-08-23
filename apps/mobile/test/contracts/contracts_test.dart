@@ -6,9 +6,17 @@ import 'package:f_motion/main.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-JsonMap loadSharedFixture(String name) {
-  final file = File('../../../../packages/contracts/fixtures/$name');
-  return Map<String, Object?>.from(jsonDecode(file.readAsStringSync()) as Map);
+Object? loadSharedFixture(String name) {
+  var dir = Directory.current;
+  for (var i = 0; i < 6; i++) {
+    final file = File('${dir.path}/packages/contracts/fixtures/$name');
+    if (file.existsSync()) {
+      final decoded = jsonDecode(file.readAsStringSync());
+      return decoded is Map ? Map<String, Object?>.from(decoded) : decoded;
+    }
+    dir = dir.parent;
+  }
+  throw StateError('missing contracts fixture $name');
 }
 
 void main() {
@@ -28,19 +36,22 @@ void main() {
   });
 
   test('shared contracts fixtures parse identically in Dart', () {
-    final project = loadSharedFixture('project-v1.json');
+    final project = loadSharedFixture('project-v1.json') as JsonMap;
     expect(ContractFixture.accepts(project), isTrue);
-    expect(ContractFixture.accepts(loadSharedFixture('project-v2-breaking.json')), isFalse);
+    expect(
+      ContractFixture.accepts(loadSharedFixture('project-v2-breaking.json') as JsonMap),
+      isFalse,
+    );
 
-    final incomplete = loadSharedFixture('error-render-input-incomplete.json');
+    final incomplete = loadSharedFixture('error-render-input-incomplete.json') as JsonMap;
     expect(incomplete['type'], 'render_input_incomplete');
     expect(incomplete['message'], isA<String>());
 
-    final media = loadSharedFixture('scene-media-ready.json');
+    final media = loadSharedFixture('scene-media-ready.json') as JsonMap;
     expect(media['state'], 'ready');
     expect(media['additive_client_field'], isTrue);
 
-    final progress = loadSharedFixture('sse-progress.json');
+    final progress = loadSharedFixture('sse-progress.json') as JsonMap;
     expect(progress['phase'], 'preparing');
     expect(progress['additive_field'], 'ok');
 
