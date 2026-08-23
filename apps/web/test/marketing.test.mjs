@@ -24,9 +24,24 @@ test("marketing routes keep honest OSS copy and no invented platform", async () 
     "One image on your VPS",
     "Apache-2.0",
     "Pexels is not public domain",
-    "Not a multitrack editor"
+    "Not a multitrack editor",
+    "Write a short brief, pick a story, drop in your clips, download a 720p vertical preview.",
+    "How a reel gets made",
+    "Make a preview",
+    "Read the install guide",
+    "you confirm before it starts"
   ]) {
     assert.match(source, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  for (const leftover of [
+    "Ready to compile",
+    "The Pipeline",
+    "Get the image",
+    "VPS paste",
+    "no prices listed",
+    "See integration"
+  ]) {
+    assert.doesNotMatch(source, new RegExp(leftover.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
   for (const forbidden of [
     "MCP",

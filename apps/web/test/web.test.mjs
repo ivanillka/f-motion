@@ -228,7 +228,10 @@ test("studio shell brands F-Motion and keeps real destinations only", async () =
   const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
   assert.match(html, /<title>F-Motion<\/title>/);
+  assert.match(html, /<meta name="description"/);
   assert.match(source, /<strong>F-Motion<\/strong>/);
+  assert.match(source, /Make a vertical preview/);
+  assert.match(source, /F-Motion — Studio/);
   assert.doesNotMatch(source, /F-Engine Reference/);
   assert.match(source, /className="app-rail"/);
   assert.match(source, /className="app-dock"/);

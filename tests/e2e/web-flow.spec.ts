@@ -122,6 +122,8 @@ test("E2E worker rejects empty snapshots and missing fixture mappings", async ({
 
 test("marketing home offers studio and self-host", async ({ page }) => {
   await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Vertical reels from your own media." })).toBeVisible();
+  await expect(page.getByText("Write a short brief, pick a story, drop in your clips, download a 720p vertical preview.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Open studio" }).first()).toBeVisible();
   await expect(page.getByRole("link", { name: "Self-host" }).first()).toBeVisible();
   await page.getByRole("link", { name: "Open studio" }).first().click();

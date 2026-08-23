@@ -2390,12 +2390,12 @@ function App() {
     </header>
     {!authReady && <section><p role="status">Checking session…</p></section>}
     {authReady && step === "sign-in" && <section>
-      <h1>Shape a vertical video</h1>
+      <h1>Make a vertical preview</h1>
       <p>{pendingImportId
         ? "Sign in to open the imported draft from Fotium."
         : import.meta.env.VITE_SELFHOST_AUTH === "1"
           ? "Enter the operator token printed when this image first started."
-          : "Sign in to keep projects private."}</p>
+          : "Write a brief, pick a story, add your clips. Sign in to keep projects private. Nothing publishes itself."}</p>
       {import.meta.env.VITE_SELFHOST_AUTH === "1" ? <>
         <label>Operator token<input type="password" autoComplete="current-password" value={operatorToken} onChange={(event) => setOperatorToken(event.target.value)} /></label>
         <button disabled={authBusy || !authSetup.gateway?.signInWithToken || operatorToken.trim().length < 32} onClick={() => void operatorSignIn()}>Open with operator token</button>
@@ -3262,6 +3262,17 @@ function studioPath(pathname: string): boolean {
     || pathname === "/app" || pathname.startsWith("/app/");
 }
 
+const pageTitles: Record<string, string> = {
+  "/": "F-Motion — Vertical reels from your own media",
+  "/self-host": "F-Motion — Self-host",
+  "/hosted": "F-Motion — Hosted studio"
+};
+
+function documentTitleFor(pathname: string): string {
+  if (studioPath(pathname)) return "F-Motion — Studio";
+  return pageTitles[pathname] ?? "F-Motion";
+}
+
 function Root() {
   const [path, setPath] = useState(() => window.location.pathname);
 
@@ -3270,6 +3281,10 @@ function Root() {
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, []);
+
+  useEffect(() => {
+    document.title = documentTitleFor(path);
+  }, [path]);
 
   useEffect(() => {
     const here = new URL(window.location.href);
