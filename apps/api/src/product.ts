@@ -23,6 +23,7 @@ export function productFlavor(env: Record<string, string | undefined>): ProductF
 }
 
 /**
+ * Product adapters only. Core studio code must not import this module.
  * Three products, three contracts. Do not leak hosted payment/Supabase into
  * the VPS image, and do not boot a teams product that does not exist yet.
  */

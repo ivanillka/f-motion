@@ -26,6 +26,24 @@ FLUTTER_BIN=/absolute/path/to/flutter apps/mobile/tool/flutter_from_root.sh anal
 FLUTTER_BIN=/absolute/path/to/flutter apps/mobile/tool/flutter_from_root.sh test
 ```
 
+## Product workflow
+
+Core implementations update all three products at once. Product-specific
+behavior stays in adapters.
+
+| Layer | Lives in | Examples |
+|---|---|---|
+| **Core** | `packages/contracts`, `packages/reel-engine`, `apps/api/src/domain.ts`, media/render/mixkit, `apps/worker/src`, `apps/web/src/api.ts`, the editor path in `apps/web/src/main.tsx` | Brief, storyboard, uploads, stock attach, 720p preview |
+| **VPS adapter** | `apps/api/src/selfhost-auth.ts`, `deploy/`, `VITE_SELFHOST_AUTH` | First-open owner, one-image boot |
+| **Hosted adapter** | `apps/api/src/auth.ts` JWKS, `apps/web/src/auth.ts` Supabase, marketing Pages | Magic link, invite list, payment later |
+| **Corporate adapter** | reserved (`FENGINE_ENV=corporate`) | Teams — not built |
+
+If a change is the editor or render path, do not wrap it in `selfhost` /
+`hosted` / `corporate` branches. If a change is auth, money, or membership,
+do not put it in reel-engine, contracts, or domain.
+
+`tests/product-layers.test.mjs` enforces the core side of this split.
+
 ## Rules
 
 - Keep changes narrow. Match existing naming, error handling, and tests.
@@ -33,9 +51,6 @@ FLUTTER_BIN=/absolute/path/to/flutter apps/mobile/tool/flutter_from_root.sh test
   breaks.
 - Do not add shared provider keys. Pexels and FAL stay owner-scoped or optional.
 - Do not invent prices, credit packs, MCP product APIs, or NLE/multitrack UI.
-- Three products stay isolated: VPS (`selfhost`, one owner), f-motion.com
-  (`hosted`, Supabase + payment), corporate (`corporate`, reserved — do not
-  implement teams on the VPS or hosted paths).
 - Hosted (`FENGINE_ENV=hosted`) must keep `FENGINE_LOCAL_AUTH` unset.
 - VPS (`FENGINE_ENV=selfhost`) uses a single owner account created on first
   open. No Supabase, Stripe, invite lists, or bootstrap tokens.

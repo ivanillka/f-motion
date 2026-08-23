@@ -19,6 +19,8 @@ These are separate. Do not mix their auth, users, or money.
 | **f-motion.com** (`FENGINE_ENV=hosted`) | Public customers | Supabase | Payment + billed FAL |
 | **Corporate** (`FENGINE_ENV=corporate`) | Internal teams | Not built | Not built |
 
+Core studio (brief → storyboard → preview) is shared. Auth, payment, and
+teams stay in product adapters — see [CONTRIBUTING.md](CONTRIBUTING.md).
 The VPS image never reads Supabase or Stripe. Corporate is reserved and will
 not boot until the teams flow exists. Hosted FAL billing is a product offer,
 not a price list in this repository.
