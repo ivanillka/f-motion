@@ -43,7 +43,7 @@ startup reject shared provider keys.
 
 - `GET /` — marketing home
 - `GET /studio` — studio sign-in
-- `GET /readyz` — API + database
+- `GET /readyz` — API + database (`{"status":"ready"}`)
 
-If Docker is unavailable on a machine, the files in `deploy/` still land; run
-the image where you have Docker access.
+`docker compose up` was booted to those three checks. Persist `/data` across
+restarts so the operator token file survives.
