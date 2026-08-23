@@ -25,23 +25,33 @@ export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-fmotion}"
 export POSTGRES_DB="${POSTGRES_DB:-fmotion}"
 export PGDATA="$DATA/postgres"
 export PGHOST="${PGHOST:-/tmp}"
+# Debian packages keep initdb/postgres in the versioned libdir, not PATH.
+PG_BIN="$(echo /usr/lib/postgresql/*/bin)"
+if [[ ! -x "$PG_BIN/initdb" || ! -x "$PG_BIN/postgres" ]]; then
+  echo "postgres binaries not found under /usr/lib/postgresql" >&2
+  exit 1
+fi
+pg() {
+  runuser -u postgres -- env PATH="$PG_BIN:/usr/bin:/bin" "$@"
+}
 
 if [[ ! -s "$PGDATA/PG_VERSION" ]]; then
   chown -R postgres:postgres "$DATA/postgres"
-  su postgres -c "initdb -D '$PGDATA' --auth-local=trust --auth-host=trust"
+  pg initdb -D "$PGDATA" --auth-local=trust --auth-host=trust
 fi
 chown -R postgres:postgres "$DATA/postgres"
-su postgres -c "postgres -D '$PGDATA' -k /tmp -h 127.0.0.1 -p 5432" &
+pg postgres -D "$PGDATA" -k /tmp -h 127.0.0.1 -p 5432 &
 for _ in $(seq 1 60); do
-  if su postgres -c "pg_isready -h /tmp -p 5432" >/dev/null 2>&1; then
+  if pg pg_isready -h /tmp -p 5432 >/dev/null 2>&1; then
     break
   fi
   sleep 1
 done
-su postgres -c "psql -h /tmp -d postgres -tc \"SELECT 1 FROM pg_roles WHERE rolname='$POSTGRES_USER'\"" | grep -q 1 \
-  || su postgres -c "psql -h /tmp -d postgres -c \"CREATE USER $POSTGRES_USER WITH PASSWORD '$POSTGRES_PASSWORD';\""
-su postgres -c "psql -h /tmp -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname='$POSTGRES_DB'\"" | grep -q 1 \
-  || su postgres -c "psql -h /tmp -d postgres -c \"CREATE DATABASE $POSTGRES_DB OWNER $POSTGRES_USER;\""
+pg pg_isready -h /tmp -p 5432
+pg psql -h /tmp -d postgres -tc "SELECT 1 FROM pg_roles WHERE rolname='$POSTGRES_USER'" | grep -q 1 \
+  || pg psql -h /tmp -d postgres -c "CREATE USER $POSTGRES_USER WITH PASSWORD '$POSTGRES_PASSWORD';"
+pg psql -h /tmp -d postgres -tc "SELECT 1 FROM pg_database WHERE datname='$POSTGRES_DB'" | grep -q 1 \
+  || pg psql -h /tmp -d postgres -c "CREATE DATABASE $POSTGRES_DB OWNER $POSTGRES_USER;"
 
 export MINIO_ROOT_USER="${R2_ACCESS_KEY_ID:-fmotion}"
 export MINIO_ROOT_PASSWORD="${R2_SECRET_ACCESS_KEY:-fmotion-local-secret}"
