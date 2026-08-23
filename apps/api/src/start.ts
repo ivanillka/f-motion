@@ -6,7 +6,8 @@ import { externalImportConfigFromEnv } from "./external-import.js";
 import { PostgresProjectRepository } from "./domain.js";
 import { freeRenderUnitsFromEnv, PostgresHostUsageService } from "./host-usage.js";
 import { assertLocalAuthAllowed } from "./local-auth.js";
-import { assertSelfhostConfig, engineEnv, PostgresSelfhostOwner } from "./selfhost-auth.js";
+import { assertProductIsolation, engineEnv } from "./product.js";
+import { assertSelfhostConfig, PostgresSelfhostOwner } from "./selfhost-auth.js";
 import { PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
 import { PostgresRenderRepository, renderProfilesFromEnv } from "./render-repository.js";
 import { createApp, createTestApp } from "./server.js";
@@ -39,6 +40,7 @@ function extraAuthIssuers(env: NodeJS.ProcessEnv) {
 }
 
 assertLocalAuthAllowed(process.env);
+assertProductIsolation(process.env);
 assertNoSharedFalCredential(process.env);
 assertNoSharedPexelsCredential(process.env);
 const accessPolicy = accessPolicyFromEnv(process.env);

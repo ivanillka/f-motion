@@ -1,7 +1,7 @@
 # Self-host with one image
 
-This path boots studio, API, FFmpeg worker, PostgreSQL, and MinIO from a
-single container. It is not the hosted f-motion.com deploy.
+This is the **VPS product**: one owner, one image, no Supabase, no payment.
+It is not f-motion.com and not the corporate teams product.
 
 Never set `FENGINE_LOCAL_AUTH=1`. Self-host uses `FENGINE_ENV=selfhost` and a
 single owner account created in the studio on first open.

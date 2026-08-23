@@ -2,15 +2,14 @@ import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from "no
 import { promisify } from "node:util";
 import type { Pool } from "pg";
 import { UnauthorizedError } from "./auth.js";
+import { engineEnv } from "./product.js";
+
+export { engineEnv } from "./product.js";
 
 const scryptAsync = promisify(scrypt);
 const sessionTtlMs = 30 * 24 * 60 * 60 * 1000;
 const passwordMin = 8;
 const passwordMax = 200;
-
-export function engineEnv(env: Record<string, string | undefined>): string | undefined {
-  return env.FENGINE_ENV?.trim() || env.FMOTION_ENV?.trim() || undefined;
-}
 
 export function assertSelfhostConfig(env: Record<string, string | undefined>): void {
   if (engineEnv(env) !== "selfhost") throw new Error("FENGINE_ENV=selfhost is required");

@@ -9,16 +9,19 @@ story, attach your own media or licensed stock, and download a 720p preview.
 brief → storyboard → preview
 ```
 
-## Three ways to use it
+## Three products
 
-| Path | Media | Pexels | FAL |
+These are separate. Do not mix their auth, users, or money.
+
+| Product | Who | Auth | Money |
 |---|---|---|---|
-| **Self-host** one image on your VPS | Your uploads, free | Optional — your key | Your key (BYOK) |
-| **Hosted** at [f-motion.com](https://f-motion.com) | Your uploads, free | Included on the hosted studio | Billed by F-Motion |
-| **Source** on [GitHub](https://github.com/ivanillka/f-motion) | — | — | — |
+| **VPS** one image (`FENGINE_ENV=selfhost`) | One owner on your box | First-open email + password | None. Your Pexels/FAL keys |
+| **f-motion.com** (`FENGINE_ENV=hosted`) | Public customers | Supabase | Payment + billed FAL |
+| **Corporate** (`FENGINE_ENV=corporate`) | Internal teams | Not built | Not built |
 
-Self-host never requires a maintainer credential. Hosted FAL billing is a
-product offer, not a price list in this repository.
+The VPS image never reads Supabase or Stripe. Corporate is reserved and will
+not boot until the teams flow exists. Hosted FAL billing is a product offer,
+not a price list in this repository.
 
 ## Self-host (one image)
 

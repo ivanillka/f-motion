@@ -1,5 +1,9 @@
 # Hosted private deploy
 
+This is the **f-motion.com product** (`FENGINE_ENV=hosted`): Supabase auth,
+invite-only demo today, payment later. It is not the VPS one-image and not
+the corporate teams product.
+
 This is a **private, invite-only** demo deploy — not the public/paid Gate 0
 launch (see `README.md` Gate 0 checklist). Two processes (API, worker) plus a
 statically-hosted web build. Never set `FENGINE_LOCAL_AUTH=1` or

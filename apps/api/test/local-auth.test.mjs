@@ -23,6 +23,13 @@ test("refuses local auth when FENGINE_ENV=selfhost", () => {
   );
 });
 
+test("refuses local auth when FENGINE_ENV=corporate", () => {
+  assert.throws(
+    () => assertLocalAuthAllowed({ FENGINE_LOCAL_AUTH: "1", FENGINE_ENV: "corporate" }),
+    LocalAuthForbiddenError
+  );
+});
+
 test("allows local auth in development", () => {
   assert.doesNotThrow(() => assertLocalAuthAllowed({ FENGINE_LOCAL_AUTH: "1", NODE_ENV: "development" }));
 });

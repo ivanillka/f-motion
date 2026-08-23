@@ -34,6 +34,8 @@ test("one-image Caddy and runbook serve studio at / with owner onboarding", asyn
   for (const path of ["/self-host", "/hosted", "/studio", "/app"]) {
     assert.match(caddy, new RegExp(path.replace("/", "\\/")));
   }
+  assert.match(docs, /VPS product/);
+  assert.match(docs, /not f-motion.com and not the corporate teams product/);
   assert.match(docs, /Open `http:\/\/127\.0\.0\.1:8080\/` and create the owner/);
   assert.match(docs, /GET \/` — studio/);
   assert.match(docs, /\/studio` may 301 to `\//);

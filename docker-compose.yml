@@ -1,4 +1,4 @@
-# One-image VPS path. Postgres and MinIO run inside the f-motion container.
+# VPS product only (FENGINE_ENV=selfhost). Not f-motion.com, not corporate.
 services:
   fmotion:
     build:
