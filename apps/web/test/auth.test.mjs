@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOrigin } from "../src/auth.ts";
 
 test("hosted magic links return to the F-Motion studio", () => {
-  assert.equal(studioOrigin("https://f-motion.com/app/?project=59af46af-b82d-5fda-a837-652b88dcb50f"), "https://f-motion.com/app/");
-  assert.equal(studioOrigin("https://f-motion.com/"), "https://f-motion.com/app/");
-  assert.equal(studioOrigin("https://www.f-motion.com/app/"), "https://f-motion.com/app/");
-  assert.equal(studioOrigin("https://8b24f3e9.f-motion.pages.dev/app/"), "https://f-motion.com/app/");
-  assert.equal(studioOrigin("http://localhost:5173/"), "http://localhost:5173/");
+  assert.equal(studioOrigin("https://f-motion.com/app/?project=59af46af-b82d-5fda-a837-652b88dcb50f"), "https://f-motion.com/studio");
+  assert.equal(studioOrigin("https://f-motion.com/"), "https://f-motion.com/studio");
+  assert.equal(studioOrigin("https://www.f-motion.com/app/"), "https://f-motion.com/studio");
+  assert.equal(studioOrigin("https://8b24f3e9.f-motion.pages.dev/app/"), "https://f-motion.com/studio");
+  assert.equal(studioOrigin("http://localhost:5173/"), "http://localhost:5173/studio");
 });
 
 test("authCallbackError reads expired OTP from query or hash", () => {
@@ -167,6 +167,26 @@ test("auth client errors are propagated", async () => {
     { createClient: () => fake.client }
   );
   await assert.rejects(gateway.sendMagicLink("person@example.com"), /rejected/);
+});
+
+test("self-host operator token stays in session storage and is the bearer", async () => {
+  const storage = memoryStorage();
+  const gateway = createAuthGateway(
+    { origin: "http://127.0.0.1:8080/studio", allowDemo: false, allowSelfhost: true },
+    { demoStorage: storage }
+  );
+  const sessions = [];
+  const unsubscribe = gateway.subscribe((session) => sessions.push(session?.accessToken));
+  await new Promise(queueMicrotask);
+  assert.equal(sessions[0], undefined);
+  const token = "a".repeat(32);
+  await gateway.signInWithToken(token);
+  assert.equal(sessions.at(-1), token);
+  assert.equal(storage.getItem("fengine-selfhost-token"), token);
+  await gateway.signOut();
+  assert.equal(storage.getItem("fengine-selfhost-token"), null);
+  assert.equal(sessions.at(-1), undefined);
+  unsubscribe();
 });
 
 test("demo sessions store only a marker and clear it on sign-out", async () => {

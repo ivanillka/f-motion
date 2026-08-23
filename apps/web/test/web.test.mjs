@@ -239,116 +239,46 @@ test("studio shell brands F-Motion and keeps real destinations only", async () =
   assert.match(source, /isWideMedia/);
   assert.match(source, /motion: "zoom"/);
   assert.match(source, /href="\/"/);
+  assert.match(source, /MarketingApp/);
+  assert.match(source, /\/studio/);
   assert.doesNotMatch(source, /Assets|Effects|Pro Studio|multitrack/i);
 });
 
-test("build puts marketing at site root and studio under /app", async () => {
+test("build puts the SPA at site root and redirects /app to /studio", async () => {
   const { readFile, access } = await import("node:fs/promises");
   const dist = new URL("../dist/", import.meta.url);
   await access(new URL("index.html", dist));
-  await access(new URL("app/index.html", dist));
   await access(new URL("_redirects", dist));
   await access(new URL("music/pulse.mp3", dist));
   const home = await readFile(new URL("index.html", dist), "utf8");
   const redirects = await readFile(new URL("_redirects", dist), "utf8");
-  const app = await readFile(new URL("app/index.html", dist), "utf8");
-  assert.match(home, /Vertical reels from your own media/);
-  assert.match(home, /glitch-logo/);
-  assert.match(home, /new URL\("\/app\/"/);
-  assert.match(home, /searchParams\.set\("project"/);
-  assert.match(home, /params\.get\("code"\)/);
-  assert.match(home, /error_code/);
-  assert.match(app, /\/app\/assets\//);
-  assert.match(redirects, /\/web\/ \/\s*301/);
+  assert.match(home, /<div id="root">/);
+  assert.match(home, /<title>F-Motion<\/title>/);
+  assert.match(redirects, /\/app \/studio\s+301/);
+  assert.match(redirects, /\/studio \/index.html\s+200/);
+  assert.match(redirects, /\/self-host \/index.html\s+200/);
 });
 
-test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind", async () => {
+test("legal pages and marketing assets stay local with no CDN Tailwind", async () => {
   const root = new URL("../public/web/", import.meta.url);
-  const home = await readFile(new URL("index.html", root), "utf8");
-  const integrate = await readFile(new URL("integrate.html", root), "utf8");
-  const css = await readFile(new URL("web.css", root), "utf8");
-  const motion = await readFile(new URL("web-motion.js", root), "utf8");
-  for (const phrase of [
-    "Vertical reels from your own media",
-    "brief → storyboard → preview",
-    "Open studio",
-    "See integration",
-    "Your media, your keys",
-    "./assets/hero-reel.jpg",
-    "./assets/studio-ui.jpg"
-  ]) {
-    assert.match(home, new RegExp(phrase.replace(/[→]/g, "\\$&")));
-  }
-  assert.match(home, /new URL\("\/app\/"/);
-  assert.match(home, /searchParams\.set\("project"/);
-  for (const phrase of [
-    "Embed cinematic creation in your product",
-    "Integration Recipes",
-    "api.f-motion.com",
-    "./assets/host-diagram.jpg",
-    "MCP Agent Loop"
-  ]) {
-    assert.match(integrate, new RegExp(phrase));
-  }
-  assert.doesNotMatch(home, /cdn\.tailwindcss\.com|fonts\.googleapis\.com|assets\/logo\.png/);
-  assert.doesNotMatch(integrate, /cdn\.tailwindcss\.com|fonts\.googleapis\.com|assets\/logo\.png/);
-  assert.match(css, /--accent:\s*#a54d67/);
-  assert.match(css, /prefers-reduced-motion/);
-  assert.match(css, /\.glitch-logo/);
-  assert.match(css, /font-family:\s*"Syne"|--display:\s*"Syne"/);
-  assert.match(css, /syne-700\.woff2/);
-  assert.match(home, /data-glitch="rgb-split"/);
-  assert.match(home, /data-glitch="scramble-cascade"/);
-  assert.match(home, /data-glitch="slice-tear"/);
-  assert.match(integrate, /data-glitch="flip-corrupt"/);
-  assert.match(integrate, /data-glitch="pulse-shard"/);
-  assert.match(motion, /scramble-cascade/);
-  assert.match(motion, /prefers-reduced-motion/);
-  assert.match(motion, /pagehide/);
-  assert.match(motion, /pointerenter/);
-  assert.match(motion, /delayedCall\(gsap\.utils\.random/);
-  assert.match(home, /skip-link/);
-  assert.match(home, /href="#main"/);
-  assert.match(home, /class="nav-compact"/);
-  assert.match(home, /href="\.\/terms\.html"/);
-  assert.match(home, /href="\.\/privacy\.html"/);
-  assert.match(home, /hero-reel\.webp/);
-  assert.match(home, /type="image\/webp"/);
-  assert.doesNotMatch(integrate, /ScrambleTextPlugin/);
-  assert.match(integrate, /host-diagram\.webp/);
-  assert.doesNotMatch(home, /#docs|View docs/);
-  assert.doesNotMatch(integrate, /#docs|View docs/);
-  assert.match(integrate, /Open studio →/);
-  assert.match(home, /href="\/app\/"/);
-  assert.match(integrate, /href="\/app\/"/);
-  assert.match(integrate, /href="\.\/terms\.html"/);
   const terms = await readFile(new URL("terms.html", root), "utf8");
   const privacy = await readFile(new URL("privacy.html", root), "utf8");
+  const css = await readFile(new URL("web.css", root), "utf8");
+  const headers = await readFile(new URL("../public/_headers", import.meta.url), "utf8");
   assert.match(terms, /Terms of use/);
   assert.match(privacy, /Privacy notice/);
-  assert.doesNotMatch(terms, /ScrollTrigger|ScrambleText/);
-  assert.match(css, /\.nav-compact/);
-  assert.match(css, /\.skip-link/);
-  const headers = await readFile(new URL("../public/_headers", import.meta.url), "utf8");
+  assert.doesNotMatch(terms, /cdn\.tailwindcss\.com|fonts\.googleapis\.com/);
+  assert.match(css, /--accent:\s*#a54d67/);
+  assert.match(css, /prefers-reduced-motion/);
   assert.match(headers, /Content-Security-Policy/);
-  assert.match(headers, /connect-src[^;]*https:\/\/\*\.supabase\.co/);
-  assert.match(headers, /connect-src[^;]*wss:\/\/\*\.supabase\.co/);
-  assert.match(home, /params\.get\("code"\)/);
-  assert.match(home, /error_code/);
   assert.match(headers, /X-Content-Type-Options:\s*nosniff/);
   for (const asset of [
     "hero-reel.jpg",
     "hero-reel.webp",
-    "hero-reel-800.webp",
     "studio-ui.jpg",
-    "studio-ui.webp",
-    "host-diagram.jpg",
-    "host-diagram.webp"
+    "studio-ui.webp"
   ]) {
     await readFile(new URL(`assets/${asset}`, root));
-  }
-  for (const vendor of ["gsap.min.js", "ScrollTrigger.min.js", "ScrambleTextPlugin.min.js"]) {
-    await readFile(new URL(`vendor/${vendor}`, root));
   }
   for (const font of ["syne-600.woff2", "syne-700.woff2", "syne-800.woff2"]) {
     await readFile(new URL(`fonts/${font}`, root));

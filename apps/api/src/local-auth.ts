@@ -10,4 +10,7 @@ export function assertLocalAuthAllowed(env: Record<string, string | undefined>):
   if (env.FENGINE_LOCAL_AUTH !== "1") return;
   if (env.NODE_ENV === "production") throw new LocalAuthForbiddenError("NODE_ENV=production");
   if (env.FENGINE_ENV === "hosted") throw new LocalAuthForbiddenError("FENGINE_ENV=hosted");
+  if (env.FENGINE_ENV === "selfhost" || env.FMOTION_ENV === "selfhost") {
+    throw new LocalAuthForbiddenError("FENGINE_ENV=selfhost");
+  }
 }

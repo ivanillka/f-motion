@@ -92,8 +92,8 @@ lives on the **bucket**, not the API.
 1. Create a Supabase project. Enable email magic-link (and Google, if
    wanted) under Authentication.
 2. Use **F-Motion's own Supabase project** for studio magic links. Site URL
-   and Redirect URLs: `https://f-motion.com/app/` (also `/` and `/**`).
-   The studio sends `emailRedirectTo=https://f-motion.com/app/`.
+   and Redirect URLs: `https://f-motion.com/studio` (also `/` and `/app/`).
+   The studio sends `emailRedirectTo=https://f-motion.com/studio`.
    Fotium Edit for a user already signed in on fotium.vip is a separate JWT
    (`SUPABASE_ISSUER_EXTRA` / `SUPABASE_JWKS_URL_EXTRA` on the API).
 3. Record F-Motion `SUPABASE_ISSUER`, `SUPABASE_AUDIENCE`, `SUPABASE_JWKS_URL`.

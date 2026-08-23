@@ -1,74 +1,50 @@
-# F-Engine
+# F-Motion
 
-F-Engine is a host-neutral, deterministic vertical-video engine with a small
-reference application. It separates reusable reel contracts and render
-planning from product identity, accounts, persistence, providers, deployment,
-and customer operations.
+[![License](https://img.shields.io/badge/license-Apache--2.0-a54d67)](LICENSE)
 
-## Start here
+F-Motion is an open-source vertical-video studio. Write a brief, choose a
+story, attach your own media or licensed stock, and download a 720p preview.
 
-Choose one path:
+```
+brief → storyboard → preview
+```
 
-1. **Try it locally with no accounts or personal credentials**
+## Three ways to use it
 
-   ```sh
-   npm ci
-   npm run demo
-   ```
+| Path | Media | Pexels | FAL |
+|---|---|---|---|
+| **Self-host** one image on your VPS | Your uploads, free | Optional — your key | Your key (BYOK) |
+| **Hosted** at [f-motion.com](https://f-motion.com) | Your uploads, free | Included on the hosted studio | Billed by F-Motion |
+| **Source** on [GitHub](https://github.com/ivanillka/f-motion) | — | — | — |
 
-   Open `http://127.0.0.1:4173`. This disposable demo uses an in-memory API,
-   a session-only test identity, local fixture media, and local FFmpeg. It does
-   not use Supabase, cloud storage, Pexels, or a hosted database.
+Self-host never requires a maintainer credential. Hosted FAL billing is a
+product offer, not a price list in this repository.
 
-2. **Self-host with your own services**
+## Self-host (one image)
 
-   Follow [Self-host onboarding](docs/getting-started.md). You create and
-   control the Supabase, PostgreSQL, S3-compatible storage, and Pexels
-   accounts. No maintainer credential, customer data, deployment identifier,
-   or private API endpoint is included. Every signed-in user connects their
-   own Pexels API key for stock search. If FAL credential support is enabled,
-   they also connect their own API-scope FAL key. One storyboard scene can
-   quote and confirm a Flux Schnell still, or animate one approved portrait still into a six-second video, charged directly to that FAL account.
-   The host never supplies a shared provider key.
+```sh
+docker compose up
+```
 
-Never paste database, storage, or service-role credentials into the browser.
-The provider credentials accepted by the reference web client are a user's own
-Pexels and FAL keys in authenticated Settings. They are sent over HTTPS,
-encrypted by the API, and never returned to the browser.
+Or:
 
-## What is included
+```sh
+docker build -f deploy/Dockerfile -t f-motion .
+docker run --rm -p 8080:8080 -v fmotion-data:/data f-motion
+```
 
-The repository contains:
+Open `http://127.0.0.1:8080`. The container prints an operator token on first
+boot — use it at `/studio`. Details: [docs/runbooks/self-host.md](docs/runbooks/self-host.md).
 
-- `@f-engine/contracts`: versioned language-neutral JSON/OpenAPI contracts;
-- `@f-engine/reel-engine`: deterministic commands, cues, crop math, and render
-  planning;
-- `@f-engine/fal-host`: a private reference-host adapter for encrypted,
-  owner-scoped provider credentials;
-- `@f-engine/fmotion-cli` / `@f-engine/fmotion-mcp`: thin `/v1` CLI and stdio
-  MCP for agents (see [Agent getting started](docs/agents/getting-started.md));
-- a reference API, worker, and React client that exercise the boundary;
-- private release tooling that produces sanitized snapshots.
+## Try it locally (no accounts)
 
-All npm workspaces remain `"private": true`. The package names are for local
-boundaries and tarball verification; no registry package or hosted customer
-service is implied.
+```sh
+npm ci
+npm run demo
+```
 
-## Host boundary
-
-A host supplies authentication, databases, object storage, provider
-credentials/adapters, UI and branding, operational policy, and a validated
-render profile. The engine does not read environment variables, call provider
-SDKs, persist data, or choose presentation identity.
-
-Private hosts pin reviewed F-Engine releases and adapt at the package/API
-boundary. They do not edit a vendored fork.
-
-The reference journey accepts a short brief, then either user-owned media or
-licensed Pexels footage from the user's account, and produces an accurate
-vertical preview. AI generation is deliberately not implemented. Settings
-connects and validates user-owned Pexels and optional FAL credentials; it never
-returns their values to the browser.
+Open `http://127.0.0.1:4173/studio`. This disposable demo uses an in-memory
+API and local FFmpeg. It does not use Supabase, cloud storage, or Pexels.
 
 ## Verify
 
@@ -76,10 +52,19 @@ returns their values to the browser.
 npm run lint
 npm test
 npm run build
-npm run test:package-consumer
 npm run test:e2e:web
 ```
 
-Stored project and command payloads remain wire schema version 1. Clients
-consume the HTTP/SSE and JSON/OpenAPI boundary; they do not import the
-TypeScript engine directly.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+
+## What this repo is
+
+- React studio (`apps/web`) with public pages at `/`, `/self-host`, `/hosted`,
+  and the editor at `/studio`
+- Express API + FFmpeg worker
+- `@f-engine/contracts` and `@f-engine/reel-engine` — host-neutral reel math
+- Android client under `apps/mobile` (later store listing)
+
+F-Motion does not ship a public integrate/MCP product API, a multitrack NLE,
+or 4K/60 output. Privacy and payment policy for the hosted studio still follow
+the Gate 0 checklist before paid launch.

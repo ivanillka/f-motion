@@ -4,6 +4,7 @@
     "LICENSE",
     "SECURITY.md",
     "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
     "docs/publication-boundary.md",
     "tools/publication/manifest.json",
     "tools/publication/check.mjs",
@@ -17,6 +18,7 @@
         "LICENSE",
         "SECURITY.md",
         "CONTRIBUTING.md",
+        "CODE_OF_CONDUCT.md",
         "docs/getting-started.md",
         "docs/publication-boundary.md"
       ],
@@ -37,6 +39,7 @@
         ".gitignore",
         ".nvmrc",
         "README.md",
+        "docker-compose.yml",
         "package.json",
         "package-lock.json",
         "tsconfig.base.json",
@@ -73,7 +76,7 @@
     {
       "name": "deferred-reference-web-source",
       "classification": "public",
-      "prefixes": ["apps/web/src/", "apps/web/public/"],
+      "prefixes": ["apps/web/src/", "apps/web/public/", "apps/web/scripts/"],
       "paths": [
         "apps/web/index.html",
         "apps/web/package.json",
@@ -81,6 +84,8 @@
         "apps/web/vite.config.ts",
         "apps/web/test/api.test.mjs",
         "apps/web/test/auth.test.mjs",
+        "apps/web/test/imported-project.test.mjs",
+        "apps/web/test/marketing.test.mjs",
         "apps/web/test/web.test.mjs"
       ],
       "reason": "Generic reference browser after identity extraction"
@@ -106,8 +111,8 @@
     {
       "name": "deferred-reference-infrastructure",
       "classification": "public",
-      "prefixes": ["prisma/", "scripts/", "tests/"],
-      "reason": "Generic reference schema, local support, and verification"
+      "prefixes": ["prisma/", "scripts/", "tests/", "deploy/"],
+      "reason": "Generic reference schema, local support, verification, and self-host image"
     },
     {
       "name": "private-plans-and-evidence",

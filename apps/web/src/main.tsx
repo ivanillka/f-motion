@@ -40,6 +40,7 @@ import {
 } from "./api";
 import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOrigin } from "./auth";
 import { clearImportedProject, isImportedProjectId, rememberImportedProject } from "./imported-project";
+import { MarketingApp } from "./marketing/MarketingApp";
 import "./style.css";
 
 type Step = "sign-in" | "drafts" | "brief" | "architecture" | "concepts" | "media" | "editor" | "render" | "settings";
@@ -166,7 +167,8 @@ function App() {
           url: import.meta.env.VITE_SUPABASE_URL,
           publicKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
           origin: studioOrigin(location.href),
-          allowDemo: Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1"
+          allowDemo: Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1",
+          allowSelfhost: import.meta.env.VITE_SELFHOST_AUTH === "1"
         })
       };
     } catch (error) {
@@ -181,6 +183,7 @@ function App() {
   const [authBusy, setAuthBusy] = useState(false);
   const [step, setStep] = useState<Step>("sign-in");
   const [email, setEmail] = useState("");
+  const [operatorToken, setOperatorToken] = useState("");
   const [awaitingEmail, setAwaitingEmail] = useState(false);
   const [draft, setDraft] = useState(() => localStorage.getItem("fengine-draft") ?? "");
   const [architecture, setArchitecture] = useState<VideoArchitecture>(defaultVideoArchitecture);
@@ -497,6 +500,19 @@ function App() {
       await authSetup.gateway.signInWithGoogle();
     } catch {
       setStatus("Google sign-in could not be started.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function operatorSignIn() {
+    if (!authSetup.gateway?.signInWithToken) return;
+    setAuthBusy(true);
+    try {
+      await authSetup.gateway.signInWithToken(operatorToken);
+      setStatus("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Operator token was rejected.");
     } finally {
       setAuthBusy(false);
     }
@@ -2377,15 +2393,22 @@ function App() {
       <h1>Shape a vertical video</h1>
       <p>{pendingImportId
         ? "Sign in to open the imported draft from Fotium."
-        : "Sign in to keep projects private."}</p>
-      <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-      <button disabled={authBusy || !authSetup.gateway || (Boolean(import.meta.env.VITE_SUPABASE_URL) && !email.trim())} onClick={() => void magicLink()}>Email me a magic link</button>
-      {Boolean(import.meta.env.VITE_SUPABASE_URL) && <p>{awaitingEmail
-        ? "Email sent. Open the link to finish sign-in on this studio."
-        : "Open the email link to finish sign-in."}</p>}
-      {import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "1"
-        ? <button className="secondary" disabled={authBusy || !authSetup.gateway} onClick={() => void googleSignIn()}>Continue with Google</button>
-        : null}
+        : import.meta.env.VITE_SELFHOST_AUTH === "1"
+          ? "Enter the operator token printed when this image first started."
+          : "Sign in to keep projects private."}</p>
+      {import.meta.env.VITE_SELFHOST_AUTH === "1" ? <>
+        <label>Operator token<input type="password" autoComplete="current-password" value={operatorToken} onChange={(event) => setOperatorToken(event.target.value)} /></label>
+        <button disabled={authBusy || !authSetup.gateway?.signInWithToken || operatorToken.trim().length < 32} onClick={() => void operatorSignIn()}>Open with operator token</button>
+      </> : <>
+        <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+        <button disabled={authBusy || !authSetup.gateway || (Boolean(import.meta.env.VITE_SUPABASE_URL) && !email.trim())} onClick={() => void magicLink()}>Email me a magic link</button>
+        {Boolean(import.meta.env.VITE_SUPABASE_URL) && <p>{awaitingEmail
+          ? "Email sent. Open the link to finish sign-in on this studio."
+          : "Open the email link to finish sign-in."}</p>}
+        {import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "1"
+          ? <button className="secondary" disabled={authBusy || !authSetup.gateway} onClick={() => void googleSignIn()}>Continue with Google</button>
+          : null}
+      </>}
       <p role="status">{status}</p>
     </section>}
     {authReady && step === "drafts" && <section>
@@ -3234,4 +3257,39 @@ function App() {
   </div>;
 }
 
-createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);
+function studioPath(pathname: string): boolean {
+  return pathname === "/studio" || pathname.startsWith("/studio/")
+    || pathname === "/app" || pathname.startsWith("/app/");
+}
+
+function Root() {
+  const [path, setPath] = useState(() => location.pathname);
+
+  useEffect(() => {
+    const sync = () => setPath(location.pathname);
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+    const id = params.get("project") ?? "";
+    const code = params.get("code") ?? "";
+    const error = params.get("error_code") ?? params.get("error") ?? hash.get("error_code") ?? hash.get("error") ?? "";
+    const fromMarketing = path === "/" && (/^[0-9a-f-]{36}$/i.test(id) || code || error);
+    const fromLegacy = path === "/app" || path.startsWith("/app/");
+    if (!fromMarketing && !fromLegacy) return;
+    const next = new URL("/studio", location.origin);
+    if (/^[0-9a-f-]{36}$/i.test(id)) next.searchParams.set("project", id);
+    if (code) next.searchParams.set("code", code);
+    if (error) next.searchParams.set("error_code", error);
+    history.replaceState(null, "", `${next.pathname}${next.search}${location.hash}`);
+    setPath("/studio");
+  }, [path]);
+
+  if (studioPath(path)) return <App />;
+  return <MarketingApp path={path} />;
+}
+
+createRoot(document.getElementById("root")!).render(<StrictMode><Root /></StrictMode>);

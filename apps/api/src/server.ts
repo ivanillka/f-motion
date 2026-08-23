@@ -11,6 +11,7 @@ import {
   type AuthConfig,
   type EnsureUser
 } from "./auth.js";
+import { assertBootstrapAuthorization } from "./selfhost-auth.js";
 import {
   ConflictError,
   NotFoundError,
@@ -110,6 +111,7 @@ export interface TestAppOptions extends Omit<AppBaseOptions, "projects"> {
   ownerId?: string;
   accountState?: string;
   projects?: ProjectRepository;
+  bootstrapToken?: string;
 }
 
 type Identify = (authorization: string | undefined) => Promise<string>;
@@ -1188,7 +1190,10 @@ export function createApp(options: AppOptions) {
 export function createTestApp(options: TestAppOptions = {}) {
   const ownerId = options.ownerId ?? "authenticated-user";
   const accountState = options.accountState ?? "active";
-  return buildApp({ ...options, projects: options.projects ?? new ProjectService() }, async () => {
+  return buildApp({ ...options, projects: options.projects ?? new ProjectService() }, async (authorization) => {
+    if (options.bootstrapToken) {
+      assertBootstrapAuthorization(authorization, options.bootstrapToken);
+    }
     assertAccountActive(accountState);
     return ownerId;
   });

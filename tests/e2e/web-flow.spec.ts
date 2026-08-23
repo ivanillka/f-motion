@@ -53,6 +53,9 @@ async function expectRenderedProject(
 
 async function signIn(page: import("@playwright/test").Page) {
   await page.goto("/");
+  await expect(page.getByRole("link", { name: "Open studio" }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Self-host" }).first()).toBeVisible();
+  await page.goto("/studio");
   await page.getByRole("button", { name: "Email me a magic link" }).click();
   await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
 }

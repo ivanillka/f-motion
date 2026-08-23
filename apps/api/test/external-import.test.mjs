@@ -152,7 +152,7 @@ test("trusted imports create one editable project and retry idempotently", async
     assert.equal(first.status, 201);
     const created = await first.json();
     assert.equal(created.project_id, projectIdForExternalImport(ownerId, body.external_id));
-    assert.equal(created.project_url, `https://f-motion.example/app/?project=${created.project_id}`);
+    assert.equal(created.project_url, `https://f-motion.example/studio?project=${created.project_id}`);
     assert.equal(created.projectUrl, created.project_url);
     const project = projects.get(ownerId, created.project_id);
     assert.equal(project.scenes.length, 4);

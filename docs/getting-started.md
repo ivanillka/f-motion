@@ -1,8 +1,11 @@
 # Self-host onboarding
 
-This guide creates an isolated F-Engine reference deployment using accounts
-and data stores you control. The repository contains no maintainer credentials,
-customer data, production domains, or shared hosted service.
+For the one-image VPS path (`docker compose up`), see
+[Self-host with one image](runbooks/self-host.md).
+
+This guide creates an isolated deployment using accounts and data stores you
+control. The repository contains no maintainer credentials, customer data,
+production domains, or shared hosted service.
 
 If you only want to evaluate the workflow, use `npm run demo` from the root.
 That path requires no accounts and does not contact Supabase, Pexels, cloud

@@ -9,6 +9,7 @@ export interface AuthGateway {
   sendMagicLink(email: string): Promise<void>;
   signInWithGoogle(): Promise<void>;
   signOut(): Promise<void>;
+  signInWithToken?(token: string): Promise<void>;
 }
 
 export interface AuthConfiguration {
@@ -16,6 +17,7 @@ export interface AuthConfiguration {
   publicKey?: string;
   origin: string;
   allowDemo: boolean;
+  allowSelfhost?: boolean;
 }
 
 interface AuthSessionLike {
@@ -50,11 +52,11 @@ export class AuthConfigurationError extends Error {
   }
 }
 
-const hostedStudioCallback = "https://f-motion.com/app/";
+const hostedStudioCallback = "https://f-motion.com/studio";
 
 /**
- * Magic-link / OAuth return URL. Hosted studio stays on F-Motion /app/.
- * Local Vite stays on the current origin.
+ * Magic-link / OAuth return URL. Hosted and local studio live at /studio.
+ * /app/ remains a redirect for older links.
  */
 export function studioOrigin(href: string): string {
   const url = new URL(href);
@@ -65,7 +67,7 @@ export function studioOrigin(href: string): string {
   ) {
     return hostedStudioCallback;
   }
-  return new URL(url.pathname.startsWith("/app") ? "/app/" : "/", url).href;
+  return new URL("/studio", url).href;
 }
 
 /** Supabase puts expired-link failures on the query, the hash, or both. */
@@ -128,6 +130,54 @@ class SupabaseAuthGateway implements AuthGateway {
   async signOut(): Promise<void> {
     const { error } = await this.client.auth.signOut();
     throwAuthError(error);
+  }
+}
+
+class SelfhostAuthGateway implements AuthGateway {
+  private readonly marker = "fengine-selfhost-session";
+  private readonly tokenKey = "fengine-selfhost-token";
+  private readonly listeners = new Set<(session?: WebAuthSession) => void>();
+  private readonly storage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+  constructor(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">) {
+    this.storage = storage;
+  }
+
+  private current(): WebAuthSession | undefined {
+    const token = this.storage.getItem(this.tokenKey);
+    return this.storage.getItem(this.marker) === "1" && token ? { accessToken: token } : undefined;
+  }
+
+  subscribe(listener: (session?: WebAuthSession) => void): () => void {
+    this.listeners.add(listener);
+    queueMicrotask(() => {
+      if (this.listeners.has(listener)) listener(this.current());
+    });
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  async signInWithToken(token: string): Promise<void> {
+    const value = token.trim();
+    if (value.length < 32) throw new Error("Operator token looks too short.");
+    this.storage.setItem(this.marker, "1");
+    this.storage.setItem(this.tokenKey, value);
+    for (const listener of this.listeners) listener({ accessToken: value });
+  }
+
+  async sendMagicLink(): Promise<void> {
+    throw new Error("Self-host sign-in uses the operator token.");
+  }
+
+  async signInWithGoogle(): Promise<void> {
+    throw new Error("Self-host sign-in uses the operator token.");
+  }
+
+  async signOut(): Promise<void> {
+    this.storage.removeItem(this.marker);
+    this.storage.removeItem(this.tokenKey);
+    for (const listener of this.listeners) listener(undefined);
   }
 }
 
@@ -195,9 +245,13 @@ export function createAuthGateway(
     return new SupabaseAuthGateway(client, callbackUrl(config.origin));
   }
 
-  if (!config.allowDemo) throw new AuthConfigurationError();
   const storage = dependencies.demoStorage
     ?? (typeof sessionStorage === "undefined" ? undefined : sessionStorage);
+  if (config.allowSelfhost) {
+    if (!storage) throw new AuthConfigurationError();
+    return new SelfhostAuthGateway(storage);
+  }
+  if (!config.allowDemo) throw new AuthConfigurationError();
   if (!storage) throw new AuthConfigurationError();
   return new DemoAuthGateway(storage);
 }

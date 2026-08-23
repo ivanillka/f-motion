@@ -1,0 +1,18 @@
+# One-image VPS path. Postgres and MinIO run inside the f-motion container.
+services:
+  fmotion:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    image: f-motion:local
+    ports:
+      - "8080:8080"
+    volumes:
+      - fmotion-data:/data
+    environment:
+      FENGINE_ENV: selfhost
+      FENGINE_PEXELS_BYOK_ENABLED: "0"
+      FENGINE_FAL_BYOK_ENABLED: "0"
+
+volumes:
+  fmotion-data:
