@@ -77,7 +77,16 @@ export FENGINE_FAL_BYOK_ENABLED="${FENGINE_FAL_BYOK_ENABLED:-0}"
 export PORT="${PORT:-3000}"
 
 cd /repo
-npx prisma migrate deploy
+# Prisma's npx/checkpoint path phones home and hangs when the host has no egress.
+export CHECKPOINT_DISABLE=1
+export PRISMA_HIDE_UPDATE_MESSAGE=1
+export PRISMA_SCHEMA_ENGINE_BINARY="$(echo /repo/node_modules/@prisma/engines/schema-engine-*)"
+export PRISMA_QUERY_ENGINE_LIBRARY="$(echo /repo/node_modules/@prisma/engines/libquery_engine-*.so.node)"
+if [[ ! -x "$PRISMA_SCHEMA_ENGINE_BINARY" ]]; then
+  echo "prisma schema engine not found" >&2
+  exit 1
+fi
+/repo/node_modules/.bin/prisma migrate deploy --schema /repo/prisma/schema.prisma
 node apps/api/dist/start.js &
 node apps/worker/dist/start.js &
 

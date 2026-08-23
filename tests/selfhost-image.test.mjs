@@ -10,7 +10,10 @@ test("one-image files boot selfhost with a bootstrap token, not local auth", asy
   assert.match(entry, /FENGINE_BOOTSTRAP_TOKEN/);
   assert.match(entry, /unset FENGINE_LOCAL_AUTH/);
   assert.match(entry, /prisma migrate deploy/);
+  assert.match(entry, /CHECKPOINT_DISABLE=1/);
+  assert.match(entry, /PRISMA_SCHEMA_ENGINE_BINARY/);
   assert.match(entry, /\/usr\/lib\/postgresql\/\*\/bin/);
+  assert.doesNotMatch(entry, /\bnpx prisma\b/);
   assert.match(docker, /VITE_SELFHOST_AUTH=1/);
   assert.match(docker, /deploy\/entrypoint.sh/);
   assert.match(compose, /dockerfile: deploy\/Dockerfile/);
