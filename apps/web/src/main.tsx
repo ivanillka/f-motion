@@ -167,6 +167,13 @@ const architectureLabels = {
   media: { stock: "Pexels real stock video", own: "My own media", mixed: "Pexels stock + my media" }
 } as const;
 
+function beatSteps(summary: string): string[] {
+  return summary.split("→").map((part) => {
+    const beat = part.trim();
+    return beat ? beat[0].toUpperCase() + beat.slice(1) : "";
+  }).filter(Boolean);
+}
+
 function App() {
   const authSetup = useMemo(() => {
     try {
@@ -2640,8 +2647,11 @@ function App() {
       <button className="secondary" disabled={busy} onClick={() => setStep("drafts")}>Back to drafts</button>
     </section>}
     {authReady && step === "architecture" && <section>
-      <h1>Plan the video</h1>
-      <p>F-Motion prepared this recommendation from your conversation. Build it as proposed, or unfold the details to edit any decision.</p>
+      <div className="stage-hero">
+        <p className="settings-kicker">Plan</p>
+        <h1>Plan the video</h1>
+        <p>F-Motion prepared this recommendation from your conversation. Build it as proposed, or unfold the details to edit any decision.</p>
+      </div>
       <dl className="architecture-summary" aria-label="Recommended video plan">
         <div><dt>Goal</dt><dd>{architectureLabels.goal[architecture.goal]}</dd></div>
         <div><dt>Audience</dt><dd>{architectureLabels.audience[architecture.audience]}</dd></div>
@@ -2681,22 +2691,33 @@ function App() {
       <button className="secondary" disabled={busy} onClick={() => setStep("brief")}>Back to description</button>
       <p role="status" aria-live="polite">{status}</p>
     </section>}
-    {authReady && step === "concepts" && project && <section>
-      <h1>Choose a story approach</h1>
-      <p>Each option builds a different multi-scene plan. Licensed stock is matched only after you choose.</p>
+    {authReady && step === "concepts" && project && <section className="concepts-stage">
+      <div className="stage-hero">
+        <p className="settings-kicker">Story</p>
+        <h1>Choose a story approach</h1>
+        <p>Licensed visuals are matched only after you choose.</p>
+      </div>
       <div className="concept-choices" aria-label="Story concepts">{conceptChoices.map((concept) =>
         <button
           key={concept.id}
-          className="card"
+          className="concept-module"
+          data-concept={concept.id}
           disabled={busy}
           aria-label={`Choose ${concept.title} concept`}
           onClick={() => void chooseConcept(concept.id)}
         >
-          <strong>{concept.title}</strong>
-          <span>{concept.hook}</span>
-          <span>{concept.beat_summary}</span>
-          <span>About {concept.duration_seconds} seconds · {concept.scene_count} scenes</span>
-          <span>{concept.media_direction}</span>
+          <span className="concept-module-head">
+            <strong>{concept.title}</strong>
+            <span className="concept-meta">About {concept.duration_seconds} seconds · {concept.scene_count} scenes</span>
+          </span>
+          <span className="concept-hook">{concept.hook}</span>
+          <ol className="beat-rail" aria-label={`${concept.title} beats`}>
+            {beatSteps(concept.beat_summary).map((beat) => <li key={beat}>{beat}</li>)}
+          </ol>
+          <span className="scene-slots" aria-hidden="true">
+            {Array.from({ length: concept.scene_count }, (_, index) => <i key={index} />)}
+          </span>
+          <span className="concept-direction">{concept.media_direction}</span>
         </button>)}</div>
       <p role="status" aria-live="polite">{status}</p>
       <button className="secondary" disabled={busy} onClick={() => setStep("architecture")}>Back to video plan</button>

@@ -257,9 +257,103 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   outline-offset: 2px;
 }
 .concepts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.concept-choices { display: grid; grid-template-columns: 1fr; gap: 12px; }
-.concept-choices .card { text-align: left; display: grid; gap: 6px; }
-.concept-choices .card strong { font-size: 1.1rem; }
+.concepts-stage { max-width: 1080px; gap: 28px; }
+.stage-hero { display: grid; gap: 10px; max-width: 40ch; }
+.stage-hero h1 { margin: 0; }
+.concept-choices {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+@media (min-width: 900px) {
+  .concept-choices {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+  }
+}
+.concept-module {
+  min-height: 292px;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto auto;
+  align-content: start;
+  gap: 16px;
+  padding: 20px;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+.concept-module:hover:not(:disabled) {
+  background: var(--raised);
+  border-color: color-mix(in srgb, var(--accent-soft) 42%, var(--border));
+  transform: translateY(-2px);
+}
+.concept-module[data-concept="direct"] { box-shadow: inset 0 2px 0 var(--accent), 0 1px 3px rgba(0, 0, 0, 0.18); }
+.concept-module[data-concept="story"] { box-shadow: inset 0 2px 0 #00e5ff, 0 1px 3px rgba(0, 0, 0, 0.18); }
+.concept-module[data-concept="rhythm"] { box-shadow: inset 0 2px 0 #ff00cc, 0 1px 3px rgba(0, 0, 0, 0.18); }
+.concept-module-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.concept-module-head strong {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.concept-meta {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.concept-hook {
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.45;
+  max-width: 34ch;
+}
+.beat-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.beat-rail li {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--text);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.scene-slots {
+  display: flex;
+  gap: 5px;
+}
+.scene-slots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 28%, transparent);
+}
+.concept-module[data-concept="direct"] .scene-slots i { background: color-mix(in srgb, var(--accent) 70%, white); }
+.concept-module[data-concept="story"] .scene-slots i { background: color-mix(in srgb, #00e5ff 70%, white); }
+.concept-module[data-concept="rhythm"] .scene-slots i { background: color-mix(in srgb, #ff00cc 70%, white); }
+.concept-direction {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
 .architecture-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .card {
   border-radius: 8px;
@@ -851,9 +945,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   gap: 12px;
   margin: 0;
 }
-.architecture-summary div { padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
-.architecture-summary dt { color: var(--muted); font-size: 0.8rem; }
-.architecture-summary dd { margin: 5px 0 0; font-weight: 700; }
+.architecture-summary div { padding: 16px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; }
+.architecture-summary dt {
+  color: var(--accent-soft);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.architecture-summary dd { margin: 8px 0 0; font-weight: 600; line-height: 1.3; }
 .architecture-editor { padding: 14px; border: 1px solid var(--border); border-radius: 8px; }
 .architecture-editor summary { cursor: pointer; font-weight: 700; }
 .architecture-editor[open] summary { margin-bottom: 14px; }
@@ -1054,7 +1154,7 @@ dialog h2 { margin: 0; }
 [role="status"] { color: var(--success); font-size: 0.875rem; }
 header [role="status"] { color: var(--muted); }
 @media (max-width: 980px) {
-  .concepts { grid-template-columns: 1fr; }
+  .concepts, .concept-choices { grid-template-columns: 1fr; }
   .provider-onboarding { grid-template-columns: 1fr; }
   .provider-preview { grid-template-columns: 1fr; }
   .architecture-summary { grid-template-columns: 1fr 1fr; }

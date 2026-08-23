@@ -199,6 +199,8 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.app-rail/);
   assert.match(css, /\.app-dock/);
   assert.match(css, /\.studio-board/);
+  assert.match(css, /\.concept-module/);
+  assert.match(css, /\.beat-rail/);
   assert.match(css, /\.crop-guide/);
   assert.match(css, /cursor: grab/);
   assert.match(css, /cursor: grabbing/);
@@ -248,6 +250,8 @@ test("studio shell brands F-Motion and keeps real destinations only", async () =
   assert.match(source, /className="app-rail"/);
   assert.match(source, /className="app-dock"/);
   assert.match(source, /className="studio-board"/);
+  assert.match(source, /className="concept-module"/);
+  assert.match(source, /beatSteps\(/);
   assert.match(source, /partner-brands/);
   assert.match(source, /className="editor-foot"/);
   assert.match(source, /crop-guide/);
