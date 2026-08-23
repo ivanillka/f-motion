@@ -198,7 +198,7 @@ export interface StoredMedia {
     duration_ms?: number;
   };
   attribution?: {
-    source: "Pexels";
+    source: "Pexels" | "Pixabay";
     creator: string;
     url: string;
     previewUrl?: string;
@@ -227,7 +227,7 @@ export interface SceneMediaView {
     duration_ms?: number;
   };
   attribution?: {
-    source: "Pexels" | "Mixkit";
+    source: "Pexels" | "Pixabay" | "Mixkit";
     creator: string;
     attributionUrl: string;
     previewUrl?: string;
@@ -260,9 +260,14 @@ function safeStockAttribution(value: unknown): SceneMediaView["attribution"] {
   if (!creator || creator.length > 200 || !attributionUrl) return undefined;
   const previewUrl = safeHttpsUrl(attribution.previewUrl);
   const title = typeof attribution.title === "string" ? attribution.title.trim() : "";
-  if (attribution.source === "Pexels") {
+  if (attribution.source === "Pexels" || attribution.source === "Pixabay") {
+    if (attribution.source === "Pixabay") {
+      let host = "";
+      try { host = new URL(attributionUrl).hostname; } catch { return undefined; }
+      if (host !== "pixabay.com" && !host.endsWith(".pixabay.com")) return undefined;
+    }
     return {
-      source: "Pexels",
+      source: attribution.source,
       creator,
       attributionUrl,
       ...(previewUrl ? { previewUrl } : {})
@@ -543,6 +548,76 @@ export interface PexelsResult {
   contentType: string;
 }
 
+function stillTypeFromUrl(url: string): string {
+  const path = new URL(url).pathname.toLowerCase();
+  if (path.endsWith(".png")) return "image/png";
+  if (path.endsWith(".webp")) return "image/webp";
+  return "image/jpeg";
+}
+
+async function copyRemoteStock(
+  client: { request: typeof fetch; copyDeadlineMs: number; temporaryRoot: string },
+  ownerId: string,
+  projectId: string,
+  selected: PexelsResult,
+  source: "Pexels" | "Pixabay",
+  repository: PostgresMediaRepository,
+  store: PrivateObjectStore,
+  RequestError: new () => Error
+): Promise<StoredMedia> {
+  const attributionUrl = safeHttpsUrl(selected.attributionUrl);
+  const previewUrl = safeHttpsUrl(selected.previewUrl);
+  const creator = selected.creator.trim();
+  if (!attributionUrl || !previewUrl || !creator || creator.length > 200) {
+    throw new Error(`${source} metadata rejected`);
+  }
+  const directory = await mkdtemp(join(client.temporaryRoot, "fengine-stock-"));
+  const path = join(directory, "media");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), client.copyDeadlineMs);
+  let response: Response | undefined;
+  try {
+    response = await client.request(selected.sourceUrl, { signal: controller.signal });
+    if (!response.ok) throw new RequestError();
+    const bytes = await spoolBoundedBody(response, path, maximumMediaBytes, controller.signal);
+    const id = randomUUID();
+    const asset: StoredMedia = {
+      id,
+      ownerId,
+      projectId,
+      quarantineObjectKey: `projects/${projectId}/media-quarantine/${id}`,
+      state: "admitted",
+      declaredType: selected.contentType,
+      maxBytes: bytes,
+      attribution: {
+        source,
+        creator,
+        url: attributionUrl,
+        previewUrl
+      }
+    };
+    const upload = createReadStream(path);
+    try {
+      await store.put(asset.quarantineObjectKey, upload, selected.contentType, bytes);
+    } finally {
+      upload.destroy();
+      await finished(upload).catch(() => undefined);
+    }
+    await repository.insert(asset);
+    if (!await repository.completeAdmission(ownerId, projectId, id)) {
+      throw new Error(`${source} media admission failed`);
+    }
+    return { ...asset, state: "inspecting" };
+  } finally {
+    clearTimeout(timeout);
+    controller.abort();
+    if (response?.body && !response.body.locked) {
+      await response.body.cancel().catch(() => undefined);
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 const pexelsIgnoredWords = new Set([
   "a", "an", "and", "are", "as", "at", "be", "by", "create", "every", "for",
   "from", "have", "in", "into", "is", "it", "its", "make", "no", "of", "on", "or",
@@ -641,6 +716,41 @@ export class PexelsClient {
     });
   }
 
+  async searchStills(query: string): Promise<PexelsResult[]> {
+    const response = await this.request(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&orientation=portrait&per_page=12`, {
+      headers: { authorization: this.apiKey }
+    });
+    if (!response.ok) throw new PexelsRequestError();
+    let body: {
+      photos?: Array<{
+        id: number;
+        url: string;
+        photographer: string;
+        photographer_url: string;
+        src: { original?: string; portrait?: string; large?: string };
+      }>;
+    };
+    try {
+      body = await response.json() as typeof body;
+    } catch {
+      throw new PexelsRequestError();
+    }
+    return (body.photos ?? []).flatMap((photo) => {
+      const creator = photo.photographer.trim();
+      const attributionUrl = safeHttpsUrl(photo.url) ?? safeHttpsUrl(photo.photographer_url);
+      const previewUrl = safeHttpsUrl(photo.src.portrait) ?? safeHttpsUrl(photo.src.large);
+      const sourceUrl = safeHttpsUrl(photo.src.original) ?? safeHttpsUrl(photo.src.large) ?? previewUrl;
+      return creator && creator.length <= 200 && attributionUrl && previewUrl && sourceUrl ? [{
+        id: photo.id,
+        creator,
+        attributionUrl,
+        previewUrl,
+        sourceUrl,
+        contentType: stillTypeFromUrl(sourceUrl)
+      }] : [];
+    });
+  }
+
   async copy(
     ownerId: string,
     projectId: string,
@@ -648,58 +758,122 @@ export class PexelsClient {
     repository: PostgresMediaRepository,
     store: PrivateObjectStore
   ): Promise<StoredMedia> {
-    const attributionUrl = safeHttpsUrl(selected.attributionUrl);
-    const previewUrl = safeHttpsUrl(selected.previewUrl);
-    const creator = selected.creator.trim();
-    if (!attributionUrl || !previewUrl || !creator || creator.length > 200) {
-      throw new Error("Pexels metadata rejected");
-    }
-    const directory = await mkdtemp(join(this.temporaryRoot, "fengine-pexels-"));
-    const path = join(directory, "media");
-    const controller = new AbortController();
-    // Keep the deadline timer referenced so short copies still abort under an idle event loop.
-    const timeout = setTimeout(() => controller.abort(), this.copyDeadlineMs);
-    let response: Response | undefined;
-    try {
-      response = await this.request(selected.sourceUrl, { signal: controller.signal });
-      if (!response.ok) throw new PexelsRequestError();
-      const bytes = await spoolBoundedBody(response, path, maximumMediaBytes, controller.signal);
-      const id = randomUUID();
-      const asset: StoredMedia = {
-        id,
-        ownerId,
-        projectId,
-        quarantineObjectKey: `projects/${projectId}/media-quarantine/${id}`,
-        state: "admitted",
-        declaredType: selected.contentType,
-        maxBytes: bytes,
-        attribution: {
-          source: "Pexels",
-          creator,
-          url: attributionUrl,
-          previewUrl
-        }
+    return copyRemoteStock(this, ownerId, projectId, selected, "Pexels", repository, store, PexelsRequestError);
+  }
+}
+
+export class PixabayRequestError extends Error {
+  readonly name = "PixabayRequestError";
+  constructor() { super("Pixabay unavailable"); }
+}
+
+const pixabayCacheMs = 24 * 60 * 60 * 1000;
+
+export class PixabayClient {
+  private readonly cache = new Map<string, { expires: number; results: PexelsResult[] }>();
+
+  constructor(
+    readonly apiKey: string,
+    readonly request: typeof fetch = fetch,
+    readonly copyDeadlineMs = 30_000,
+    readonly temporaryRoot = tmpdir()
+  ) {}
+
+  private async cached(key: string, load: () => Promise<PexelsResult[]>): Promise<PexelsResult[]> {
+    const hit = this.cache.get(key);
+    if (hit && hit.expires > Date.now()) return hit.results;
+    const results = await load();
+    this.cache.set(key, { expires: Date.now() + pixabayCacheMs, results });
+    return results;
+  }
+
+  private apiUrl(path: string, query: string, extra = ""): string {
+    return `https://pixabay.com${path}?key=${encodeURIComponent(this.apiKey)}&q=${encodeURIComponent(query)}&safesearch=true&per_page=12${extra}`;
+  }
+
+  async search(query: string): Promise<PexelsResult[]> {
+    return this.cached(`video:${query}`, async () => {
+      const response = await this.request(this.apiUrl("/api/videos/", query));
+      if (!response.ok) throw new PixabayRequestError();
+      let body: {
+        hits?: Array<{
+          id: number;
+          pageURL: string;
+          user: string;
+          videos?: {
+            medium?: { url?: string; width?: number; height?: number; thumbnail?: string };
+            small?: { url?: string; width?: number; height?: number; thumbnail?: string };
+          };
+        }>;
       };
-      const upload = createReadStream(path);
       try {
-        await store.put(asset.quarantineObjectKey, upload, selected.contentType, bytes);
-      } finally {
-        upload.destroy();
-        await finished(upload).catch(() => undefined);
+        body = await response.json() as typeof body;
+      } catch {
+        throw new PixabayRequestError();
       }
-      await repository.insert(asset);
-      if (!await repository.completeAdmission(ownerId, projectId, id)) {
-        throw new Error("Pexels media admission failed");
+      return (body.hits ?? []).flatMap((hit) => {
+        const file = [hit.videos?.medium, hit.videos?.small]
+          .find((candidate) => candidate?.url && (candidate.height ?? 0) >= (candidate.width ?? 1));
+        const creator = hit.user.trim();
+        const attributionUrl = safeHttpsUrl(hit.pageURL);
+        const previewUrl = safeHttpsUrl(file?.thumbnail);
+        const sourceUrl = safeHttpsUrl(file?.url);
+        return file && creator && creator.length <= 200 && attributionUrl && previewUrl && sourceUrl ? [{
+          id: hit.id,
+          creator,
+          attributionUrl,
+          previewUrl,
+          sourceUrl,
+          contentType: "video/mp4"
+        }] : [];
+      });
+    });
+  }
+
+  async searchStills(query: string): Promise<PexelsResult[]> {
+    return this.cached(`still:${query}`, async () => {
+      const response = await this.request(this.apiUrl("/api/", query, "&image_type=photo&orientation=vertical"));
+      if (!response.ok) throw new PixabayRequestError();
+      let body: {
+        hits?: Array<{
+          id: number;
+          pageURL: string;
+          user: string;
+          previewURL?: string;
+          largeImageURL?: string;
+          webformatURL?: string;
+        }>;
+      };
+      try {
+        body = await response.json() as typeof body;
+      } catch {
+        throw new PixabayRequestError();
       }
-      return { ...asset, state: "inspecting" };
-    } finally {
-      clearTimeout(timeout);
-      controller.abort();
-      if (response?.body && !response.body.locked) {
-        await response.body.cancel().catch(() => undefined);
-      }
-      await rm(directory, { recursive: true, force: true });
-    }
+      return (body.hits ?? []).flatMap((hit) => {
+        const creator = hit.user.trim();
+        const attributionUrl = safeHttpsUrl(hit.pageURL);
+        const previewUrl = safeHttpsUrl(hit.previewURL);
+        const sourceUrl = safeHttpsUrl(hit.largeImageURL) ?? safeHttpsUrl(hit.webformatURL);
+        return creator && creator.length <= 200 && attributionUrl && previewUrl && sourceUrl ? [{
+          id: hit.id,
+          creator,
+          attributionUrl,
+          previewUrl,
+          sourceUrl,
+          contentType: stillTypeFromUrl(sourceUrl)
+        }] : [];
+      });
+    });
+  }
+
+  async copy(
+    ownerId: string,
+    projectId: string,
+    selected: PexelsResult,
+    repository: PostgresMediaRepository,
+    store: PrivateObjectStore
+  ): Promise<StoredMedia> {
+    return copyRemoteStock(this, ownerId, projectId, selected, "Pixabay", repository, store, PixabayRequestError);
   }
 }
 

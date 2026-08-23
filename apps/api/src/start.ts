@@ -14,6 +14,7 @@ import { createApp, createTestApp } from "./server.js";
 import {
   assertNoSharedFalCredential,
   assertNoSharedPexelsCredential,
+  assertNoSharedPixabayCredential,
   credentialVaultFromEnv,
   falByokEnabled
 } from "@f-engine/fal-host";
@@ -24,6 +25,11 @@ import {
   PostgresPexelsCredentialService,
   pexelsByokEnabled
 } from "./pexels-credentials.js";
+import {
+  PixabayProviderError,
+  PostgresPixabayCredentialService,
+  pixabayByokEnabled
+} from "./pixabay-credentials.js";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -43,6 +49,7 @@ assertLocalAuthAllowed(process.env);
 assertProductIsolation(process.env);
 assertNoSharedFalCredential(process.env);
 assertNoSharedPexelsCredential(process.env);
+assertNoSharedPixabayCredential(process.env);
 const accessPolicy = accessPolicyFromEnv(process.env);
 const externalImports = externalImportConfigFromEnv(process.env);
 
@@ -69,7 +76,10 @@ const apiKeys = new PostgresApiKeyService(pool);
 const hostUsage = new PostgresHostUsageService(pool, freeRenderUnitsFromEnv(process.env));
 const falEnabled = falByokEnabled(process.env);
 const pexelsEnabled = pexelsByokEnabled(process.env);
-const credentialVault = falEnabled || pexelsEnabled ? credentialVaultFromEnv(process.env) : undefined;
+const pixabayEnabled = pixabayByokEnabled(process.env);
+const credentialVault = falEnabled || pexelsEnabled || pixabayEnabled
+  ? credentialVaultFromEnv(process.env)
+  : undefined;
 const falCredentials = falEnabled
   ? new PostgresFalCredentialService(pool, credentialVault!)
   : undefined;
@@ -79,12 +89,19 @@ const falGeneration = falCredentials
 const pexelsCredentials = pexelsEnabled
   ? new PostgresPexelsCredentialService(pool, credentialVault!)
   : undefined;
+const pixabayCredentials = pixabayEnabled
+  ? new PostgresPixabayCredentialService(pool, credentialVault!)
+  : undefined;
 const media = {
   repository: new PostgresMediaRepository(pool),
   store: objectStore,
   pexelsForOwner: async (ownerId: string) => {
     if (!pexelsCredentials) throw new PexelsProviderError("unavailable");
     return pexelsCredentials.client(ownerId);
+  },
+  pixabayForOwner: async (ownerId: string) => {
+    if (!pixabayCredentials) throw new PixabayProviderError("unavailable");
+    return pixabayCredentials.client(ownerId);
   }
 };
 
@@ -106,6 +123,7 @@ if (engineEnv(process.env) === "selfhost") {
     falCredentials,
     falGeneration,
     pexelsCredentials,
+    pixabayCredentials,
     apiKeys,
     hostUsage
   }).listen(port);
@@ -127,6 +145,7 @@ if (engineEnv(process.env) === "selfhost") {
     falCredentials,
     falGeneration,
     pexelsCredentials,
+    pixabayCredentials,
     apiKeys,
     hostUsage
   }).listen(port);
@@ -138,6 +157,7 @@ if (engineEnv(process.env) === "selfhost") {
     falCredentials,
     falGeneration,
     pexelsCredentials,
+    pixabayCredentials,
     apiKeys,
     hostUsage,
     ready,

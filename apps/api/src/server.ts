@@ -34,7 +34,9 @@ import {
   sceneMediaView,
   sealUploadedAudio,
   PexelsRequestError,
+  PixabayRequestError,
   type PexelsClient,
+  type PixabayClient,
   type PostgresMediaRepository,
   type PrivateObjectStore
 } from "./media-storage.js";
@@ -66,6 +68,12 @@ import {
   type PexelsCredentialService
 } from "./pexels-credentials.js";
 import {
+  PixabayProviderError,
+  pixabayCredentialHttpError,
+  type PixabayCredentialService
+} from "./pixabay-credentials.js";
+import { listProviderIds, providerListing } from "./provider-catalog.js";
+import {
   authenticatesExternalImport,
   externalMediaUrlAllowed,
   externalProjectUrl,
@@ -81,8 +89,10 @@ export interface MediaDependencies {
   repository: PostgresMediaRepository;
   store: PrivateObjectStore;
   pexelsForOwner?: (ownerId: string) => Promise<PexelsClient>;
+  pixabayForOwner?: (ownerId: string) => Promise<PixabayClient>;
   /** Test/local adapter only; hosted startup never constructs a shared client. */
   pexels?: PexelsClient;
+  pixabay?: PixabayClient;
 }
 
 export type HostUsageService = Pick<PostgresHostUsageService, "status" | "consumeRender" | "ensureFreeGrant">;
@@ -99,6 +109,7 @@ interface AppBaseOptions {
   falCredentials?: FalCredentialService;
   falGeneration?: FalGenerationService;
   pexelsCredentials?: PexelsCredentialService;
+  pixabayCredentials?: PixabayCredentialService;
   apiKeys?: ApiKeyService;
   hostUsage?: HostUsageService;
   ownerAuth?: SelfhostOwnerAuth;
@@ -461,10 +472,24 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     if (media.pexels) return media.pexels;
     throw new PexelsProviderError("unavailable");
   };
+  const pixabayForOwner = async (media: MediaDependencies, ownerId: string) => {
+    if (media.pixabayForOwner) return media.pixabayForOwner(ownerId);
+    if (media.pixabay) return media.pixabay;
+    throw new PixabayProviderError("unavailable");
+  };
   const pexelsHttpError = (error: unknown) => pexelsCredentialHttpError(error)
     ?? (error instanceof PexelsRequestError
       ? { status: 503, body: { type: "provider_unavailable", message: "Pexels could not be reached. Try again later." } }
       : undefined);
+  const pixabayHttpError = (error: unknown) => pixabayCredentialHttpError(error)
+    ?? (error instanceof PixabayRequestError
+      ? { status: 503, body: { type: "provider_unavailable", message: "Pixabay could not be reached. Try again later." } }
+      : undefined);
+  const publicStock = (
+    results: Array<{ sourceUrl: string; contentType: string; id: number; creator: string; attributionUrl: string; previewUrl: string }>,
+    source: "pexels" | "pixabay",
+    kind: "video" | "still"
+  ) => results.map(({ sourceUrl: _sourceUrl, contentType: _contentType, ...result }) => ({ ...result, source, kind }));
   app.get("/api/me/usage", async (_request, response, next) => {
     try {
       if (!options.hostUsage) return response.status(503).json({ type: "unavailable", message: "usage unavailable" });
@@ -557,6 +582,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
   const pexelsUnavailable = (response: express.Response) => response.status(503).json({
     type: "provider_unavailable",
     message: "Pexels connection is not enabled on this deployment."
+  });
+  const pixabayUnavailable = (response: express.Response) => response.status(503).json({
+    type: "provider_unavailable",
+    message: "Pixabay connection is not enabled on this deployment."
   });
 
   const falGenUnavailable = (response: import("express").Response) =>
@@ -661,6 +690,25 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       next(error);
     }
   });
+  app.get("/api/providers", async (_request, response, next) => {
+    try {
+      const ownerId = String(response.locals.ownerId);
+      const [pexels, pixabay, fal] = await Promise.all([
+        options.pexelsCredentials?.status(ownerId),
+        options.pixabayCredentials?.status(ownerId),
+        options.falCredentials?.status(ownerId)
+      ]);
+      const status = { pexels, pixabay, fal };
+      const enabled = {
+        pexels: Boolean(options.pexelsCredentials),
+        pixabay: Boolean(options.pixabayCredentials),
+        fal: Boolean(options.falCredentials)
+      };
+      response.json({
+        providers: listProviderIds().map((id) => providerListing(id, status[id], enabled[id]))
+      });
+    } catch (error) { next(error); }
+  });
   app.get("/api/providers/pexels/credential", async (_request, response, next) => {
     try {
       if (!options.pexelsCredentials) return pexelsUnavailable(response);
@@ -703,6 +751,51 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         return response.status(422).json({ type: "validation", message: "This request does not accept fields." });
       }
       await options.pexelsCredentials.disconnect(String(response.locals.ownerId));
+      response.status(204).end();
+    } catch (error) { next(error); }
+  });
+  app.get("/api/providers/pixabay/credential", async (_request, response, next) => {
+    try {
+      if (!options.pixabayCredentials) return pixabayUnavailable(response);
+      response.json(await options.pixabayCredentials.status(String(response.locals.ownerId)));
+    } catch (error) { next(error); }
+  });
+  app.put("/api/providers/pixabay/credential", async (request, response, next) => {
+    try {
+      if (!options.pixabayCredentials) return pixabayUnavailable(response);
+      if (!exactObject(request.body, ["api_key"])) {
+        return response.status(422).json({ type: "validation", message: "Enter a valid Pixabay API key." });
+      }
+      response.json(await options.pixabayCredentials.connect(
+        String(response.locals.ownerId),
+        (request.body as { api_key?: unknown }).api_key
+      ));
+    } catch (error) {
+      const mapped = pixabayHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/providers/pixabay/credential/test", async (request, response, next) => {
+    try {
+      if (!options.pixabayCredentials) return pixabayUnavailable(response);
+      if (!emptyBody(request.body)) {
+        return response.status(422).json({ type: "validation", message: "This request does not accept fields." });
+      }
+      response.json(await options.pixabayCredentials.test(String(response.locals.ownerId)));
+    } catch (error) {
+      const mapped = pixabayHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.delete("/api/providers/pixabay/credential", async (request, response, next) => {
+    try {
+      if (!options.pixabayCredentials) return pixabayUnavailable(response);
+      if (!emptyBody(request.body)) {
+        return response.status(422).json({ type: "validation", message: "This request does not accept fields." });
+      }
+      await options.pixabayCredentials.disconnect(String(response.locals.ownerId));
       response.status(204).end();
     } catch (error) { next(error); }
   });
@@ -890,9 +983,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       }
       const ownerId = String(response.locals.ownerId);
       const results = await (await pexelsForOwner(options.media, ownerId)).search(query);
-      response.json({
-        results: results.map(({ sourceUrl: _sourceUrl, contentType: _contentType, ...result }) => result)
-      });
+      response.json({ results: publicStock(results, "pexels", "video") });
     } catch (error) {
       const mapped = pexelsHttpError(error);
       if (mapped) return response.status(mapped.status).json(mapped.body);
@@ -929,6 +1020,171 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       response.status(201).json({ asset: sceneMediaView(asset) });
     } catch (error) {
       const mapped = pexelsHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.get("/api/pexels/photos/search", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      let query: string;
+      try {
+        query = pexelsQuery(request.query.q);
+      } catch (error) {
+        return response.status(422).json({
+          type: "validation",
+          message: error instanceof Error ? error.message : "invalid Pexels query"
+        });
+      }
+      const ownerId = String(response.locals.ownerId);
+      const results = await (await pexelsForOwner(options.media, ownerId)).searchStills(query);
+      response.json({ results: publicStock(results, "pexels", "still") });
+    } catch (error) {
+      const mapped = pexelsHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/projects/:projectId/media/pexels/photo", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      if (!await projects.get(ownerId, request.params.projectId)) {
+        return response.status(404).json({ type: "not_found", message: "not found" });
+      }
+      let query: string;
+      try {
+        query = pexelsQuery(request.body?.query);
+      } catch (error) {
+        return response.status(422).json({
+          type: "validation",
+          message: error instanceof Error ? error.message : "invalid Pexels query"
+        });
+      }
+      const pexelsId = Number(request.body?.pexels_id);
+      const pexels = await pexelsForOwner(options.media, ownerId);
+      const selected = (await pexels.searchStills(query)).find(({ id }) => id === pexelsId);
+      if (!selected) return response.status(404).json({ type: "not_found", message: "Pexels result unavailable" });
+      const asset = await pexels.copy(
+        ownerId,
+        request.params.projectId,
+        selected,
+        options.media.repository,
+        options.media.store
+      );
+      response.status(201).json({ asset: sceneMediaView(asset) });
+    } catch (error) {
+      const mapped = pexelsHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.get("/api/pixabay/search", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      let query: string;
+      try {
+        query = pexelsQuery(request.query.q);
+      } catch (error) {
+        return response.status(422).json({
+          type: "validation",
+          message: error instanceof Error ? error.message : "invalid stock query"
+        });
+      }
+      const ownerId = String(response.locals.ownerId);
+      const results = await (await pixabayForOwner(options.media, ownerId)).search(query);
+      response.json({ results: publicStock(results, "pixabay", "video") });
+    } catch (error) {
+      const mapped = pixabayHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/projects/:projectId/media/pixabay", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      if (!await projects.get(ownerId, request.params.projectId)) {
+        return response.status(404).json({ type: "not_found", message: "not found" });
+      }
+      let query: string;
+      try {
+        query = pexelsQuery(request.body?.query);
+      } catch (error) {
+        return response.status(422).json({
+          type: "validation",
+          message: error instanceof Error ? error.message : "invalid stock query"
+        });
+      }
+      const pixabayId = Number(request.body?.pixabay_id);
+      const pixabay = await pixabayForOwner(options.media, ownerId);
+      const selected = (await pixabay.search(query)).find(({ id }) => id === pixabayId);
+      if (!selected) return response.status(404).json({ type: "not_found", message: "Pixabay result unavailable" });
+      const asset = await pixabay.copy(
+        ownerId,
+        request.params.projectId,
+        selected,
+        options.media.repository,
+        options.media.store
+      );
+      response.status(201).json({ asset: sceneMediaView(asset) });
+    } catch (error) {
+      const mapped = pixabayHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.get("/api/pixabay/photos/search", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      let query: string;
+      try {
+        query = pexelsQuery(request.query.q);
+      } catch (error) {
+        return response.status(422).json({
+          type: "validation",
+          message: error instanceof Error ? error.message : "invalid stock query"
+        });
+      }
+      const ownerId = String(response.locals.ownerId);
+      const results = await (await pixabayForOwner(options.media, ownerId)).searchStills(query);
+      response.json({ results: publicStock(results, "pixabay", "still") });
+    } catch (error) {
+      const mapped = pixabayHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/projects/:projectId/media/pixabay/photo", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      if (!await projects.get(ownerId, request.params.projectId)) {
+        return response.status(404).json({ type: "not_found", message: "not found" });
+      }
+      let query: string;
+      try {
+        query = pexelsQuery(request.body?.query);
+      } catch (error) {
+        return response.status(422).json({
+          type: "validation",
+          message: error instanceof Error ? error.message : "invalid stock query"
+        });
+      }
+      const pixabayId = Number(request.body?.pixabay_id);
+      const pixabay = await pixabayForOwner(options.media, ownerId);
+      const selected = (await pixabay.searchStills(query)).find(({ id }) => id === pixabayId);
+      if (!selected) return response.status(404).json({ type: "not_found", message: "Pixabay result unavailable" });
+      const asset = await pixabay.copy(
+        ownerId,
+        request.params.projectId,
+        selected,
+        options.media.repository,
+        options.media.store
+      );
+      response.status(201).json({ asset: sceneMediaView(asset) });
+    } catch (error) {
+      const mapped = pixabayHttpError(error);
       if (mapped) return response.status(mapped.status).json(mapped.body);
       next(error);
     }

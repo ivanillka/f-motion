@@ -122,6 +122,16 @@ const media = {
       const results = query.includes("mountain") ? [...pexelsResults].reverse() : pexelsResults;
       return structuredClone(results);
     },
+    async searchStills(query) {
+      return structuredClone(pexelsResults).map((item, index) => ({
+        ...item,
+        id: item.id + 200,
+        attributionUrl: `https://www.pexels.com/photo/${item.id + 200}`,
+        sourceUrl: `https://e2e-images.invalid/${item.id + 200}.jpg`,
+        contentType: "image/jpeg",
+        creator: query.includes("mountain") && index === 0 ? "Still Fixture" : item.creator
+      }));
+    },
     async copy(ownerId, projectId, selected, repository) {
       const asset = {
         id: randomUUID(),
@@ -147,6 +157,13 @@ const pexelsCredentials = {
   async status() { return { provider: "pexels", connected: true, hint: "1234" }; },
   async connect() { return { provider: "pexels", connected: true, hint: "1234" }; },
   async test() { return { provider: "pexels", connected: true, hint: "1234" }; },
+  async disconnect() {},
+  async client() { return media.pexels; }
+};
+const pixabayCredentials = {
+  async status() { return { provider: "pixabay", connected: false }; },
+  async connect() { return { provider: "pixabay", connected: true, hint: "5678" }; },
+  async test() { return { provider: "pixabay", connected: true, hint: "5678" }; },
   async disconnect() {},
   async client() { return media.pexels; }
 };
@@ -345,6 +362,7 @@ const api = createTestApp({
   renders,
   media,
   pexelsCredentials,
+  pixabayCredentials,
   falCredentials,
   falGeneration
 }).listen(43140, "127.0.0.1");

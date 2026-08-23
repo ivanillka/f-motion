@@ -147,6 +147,50 @@ test("Pexels credential lifecycle routes are exact, redacted, and owner-scoped",
   }
 });
 
+test("Pexels still search uses the photos API and drops download URLs", async () => {
+  const owners = [];
+  const server = createServer(createTestApp({
+    ownerId: "media-owner",
+    media: {
+      repository: {}, store: {},
+      pexelsForOwner: async (ownerId) => {
+        owners.push(ownerId);
+        return {
+          async searchStills() {
+            return [{
+              id: 7,
+              creator: "Ada",
+              attributionUrl: "https://www.pexels.com/photo/7/",
+              previewUrl: "https://images.pexels.com/7.jpg",
+              sourceUrl: "https://images.pexels.com/7-orig.jpg",
+              contentType: "image/jpeg"
+            }];
+          }
+        };
+      }
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const response = await fetch(`${origin}/api/pexels/photos/search?q=ocean`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body, {
+      results: [{
+        id: 7,
+        creator: "Ada",
+        attributionUrl: "https://www.pexels.com/photo/7/",
+        previewUrl: "https://images.pexels.com/7.jpg",
+        source: "pexels",
+        kind: "still"
+      }]
+    });
+    assert.deepEqual(owners, ["media-owner"]);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("Pexels media search resolves only the authenticated owner's client", async () => {
   const owners = [];
   const server = createServer(createTestApp({

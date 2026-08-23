@@ -53,11 +53,13 @@ interface PreviewPanState {
   sceneId: string;
   wasPlaying: boolean;
 }
-interface PexelsMatch {
+interface StockMatch {
   id: number;
   creator: string;
   attributionUrl: string;
   previewUrl: string;
+  source: "pexels" | "pixabay";
+  kind: "video" | "still";
 }
 interface MixkitMatch {
   id: number;
@@ -144,6 +146,12 @@ interface PexelsCredentialView {
   hint?: string;
   validated_at?: string;
 }
+interface PixabayCredentialView {
+  provider: "pixabay";
+  connected: boolean;
+  hint?: string;
+  validated_at?: string;
+}
 interface FeatureLock {
   title: string;
   message: string;
@@ -212,7 +220,7 @@ function App() {
   const mediaTransition = useRef(0);
   const searchTransition = useRef(0);
   const searchAbort = useRef<AbortController | null>(null);
-  const [candidates, setCandidates] = useState<PexelsMatch[]>([]);
+  const [candidates, setCandidates] = useState<StockMatch[]>([]);
   const [musicHits, setMusicHits] = useState<MixkitMatch[]>([]);
   const [musicQuery, setMusicQuery] = useState("trendy");
   const [musicOpen, setMusicOpen] = useState(false);
@@ -245,6 +253,10 @@ function App() {
   const [pexelsUnavailable, setPexelsUnavailable] = useState(false);
   const [pexelsKey, setPexelsKey] = useState("");
   const [pexelsBusy, setPexelsBusy] = useState(false);
+  const [pixabayCredential, setPixabayCredential] = useState<PixabayCredentialView>();
+  const [pixabayUnavailable, setPixabayUnavailable] = useState(false);
+  const [pixabayKey, setPixabayKey] = useState("");
+  const [pixabayBusy, setPixabayBusy] = useState(false);
   const [featureLock, setFeatureLock] = useState<FeatureLock>();
   const api = useMemo(() => new ApiClient(
     () => tokenRef.current,
@@ -337,6 +349,10 @@ function App() {
     setPexelsUnavailable(false);
     setPexelsKey("");
     setPexelsBusy(false);
+    setPixabayCredential(undefined);
+    setPixabayUnavailable(false);
+    setPixabayKey("");
+    setPixabayBusy(false);
     setFeatureLock(undefined);
     setAwaitingEmail(false);
     setMusicHits([]);
@@ -429,12 +445,14 @@ function App() {
     if (!token) return;
     void loadFalCredential();
     void loadPexelsCredential();
+    void loadPixabayCredential();
   }, [token]);
 
   useEffect(() => {
     if (step !== "settings") {
       setFalKey("");
       setPexelsKey("");
+      setPixabayKey("");
     }
   }, [step]);
 
@@ -1120,7 +1138,7 @@ function App() {
     }
   }
 
-  async function searchStock(sceneId: string) {
+  async function searchStock(sceneId: string, kind: "video" | "still") {
     const scene = project?.scenes.find(({ id }) => id === sceneId);
     const query = scene?.visual_prompt?.trim().slice(0, 100);
     if (!query) return;
@@ -1130,40 +1148,57 @@ function App() {
     const transition = ++searchTransition.current;
     setCandidates([]);
     setStatus("Finding licensed options for this scene…");
+    const paths: string[] = [];
+    if (pexelsCredential?.connected) {
+      paths.push(kind === "still" ? `/api/pexels/photos/search?q=${encodeURIComponent(query)}` : `/api/pexels/search?q=${encodeURIComponent(query)}`);
+    }
+    if (pixabayCredential?.connected) {
+      paths.push(kind === "still" ? `/api/pixabay/photos/search?q=${encodeURIComponent(query)}` : `/api/pixabay/search?q=${encodeURIComponent(query)}`);
+    }
     try {
-      const body = await api.request<{ results: PexelsMatch[] }>(`/api/pexels/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+      const pages = await Promise.all(paths.map((path) => api.request<{ results: StockMatch[] }>(path, { signal: controller.signal })));
       if (transition !== searchTransition.current || activeSceneId !== sceneId) return;
-      setCandidates(body.results.slice(0, 3));
-      setStatus(body.results.length ? "Choose the footage that fits this scene." : "No licensed options found. Refine the footage search.");
+      const results = pages.flatMap((page) => page.results);
+      setCandidates(results.slice(0, 6));
+      setStatus(results.length
+        ? (kind === "still" ? "Choose the still that fits this scene." : "Choose the footage that fits this scene.")
+        : "No licensed options found. Refine the footage search.");
     } catch (error) {
       if (!controller.signal.aborted) {
         const type = error instanceof ApiResponseError ? error.body.type : undefined;
-        setStatus(type === "pexels_not_connected"
-          ? "Connect your Pexels API key in Settings, or upload your own media."
+        setStatus(type === "pexels_not_connected" || type === "pixabay_not_connected"
+          ? "Connect a Pexels or Pixabay API key in Settings, or upload your own media."
           : "Licensed media search failed. Your scene edits are safe.");
       }
     }
   }
 
-  async function selectStock(sceneId: string, candidate: PexelsMatch) {
+  async function selectStock(sceneId: string, candidate: StockMatch) {
     if (!project) return;
     const scene = project.scenes.find(({ id }) => id === sceneId);
     const query = scene?.visual_prompt?.trim().slice(0, 100);
     if (!scene || !query) return;
     setBusy(true);
-    setStatus(`Copying video by ${candidate.creator} for inspection…`);
+    setStatus(`Copying ${candidate.kind === "still" ? "still" : "video"} by ${candidate.creator} for inspection…`);
+    const path = candidate.source === "pixabay"
+      ? (candidate.kind === "still" ? `/api/projects/${project.id}/media/pixabay/photo` : `/api/projects/${project.id}/media/pixabay`)
+      : (candidate.kind === "still" ? `/api/projects/${project.id}/media/pexels/photo` : `/api/projects/${project.id}/media/pexels`);
+    const bodyJson = candidate.source === "pixabay"
+      ? { query, pixabay_id: candidate.id }
+      : { query, pexels_id: candidate.id };
     try {
-      const body = await api.request<{ asset: { id: string } }>(`/api/projects/${project.id}/media/pexels`, {
+      const body = await api.request<{ asset: { id: string } }>(path, {
         method: "POST",
-        body: JSON.stringify({ query, pexels_id: candidate.id })
+        body: JSON.stringify(bodyJson)
       });
       if (await attachMediaWhenReady(body.asset.id, project.id, sceneId)) {
-        setStatus(`Scene media selected · video by ${candidate.creator} on Pexels`);
+        const label = candidate.source === "pixabay" ? "Pixabay" : "Pexels";
+        setStatus(`Scene media selected · ${candidate.kind === "still" ? "still" : "video"} by ${candidate.creator} on ${label}`);
       }
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.body.type : undefined;
-      setStatus(type === "pexels_not_connected"
-        ? "Connect your Pexels API key in Settings, or upload your own media."
+      setStatus(type === "pexels_not_connected" || type === "pixabay_not_connected"
+        ? "Connect a Pexels or Pixabay API key in Settings, or upload your own media."
         : "That licensed visual could not be attached. Choose another or try again.");
     } finally {
       setBusy(false);
@@ -1419,6 +1454,76 @@ function App() {
     }
   }
 
+  async function loadPixabayCredential() {
+    setPixabayBusy(true);
+    try {
+      const view = await api.request<PixabayCredentialView>("/api/providers/pixabay/credential");
+      setPixabayCredential(view);
+      setPixabayUnavailable(false);
+    } catch (error) {
+      setPixabayCredential(undefined);
+      setPixabayUnavailable(error instanceof ApiResponseError && error.status === 503);
+    } finally {
+      setPixabayBusy(false);
+    }
+  }
+
+  async function connectPixabay() {
+    if (!pixabayKey.trim()) return;
+    if (pixabayCredential?.connected && !window.confirm("Replace your saved Pixabay API key?")) return;
+    setPixabayBusy(true);
+    try {
+      const view = await api.request<PixabayCredentialView>("/api/providers/pixabay/credential", {
+        method: "PUT",
+        body: JSON.stringify({ api_key: pixabayKey })
+      });
+      setPixabayCredential(view);
+      setPixabayUnavailable(false);
+      setStatus("Pixabay connected. Licensed searches now use your encrypted key.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "invalid_provider_credential"
+        ? "Pixabay rejected this API key. Check it and try again."
+        : type === "provider_unavailable"
+          ? "Pixabay could not be reached. Your existing projects are safe."
+          : "Pixabay could not be connected.");
+    } finally {
+      setPixabayKey("");
+      setPixabayBusy(false);
+    }
+  }
+
+  async function testPixabay() {
+    setPixabayBusy(true);
+    try {
+      const view = await api.request<PixabayCredentialView>("/api/providers/pixabay/credential/test", { method: "POST" });
+      setPixabayCredential(view);
+      setStatus("Pixabay connection verified.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "invalid_provider_credential"
+        ? "Pixabay rejected the saved key. Replace or disconnect it."
+        : "Pixabay could not verify the saved key. Try again later.");
+    } finally {
+      setPixabayBusy(false);
+    }
+  }
+
+  async function disconnectPixabay() {
+    if (!window.confirm("Disconnect Pixabay and delete your saved encrypted key? Licensed search will stop working.")) return;
+    setPixabayBusy(true);
+    try {
+      await api.request("/api/providers/pixabay/credential", { method: "DELETE" });
+      setPixabayCredential({ provider: "pixabay", connected: false });
+      setPixabayKey("");
+      setStatus("Pixabay disconnected. You can still upload your own media.");
+    } catch {
+      setStatus("Pixabay could not be disconnected. Try again.");
+    } finally {
+      setPixabayBusy(false);
+    }
+  }
+
   async function connectFal() {
     if (!falKey.trim()) return;
     if (falCredential?.connected && !window.confirm("Replace your saved FAL API key? Active generation must finish first.")) return;
@@ -1476,9 +1581,17 @@ function App() {
   }
 
   function showPexelsLock() {
-    setFeatureLock(pexelsUnavailable
+    setFeatureLock(pexelsUnavailable && pixabayUnavailable
       ? { title: "Pexels is unavailable", message: "This deployment cannot connect Pexels. Upload your own media instead." }
       : { title: "Pexels stock is locked", message: "Connect your Pexels API key to search real stock video.", action: "settings" });
+  }
+
+  function showStockLock() {
+    if (pexelsUnavailable && pixabayUnavailable) {
+      setFeatureLock({ title: "Licensed stock is unavailable", message: "This deployment cannot connect Pexels or Pixabay. Upload your own media instead." });
+      return;
+    }
+    showPexelsLock();
   }
 
   function falJobStorageKey(projectId: string, sceneId: string) {
@@ -2397,6 +2510,8 @@ function App() {
     if (livePlaying) stopMusicPreview();
   }, [livePlaying]);
   const inApp = authReady && Boolean(token) && step !== "sign-in";
+  const stockVideo = Boolean(pexelsCredential?.connected || pixabayCredential?.connected);
+  const stockStill = stockVideo;
   const partnerBrands = showsPartnerBrands(token ?? "", String(import.meta.env.VITE_PARTNER_BRAND_EMAIL ?? ""));
   const createFlow = step === "brief" || step === "architecture" || step === "concepts" || step === "media" || step === "editor" || step === "render";
   const projectTitle = project?.brief.purpose?.trim() || "Untitled draft";
@@ -2485,7 +2600,10 @@ function App() {
         <button className="provider-preview-item" data-locked={!pexelsCredential?.connected} onClick={() => pexelsCredential?.connected ? setStep("settings") : showPexelsLock()}>
           <strong>Pexels</strong><span>Real stock video · {pexelsCredential?.connected ? "unlocked" : "locked"}</span>
         </button>
-        <button className="provider-preview-item" data-locked={!falCredential?.connected || falUnavailable} onClick={showFalLock}>
+        <button className="provider-preview-item" data-locked={!pixabayCredential?.connected} onClick={() => pixabayCredential?.connected ? setStep("settings") : showStockLock()}>
+          <strong>Pixabay</strong><span>Stock video and stills · {pixabayCredential?.connected ? "unlocked" : "locked"}</span>
+        </button>
+        <button className="provider-preview-item" data-locked={!falCredential?.connected || falUnavailable} onClick={showFalLock()}>
           <strong>FAL</strong><span>{falCredential?.connected && !falUnavailable ? "AI stills in storyboard" : "AI stills · locked"}</span>
         </button>
         {partnerBrands ? (
@@ -2907,7 +3025,7 @@ function App() {
             : "Drag the still to frame it."}</p>
           {activeMedia?.attribution && <p>
             Video by <a href={activeMedia.attribution.attributionUrl} target="_blank" rel="noreferrer">{activeMedia.attribution.creator}</a>
-            {" · "}<a href="https://www.pexels.com" target="_blank" rel="noreferrer">Pexels</a>
+            {" · "}<a href={activeMedia.attribution.source === "Pixabay" ? "https://pixabay.com" : "https://www.pexels.com"} target="_blank" rel="noreferrer">{activeMedia.attribution.source === "Pixabay" ? "Pixabay" : "Pexels"}</a>
           </p>}
           {activeMedia?.generation?.source === "FAL" && <p>AI-generated with FAL{activeMedia.generation.derivedFromImage ? " · from your still" : ""} · {activeMedia.generation.model}</p>}
         </div>
@@ -2970,13 +3088,19 @@ function App() {
           <button className="secondary" onClick={() => void saveScenePatch(activeScene.id, { audio_level: activeScene.audio_level === 0 ? 1 : 0 })}>{activeScene.audio_level === 0 ? `Unmute scene ${activeSceneNumber}` : `Mute scene ${activeSceneNumber}`}</button>
           </div>
           <div className="inspector-block">
-          <button className={!pexelsCredential?.connected ? "locked-feature" : undefined}
-            disabled={busy || (Boolean(pexelsCredential?.connected) && !activeScene.visual_prompt)}
+          <button className={!stockVideo ? "locked-feature" : undefined}
+            disabled={busy || (stockVideo && !activeScene.visual_prompt)}
             aria-label={activeMedia
               ? `Find another licensed video for scene ${activeSceneNumber}`
               : `Find licensed media for scene ${activeSceneNumber}`}
-            onClick={() => pexelsCredential?.connected ? void searchStock(activeScene.id) : showPexelsLock()}>
-            {!pexelsCredential?.connected ? "🔒 " : ""}{activeMedia ? "Find another licensed video" : "Find licensed media"}
+            onClick={() => stockVideo ? void searchStock(activeScene.id, "video") : showStockLock()}>
+            {!stockVideo ? "🔒 " : ""}{activeMedia ? "Find another licensed video" : "Find licensed media"}
+          </button>
+          <button className={!stockStill ? "locked-feature" : undefined}
+            disabled={busy || (stockStill && !activeScene.visual_prompt)}
+            aria-label={`Find licensed still for scene ${activeSceneNumber}`}
+            onClick={() => stockStill ? void searchStock(activeScene.id, "still") : showStockLock()}>
+            {!stockStill ? "🔒 " : ""}Find licensed still
           </button>
           <button className={!falCredential?.connected || falUnavailable ? "locked-feature" : undefined}
             disabled={busy || falGenBusy}
@@ -3006,9 +3130,9 @@ function App() {
         </div>
       </div>
 
-      {candidates.length > 0 && <div className="candidates" aria-label={`Licensed media options for scene ${activeSceneNumber}`}>{candidates.map((candidate) => <article key={candidate.id} className="candidate">
-        <img src={candidate.previewUrl} alt={`Pexels preview by ${candidate.creator}`} />
-        <a href={candidate.attributionUrl} target="_blank" rel="noreferrer">{candidate.creator} on Pexels</a>
+      {candidates.length > 0 && <div className="candidates" aria-label={`Licensed media options for scene ${activeSceneNumber}`}>{candidates.map((candidate) => <article key={`${candidate.source}-${candidate.kind}-${candidate.id}`} className="candidate">
+        <img src={candidate.previewUrl} alt={`${candidate.source === "pixabay" ? "Pixabay" : "Pexels"} preview by ${candidate.creator}`} />
+        <a href={candidate.attributionUrl} target="_blank" rel="noreferrer">{candidate.creator} on {candidate.source === "pixabay" ? "Pixabay" : "Pexels"}</a>
         <button disabled={busy} onClick={() => void selectStock(activeScene.id, candidate)}>Select for scene {activeSceneNumber}</button>
       </article>)}</div>}
 
@@ -3230,7 +3354,7 @@ function App() {
           <div className="source-head">
             <div>
               <h2 id="pexels-settings-title">Pexels</h2>
-              <p>Licensed stock video. Connect your own Pexels API key. F-Motion does not supply or share a Pexels key.</p>
+              <p>Licensed stock video and stills. Connect your own Pexels API key. F-Motion does not supply or share a Pexels key.</p>
             </div>
             <span className="source-state">{pexelsCredential?.connected ? "Connected" : "Optional"}</span>
           </div>
@@ -3251,6 +3375,35 @@ function App() {
               {pexelsCredential?.connected && <button className="secondary" disabled={pexelsBusy} onClick={() => void testPexels()}>Test Pexels</button>}
               {pexelsCredential?.connected && <button className="secondary" disabled={pexelsBusy} onClick={() => void disconnectPexels()}>Disconnect Pexels</button>}
               <a href="https://www.pexels.com/api/" target="_blank" rel="noreferrer">Get a Pexels API key</a>
+            </div>
+            <p className="source-note">Added clips keep on-product attribution in the editor.</p>
+          </>}
+        </article>
+        <article className={`source-panel${pixabayCredential?.connected ? " is-on" : ""}`} aria-labelledby="pixabay-settings-title">
+          <div className="source-head">
+            <div>
+              <h2 id="pixabay-settings-title">Pixabay</h2>
+              <p>Licensed stock video and stills. Connect your own Pixabay API key. F-Motion does not supply or share a Pixabay key.</p>
+            </div>
+            <span className="source-state">{pixabayCredential?.connected ? "Connected" : "Optional"}</span>
+          </div>
+          {pixabayUnavailable && <p className="notice">Pixabay is not enabled on this install.</p>}
+          {!pixabayUnavailable && pixabayCredential?.connected && <p className="source-meta">
+            Key ending …{pixabayCredential.hint}
+            {pixabayCredential.validated_at ? ` · verified ${new Date(pixabayCredential.validated_at).toLocaleString()}` : ""}
+          </p>}
+          {!pixabayUnavailable && <>
+            <div className="source-connect">
+              <label htmlFor="pixabay-key">{pixabayCredential?.connected ? "Replace key" : "API key"}
+                <input id="pixabay-key" type="password" autoComplete="new-password" spellCheck={false}
+                  value={pixabayKey} onChange={(event) => setPixabayKey(event.target.value)} placeholder="Paste your Pixabay API key" />
+              </label>
+              <button disabled={pixabayBusy || !pixabayKey.trim()} onClick={() => void connectPixabay()}>{pixabayCredential?.connected ? "Replace key" : "Connect Pixabay"}</button>
+            </div>
+            <div className="settings-actions">
+              {pixabayCredential?.connected && <button className="secondary" disabled={pixabayBusy} onClick={() => void testPixabay()}>Test Pixabay</button>}
+              {pixabayCredential?.connected && <button className="secondary" disabled={pixabayBusy} onClick={() => void disconnectPixabay()}>Disconnect Pixabay</button>}
+              <a href="https://pixabay.com/api/docs/" target="_blank" rel="noreferrer">Get a Pixabay API key</a>
             </div>
             <p className="source-note">Added clips keep on-product attribution in the editor.</p>
           </>}
@@ -3298,7 +3451,7 @@ function App() {
       </div>
       <p role="status" aria-live="polite">{status}</p>
       <div className="settings-foot">
-        <button onClick={() => { setFalKey(""); setPexelsKey(""); setOnboardSources(false); setStep("drafts"); }}>{onboardSources ? "Continue to drafts" : "Done"}</button>
+        <button onClick={() => { setFalKey(""); setPexelsKey(""); setPixabayKey(""); setOnboardSources(false); setStep("drafts"); }}>{onboardSources ? "Continue to drafts" : "Done"}</button>
         <button className="ghost" disabled={authBusy} onClick={() => void signOut()}>Sign out</button>
       </div>
     </section>}

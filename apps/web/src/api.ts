@@ -66,7 +66,7 @@ export interface SceneMediaView {
     duration_ms?: number;
   };
   attribution?: {
-    source: "Pexels" | "Mixkit";
+    source: "Pexels" | "Pixabay" | "Mixkit";
     creator: string;
     attributionUrl: string;
     previewUrl?: string;

@@ -30,12 +30,13 @@ Persist `/data` or drafts and the owner account are lost.
 |---|---|
 | `FENGINE_ENV` / `FMOTION_ENV` | Must be `selfhost` |
 | `FENGINE_PEXELS_BYOK_ENABLED` | Defaults to `1` so the owner can connect a Pexels key |
+| `FENGINE_PIXABAY_BYOK_ENABLED` | Defaults to `1` so the owner can connect a Pixabay key |
 | `FENGINE_FAL_BYOK_ENABLED` | Defaults to `1` so the owner can connect a FAL key |
 | `FENGINE_CREDENTIAL_KEY_V<n>` | Generated into `/data/secrets/credential-key` if unset |
 | `DATABASE_URL` | Defaults to the embedded Postgres |
 | `R2_*` | Defaults to the embedded MinIO |
 
-Do not set `PEXELS_API_KEY`, `FAL_KEY`, or `FAL_API_KEY`. Hosted and self-host
+Do not set `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `FAL_KEY`, or `FAL_API_KEY`. Hosted and self-host
 startup reject shared provider keys.
 
 ## Checks

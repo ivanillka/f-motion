@@ -24,6 +24,7 @@ test("one-image files boot selfhost with a first owner, not a bootstrap token", 
   assert.match(compose, /dockerfile: deploy\/Dockerfile/);
   assert.match(compose, /8080:8080/);
   assert.match(compose, /FENGINE_PEXELS_BYOK_ENABLED: "1"/);
+  assert.match(compose, /FENGINE_PIXABAY_BYOK_ENABLED: "1"/);
   assert.match(compose, /FENGINE_FAL_BYOK_ENABLED: "1"/);
 });
 

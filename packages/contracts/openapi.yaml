@@ -187,6 +187,90 @@ paths:
               schema: { $ref: "#/components/schemas/TypedError" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /providers:
+    get:
+      operationId: listProviders
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Capability catalog with live connection state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [providers]
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /providers/pixabay/credential:
+    get:
+      operationId: getPixabayCredential
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Non-secret Pixabay credential view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCredentialView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+    put:
+      operationId: putPixabayCredential
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [api_key]
+              properties:
+                api_key: { type: string, minLength: 1 }
+              additionalProperties: false
+      responses:
+        "200":
+          description: Connected Pixabay credential view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCredentialView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+    delete:
+      operationId: deletePixabayCredential
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204":
+          description: Disconnected
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /providers/pixabay/credential/test:
+    post:
+      operationId: testPixabayCredential
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Credential validated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCredentialView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: Pixabay not connected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TypedError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
   /projects:
     get:
       operationId: listProjects
@@ -446,6 +530,141 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "503": { $ref: "#/components/responses/Unavailable" }
+  /pexels/photos/search:
+    get:
+      operationId: searchPexelsPhotos
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        "200":
+          description: Bounded Pexels still search without source download URLs
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PexelsSearchResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /projects/{project_id}/media/pexels/photo:
+    post:
+      operationId: copyPexelsPhoto
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PexelsCopyRequest" }
+      responses:
+        "201":
+          description: Admitted Pexels still for inspection
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PexelsCopyResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /pixabay/search:
+    get:
+      operationId: searchPixabay
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        "200":
+          description: Bounded Pixabay video search without source download URLs
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PexelsSearchResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /projects/{project_id}/media/pixabay:
+    post:
+      operationId: copyPixabay
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query, pixabay_id]
+              properties:
+                query: { type: string, minLength: 1, maxLength: 100 }
+                pixabay_id: { type: integer }
+              additionalProperties: false
+      responses:
+        "201":
+          description: Admitted Pixabay copy for inspection
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PexelsCopyResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /pixabay/photos/search:
+    get:
+      operationId: searchPixabayPhotos
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        "200":
+          description: Bounded Pixabay still search without source download URLs
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PexelsSearchResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /projects/{project_id}/media/pixabay/photo:
+    post:
+      operationId: copyPixabayPhoto
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query, pixabay_id]
+              properties:
+                query: { type: string, minLength: 1, maxLength: 100 }
+                pixabay_id: { type: integer }
+              additionalProperties: false
+      responses:
+        "201":
+          description: Admitted Pixabay still for inspection
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PexelsCopyResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
   /projects/{project_id}/render:
     post:
       operationId: enqueueRender
@@ -653,6 +872,7 @@ components:
             - fal_not_connected
             - invalid_provider_credential
             - pexels_not_connected
+            - pixabay_not_connected
         message: { type: string }
         current_revision: { type: integer, minimum: 0 }
       additionalProperties: true

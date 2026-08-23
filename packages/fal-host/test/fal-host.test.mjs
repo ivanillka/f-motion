@@ -4,6 +4,7 @@ import {
   FalProviderError,
   assertNoSharedFalCredential,
   assertNoSharedPexelsCredential,
+  assertNoSharedPixabayCredential,
   credentialVaultFromEnv,
   decryptCredential,
   encryptCredential,
@@ -42,6 +43,7 @@ test("credential configuration fails closed", () => {
   assert.throws(() => assertNoSharedFalCredential({ NODE_ENV: "production", FAL_API_KEY: "synthetic" }), /forbidden/);
   assert.throws(() => assertNoSharedFalCredential({ FENGINE_ENV: "hosted", FAL_KEY: "" }), /forbidden/);
   assert.throws(() => assertNoSharedPexelsCredential({ FENGINE_ENV: "hosted", PEXELS_API_KEY: "" }), /forbidden/);
+  assert.throws(() => assertNoSharedPixabayCredential({ FENGINE_ENV: "hosted", PIXABAY_API_KEY: "" }), /forbidden/);
   assert.doesNotThrow(() => assertNoSharedFalCredential({ FENGINE_ENV: "hosted" }));
 });
 

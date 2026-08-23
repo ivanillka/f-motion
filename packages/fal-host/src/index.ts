@@ -701,7 +701,7 @@ export interface EncryptedCredential {
 export interface CredentialIdentity {
   id: string;
   ownerId: string;
-  provider: "fal" | "pexels";
+  provider: "fal" | "pexels" | "pixabay";
 }
 
 export class FalProviderError extends Error {
@@ -767,6 +767,13 @@ export function assertNoSharedPexelsCredential(env: Record<string, string | unde
   if ((env.FENGINE_ENV === "hosted" || env.NODE_ENV === "production")
     && env.PEXELS_API_KEY !== undefined) {
     throw new Error("shared Pexels credentials are forbidden in hosted mode");
+  }
+}
+
+export function assertNoSharedPixabayCredential(env: Record<string, string | undefined>): void {
+  if ((env.FENGINE_ENV === "hosted" || env.NODE_ENV === "production")
+    && env.PIXABAY_API_KEY !== undefined) {
+    throw new Error("shared Pixabay credentials are forbidden in hosted mode");
   }
 }
 

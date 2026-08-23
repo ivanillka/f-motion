@@ -87,7 +87,13 @@ test("all API routes reject requests without a Bearer token", async () => {
       [`${context.apiOrigin}/api/providers/fal/credential/test`, { method: "POST" }],
       [`${context.apiOrigin}/api/providers/pexels/credential`, { method: "GET" }],
       [`${context.apiOrigin}/api/providers/pexels/credential/test`, { method: "POST" }],
+      [`${context.apiOrigin}/api/providers`, { method: "GET" }],
+      [`${context.apiOrigin}/api/providers/pixabay/credential`, { method: "GET" }],
+      [`${context.apiOrigin}/api/providers/pixabay/credential/test`, { method: "POST" }],
       [`${context.apiOrigin}/api/pexels/search?q=ocean`, { method: "GET" }],
+      [`${context.apiOrigin}/api/pexels/photos/search?q=ocean`, { method: "GET" }],
+      [`${context.apiOrigin}/api/pixabay/search?q=ocean`, { method: "GET" }],
+      [`${context.apiOrigin}/api/pixabay/photos/search?q=ocean`, { method: "GET" }],
       [`${context.apiOrigin}/api/music/search?q=hip+hop`, { method: "GET" }],
       [`${context.apiOrigin}/api/projects/project/media/music`, { method: "POST" }],
       [`${context.apiOrigin}/api/me/usage`, { method: "GET" }],
@@ -390,7 +396,9 @@ test("Pexels search is bounded and never exposes provider source URLs", async ()
         id: 7,
         creator: "Creator",
         attributionUrl: "https://www.pexels.com/video/7",
-        previewUrl: "https://images.pexels.com/videos/7/preview.jpg"
+        previewUrl: "https://images.pexels.com/videos/7/preview.jpg",
+        source: "pexels",
+        kind: "video"
       }]
     });
   } finally {
