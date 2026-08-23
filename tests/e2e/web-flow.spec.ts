@@ -143,10 +143,9 @@ test("locked provider actions explain the blocker and next action", async ({ pag
   await expect(page.getByRole("heading", { name: "Pexels stock is locked" })).toBeVisible();
   await expect(page.getByText("Connect your Pexels API key to search real stock video.")).toBeVisible();
   await page.getByRole("button", { name: "Open provider settings" }).click();
-  await expect(page.getByRole("heading", { name: "Choose your video sources" })).toBeVisible();
-  await page.getByRole("button", { name: "Why is this locked?" }).first().click();
-  await expect(page.getByRole("heading", { name: "Pexels stock is locked" })).toBeVisible();
-  await page.getByRole("button", { name: "Close" }).click();
+  await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pexels" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect Pexels" })).toBeVisible();
 });
 
 test("upload journey, natural conflict recovery, render, and download", async ({ page }) => {

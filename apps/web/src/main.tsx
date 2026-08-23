@@ -2415,18 +2415,16 @@ function App() {
 
   return <div className={`app-shell${inApp ? " app-shell-signed" : ""}${step === "editor" ? " app-shell-editor" : ""}`}>
     {inApp && <nav className="app-rail" aria-label="Primary">
-      <a className="rail-brand" href="/">F-MOTION</a>
+      <a className="rail-brand" href="/">F-Motion</a>
       {appNav}
     </nav>}
     <div className="app-stage">
-    <header>
+    {(step === "editor" || !inApp || partnerBrands || !online) && <header>
       <div className="header-identity">
-        <strong>F-Motion</strong>
-        {step === "editor" && project && <>
-          <span className="header-sep" aria-hidden="true">·</span>
-          <span className="project-title">{projectTitle}</span>
+        {step === "editor" && project ? <>
+          <strong className="project-title">{projectTitle}</strong>
           <span className="save-pill" data-busy={saveBusy || undefined}>{saveLabel}</span>
-        </>}
+        </> : inApp ? null : <strong>F-Motion</strong>}
       </div>
       <div className="header-actions">
         {partnerBrands && (
@@ -2437,9 +2435,9 @@ function App() {
           </span>
         )}
         {authReady && token && step !== "sign-in" && !inApp && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
-        <span role="status">{online ? "● Connected" : "○ Reconnecting — draft kept locally"}</span>
+        <span role="status">{online ? "" : "Reconnecting — draft kept locally"}</span>
       </div>
-    </header>
+    </header>}
     {!authReady && <section><p role="status">Checking session…</p></section>}
     {authReady && step === "sign-in" && <section>
       <h1>{import.meta.env.VITE_SELFHOST_AUTH === "1"
@@ -3219,100 +3217,90 @@ function App() {
       </div>
       <button className="secondary" onClick={() => setStep("editor")}>Keep editing</button>
     </section>}
-    {authReady && step === "settings" && <section>
-      <h1>Choose your video sources</h1>
-      <p>{onboardSources
-        ? "Step 2 of 2 — connect only the keys you want. You can skip this and add them later."
-        : "Connect only the services you want to use. Each provider stays under your account and uses your own API key."}</p>
-      <div className="provider-onboarding" aria-label="Video source options">
-        <article className={`provider-card ${pexelsCredential?.connected ? "provider-live" : "provider-locked"}`}>
-          <span className={`provider-status ${pexelsCredential?.connected ? "" : "provider-soon"}`}>{pexelsCredential?.connected ? "Unlocked" : "Locked"}</span>
-          <h2>Pexels</h2>
-          <strong>Real stock video</strong>
-          <p>Search licensed footage from real creators and select it scene by scene.</p>
-          {pexelsCredential?.connected
-            ? <a href="#pexels-settings-title">Manage Pexels</a>
-            : <button className="lock-trigger" onClick={showPexelsLock}>Why is this locked?</button>}
+    {authReady && step === "settings" && <section className="settings-stage">
+      <div className="settings-hero">
+        <p className="settings-kicker">{onboardSources ? "Optional" : "Workspace"}</p>
+        <h1>Sources</h1>
+        <p>{onboardSources
+          ? "Connect a key only if you want stock or AI stills. Skip this and use your own uploads."
+          : "Keys stay on this install. Uploads, editing, and preview work without them."}</p>
+      </div>
+      <div className="source-list" aria-label="Video sources">
+        <article className={`source-panel${pexelsCredential?.connected ? " is-on" : ""}`} aria-labelledby="pexels-settings-title">
+          <div className="source-head">
+            <div>
+              <h2 id="pexels-settings-title">Pexels</h2>
+              <p>Licensed stock video. Connect your own Pexels API key. F-Motion does not supply or share a Pexels key.</p>
+            </div>
+            <span className="source-state">{pexelsCredential?.connected ? "Connected" : "Optional"}</span>
+          </div>
+          {pexelsUnavailable && <p className="notice">Pexels is not enabled on this install.</p>}
+          {!pexelsUnavailable && pexelsCredential?.connected && <p className="source-meta">
+            Key ending …{pexelsCredential.hint}
+            {pexelsCredential.validated_at ? ` · verified ${new Date(pexelsCredential.validated_at).toLocaleString()}` : ""}
+          </p>}
+          {!pexelsUnavailable && <>
+            <div className="source-connect">
+              <label htmlFor="pexels-key">{pexelsCredential?.connected ? "Replace key" : "API key"}
+                <input id="pexels-key" type="password" autoComplete="new-password" spellCheck={false}
+                  value={pexelsKey} onChange={(event) => setPexelsKey(event.target.value)} placeholder="Paste your Pexels API key" />
+              </label>
+              <button disabled={pexelsBusy || !pexelsKey.trim()} onClick={() => void connectPexels()}>{pexelsCredential?.connected ? "Replace key" : "Connect Pexels"}</button>
+            </div>
+            <div className="settings-actions">
+              {pexelsCredential?.connected && <button className="secondary" disabled={pexelsBusy} onClick={() => void testPexels()}>Test Pexels</button>}
+              {pexelsCredential?.connected && <button className="secondary" disabled={pexelsBusy} onClick={() => void disconnectPexels()}>Disconnect Pexels</button>}
+              <a href="https://www.pexels.com/api/" target="_blank" rel="noreferrer">Get a Pexels API key</a>
+            </div>
+            <p className="source-note">Added clips keep on-product attribution in the editor.</p>
+          </>}
         </article>
-        <article className={`provider-card ${falCredential?.connected && !falUnavailable ? "provider-live" : "provider-locked"}`}>
-          <span className={`provider-status ${falCredential?.connected && !falUnavailable ? "" : "provider-soon"}`}>{falCredential?.connected && !falUnavailable ? "Unlocked" : "Locked"}</span>
-          <h2>FAL</h2>
-          <strong>AI stills</strong>
-          <p>Connect your key for AI still generation. Open a storyboard scene and choose Generate AI image to quote, confirm, and review one still.</p>
-          {falCredential?.connected && !falUnavailable
-            ? <a href="#fal-settings-title">Manage FAL</a>
-            : <button className="lock-trigger" onClick={showFalLock}>Why is this locked?</button>}
+        <article className={`source-panel${falCredential?.connected && !falUnavailable ? " is-on" : ""}`} aria-labelledby="fal-settings-title">
+          <div className="source-head">
+            <div>
+              <h2 id="fal-settings-title">FAL</h2>
+              <p>Connect your own FAL API-scope key for AI stills. Each image is quoted, then charged directly to your FAL account. F-Motion does not supply or share a FAL key.</p>
+            </div>
+            <span className="source-state">{falCredential?.connected && !falUnavailable ? "Connected" : "Optional"}</span>
+          </div>
+          {falUnavailable && <p className="notice">FAL is not enabled on this install.</p>}
+          {!falUnavailable && falCredential?.connected && <p className="source-meta">
+            Key ending …{falCredential.hint}
+            {falCredential.validated_at ? ` · verified ${new Date(falCredential.validated_at).toLocaleString()}` : ""}
+          </p>}
+          {!falUnavailable && <>
+            <div className="source-connect">
+              <label htmlFor="fal-key">{falCredential?.connected ? "Replace key" : "API key"}
+                <input id="fal-key" type="password" autoComplete="new-password" spellCheck={false}
+                  value={falKey} onChange={(event) => setFalKey(event.target.value)} placeholder="Paste an API-scope key" />
+              </label>
+              <button disabled={falBusy || !falKey.trim()} onClick={() => void connectFal()}>{falCredential?.connected ? "Replace key" : "Connect FAL"}</button>
+            </div>
+            <div className="settings-actions">
+              {falCredential?.connected && <button className="secondary" disabled={falBusy} onClick={() => void testFal()}>Test connection</button>}
+              {falCredential?.connected && <button className="secondary" disabled={falBusy} onClick={() => void disconnectFal()}>Disconnect</button>}
+              <a href="https://fal.ai/dashboard/keys" target="_blank" rel="noreferrer">Open FAL API keys</a>
+            </div>
+          </>}
         </article>
-        {partnerBrands ? (
-          <article className="provider-card provider-live">
-            <span className="provider-status">Unlocked</span>
-            <h2>Fotium</h2>
-            <strong>Your galleries</strong>
-            <p>Imported stills from Fotium open as F-Motion drafts. Other accounts do not see this source.</p>
+        {partnerBrands && (
+          <article className="source-panel is-on">
+            <div className="source-head">
+              <div>
+                <h2>Fotium</h2>
+                <p>Imported galleries open as drafts on this studio.</p>
+              </div>
+              <span className="source-state">Connected</span>
+            </div>
             <a href="https://fotium.vip" target="_blank" rel="noreferrer">Open Fotium</a>
-          </article>
-        ) : (
-          <article className="provider-card provider-future">
-            <span className="provider-status provider-soon">Coming soon</span>
-            <h2>More providers</h2>
-            <strong>More ways to create</strong>
-            <p>Additional stock, AI video, voice, and media services can join the same provider flow.</p>
-            <button className="lock-trigger" onClick={showFutureLock}>Why is this locked?</button>
           </article>
         )}
       </div>
-      <p>Pexels videos require on-product attribution — see “Use video by … · Pexels” in the editor when you add stock footage.</p>
-      <article className="settings-card" aria-labelledby="pexels-settings-title">
-        <h2 id="pexels-settings-title">Pexels licensed media</h2>
-        <p>Connect your own Pexels API key. Licensed searches use your Pexels account; F-Motion does not supply or share a Pexels key.</p>
-        {pexelsUnavailable && <p className="notice">Pexels connection is unavailable here. Uploading, editing, and rendering still work.</p>}
-        {!pexelsUnavailable && pexelsCredential?.connected && <p>
-          Connected · key ending …{pexelsCredential.hint}
-          {pexelsCredential.validated_at ? ` · verified ${new Date(pexelsCredential.validated_at).toLocaleString()}` : ""}
-        </p>}
-        {!pexelsUnavailable && <label htmlFor="pexels-key">{pexelsCredential?.connected ? "Replacement Pexels API key" : "Pexels API key"}
-          <input id="pexels-key" type="password" autoComplete="new-password" spellCheck={false}
-            value={pexelsKey} onChange={(event) => setPexelsKey(event.target.value)} placeholder="Paste your Pexels API key" />
-          <small>The key is validated, encrypted server-side, and never shown again.</small>
-        </label>}
-        {!pexelsUnavailable && <div className="settings-actions">
-          <button disabled={pexelsBusy || !pexelsKey.trim()} onClick={() => void connectPexels()}>{pexelsCredential?.connected ? "Replace key" : "Connect Pexels"}</button>
-          {pexelsCredential?.connected && <button className="secondary" disabled={pexelsBusy} onClick={() => void testPexels()}>Test Pexels</button>}
-          {pexelsCredential?.connected && <button className="secondary" disabled={pexelsBusy} onClick={() => void disconnectPexels()}>Disconnect Pexels</button>}
-        </div>}
-        <a href="https://www.pexels.com/api/" target="_blank" rel="noreferrer">Get a Pexels API key</a>
-      </article>
-      <article className="settings-card" aria-labelledby="fal-settings-title">
-        <h2 id="fal-settings-title">FAL generation</h2>
-        <p>Connect your own FAL API-scope key for AI still generation in the storyboard. Each image is charged directly to your FAL account after you see the estimated cost and confirm it. F-Motion does not supply or share a FAL key.</p>
-        {falUnavailable && <p className="notice">FAL connection is unavailable here. Uploads, Pexels, editing, and rendering still work.</p>}
-        {!falUnavailable && falCredential?.connected && <p>
-          Connected · key ending …{falCredential.hint}
-          {falCredential.validated_at ? ` · verified ${new Date(falCredential.validated_at).toLocaleString()}` : ""}
-        </p>}
-        {!falUnavailable && <label htmlFor="fal-key">{falCredential?.connected ? "Replacement FAL API key" : "FAL API key"}
-          <input
-            id="fal-key"
-            type="password"
-            autoComplete="new-password"
-            spellCheck={false}
-            value={falKey}
-            onChange={(event) => setFalKey(event.target.value)}
-            placeholder="Paste an API-scope key"
-          />
-          <small>Create an API-scope key in FAL. F-Motion can verify that it calls models, but FAL does not provide scope introspection.</small>
-        </label>}
-        {!falUnavailable && <div className="settings-actions">
-          <button disabled={falBusy || !falKey.trim()} onClick={() => void connectFal()}>{falCredential?.connected ? "Replace key" : "Connect FAL"}</button>
-          {falCredential?.connected && <button className="secondary" disabled={falBusy} onClick={() => void testFal()}>Test connection</button>}
-          {falCredential?.connected && <button className="secondary" disabled={falBusy} onClick={() => void disconnectFal()}>Disconnect</button>}
-        </div>}
-        <a href="https://fal.ai/dashboard/keys" target="_blank" rel="noreferrer">Open FAL API keys</a>
-      </article>
-      <p>Privacy and terms will ship with Gate 0 launch policy evidence.</p>
       <p role="status" aria-live="polite">{status}</p>
-      <button disabled={authBusy} onClick={() => void signOut()}>Sign out</button>
-      <button className="secondary" onClick={() => { setFalKey(""); setPexelsKey(""); setOnboardSources(false); setStep("drafts"); }}>{onboardSources ? "Continue to drafts" : "Back to drafts"}</button>
+      <div className="settings-foot">
+        <button onClick={() => { setFalKey(""); setPexelsKey(""); setOnboardSources(false); setStep("drafts"); }}>{onboardSources ? "Continue to drafts" : "Done"}</button>
+        <button className="ghost" disabled={authBusy} onClick={() => void signOut()}>Sign out</button>
+      </div>
     </section>}
     {featureLock && <dialog open aria-labelledby="feature-lock-title">
       <span className="lock-label">Locked</span>
