@@ -21,8 +21,8 @@ async function listen(server) {
 
 function pixabayFetch(status = 200) {
   return async (url) => {
-    assert.match(String(url), /key=synthetic-pixabay-key-5678/);
     if (status !== 200) return new Response("upstream detail must not escape", { status });
+    assert.match(String(url), /key=synthetic-pixabay-key-5678/);
     return new Response(JSON.stringify({ hits: [] }), {
       status,
       headers: { "content-type": "application/json" }
