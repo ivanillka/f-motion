@@ -259,6 +259,32 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .concepts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .concepts-stage { max-width: 1080px; gap: 28px; }
 .stage-hero { display: grid; gap: 10px; max-width: 40ch; }
+.source-modules {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+@media (min-width: 720px) {
+  .source-modules { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.source-module {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+.source-module[aria-pressed="true"] {
+  background: var(--raised);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.source-module strong { font-size: 1rem; font-weight: 600; }
+.source-module span { color: var(--muted); font-size: 0.8rem; line-height: 1.4; }
 .stage-hero h1 { margin: 0; }
 .concept-choices {
   display: grid;
@@ -1154,7 +1180,7 @@ dialog h2 { margin: 0; }
 [role="status"] { color: var(--success); font-size: 0.875rem; }
 header [role="status"] { color: var(--muted); }
 @media (max-width: 980px) {
-  .concepts, .concept-choices { grid-template-columns: 1fr; }
+  .concepts, .concept-choices, .source-modules { grid-template-columns: 1fr; }
   .provider-onboarding { grid-template-columns: 1fr; }
   .provider-preview { grid-template-columns: 1fr; }
   .architecture-summary { grid-template-columns: 1fr 1fr; }

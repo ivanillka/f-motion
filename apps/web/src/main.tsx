@@ -170,8 +170,20 @@ const architectureLabels = {
 function beatSteps(summary: string): string[] {
   return summary.split("→").map((part) => {
     const beat = part.trim();
-    return beat ? beat[0].toUpperCase() + beat.slice(1) : "";
+    return beat ? beat.charAt(0).toUpperCase() + beat.slice(1) : "";
   }).filter(Boolean);
+}
+
+const sourceChoices = [
+  ["stock", "Licensed stock", "Pexels real stock video"],
+  ["own", "My own media", "Build the video from clips you attach"],
+  ["mixed", "Mix", "Pexels stock + my media"]
+] as const;
+
+function conceptDirection(direction: string, media: VideoArchitecture["media"]): string {
+  if (media === "own") return "Attach your own clips to each scene.";
+  if (media === "mixed") return "Attach your clips, then fill gaps with licensed stock.";
+  return direction;
 }
 
 function App() {
@@ -626,7 +638,9 @@ function App() {
       }
       setActiveSceneId("");
       setStep("concepts");
-      setStatus("Licensed visuals are matched only after you choose a story approach.");
+      setStatus(architecture.media === "own"
+        ? "Pick a story shape, then attach your media to each scene."
+        : "Licensed visuals are matched only after you choose a story approach.");
     } catch {
       setStatus("Story concepts could not be prepared. Please try again.");
     } finally {
@@ -685,7 +699,9 @@ function App() {
       if (!opened.scenes.length) {
         setConceptChoices(found.concepts?.length ? found.concepts : [...conceptsFor(opened.brief)]);
         setStep("concepts");
-        setStatus("Licensed visuals are matched only after you choose a story approach.");
+        setStatus(architecture.media === "own"
+          ? "Pick a story shape, then attach your media to each scene."
+          : "Licensed visuals are matched only after you choose a story approach.");
         return true;
       }
       let hydrationFailed = false;
@@ -2535,6 +2551,23 @@ function App() {
     <button type="button" aria-current={step === "settings" ? "page" : undefined} onClick={() => setStep("settings")}>Settings</button>
   </> : null;
 
+  const sourceModules = (
+    <div className="source-modules" role="radiogroup" aria-label="Visual source">
+      {sourceChoices.map(([id, title, detail]) =>
+        <button
+          key={id}
+          type="button"
+          className="source-module"
+          data-source={id}
+          aria-pressed={architecture.media === id}
+          onClick={() => setArchitecture({ ...architecture, media: id })}
+        >
+          <strong>{title}</strong>
+          <span>{detail}</span>
+        </button>)}
+    </div>
+  );
+
   return <div className={`app-shell${inApp ? " app-shell-signed" : ""}${step === "editor" ? " app-shell-editor" : ""}`}>
     {inApp && <nav className="app-rail" aria-label="Primary">
       <a className="rail-brand" href="/">F-Motion</a>
@@ -2660,6 +2693,7 @@ function App() {
         <div><dt>Length</dt><dd>About {architecture.durationSeconds} seconds</dd></div>
         <div><dt>Visuals</dt><dd>{architectureLabels.media[architecture.media]}</dd></div>
       </dl>
+      {sourceModules}
       <details className="architecture-editor">
         <summary>Edit recommended video plan</summary>
         <p>Optional: adjust the decisions before F-Motion builds the storyboard and footage searches.</p>
@@ -2695,8 +2729,11 @@ function App() {
       <div className="stage-hero">
         <p className="settings-kicker">Story</p>
         <h1>Choose a story approach</h1>
-        <p>Licensed visuals are matched only after you choose.</p>
+        <p>{architecture.media === "own"
+          ? "Pick a story shape, then attach your media to each scene."
+          : "Licensed visuals are matched only after you choose."}</p>
       </div>
+      {sourceModules}
       <div className="concept-choices" aria-label="Story concepts">{conceptChoices.map((concept) =>
         <button
           key={concept.id}
@@ -2717,7 +2754,7 @@ function App() {
           <span className="scene-slots" aria-hidden="true">
             {Array.from({ length: concept.scene_count }, (_, index) => <i key={index} />)}
           </span>
-          <span className="concept-direction">{concept.media_direction}</span>
+          <span className="concept-direction">{conceptDirection(concept.media_direction, architecture.media)}</span>
         </button>)}</div>
       <p role="status" aria-live="polite">{status}</p>
       <button className="secondary" disabled={busy} onClick={() => setStep("architecture")}>Back to video plan</button>
