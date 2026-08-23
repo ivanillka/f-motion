@@ -1,9 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 
 test("marketing routes keep honest OSS copy and no invented platform", async () => {
-  const source = await readFile(new URL("../src/marketing/MarketingApp.tsx", import.meta.url), "utf8");
+  const pages = new URL("../public/web/", import.meta.url);
+  const leftover = [];
+  for (const name of await readdir(pages)) {
+    if (name.endsWith(".html")) leftover.push(await readFile(new URL(name, pages), "utf8"));
+  }
+  const source = [
+    await readFile(new URL("../src/marketing/MarketingApp.tsx", import.meta.url), "utf8"),
+    ...leftover
+  ].join("\n");
   for (const phrase of [
     "F-MOTION",
     "Vertical reels from your own media",

@@ -31,6 +31,7 @@ async function main() {
       "/app/* /studio 301",
       "/web / 301",
       "/web/ / 301",
+      "/web/index.html / 301",
       "/web/integrate.html /self-host 301",
       "/self-host /index.html 200",
       "/hosted /index.html 200",
