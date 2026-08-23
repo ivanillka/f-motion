@@ -141,14 +141,18 @@ class SelfhostAuthGateway implements AuthGateway {
   private readonly tokenKey = "fengine-selfhost-token";
   private readonly listeners = new Set<(session?: WebAuthSession) => void>();
   private readonly storage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
-  private readonly fetchImpl: typeof fetch;
+  private readonly fetchImpl?: typeof fetch;
 
   constructor(
     storage: Pick<Storage, "getItem" | "setItem" | "removeItem">,
-    fetchImpl: typeof fetch
+    fetchImpl?: typeof fetch
   ) {
     this.storage = storage;
     this.fetchImpl = fetchImpl;
+  }
+
+  private request(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    return this.fetchImpl ? this.fetchImpl(input, init) : fetch(input, init);
   }
 
   private current(): WebAuthSession | undefined {
@@ -173,7 +177,7 @@ class SelfhostAuthGateway implements AuthGateway {
   }
 
   private async postAccount(path: string, email: string, password: string, displayName?: string): Promise<void> {
-    const response = await this.fetchImpl(path, {
+    const response = await this.request(path, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -199,7 +203,7 @@ class SelfhostAuthGateway implements AuthGateway {
   }
 
   async setupNeeded(): Promise<boolean> {
-    const response = await this.fetchImpl("/api/setup");
+    const response = await this.request("/api/setup");
     if (!response.ok) throw new Error("Could not check this install.");
     const body = await response.json() as { needed?: unknown };
     return body.needed === true;
@@ -226,7 +230,7 @@ class SelfhostAuthGateway implements AuthGateway {
     this.storage.removeItem(this.marker);
     this.storage.removeItem(this.tokenKey);
     if (token) {
-      await this.fetchImpl("/api/auth/logout", {
+      await this.request("/api/auth/logout", {
         method: "POST",
         headers: { authorization: `Bearer ${token}` }
       }).catch(() => undefined);
@@ -291,7 +295,7 @@ export function createAuthGateway(
   if (config.allowSelfhost) {
     const storage = sessionStorageOr(dependencies);
     if (!storage) throw new AuthConfigurationError();
-    return new SelfhostAuthGateway(storage, dependencies.fetchImpl ?? fetch);
+    return new SelfhostAuthGateway(storage, dependencies.fetchImpl);
   }
 
   if (Boolean(url) !== Boolean(publicKey)) throw new AuthConfigurationError();

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOrigin } from "../src/auth.ts";
 
 test("hosted magic links return to the F-Motion studio", () => {
@@ -219,6 +220,12 @@ test("self-host auth wins even when dummy Supabase settings are present", async 
   assert.equal(await gateway.setupNeeded(), true);
   await gateway.setupAccount("owner@example.com", "secret-pass", "Ada");
   assert.equal(storage.getItem("fengine-selfhost-token"), "fms_session");
+});
+
+test("self-host fetch is a direct call so browsers do not see a detached window.fetch", async () => {
+  const source = await readFile(new URL("../src/auth.ts", import.meta.url), "utf8");
+  assert.match(source, /this\.fetchImpl \? this\.fetchImpl\(input, init\) : fetch\(input, init\)/);
+  assert.doesNotMatch(source, /fetchImpl \?\? fetch/);
 });
 
 test("self-host owner password stays in session storage and is the bearer", async () => {
