@@ -1,0 +1,21 @@
+{
+  "$schema": "https://aka.ms/winget-packages.schema.2.0.json",
+  "Sources": [
+    {
+      "Packages": [
+        { "PackageIdentifier": "7zip.7zip" },
+        { "PackageIdentifier": "VideoLAN.VLC" },
+        { "PackageIdentifier": "GIMP.GIMP" },
+        { "PackageIdentifier": "BlenderFoundation.Blender" },
+        { "PackageIdentifier": "Gyan.FFmpeg" },
+        { "PackageIdentifier": "Microsoft.PowerToys" },
+        { "PackageIdentifier": "Microsoft.VisualStudioCode" },
+        { "PackageIdentifier": "Git.Git" },
+        { "PackageIdentifier": "Google.Chrome" }
+      ],
+      "SourceDetails": {
+        "Name": "winget"
+      }
+    }
+  ]
+}
