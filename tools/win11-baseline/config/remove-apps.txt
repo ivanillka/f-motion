@@ -1,5 +1,5 @@
 # Consumer / OEM bloat to remove. One PackageFamilyName or Appx name per line.
-# Keep Store, Photos, Camera, Clipchamp codecs, Notepad, Calculator, Paint.
+# Keep Store, Photos, Camera, Calculator, Paint, Notepad.
 Microsoft.BingNews
 Microsoft.BingWeather
 Microsoft.BingSearch
@@ -24,6 +24,18 @@ MicrosoftCorporationII.QuickAssist
 MicrosoftTeams
 MSTeams
 Clipchamp.Clipchamp
+Microsoft.Microsoft3DViewer
+Microsoft.MixedReality.Portal
+Microsoft.SkypeApp
+Microsoft.Wallet
+Microsoft.OneConnect
+Microsoft.ZuneMusic
+Microsoft.ZuneVideo
+Microsoft.Windows.DevHome
+Microsoft.WindowsCommunicationsApps
+Microsoft.OutlookForWindows
+Microsoft.Copilot
+Microsoft.Edge.GameAssist
 spotifyab9e9783c9f4d
 Disney.37853FC22B2CE
 Facebook.Facebook

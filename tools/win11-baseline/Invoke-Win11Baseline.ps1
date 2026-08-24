@@ -2,35 +2,37 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-  Fresh Windows 11 baseline: updates, security, light debloat, creative-ready.
+  Full fresh Windows 11 baseline — updates, secure, light, creative stack.
 
 .DESCRIPTION
-  Idempotent-ish prep for machines you will customize later (photo, video, etc.).
-  Run once on a new install, reboot, then customize per machine.
+  One elevated run does everything safe to automate for photo/video machines:
+  Windows Update, hardening, BitLocker (when TPM allows), debloat, performance,
+  service trim, Media folders, and the full winget creative utility set.
 
 .PARAMETER WhatIf
   Print planned actions without changing the system.
 
 .PARAMETER SkipUpdates
-  Skip the Windows Update pass (still run security / debloat / performance).
+  Skip the Windows Update pass.
 
-.PARAMETER InstallCreativeTools
-  Install the winget package set in config/packages.winget.json.
+.PARAMETER SkipPackages
+  Skip winget installs (still applies OS tweaks + Media folders).
+
+.PARAMETER SkipBitLocker
+  Skip disk encryption enable (still reports status from the security pass).
 
 .EXAMPLE
   .\Invoke-Win11Baseline.ps1
 
 .EXAMPLE
-  .\Invoke-Win11Baseline.ps1 -InstallCreativeTools
-
-.EXAMPLE
-  .\Invoke-Win11Baseline.ps1 -WhatIf
+  .\Run-All.cmd
 #>
 [CmdletBinding(SupportsShouldProcess = $false)]
 param(
   [switch]$WhatIf,
   [switch]$SkipUpdates,
-  [switch]$InstallCreativeTools
+  [switch]$SkipPackages,
+  [switch]$SkipBitLocker
 )
 
 Set-StrictMode -Version Latest
@@ -42,7 +44,7 @@ $modules = Join-Path $PSScriptRoot 'modules'
 Assert-Administrator
 
 Write-Host ''
-Write-Host 'Win11 baseline — light, secured, ready to customize' -ForegroundColor White
+Write-Host 'Win11 baseline — FULL pass (updates + secure + light + creative)' -ForegroundColor White
 Write-Host "Root: $PSScriptRoot"
 Write-Host ''
 
@@ -77,9 +79,17 @@ if (-not $SkipUpdates) {
 }
 
 Invoke-BaselineModule '02-Security.ps1'
+
+if (-not $SkipBitLocker) {
+  Invoke-BaselineModule '06-BitLocker.ps1'
+} else {
+  Write-BaselineWarn 'Skipped BitLocker (-SkipBitLocker)'
+}
+
 Invoke-BaselineModule '03-Debloat.ps1'
 Invoke-BaselineModule '04-Performance.ps1'
-Invoke-BaselineModule '05-CreativeReady.ps1' @{ InstallPackages = [bool]$InstallCreativeTools }
+Invoke-BaselineModule '07-Services.ps1'
+Invoke-BaselineModule '05-CreativeReady.ps1' @{ SkipPackages = [bool]$SkipPackages }
 
 Write-BaselineStep 'Summary'
 $results | Format-Table -AutoSize | Out-String | Write-Host
@@ -87,11 +97,12 @@ $results | Format-Table -AutoSize | Out-String | Write-Host
 $pending = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired' -ErrorAction SilentlyContinue)
 $cbs = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'
 if ($pending -or $cbs) {
-  Write-BaselineWarn 'A reboot is pending. Restart before heavy customization or driver installs.'
+  Write-BaselineWarn 'A reboot is pending. Restart, then install GPU drivers.'
 } else {
-  Write-BaselineOk 'No reboot flag detected (GPU scheduling / feature disables may still want a restart).'
+  Write-BaselineOk 'No reboot flag detected (still reboot once for HAGS / optional features).'
 }
 
 Write-Host ''
-Write-Host 'Next: reboot, install GPU drivers from NVIDIA/AMD/Intel, then your Adobe/DaVinci/etc. stack.' -ForegroundColor Cyan
+Write-Host 'DONE. Reboot -> vendor GPU drivers -> Adobe/DaVinci/Capture One from your accounts.' -ForegroundColor Cyan
+Write-Host 'If BitLocker ran: copy Desktop\BitLocker-Recovery-KEY.txt offline, then delete it.' -ForegroundColor Yellow
 Write-Host ''

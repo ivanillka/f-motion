@@ -64,15 +64,7 @@ Write-BaselineOk 'Telemetry set to Required; ads/tailoring off'
 Set-RegistryDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config' -Name 'DODownloadMode' -Value 1
 Write-BaselineOk 'Delivery Optimization limited to LAN'
 
-# BitLocker status (do not force-enable: needs TPM + user recovery key handling)
-$bit = Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction SilentlyContinue
-if ($bit -and $bit.ProtectionStatus -eq 'On') {
-  Write-BaselineOk "BitLocker already on for $env:SystemDrive"
-} else {
-  Write-BaselineWarn "BitLocker is OFF for $env:SystemDrive — turn on in Settings > Privacy & security > Device encryption (save recovery key first)"
-}
-
-# Secure Boot / TPM presence (informational)
+# Secure Boot / TPM presence (informational; encryption is 06-BitLocker.ps1)
 try {
   $sb = Confirm-SecureBootUEFI -ErrorAction Stop
   if ($sb) { Write-BaselineOk 'Secure Boot is enabled' } else { Write-BaselineWarn 'Secure Boot reports disabled' }
@@ -80,4 +72,15 @@ try {
   Write-BaselineWarn 'Could not query Secure Boot (VM/legacy firmware?)'
 }
 
-Write-BaselineWarn 'Controlled Folder Access left OFF (breaks many photo/video temp paths). Enable later if you accept app prompts.'
+$tpm = Get-Tpm -ErrorAction SilentlyContinue
+if ($tpm -and $tpm.TpmPresent -and $tpm.TpmReady) {
+  Write-BaselineOk 'TPM present and ready'
+} else {
+  Write-BaselineWarn 'TPM not ready — BitLocker step may skip'
+}
+
+# Attack surface: block remote assistance invitations; leave RDP as-is (admin may need it)
+Set-RegistryDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Remote Assistance' -Name 'fAllowToGetHelp' -Value 0
+Write-BaselineOk 'Remote Assistance invitations disabled'
+
+Write-BaselineWarn 'Controlled Folder Access left OFF (breaks many photo/video temp paths).'
