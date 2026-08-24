@@ -23,8 +23,10 @@ import {
   scenePreviewUrl,
   seekLivePlayhead,
   snapDurationToBeat,
+  snapshotFromConflict,
   stockBedUrl,
   stockBeds,
+  stockFillStatus,
   showsPartnerBrands,
   cueAtElapsed,
   cuesForScene,
@@ -624,6 +626,7 @@ function App() {
     setStatus("Preparing story concepts…");
     try {
       let current = project;
+      let choices: Concept[] = [];
       if (!current) {
         const body = await api.request<{ project: ProjectSnapshot; concepts?: Concept[] }>("/api/projects", {
           method: "POST",
@@ -631,11 +634,24 @@ function App() {
         });
         current = body.project;
         localStorage.setItem("fengine-project", current.id);
-        setProject(current);
-        setConceptChoices(body.concepts?.length ? body.concepts : [...conceptsFor(briefForConcepts())]);
+        choices = body.concepts?.length ? body.concepts : [...conceptsFor(briefForConcepts())];
       } else {
-        setConceptChoices([...conceptsFor(current.brief.purpose ? current.brief : briefForConcepts())]);
+        try {
+          const found = await api.getProject(current.id);
+          current = found.project;
+          choices = found.concepts?.length ? found.concepts : [...conceptsFor(current.brief.purpose ? current.brief : briefForConcepts())];
+        } catch {
+          choices = [...conceptsFor(current.brief.purpose ? current.brief : briefForConcepts())];
+        }
       }
+      setProject(current);
+      if (current.scenes.length) {
+        setActiveSceneId(current.scenes[0]?.id ?? "");
+        setStep("editor");
+        setStatus("");
+        return;
+      }
+      setConceptChoices(choices);
       setActiveSceneId("");
       setStep("concepts");
       setStatus(architecture.media === "own"
@@ -657,13 +673,16 @@ function App() {
     setStatus("Building the selected storyboard…");
     try {
       let current = project;
-      if (!current.scenes.length || current.selected_concept_id !== conceptId) {
-        if (current.scenes.length) {
-          // ponytail: empty projects are the concept gate; non-empty reselection stays replace-free.
-          setStatus("This draft already has scenes. Open it from Drafts to keep editing.");
-          return;
+      if (!current.scenes.length) {
+        try {
+          current = await api.command(current.id, current.revision, "select_concept", { concept_id: conceptId });
+        } catch (error) {
+          const authoritative = snapshotFromConflict(error, current.id);
+          if (!authoritative) throw error;
+          current = authoritative.scenes.length
+            ? authoritative
+            : await api.command(authoritative.id, authoritative.revision, "select_concept", { concept_id: conceptId });
         }
-        current = await api.command(current.id, current.revision, "select_concept", { concept_id: conceptId });
       }
       setProject(current);
       setActiveSceneId(current.scenes[0]?.id ?? "");
@@ -673,12 +692,19 @@ function App() {
         return;
       }
       setStep("editor");
-      await fillStockStoryboard(current);
-    } catch (error) {
-      const type = error instanceof ApiResponseError ? error.type : undefined;
-      setStatus(type === "pexels_not_connected"
-        ? "Connect your Pexels API key in Settings, or upload your own media."
-        : "Your storyboard could not be created. Please try again.");
+      if (!pexelsCredential?.connected) {
+        setStatus(pixabayCredential?.connected
+          ? "Storyboard ready. Find a licensed clip for each scene, or upload your own."
+          : stockFillStatus("pexels_not_connected"));
+        return;
+      }
+      try {
+        await fillStockStoryboard(current);
+      } catch (error) {
+        setStatus(stockFillStatus(error instanceof ApiResponseError ? error.type : undefined));
+      }
+    } catch {
+      setStatus("Your storyboard could not be created. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -2553,7 +2579,7 @@ function App() {
 
   const sourceModules = (
     <div className="source-modules" role="radiogroup" aria-label="Visual source">
-      {sourceChoices.map(([id, title, detail]) =>
+      {sourceChoices.map(([id, title]) =>
         <button
           key={id}
           type="button"
@@ -2563,7 +2589,6 @@ function App() {
           onClick={() => setArchitecture({ ...architecture, media: id })}
         >
           <strong>{title}</strong>
-          <span>{detail}</span>
         </button>)}
     </div>
   );
@@ -2741,20 +2766,15 @@ function App() {
           data-concept={concept.id}
           disabled={busy}
           aria-label={`Choose ${concept.title} concept`}
+          title={conceptDirection(concept.media_direction, architecture.media)}
           onClick={() => void chooseConcept(concept.id)}
         >
           <span className="concept-module-head">
             <strong>{concept.title}</strong>
-            <span className="concept-meta">About {concept.duration_seconds} seconds · {concept.scene_count} scenes</span>
           </span>
-          <span className="concept-hook">{concept.hook}</span>
-          <ol className="beat-rail" aria-label={`${concept.title} beats`}>
-            {beatSteps(concept.beat_summary).map((beat) => <li key={beat}>{beat}</li>)}
+          <ol className="beat-rail" aria-label={`${concept.title} beats: ${beatSteps(concept.beat_summary).join(", ")}`}>
+            {Array.from({ length: concept.scene_count }, (_, index) => <li key={index} />)}
           </ol>
-          <span className="scene-slots" aria-hidden="true">
-            {Array.from({ length: concept.scene_count }, (_, index) => <i key={index} />)}
-          </span>
-          <span className="concept-direction">{conceptDirection(concept.media_direction, architecture.media)}</span>
         </button>)}</div>
       <p role="status" aria-live="polite">{status}</p>
       <button className="secondary" disabled={busy} onClick={() => setStep("architecture")}>Back to video plan</button>

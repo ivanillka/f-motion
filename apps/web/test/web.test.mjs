@@ -124,7 +124,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { clampBpm, clampFocus, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, stockBedUrl } = await vite.ssrLoadModule("/src/api.ts");
+    const { ApiResponseError, clampBpm, clampFocus, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, snapshotFromConflict, stockBedUrl, stockFillStatus } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -187,6 +187,22 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
     assert.match(source, /setSceneMedia\(\{\}\);\s+setStatus\("Opening draft/);
     assert.match(source, /setStatus\(hydrationFailed \? "Draft media details could not be loaded\."/);
+
+    const conflict = new ApiResponseError(409, {
+      type: "conflict",
+      authoritative_snapshot: { id: "p1", revision: 1, scenes: [{ id: "s1" }] }
+    });
+    assert.equal(snapshotFromConflict(conflict, "p1")?.revision, 1);
+    assert.equal(snapshotFromConflict(conflict, "other"), undefined);
+    assert.equal(snapshotFromConflict(new Error("offline"), "p1"), undefined);
+    assert.equal(stockFillStatus("pexels_not_connected"), "Connect your Pexels API key in Settings, or upload your own media.");
+    assert.equal(stockFillStatus("provider_unavailable"), "Pexels could not be reached. Find clips in the editor, or try again.");
+    assert.match(stockFillStatus(undefined), /Find or upload clips/);
+    assert.match(source, /snapshotFromConflict\(/);
+    assert.match(source, /stockFillStatus\(/);
+    assert.match(source, /pexelsCredential\?\.connected/);
+    assert.doesNotMatch(source, /This draft already has scenes/);
+    assert.doesNotMatch(source, /concept\.hook/);
   } finally {
     await vite.close();
   }

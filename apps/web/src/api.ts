@@ -171,6 +171,29 @@ export class ApiResponseError extends Error {
   }
 }
 
+/** Uses the server snapshot after a stale-revision 409 so a lost first click can continue. */
+export function snapshotFromConflict(error: unknown, projectId: string): ProjectSnapshot | undefined {
+  if (!(error instanceof ApiResponseError) || error.status !== 409) return;
+  const snapshot = error.body.authoritative_snapshot;
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return;
+  const value = snapshot as Partial<ProjectSnapshot>;
+  if (value.id !== projectId || typeof value.revision !== "number" || !Array.isArray(value.scenes)) return;
+  return value as ProjectSnapshot;
+}
+
+export function stockFillStatus(type: string | undefined): string {
+  if (type === "pexels_not_connected" || type === "pixabay_not_connected") {
+    return "Connect your Pexels API key in Settings, or upload your own media.";
+  }
+  if (type === "invalid_provider_credential") {
+    return "Pexels rejected this API key. Update it in Settings, or upload your own media.";
+  }
+  if (type === "provider_unavailable") {
+    return "Pexels could not be reached. Find clips in the editor, or try again.";
+  }
+  return "Licensed media could not be matched. Find or upload clips for each scene.";
+}
+
 export class ApiClient {
   readonly token: () => string;
   readonly onUnauthorized: () => void;
