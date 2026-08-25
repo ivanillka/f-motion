@@ -517,6 +517,11 @@ export const stockBeds = [
   { id: "rise" as const, label: "Hot Swing", hint: "Kevin MacLeod", bpm: 140 }
 ];
 
+export function stockBedForPace(pace: VideoArchitecture["pace"]): (typeof stockBeds)[number] {
+  const id = pace === "fast" ? "drive" : pace === "slow" ? "air" : "pulse";
+  return stockBeds.find((bed) => bed.id === id) ?? stockBeds[0]!;
+}
+
 export function stockBedUrl(id: Soundtrack["stock_id"]): string | undefined {
   return id ? `/music/${id}.mp3` : undefined;
 }

@@ -238,11 +238,11 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   await continueToConcepts(page);
   expect(pexelsMediaPosts).toEqual([]);
   await page.getByRole("button", { name: "Choose Story concept" }).click();
-  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your draft" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
   await expect(page.getByText(/The story begins\.|Calm studio introduction/i).first()).toBeVisible();
   await expect(page.getByRole("status").filter({
-    hasText: /Licensed media attached for every scene|scenes have media/
+    hasText: /Draft ready|scenes have media/
   })).toBeVisible({ timeout: 60_000 });
 
   const attached = await page.evaluate(async () => {
@@ -259,6 +259,8 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   expect(attached.creators.every(Boolean)).toBeTruthy();
   expect(new Set(attached.creators).size).toBeGreaterThanOrEqual(1);
 
+  await page.getByRole("button", { name: "Edit storyboard" }).click();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible();
   await page.getByRole("button", { name: "Edit scene 1" }).click();
   await page.getByRole("button", { name: "Find another licensed video for scene 1" }).click();
   await expect(page.getByRole("button", { name: "Select for scene 1" })).toHaveCount(2);

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, applyConversationConceptOverlays, beatsForConcept, buildStoryboardDraft, clientId, mergeConversationStoryboard, recommendVideoArchitecture, sceneDurationForMedia, storyboardArchitectureForConcept } from "../src/api.ts";
+import { ApiClient, ApiResponseError, applyConversationConceptOverlays, beatsForConcept, buildStoryboardDraft, clientId, mergeConversationStoryboard, recommendVideoArchitecture, sceneDurationForMedia, stockBedForPace, storyboardArchitectureForConcept } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
@@ -223,4 +223,10 @@ test("commands still send an id when randomUUID is missing", async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("stock beds follow pace", () => {
+  assert.equal(stockBedForPace("fast").id, "drive");
+  assert.equal(stockBedForPace("slow").id, "air");
+  assert.equal(stockBedForPace("balanced").id, "pulse");
 });

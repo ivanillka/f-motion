@@ -526,6 +526,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   align-items: start;
   width: 100%;
 }
+.editor[data-mode="review"] .scene-strip-actions,
+.editor[data-mode="review"] .scene-controls,
+.editor[data-mode="review"] .music-dock,
+.editor[data-mode="review"] .crop-guide,
+.editor[data-mode="review"] .candidates {
+  display: none;
+}
+.editor[data-mode="review"] .editor-grid {
+  grid-template-columns: 1fr;
+}
 .preview-panel {
   display: grid;
   gap: 8px;

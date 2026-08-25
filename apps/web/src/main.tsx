@@ -29,6 +29,7 @@ import {
   snapshotFromConflict,
   stockBedUrl,
   stockBeds,
+  stockBedForPace,
   stockFillStatus,
   storyboardArchitectureForConcept,
   captionsFromVoiceScript,
@@ -55,7 +56,7 @@ import { clearImportedProject, isImportedProjectId, rememberImportedProject } fr
 import { MarketingApp } from "./marketing/MarketingApp";
 import "./style.css";
 
-type Step = "sign-in" | "drafts" | "brief" | "architecture" | "concepts" | "media" | "editor" | "render" | "settings";
+type Step = "sign-in" | "drafts" | "brief" | "architecture" | "concepts" | "media" | "review" | "editor" | "render" | "settings";
 interface PreviewPanState {
   pointerId: number;
   startX: number;
@@ -536,7 +537,7 @@ function App() {
   }, [api, step, token]);
 
   useEffect(() => {
-    if (step !== "editor" || !project || !Object.values(sceneMedia).some(({ state }) =>
+    if ((step !== "editor" && step !== "review") || !project || !Object.values(sceneMedia).some(({ state }) =>
       state === "admitted" || state === "inspecting" || state === "quarantined")) return;
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -679,7 +680,7 @@ function App() {
       setStep("concepts");
       setStatus(architecture.media === "own"
         ? "Pick a story shape, then attach your media to each scene."
-        : "Licensed visuals are matched only after you choose a story approach.");
+        : "Captions, licensed clips, and a music bed are assembled after you choose.");
     } catch {
       setStatus("Story concepts could not be prepared. Please try again.");
     } finally {
@@ -693,7 +694,7 @@ function App() {
     setSceneMedia({});
     setSceneProgress({});
     setBusy(true);
-    setStatus("Building the selected storyboard…");
+    setStatus("Writing captions and assembling the draft…");
     try {
       let current = project;
       if (!current.scenes.length) {
@@ -722,15 +723,26 @@ function App() {
           // Keep the engine storyboard if FAL copy cannot be applied.
         }
       }
+      if (!current.brief.soundtrack) {
+        try {
+          const bed = stockBedForPace(architecture.pace);
+          current = await api.command(current.id, current.revision, "update_soundtrack", {
+            soundtrack: { kind: "stock", stock_id: bed.id, bpm: bed.bpm, offset_ms: 0, level: 0.8 }
+          });
+        } catch {
+          // Keep the draft without a bed.
+        }
+      }
       setProject(current);
       setActiveSceneId(current.scenes[0]?.id ?? "");
+      setVoiceScript(current.scenes.map((scene) => scene.caption.trim()).filter(Boolean).join("\n"));
       const clips = pendingClips.current;
       if (architecture.media === "own" && !clips.length) {
         setStatus("Storyboard ready. Upload media for each scene.");
         setStep("media");
         return;
       }
-      setStep("editor");
+      setStep("review");
       if (clips.length) {
         try {
           current = await attachPendingClips(current);
@@ -741,14 +753,12 @@ function App() {
       }
       if (architecture.media === "own") {
         setStatus(current.scenes.every((scene) => scene.media_id)
-          ? "Clips on the storyboard."
+          ? "Clips on the storyboard. Play the draft, then export or edit."
           : "Storyboard ready. Upload media for each scene.");
         return;
       }
-      if (!pexelsCredential?.connected) {
-        setStatus(pixabayCredential?.connected
-          ? "Storyboard ready. Find a licensed clip for each scene, or upload your own."
-          : stockFillStatus("pexels_not_connected"));
+      if (!pexelsCredential?.connected && !pixabayCredential?.connected) {
+        setStatus(stockFillStatus("pexels_not_connected"));
         return;
       }
       try {
@@ -756,8 +766,11 @@ function App() {
       } catch (error) {
         setStatus(stockFillStatus(error instanceof ApiResponseError ? error.type : undefined));
       }
-    } catch {
-      setStatus("Your storyboard could not be created. Please try again.");
+    } catch (error) {
+      const detail = error instanceof ApiResponseError ? error.message : "";
+      setStatus(detail && detail.length < 120
+        ? `Your storyboard could not be created. ${detail}`
+        : "Your storyboard could not be created. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -780,7 +793,7 @@ function App() {
         setStep("concepts");
         setStatus(architecture.media === "own"
           ? "Pick a story shape, then attach your media to each scene."
-          : "Licensed visuals are matched only after you choose a story approach.");
+          : "Captions, licensed clips, and a music bed are assembled after you choose.");
         return true;
       }
       let hydrationFailed = false;
@@ -1213,42 +1226,94 @@ function App() {
     return false;
   }
 
+  async function fillPixabayGaps(snapshot: ProjectSnapshot): Promise<ProjectSnapshot> {
+    let current = snapshot;
+    const used = new Set<number>();
+    for (const scene of [...current.scenes].sort((a, b) => a.order - b.order)) {
+      if (scene.media_id) continue;
+      const query = scene.visual_prompt?.trim().slice(0, 100);
+      if (!query) {
+        setSceneProgress((progress) => ({ ...progress, [scene.id]: "needs_media" }));
+        continue;
+      }
+      setSceneProgress((progress) => ({ ...progress, [scene.id]: "finding" }));
+      try {
+        const page = await api.request<{ results: StockMatch[] }>(`/api/pixabay/search?q=${encodeURIComponent(query)}`);
+        const hit = page.results.find((item) => item.kind !== "still" && !used.has(item.id))
+          ?? page.results.find((item) => !used.has(item.id));
+        if (!hit) {
+          setSceneProgress((progress) => ({ ...progress, [scene.id]: "needs_media" }));
+          continue;
+        }
+        used.add(hit.id);
+        setSceneProgress((progress) => ({ ...progress, [scene.id]: "inspecting" }));
+        const path = hit.kind === "still"
+          ? `/api/projects/${current.id}/media/pixabay/photo`
+          : `/api/projects/${current.id}/media/pixabay`;
+        const copied = await api.request<{ asset: { id: string } }>(path, {
+          method: "POST",
+          body: JSON.stringify({ query, pixabay_id: hit.id })
+        });
+        if (!await attachMediaWhenReady(copied.asset.id, current.id, scene.id)) {
+          setSceneProgress((progress) => ({ ...progress, [scene.id]: "needs_media" }));
+        }
+        current = (await api.getProject(current.id)).project;
+        setProject(current);
+      } catch {
+        setSceneProgress((progress) => ({ ...progress, [scene.id]: "needs_media" }));
+      }
+    }
+    return current;
+  }
+
   async function fillStockStoryboard(snapshot: ProjectSnapshot): Promise<void> {
     setSceneProgress(Object.fromEntries(
       snapshot.scenes.map((scene) => [scene.id, scene.media_id ? "ready" as const : "finding" as const])
     ));
     setStatus("Finding licensed media for each scene…");
-    const body = await api.request<{
-      results: Array<{
-        scene_id: string;
-        state: "matched" | "no_result" | "skipped";
-        asset?: { id: string };
-      }>;
-    }>(`/api/projects/${snapshot.id}/media/pexels/storyboard`, {
-      method: "POST",
-      body: "{}"
-    });
-    for (const result of body.results) {
-      if (result.state === "skipped") continue;
-      if (result.state !== "matched" || !result.asset) {
-        setSceneProgress((current) => ({ ...current, [result.scene_id]: "needs_media" }));
-        continue;
+    let current = snapshot;
+    if (pexelsCredential?.connected) {
+      try {
+        const body = await api.request<{
+          results: Array<{
+            scene_id: string;
+            state: "matched" | "no_result" | "skipped";
+            asset?: { id: string };
+          }>;
+        }>(`/api/projects/${snapshot.id}/media/pexels/storyboard`, {
+          method: "POST",
+          body: "{}"
+        });
+        for (const result of body.results) {
+          if (result.state === "skipped") continue;
+          if (result.state !== "matched" || !result.asset) {
+            setSceneProgress((progress) => ({ ...progress, [result.scene_id]: "needs_media" }));
+            continue;
+          }
+          setSceneProgress((progress) => ({ ...progress, [result.scene_id]: "inspecting" }));
+          const attached = await attachMediaWhenReady(result.asset.id, snapshot.id, result.scene_id);
+          if (!attached) setSceneProgress((progress) => ({ ...progress, [result.scene_id]: "needs_media" }));
+        }
+        current = (await api.getProject(snapshot.id)).project;
+        setProject(current);
+      } catch (error) {
+        if (!pixabayCredential?.connected) throw error;
       }
-      setSceneProgress((current) => ({ ...current, [result.scene_id]: "inspecting" }));
-      const attached = await attachMediaWhenReady(result.asset.id, snapshot.id, result.scene_id);
-      if (!attached) setSceneProgress((current) => ({ ...current, [result.scene_id]: "needs_media" }));
     }
-    const { project: refreshed } = await api.getProject(snapshot.id);
+    if (pixabayCredential?.connected && current.scenes.some((scene) => !scene.media_id)) {
+      current = await fillPixabayGaps(current);
+    }
+    const { project: refreshed } = await api.getProject(current.id);
     setProject(refreshed);
     setSceneMedia(await loadSceneMediaViews(api, refreshed));
     const readyCount = refreshed.scenes.filter((scene) => scene.media_id).length;
     setStatus(readyCount === refreshed.scenes.length
-      ? "Licensed media attached for every scene. Review attribution, then render."
+      ? "Draft ready. Play it, export, or edit."
       : `${readyCount} of ${refreshed.scenes.length} scenes have media. Find or upload the rest before rendering.`);
   }
 
   async function fillRemainingScenes() {
-    if (!project || busy || !pexelsCredential?.connected) return;
+    if (!project || busy || !(pexelsCredential?.connected || pixabayCredential?.connected)) return;
     setBusy(true);
     try {
       await fillStockStoryboard(project);
@@ -2667,14 +2732,14 @@ function App() {
     setPlayTick(0);
   }, [project?.id]);
   useEffect(() => {
-    if (step !== "editor" || !allScenesHavePreview || userPausedPreview.current) return;
+    if ((step !== "editor" && step !== "review") || !allScenesHavePreview || userPausedPreview.current) return;
     if (livePlaying) return;
     armSceneClock(0, true);
     setLivePlaying(true);
     setPlayTick(performance.now());
   }, [step, project?.id, allScenesHavePreview]);
   useEffect(() => {
-    if (!livePlaying || step !== "editor" || !project?.scenes.length) return;
+    if (!livePlaying || (step !== "editor" && step !== "review") || !project?.scenes.length) return;
     const tick = () => {
       const now = performance.now();
       const current = project.scenes.find(({ id }) => id === playSceneId) ?? project.scenes[0];
@@ -2692,7 +2757,7 @@ function App() {
     return () => window.clearInterval(timer);
   }, [livePlaying, step, project, playSceneId]);
   useEffect(() => {
-    if (step !== "editor") return;
+    if (step !== "editor" && step !== "review") return;
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
@@ -2760,7 +2825,7 @@ function App() {
   const stockVideo = Boolean(pexelsCredential?.connected || pixabayCredential?.connected);
   const stockStill = stockVideo;
   const partnerBrands = showsPartnerBrands(token ?? "", String(import.meta.env.VITE_PARTNER_BRAND_EMAIL ?? ""));
-  const createFlow = step === "brief" || step === "architecture" || step === "concepts" || step === "media" || step === "editor" || step === "render";
+  const createFlow = step === "brief" || step === "architecture" || step === "concepts" || step === "media" || step === "review" || step === "editor" || step === "render";
   const projectTitle = project?.brief.purpose?.trim() || "Untitled draft";
   const saveBusy = busy || status === "Saving…";
   const saveLabel = saveBusy ? "Saving…" : (status.startsWith("✓") || !status ? "Saved" : status);
@@ -2791,16 +2856,16 @@ function App() {
     </div>
   );
 
-  return <div className={`app-shell${inApp ? " app-shell-signed" : ""}${step === "editor" ? " app-shell-editor" : ""}`}>
+  return <div className={`app-shell${inApp ? " app-shell-signed" : ""}${(step === "editor" || step === "review") ? " app-shell-editor" : ""}`}>
     {inApp && <nav className="app-rail" aria-label="Primary">
       <a className="rail-brand" href="/">F-Motion</a>
       {appNav}
     </nav>}
     <div className="app-stage">
     {inApp && <input ref={gather} className="clip-start" hidden type="file" multiple accept="video/mp4,image/jpeg,image/png,image/webp" aria-label="Create from my clips" onChange={onGatherFiles} />}
-    {(step === "editor" || !inApp || partnerBrands || !online) && <header>
+    {((step === "editor" || step === "review") || !inApp || partnerBrands || !online) && <header>
       <div className="header-identity">
-        {step === "editor" && project ? <>
+        {(step === "editor" || step === "review") && project ? <>
           <strong className="project-title">{projectTitle}</strong>
           <span className="save-pill" data-busy={saveBusy || undefined}>{saveLabel}</span>
         </> : inApp ? null : <strong>F-Motion</strong>}
@@ -2962,7 +3027,7 @@ function App() {
         <h1>Choose a story approach</h1>
         <p>{architecture.media === "own"
           ? "Pick a story shape, then attach your media to each scene."
-          : "Licensed visuals are matched only after you choose."}</p>
+          : "Captions, licensed clips, and a music bed are assembled after you choose."}</p>
       </div>
       {sourceModules}
       <div className="concept-choices" aria-label="Story concepts">{conceptChoices.map((concept) => {
@@ -3003,20 +3068,31 @@ function App() {
       <p role="status" aria-live="polite">{status}</p>
       <button className="secondary" disabled={busy} onClick={() => setStep("editor")}>Back to storyboard</button>
     </section>}
-    {authReady && step === "editor" && project && activeScene && <section className="editor">
+    {authReady && (step === "editor" || step === "review") && project && activeScene && <section className="editor" data-mode={step === "review" ? "review" : "edit"}>
       <div className="editor-toolbar">
         <div>
-          <h1>Storyboard</h1>
-          <p>{playhead.totalMs
-            ? `Live cut · ${formatPlayTime(playhead.offsetMs)} / ${formatPlayTime(playhead.totalMs)}`
-            : "Review each beat and replace a still only when another visual fits better."}</p>
+          <h1>{step === "review" ? "Your draft" : "Storyboard"}</h1>
+          <p>{step === "review"
+            ? (busy ? "Assembling captions, clips, and music…" : "Play the cut. Export if it works, or edit before export.")
+            : (playhead.totalMs
+              ? `Live cut · ${formatPlayTime(playhead.offsetMs)} / ${formatPlayTime(playhead.totalMs)}`
+              : "Review each beat and replace a still only when another visual fits better.")}</p>
           <p className="export-gaps" data-ready={!readyGaps.length || undefined} aria-label="Ready to export">
             {readyGaps.length ? readyGaps.map((gap) => <span key={gap}>{gap}</span>) : <span>Ready to export</span>}
           </p>
+          {step === "review" ? <p role="status" aria-live="polite">{status}</p> : null}
         </div>
         <div className="editor-toolbar-actions">
           <button className="secondary" disabled={!allScenesHaveMedia} onClick={() => void requestRender("final")}>Export final</button>
-          {missingMediaCount > 0 && pexelsCredential?.connected ? (
+          {step === "review" ? (
+            <>
+              {falCredential?.connected && !falUnavailable ? (
+                <button className="secondary" disabled={busy} onClick={() => openFalSpeech()}>Generate voice-over</button>
+              ) : null}
+              <button className="secondary" disabled={busy} onClick={() => setStep("editor")}>Edit storyboard</button>
+            </>
+          ) : null}
+          {missingMediaCount > 0 && (pexelsCredential?.connected || pixabayCredential?.connected) ? (
             <button className="secondary" disabled={busy} onClick={() => void fillRemainingScenes()}>Fill remaining scenes</button>
           ) : null}
         </div>
