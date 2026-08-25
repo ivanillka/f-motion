@@ -376,3 +376,54 @@ test("FAL image-to-video quotes, confirms, and attaches only after review", asyn
   await expect(page.getByLabel(/Live preview/)).toBeVisible();
   await expect(page.getByRole("slider", { name: "Play progress" })).toBeVisible();
 });
+
+test("Settings shows F-Motion render units and FAL credits separately", async ({ page }) => {
+  await signIn(page);
+  await page.getByRole("button", { name: "Settings" }).first().click();
+  await expect(page.getByRole("heading", { name: "F-Motion render balance" })).toBeVisible();
+  await expect(page.getByText("25 render units left")).toBeVisible();
+  await expect(page.getByText("FAL credits · USD 24.5")).toBeVisible();
+  await expect(page.getByText(/FAL account studio/)).toBeVisible();
+});
+
+test("FAL footage analysis quotes, confirms, and writes scene copy after review", async ({ page }) => {
+  await page.route("https://e2e-storage.invalid/**", (route) =>
+    route.fulfill({ status: 200, body: "" }));
+  await page.route("https://e2e-images.invalid/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="90" height="160"><rect width="90" height="160" fill="#555"/></svg>'
+    }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Visual description").fill("Write a caption from the attached harbor still");
+  await page.getByRole("button", { name: "Continue to video plan" }).click();
+  await page.getByText("Edit recommended video plan").click();
+  await page.getByLabel("Where should visuals come from?").selectOption("own");
+  await chooseConcept(page, "Direct");
+  await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
+  await page.locator('input[type="file"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
+  for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
+
+  await page.getByRole("button", { name: "Edit scene 1" }).click();
+  await page.getByRole("button", { name: "Write story from footage for scene 1" }).click();
+  await expect(page.getByRole("heading", { name: "Write story from footage for scene 1" })).toBeVisible();
+  await page.getByRole("button", { name: "Get FAL price" }).click();
+  await expect(page.getByText(/estimated total USD 0\.002/i)).toBeVisible();
+  await page.getByRole("button", { name: "Analyze this footage" }).click();
+  await expect(page.getByText("Hold the last light")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Use for scene 1" }).click();
+  await expect(page.getByLabel("Scene 1 caption")).toHaveValue("Hold the last light");
+  const sceneCopy = await page.evaluate(async () => {
+    const projectId = localStorage.getItem("fengine-project");
+    const { project } = await (await fetch(`/api/projects/${projectId}`)).json();
+    return project.scenes.find((scene) => scene.order === 0);
+  });
+  expect(sceneCopy).toMatchObject({
+    caption: "Hold the last light",
+    visual_prompt: "A red kayak on still water at dusk"
+  });
+});

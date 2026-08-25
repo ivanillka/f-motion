@@ -162,11 +162,19 @@ function falJobView(job) {
 }
 const falJobs = new Map();
 const falPolls = new Map();
+const falAccount = { username: "studio", credits: { current_balance: 24.5, currency: "USD" } };
 const falCredentials = {
-  async status() { return { provider: "fal", connected: true, hint: "abcd", account: { username: "studio", credits: { current_balance: 24.5, currency: "USD" } } }; },
-  async connect() { return { provider: "fal", connected: true, hint: "abcd" }; },
-  async test() { return { provider: "fal", connected: true, hint: "abcd" }; },
+  async status() { return { provider: "fal", connected: true, hint: "abcd", account: falAccount }; },
+  async connect() { return { provider: "fal", connected: true, hint: "abcd", account: falAccount }; },
+  async test() { return { provider: "fal", connected: true, hint: "abcd", account: falAccount }; },
   async disconnect() {}
+};
+const hostUsage = {
+  async status() {
+    return { unit: "render_unit", balance: 25, free_grant: 25, costs: { preview: 1, final: 2 } };
+  },
+  async consumeRender() {},
+  async ensureFreeGrant() {}
 };
 const falGeneration = {
   async quoteVideo(ownerId, projectId, sceneId, sourceMediaId, motionPrompt) {
@@ -379,7 +387,8 @@ const api = createTestApp({
   media,
   pexelsCredentials,
   falCredentials,
-  falGeneration
+  falGeneration,
+  hostUsage
 }).listen(43140, "127.0.0.1");
 const web = spawn("npm", ["run", "dev", "--workspace", "apps/web", "--", "--host", "127.0.0.1", "--port", "4173"], { stdio: "inherit" });
 
