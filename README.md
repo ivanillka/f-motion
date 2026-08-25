@@ -27,8 +27,11 @@ Choose one path:
    accounts. No maintainer credential, customer data, deployment identifier,
    or private API endpoint is included. Every signed-in user connects their
    own Pexels API key for stock search. If FAL credential support is enabled,
-   they also connect their own API-scope FAL key. One storyboard scene can
-   quote and confirm a Flux Schnell still, or animate one approved portrait still into a six-second video, charged directly to that FAL account.
+   they also connect their own FAL key. One storyboard scene can quote and
+   confirm a Flux Schnell still, animate one approved portrait still into a
+   six-second video, or analyze attached stills/MP4s into captions, charged
+   directly to that FAL account. Settings shows FAL credit balance when the
+   key is ADMIN-scoped.
    The host never supplies a shared provider key.
 
 Never paste database, storage, or service-role credentials into the browser.

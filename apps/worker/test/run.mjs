@@ -10,6 +10,7 @@ const files = [
   "fal-image.test.mjs",
   "fal-video.test.mjs",
   "fal-speech.test.mjs",
+  "fal-analyze.test.mjs",
   "queue.test.mjs",
   "queue-integration.test.mjs",
   ...(process.env.RUN_WORKER_INTEGRATION === "1" ? ["runtime-integration.test.mjs"] : [])

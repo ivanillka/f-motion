@@ -70,7 +70,7 @@ async function chooseConcept(page: Page, title: "Direct" | "Story" | "Rhythm"): 
 
 async function attachFixtureToScene(page: Page, sceneNumber: number): Promise<void> {
   await page.getByRole("button", { name: `Edit scene ${sceneNumber}` }).click();
-  const input = page.locator('input[type="file"]');
+  const input = page.locator('input[type="file"][accept="video/mp4,image/jpeg,image/png,image/webp"]');
   await input.setInputFiles([]);
   await input.setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("status").filter({ hasText: "Media attached to this scene" })).toBeVisible();
@@ -270,7 +270,7 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   const editedCaption = page.getByLabel("Scene 1 caption");
   await editedCaption.fill("Updated after preview");
   await editedCaption.press("Tab");
-  await expect(page.getByText("Updated after preview")).toBeVisible();
+  await expect(editedCaption).toHaveValue("Updated after preview");
   await page.getByRole("button", { name: "Back to drafts" }).click();
   await page.getByRole("button").filter({ hasText: "A calm studio introduction" }).click();
   await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
@@ -316,7 +316,9 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   await expect(page.getByText(/estimated total USD 0\.003/i)).toBeVisible();
   await expect(page.getByRole("button", { name: "Generate one image" })).toBeEnabled();
   await page.getByRole("button", { name: "Generate one image" }).click();
-  await expect(page.getByRole("button", { name: "Use for scene 1" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: /AI still ready/i })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Generate AI image for scene 1" }).click();
+  await expect(page.getByRole("button", { name: "Use for scene 1" })).toBeVisible();
   await expect(page.getByText("AI-generated with FAL").first()).toBeVisible();
   const mediaIdBefore = await page.evaluate(async () => {
     const projectId = localStorage.getItem("fengine-project");
@@ -368,11 +370,64 @@ test("FAL image-to-video quotes, confirms, and attaches only after review", asyn
   await page.getByRole("button", { name: "Get FAL price" }).click();
   await expect(page.getByText(/estimated total USD 0\.19/i)).toBeVisible();
   await page.getByRole("button", { name: "Generate one 6-second video" }).click();
-  await expect(page.getByRole("button", { name: "Use video for scene 1" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: /AI video ready/i })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Animate this image for scene 1" }).click();
+  await expect(page.getByRole("button", { name: "Use video for scene 1" })).toBeVisible();
   await page.getByRole("button", { name: "Use video for scene 1" }).click();
   await expect(page.getByRole("status").filter({ hasText: /AI-generated FAL video/i })).toBeVisible();
 
   await expect(page.getByRole("button", { name: /Play preview|Pause preview/ })).toBeVisible();
   await expect(page.getByLabel(/Live preview/)).toBeVisible();
   await expect(page.getByRole("slider", { name: "Play progress" })).toBeVisible();
+});
+
+test("Settings shows F-Motion render units and FAL credits separately", async ({ page }) => {
+  await signIn(page);
+  await page.getByRole("button", { name: "Settings" }).first().click();
+  await expect(page.getByRole("heading", { name: "F-Motion render balance" })).toBeVisible();
+  await expect(page.getByText("25 render units left")).toBeVisible();
+  await expect(page.getByText("FAL credits · USD 24.5")).toBeVisible();
+  await expect(page.getByText(/FAL account studio/)).toBeVisible();
+});
+
+test("FAL footage analysis quotes, confirms, and writes scene copy after review", async ({ page }) => {
+  await page.route("https://e2e-storage.invalid/**", (route) =>
+    route.fulfill({ status: 200, body: "" }));
+  await page.route("https://e2e-images.invalid/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="90" height="160"><rect width="90" height="160" fill="#555"/></svg>'
+    }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Visual description").fill("Write a caption from the attached harbor still");
+  await page.getByRole("button", { name: "Continue to video plan" }).click();
+  await page.getByText("Edit recommended video plan").click();
+  await page.getByLabel("Where should visuals come from?").selectOption("own");
+  await chooseConcept(page, "Direct");
+  await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
+  await page.locator('input[type="file"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
+  for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
+
+  await page.getByRole("button", { name: "Edit scene 1" }).click();
+  await page.getByRole("button", { name: "Write story from footage for scene 1" }).click();
+  await expect(page.getByRole("heading", { name: "Write story from footage for scene 1" })).toBeVisible();
+  await page.getByRole("button", { name: "Get FAL price" }).click();
+  await expect(page.getByText(/estimated total USD 0\.002/i)).toBeVisible();
+  await page.getByRole("button", { name: "Analyze this footage" }).click();
+  await expect(page.getByText("Hold the last light")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Use for scene 1" }).click();
+  await expect(page.getByLabel("Scene 1 caption")).toHaveValue("Hold the last light");
+  const sceneCopy = await page.evaluate(async () => {
+    const projectId = localStorage.getItem("fengine-project");
+    const { project } = await (await fetch(`/api/projects/${projectId}`)).json();
+    return project.scenes.find((scene) => scene.order === 0);
+  });
+  expect(sceneCopy).toMatchObject({
+    caption: "Hold the last light",
+    visual_prompt: "A red kayak on still water at dusk"
+  });
 });

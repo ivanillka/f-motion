@@ -114,6 +114,11 @@ interface FalCredentialView {
   connected: boolean;
   hint?: string;
   validated_at?: string;
+  account?: {
+    username?: string;
+    credits?: { current_balance: number; currency: string };
+    credits_unavailable?: "admin_key_required" | "provider_unavailable";
+  };
 }
 interface FalImageQuote {
   endpoint_id: string;
@@ -127,7 +132,7 @@ interface GenerationJobView {
   id: string;
   project_id: string;
   scene_id: string;
-  kind: "image" | "image_to_video" | "speech";
+  kind: "image" | "image_to_video" | "speech" | "analyze";
   endpoint_id: string;
   state: string;
   cancel_requested: boolean;
@@ -136,6 +141,8 @@ interface GenerationJobView {
   quote_expires_at: string;
   failure_code?: string;
   result_media?: SceneMediaView;
+  source_media_id?: string;
+  analysis?: { visual_prompt: string; caption: string };
 }
 interface PexelsCredentialView {
   provider: "pexels";
@@ -227,12 +234,17 @@ function App() {
   const [falVideoPrompt, setFalVideoPrompt] = useState("");
   const [falVideoJob, setFalVideoJob] = useState<GenerationJobView>();
   const [falVideoBusy, setFalVideoBusy] = useState(false);
-  const falVideoPollRef = useRef<string>();
-  const falGenPollRef = useRef<string>();
+  const falVideoPollRef = useRef<string | undefined>(undefined);
+  const falGenPollRef = useRef<string | undefined>(undefined);
   const [falSpeechOpen, setFalSpeechOpen] = useState(false);
   const [falSpeechPrompt, setFalSpeechPrompt] = useState("");
   const [falSpeechJob, setFalSpeechJob] = useState<GenerationJobView>();
   const [falSpeechBusy, setFalSpeechBusy] = useState(false);
+  const [falAnalyzeOpen, setFalAnalyzeOpen] = useState(false);
+  const [falAnalyzeJob, setFalAnalyzeJob] = useState<GenerationJobView>();
+  const [falAnalyzeBusy, setFalAnalyzeBusy] = useState(false);
+  const falAnalyzePollRef = useRef<string | undefined>(undefined);
+  const [hostUsage, setHostUsage] = useState<{ unit: string; balance: number; free_grant: number; costs: { preview: number; final: number } }>();
   const [pexelsCredential, setPexelsCredential] = useState<PexelsCredentialView>();
   const [pexelsUnavailable, setPexelsUnavailable] = useState(false);
   const [pexelsKey, setPexelsKey] = useState("");
@@ -393,6 +405,7 @@ function App() {
     if (!token) return;
     void loadFalCredential();
     void loadPexelsCredential();
+    void loadHostUsage();
   }, [token]);
 
   useEffect(() => {
@@ -1281,6 +1294,14 @@ function App() {
     }
   }
 
+  async function loadHostUsage() {
+    try {
+      setHostUsage(await api.request<{ unit: string; balance: number; free_grant: number; costs: { preview: number; final: number } }>("/api/me/usage"));
+    } catch {
+      setHostUsage(undefined);
+    }
+  }
+
   async function loadPexelsCredential() {
     setPexelsBusy(true);
     try {
@@ -1438,9 +1459,11 @@ function App() {
       case "unsafe_output":
         return "FAL blocked this output. Try a different prompt.";
       default:
-        return job.kind === "speech"
-          ? "FAL voice-over failed. Your current voice-over was not changed."
-          : "FAL generation failed. Your scene media was not changed.";
+        return job.kind === "analyze"
+          ? "FAL could not read this footage. Try a different still or clip."
+          : job.kind === "speech"
+            ? "FAL voice-over failed. Your current voice-over was not changed."
+            : "FAL generation failed. Your scene media was not changed.";
     }
   }
 
@@ -1973,10 +1996,166 @@ function App() {
     }
   }
 
+  function falAnalyzeStorageKey(projectId: string, sceneId: string) {
+    return `fengine-fal-analyze:${projectId}:${sceneId}`;
+  }
+
+  function openFalAnalyze(scene: Scene) {
+    if (!falCredential?.connected || falUnavailable) {
+      showFalLock();
+      return;
+    }
+    const media = scene.media_id ? sceneMedia[scene.media_id] : undefined;
+    if (!media || media.state !== "ready") {
+      setStatus("Attach a ready still or MP4 clip to this scene first.");
+      return;
+    }
+    setFalAnalyzeOpen(true);
+    if (falAnalyzeJob?.scene_id === scene.id) {
+      if (falGenerationActive(falAnalyzeJob.state) && falAnalyzePollRef.current !== falAnalyzeJob.id) {
+        void pollFalAnalyze(falAnalyzeJob.id);
+      }
+      return;
+    }
+    setFalAnalyzeJob(undefined);
+    const projectId = project?.id;
+    if (!projectId) return;
+    const stored = localStorage.getItem(falAnalyzeStorageKey(projectId, scene.id));
+    if (!stored) return;
+    void (async () => {
+      try {
+        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${stored}`);
+        setFalAnalyzeJob(job);
+        if (falGenerationActive(job.state) && falAnalyzePollRef.current !== job.id) {
+          void pollFalAnalyze(job.id);
+        }
+      } catch {
+        localStorage.removeItem(falAnalyzeStorageKey(projectId, scene.id));
+      }
+    })();
+  }
+
+  async function quoteFalAnalyze() {
+    if (!project || !activeScene?.media_id) return;
+    setFalAnalyzeBusy(true);
+    setStatus("Requesting FAL analysis price…");
+    try {
+      const job = await api.request<GenerationJobView>(
+        `/api/projects/${project.id}/scenes/${activeScene.id}/fal/analyze-quotes`,
+        { method: "POST", body: JSON.stringify({ source_media_id: activeScene.media_id }) }
+      );
+      setFalAnalyzeJob(job);
+      localStorage.setItem(falAnalyzeStorageKey(project.id, activeScene.id), job.id);
+      setStatus("Review the FAL price, then confirm to read this footage.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "fal_not_connected"
+        ? "Connect your FAL API key in Settings first."
+        : type === "fal_generation_busy"
+          ? "Only one active FAL generation is allowed. Wait or cancel it."
+          : type === "invalid_provider_credential"
+            ? "FAL rejected the saved key. Replace it in Settings."
+            : "FAL could not price this analysis. Check that the scene has a ready JPEG, PNG, WebP, or MP4.");
+    } finally {
+      setFalAnalyzeBusy(false);
+    }
+  }
+
+  async function confirmFalAnalyze() {
+    if (!project || !activeScene || !falAnalyzeJob || falAnalyzeJob.state !== "quoted") return;
+    if (falAnalyzeJob.quote.estimated_total === null) return;
+    setFalAnalyzeBusy(true);
+    setStatus("Confirming FAL analysis…");
+    try {
+      const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falAnalyzeJob.id}/confirm`, {
+        method: "POST",
+        body: JSON.stringify({ idempotency_key: crypto.randomUUID() })
+      });
+      setFalAnalyzeJob(job);
+      localStorage.setItem(falAnalyzeStorageKey(project.id, activeScene.id), job.id);
+      setStatus(`Reading footage for scene ${activeScene.order + 1}. You can keep editing.`);
+      void pollFalAnalyze(job.id);
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "quote_expired"
+        ? "This quote expired. Request a new price."
+        : type === "quote_incomplete"
+          ? "FAL could not calculate a total for this model."
+          : type === "source_changed"
+            ? "The source media changed. Request a new price."
+            : "FAL analysis could not be confirmed.");
+    } finally {
+      setFalAnalyzeBusy(false);
+    }
+  }
+
+  async function pollFalAnalyze(jobId: string) {
+    if (falAnalyzePollRef.current === jobId) return;
+    falAnalyzePollRef.current = jobId;
+    const deadline = Date.now() + 12 * 60_000;
+    try {
+      while (Date.now() < deadline) {
+        try {
+          const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
+          setFalAnalyzeJob(job);
+          if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
+            if (job.state === "ready") setStatus("Footage analysis ready — review the suggested caption.");
+            else if (job.state === "cancelled") setStatus("FAL analysis cancelled.");
+            else setStatus(falGenFailureMessage(job));
+            return;
+          }
+          setStatus(`FAL analysis · ${job.state.replaceAll("_", " ")}`);
+        } catch {
+          setStatus("Could not refresh FAL analysis status.");
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+      setStatus("FAL analysis is still running. Reopen Write story from footage to check again.");
+    } finally {
+      if (falAnalyzePollRef.current === jobId) falAnalyzePollRef.current = undefined;
+    }
+  }
+
+  async function cancelFalAnalyze() {
+    if (!falAnalyzeJob) return;
+    setFalAnalyzeBusy(true);
+    try {
+      const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falAnalyzeJob.id}/cancel`, { method: "POST" });
+      setFalAnalyzeJob(job);
+      setStatus(job.state === "cancelled"
+        ? "FAL analysis cancelled."
+        : "Cancel requested. FAL may still bill work that already started.");
+    } catch {
+      setStatus("FAL analysis could not be cancelled.");
+    } finally {
+      setFalAnalyzeBusy(false);
+    }
+  }
+
+  async function applyFalAnalysis() {
+    if (!project || !falAnalyzeJob?.analysis) return;
+    const scene = project.scenes.find(({ id }) => id === falAnalyzeJob.scene_id);
+    if (!scene) return;
+    setFalAnalyzeBusy(true);
+    try {
+      await saveScenePatch(scene.id, {
+        visual_prompt: falAnalyzeJob.analysis.visual_prompt,
+        caption: falAnalyzeJob.analysis.caption
+      });
+      setOverlayCaption(falAnalyzeJob.analysis.caption);
+      localStorage.removeItem(falAnalyzeStorageKey(project.id, scene.id));
+      setFalAnalyzeOpen(false);
+      setStatus(`Scene ${scene.order + 1} caption and visual prompt now follow the attached footage.`);
+    } finally {
+      setFalAnalyzeBusy(false);
+    }
+  }
+
   function showFalLock() {
     setFeatureLock(falCredential?.connected
-      ? { title: "Generate AI stills from a scene", message: "Open a scene in the storyboard and choose Generate AI image. Each still is quoted and confirmed before FAL charges your account." }
-      : { title: "FAL generation is locked", message: "Connect your FAL API key now. AI still generation unlocks in the storyboard after you connect.", action: "settings" });
+      ? { title: "Use FAL from a scene", message: "Open a storyboard scene to generate a still, animate a portrait, or write captions from attached footage. Each FAL job is quoted and confirmed before it charges your account." }
+      : { title: "FAL generation is locked", message: "Connect your FAL API key now. AI stills, animation, and footage analysis unlock in the storyboard after you connect.", action: "settings" });
   }
 
   function showFutureLock() {
@@ -2398,7 +2577,7 @@ function App() {
           <strong>Pexels</strong><span>Real stock video · {pexelsCredential?.connected ? "unlocked" : "locked"}</span>
         </button>
         <button className="provider-preview-item" data-locked={!falCredential?.connected || falUnavailable} onClick={showFalLock}>
-          <strong>FAL</strong><span>{falCredential?.connected && !falUnavailable ? "AI stills in storyboard" : "AI stills · locked"}</span>
+          <strong>FAL</strong><span>{falCredential?.connected && !falUnavailable ? "AI stills, animation, and footage analysis" : "AI stills · locked"}</span>
         </button>
         {partnerBrands ? (
           <button className="provider-preview-item" type="button" onClick={() => setStep("settings")}>
@@ -2416,7 +2595,6 @@ function App() {
       {!draftsLoading && drafts.length === 0 && <div className="empty-drafts">
         <p role="status">No drafts yet.</p>
         <p>Describe what you want to make — F-Motion will recommend a video plan and storyboard.</p>
-        <button onClick={startCreate}>Create new video</button>
       </div>}
       <div className="concepts drafts-grid">{drafts.map((item) =>
         <button key={item.id} className="card draft-card" onClick={() => void openDraft(item.id)}>
@@ -2904,6 +3082,14 @@ function App() {
               {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Animate this image
             </button>
           )}
+          {activeMedia?.state === "ready" && (
+            <button className={!falCredential?.connected || falUnavailable ? "locked-feature" : undefined}
+              disabled={busy || falAnalyzeBusy}
+              aria-label={`Write story from footage for scene ${activeSceneNumber}`}
+              onClick={() => openFalAnalyze(activeScene)}>
+              {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Write story from footage
+            </button>
+          )}
           </div>
           <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
             const file = event.target.files?.[0];
@@ -3032,6 +3218,55 @@ function App() {
           </button>
         </div>
       </dialog>}
+      {falAnalyzeOpen && activeScene && <dialog open aria-labelledby="fal-analyze-title">
+        <h2 id="fal-analyze-title">Write story from footage for scene {activeSceneNumber}</h2>
+        <p>FAL looks at this scene’s still or MP4 and suggests a visual prompt plus on-screen caption. Charged directly to your FAL account. Stills use Moondream 3; clips use FAL video understanding.</p>
+        {activePreviewUrl && (activeMedia?.detected?.type === "video/mp4"
+          ? <video src={activePreviewUrl} controls playsInline muted preload="metadata" />
+          : <img src={activePreviewUrl} alt="Footage for story analysis" />)}
+        {falAnalyzeJob && <div className="notice">
+          <p>Model · {falAnalyzeJob.endpoint_id.includes("video") ? "Video understanding" : "Moondream 3 query"}</p>
+          <p>{falAnalyzeJob.quote.currency} {falAnalyzeJob.quote.unit_price} per {falAnalyzeJob.quote.unit}
+            {falAnalyzeJob.quote.estimated_total !== null
+              ? ` · estimated total ${falAnalyzeJob.quote.currency} ${falAnalyzeJob.quote.estimated_total}`
+              : ` · ${falAnalyzeJob.quote.estimated_total_explanation ?? "FAL could not calculate a total"}`}</p>
+          <p>Status · {falAnalyzeJob.state.replaceAll("_", " ")}</p>
+        </div>}
+        {falAnalyzeJob?.state === "ready" && falAnalyzeJob.analysis && (
+          <div>
+            <p><strong>Visual prompt</strong> · {falAnalyzeJob.analysis.visual_prompt}</p>
+            <p><strong>Caption</strong> · {falAnalyzeJob.analysis.caption}</p>
+          </div>
+        )}
+        <div className="dialog-actions">
+          {(!falAnalyzeJob || ["failed", "cancelled", "submission_uncertain", "ready"].includes(falAnalyzeJob.state)
+            || (falAnalyzeJob.state === "quoted" && falAnalyzeJob.quote.estimated_total === null)) && (
+            <button disabled={falAnalyzeBusy || !activeScene.media_id} onClick={() => void quoteFalAnalyze()}>Get FAL price</button>
+          )}
+          {falAnalyzeJob?.state === "quoted" && (
+            <button disabled={falAnalyzeBusy || falAnalyzeJob.quote.estimated_total === null} onClick={() => void confirmFalAnalyze()}>Analyze this footage</button>
+          )}
+          {falAnalyzeJob && !["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(falAnalyzeJob.state) && (
+            <button className="secondary" disabled={falAnalyzeBusy} onClick={() => void cancelFalAnalyze()}>Cancel analysis</button>
+          )}
+          {falAnalyzeJob?.state === "ready" && falAnalyzeJob.analysis && (
+            <>
+              <button disabled={falAnalyzeBusy || busy} onClick={() => void applyFalAnalysis()}>Use for scene {activeSceneNumber}</button>
+              <button className="secondary" disabled={falAnalyzeBusy} onClick={() => {
+                setFalAnalyzeJob(undefined);
+                setStatus("Current caption kept.");
+              }}>Keep current copy</button>
+              <button className="secondary" disabled={falAnalyzeBusy} onClick={() => {
+                setFalAnalyzeJob(undefined);
+                setStatus("Request a new FAL price to analyze again.");
+              }}>Analyze again</button>
+            </>
+          )}
+          <button className="secondary" disabled={falAnalyzeBusy} onClick={() => setFalAnalyzeOpen(false)}>
+            {falAnalyzeJob && falGenerationActive(falAnalyzeJob.state) ? "Continue editing" : "Close"}
+          </button>
+        </div>
+      </dialog>}
       {falSpeechOpen && project && <dialog open aria-labelledby="fal-speech-title">
         <h2 id="fal-speech-title">Generate voice-over</h2>
         <p>Uses Kokoro American English on FAL. Charged directly to your FAL account. F-Motion copies the result into private storage.</p>
@@ -3132,6 +3367,10 @@ function App() {
     {authReady && step === "settings" && <section>
       <h1>Choose your video sources</h1>
       <p>Connect only the services you want to use. Each provider stays under your account and uses your own API key.</p>
+      {hostUsage && <article className="settings-card" aria-labelledby="usage-settings-title">
+        <h2 id="usage-settings-title">F-Motion render balance</h2>
+        <p>{hostUsage.balance} render units left · preview costs {hostUsage.costs.preview}, final export costs {hostUsage.costs.final}. New accounts start with {hostUsage.free_grant} free units.</p>
+      </article>}
       <div className="provider-onboarding" aria-label="Video source options">
         <article className={`provider-card ${pexelsCredential?.connected ? "provider-live" : "provider-locked"}`}>
           <span className={`provider-status ${pexelsCredential?.connected ? "" : "provider-soon"}`}>{pexelsCredential?.connected ? "Unlocked" : "Locked"}</span>
@@ -3145,8 +3384,8 @@ function App() {
         <article className={`provider-card ${falCredential?.connected && !falUnavailable ? "provider-live" : "provider-locked"}`}>
           <span className={`provider-status ${falCredential?.connected && !falUnavailable ? "" : "provider-soon"}`}>{falCredential?.connected && !falUnavailable ? "Unlocked" : "Locked"}</span>
           <h2>FAL</h2>
-          <strong>AI stills</strong>
-          <p>Connect your key for AI still generation. Open a storyboard scene and choose Generate AI image to quote, confirm, and review one still.</p>
+          <strong>AI stills and footage analysis</strong>
+          <p>Connect your key to generate stills, animate portraits, and write captions from attached footage. Open a storyboard scene to quote, confirm, and review each FAL job.</p>
           {falCredential?.connected && !falUnavailable
             ? <a href="#fal-settings-title">Manage FAL</a>
             : <button className="lock-trigger" onClick={showFalLock}>Why is this locked?</button>}
@@ -3192,11 +3431,21 @@ function App() {
       </article>
       <article className="settings-card" aria-labelledby="fal-settings-title">
         <h2 id="fal-settings-title">FAL generation</h2>
-        <p>Connect your own FAL API-scope key for AI still generation in the storyboard. Each image is charged directly to your FAL account after you see the estimated cost and confirm it. F-Motion does not supply or share a FAL key.</p>
+        <p>Connect your own FAL key for AI stills, Hailuo animation, Kokoro voice-over, and footage analysis in the storyboard. Each job is charged directly to your FAL account after you see the estimated cost and confirm it. F-Motion does not supply or share a FAL key.</p>
         {falUnavailable && <p className="notice">FAL connection is unavailable here. Uploads, Pexels, editing, and rendering still work.</p>}
         {!falUnavailable && falCredential?.connected && <p>
           Connected · key ending …{falCredential.hint}
           {falCredential.validated_at ? ` · verified ${new Date(falCredential.validated_at).toLocaleString()}` : ""}
+          {falCredential.account?.username ? ` · FAL account ${falCredential.account.username}` : ""}
+        </p>}
+        {!falUnavailable && falCredential?.connected && falCredential.account?.credits && <p>
+          FAL credits · {falCredential.account.credits.currency} {falCredential.account.credits.current_balance}
+        </p>}
+        {!falUnavailable && falCredential?.connected && falCredential.account?.credits_unavailable === "admin_key_required" && <p>
+          This API-scope key can generate, but FAL only reports credit balance for ADMIN-scope keys. Check the FAL dashboard, or connect an ADMIN key if you want the balance here.
+        </p>}
+        {!falUnavailable && falCredential?.connected && falCredential.account?.credits_unavailable === "provider_unavailable" && <p>
+          FAL credit balance could not be loaded. Generation still works with this key.
         </p>}
         {!falUnavailable && <label htmlFor="fal-key">{falCredential?.connected ? "Replacement FAL API key" : "FAL API key"}
           <input
@@ -3208,7 +3457,7 @@ function App() {
             onChange={(event) => setFalKey(event.target.value)}
             placeholder="Paste an API-scope key"
           />
-          <small>Create an API-scope key in FAL. F-Motion can verify that it calls models, but FAL does not provide scope introspection.</small>
+          <small>An API-scope key is enough to generate. Use an ADMIN-scope key if you also want FAL to report credit balance in Settings. F-Motion never shows the key again.</small>
         </label>}
         {!falUnavailable && <div className="settings-actions">
           <button disabled={falBusy || !falKey.trim()} onClick={() => void connectFal()}>{falCredential?.connected ? "Replace key" : "Connect FAL"}</button>

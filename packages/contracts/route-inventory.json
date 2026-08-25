@@ -26,6 +26,7 @@
     { "method": "POST", "path": "/projects/{project_id}/media/pexels", "auth": "bearer" },
     { "method": "POST", "path": "/projects/{project_id}/media/pexels/auto", "auth": "bearer" },
     { "method": "POST", "path": "/projects/{project_id}/media/pexels/storyboard", "auth": "bearer" },
+    { "method": "POST", "path": "/projects/{project_id}/scenes/{scene_id}/fal/analyze-quotes", "auth": "bearer" },
     { "method": "POST", "path": "/projects/{project_id}/render", "auth": "bearer" },
     { "method": "POST", "path": "/render-jobs/{job_id}/cancel", "auth": "bearer" },
     { "method": "GET", "path": "/render-jobs/{job_id}/events", "auth": "bearer" },

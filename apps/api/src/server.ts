@@ -554,6 +554,25 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       next(error);
     }
   });
+  app.post("/api/projects/:projectId/scenes/:sceneId/fal/analyze-quotes", async (request, response, next) => {
+    try {
+      if (!options.falGeneration) return falGenUnavailable(response);
+      if (!exactObject(request.body, ["source_media_id"])) {
+        return response.status(422).json({ type: "validation", message: "invalid analysis quote" });
+      }
+      const job = await options.falGeneration.quoteAnalyze(
+        String(response.locals.ownerId),
+        request.params.projectId,
+        request.params.sceneId,
+        (request.body as { source_media_id?: unknown }).source_media_id
+      );
+      response.status(201).json(job);
+    } catch (error) {
+      const mapped = falGenerationHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
   app.post("/api/projects/:projectId/scenes/:sceneId/fal/video-quotes", async (request, response, next) => {
     try {
       if (!options.falGeneration) return falGenUnavailable(response);
