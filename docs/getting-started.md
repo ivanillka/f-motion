@@ -129,6 +129,7 @@ Also verify:
 - sign-out invalidates the browser session;
 - no real secret appears in the web bundle or repository.
 
-AI generation, payments, and third-party paid-provider integrations are not
-included. Add them only in a host after separately reviewing credentials,
+Optional owner-keyed FAL stills, animation, voice-over, and footage analysis
+are available when `FENGINE_FAL_BYOK_ENABLED=1`. Payments and managed provider
+credits are not included. Enable FAL only after reviewing credentials,
 licensing, cost controls, retention, and abuse limits.

@@ -147,9 +147,11 @@ rejects shared provider credentials.
 Each user supplies their own Pexels API key in authenticated Settings. Pexels
 search and media copy use only that owner's encrypted credential and quota.
 
-Each user supplies an API-scope key in authenticated Settings and is charged
-by FAL directly. The API can validate call capability but FAL does not expose
-scope introspection, so the product must not claim to detect ADMIN scope.
+Each user supplies a FAL key in authenticated Settings and is charged by FAL
+directly. An API-scope key is enough to generate and analyze footage. Credit
+balance in Settings requires FAL's ADMIN-scoped billing API; API-scope keys
+are shown as connected without a dollar balance. The API can validate call
+capability but FAL does not expose scope introspection on the key itself.
 Still generation may be enabled for invite-only hosts after Gate 0 FAL
 ownership, commercial-use, training/data-use, and retention evidence is
 recorded. BYOK changes who is charged; it does not remove privacy or legal

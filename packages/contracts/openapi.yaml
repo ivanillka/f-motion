@@ -446,6 +446,32 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "503": { $ref: "#/components/responses/Unavailable" }
+  /projects/{project_id}/scenes/{scene_id}/fal/analyze-quotes:
+    post:
+      operationId: quoteFalMediaAnalysis
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+        - { $ref: "#/components/parameters/SceneId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_media_id]
+              additionalProperties: false
+              properties:
+                source_media_id: { type: string, minLength: 1 }
+      responses:
+        "201":
+          description: Quoted FAL still or video analysis for one ready scene media
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
   /projects/{project_id}/render:
     post:
       operationId: enqueueRender
@@ -559,6 +585,11 @@ components:
       in: path
       required: true
       schema: { type: string, minLength: 1 }
+    SceneId:
+      name: scene_id
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
     AssetId:
       name: asset_id
       in: path
@@ -660,9 +691,24 @@ components:
       type: object
       required: [connected]
       properties:
+        provider: { type: string }
         connected: { type: boolean }
         hint: { type: string }
         validated_at: { type: string, format: date-time }
+        account:
+          type: object
+          additionalProperties: false
+          properties:
+            username: { type: string }
+            credits:
+              type: object
+              additionalProperties: false
+              properties:
+                current_balance: { type: number, minimum: 0 }
+                currency: { type: string }
+            credits_unavailable:
+              type: string
+              enum: [admin_key_required, provider_unavailable]
       additionalProperties: false
     ProjectSummary:
       type: object

@@ -163,7 +163,7 @@ function falJobView(job) {
 const falJobs = new Map();
 const falPolls = new Map();
 const falCredentials = {
-  async status() { return { provider: "fal", connected: true, hint: "abcd" }; },
+  async status() { return { provider: "fal", connected: true, hint: "abcd", account: { username: "studio", credits: { current_balance: 24.5, currency: "USD" } } }; },
   async connect() { return { provider: "fal", connected: true, hint: "abcd" }; },
   async test() { return { provider: "fal", connected: true, hint: "abcd" }; },
   async disconnect() {}
@@ -242,6 +242,31 @@ const falGeneration = {
     falJobs.set(job.id, job);
     return falJobView(job);
   },
+  async quoteAnalyze(ownerId, projectId, sceneId, sourceMediaId) {
+    const job = {
+      id: randomUUID(),
+      project_id: projectId,
+      scene_id: sceneId,
+      kind: "analyze",
+      endpoint_id: "fal-ai/moondream3-preview/query",
+      state: "quoted",
+      cancel_requested: false,
+      prompt: "Analyze attached footage",
+      quote: {
+        endpoint_id: "fal-ai/moondream3-preview/query",
+        unit_price: 0.002,
+        unit: "request",
+        currency: "USD",
+        estimated_total: 0.002
+      },
+      quote_expires_at: new Date(Date.now() + 600_000).toISOString(),
+      source_media_id: sourceMediaId,
+      ownerId,
+      projectId
+    };
+    falJobs.set(job.id, job);
+    return falJobView(job);
+  },
   async confirm(ownerId, jobId) {
     const job = falJobs.get(jobId);
     if (!job || job.ownerId !== ownerId) throw Object.assign(new Error("not found"), { status: 404 });
@@ -254,6 +279,14 @@ const falGeneration = {
     const polls = (falPolls.get(jobId) ?? 0) + 1;
     falPolls.set(jobId, polls);
     if (job.state === "queued" || job.state === "running" || job.state === "inspecting") {
+      if (job.kind === "analyze") {
+        job.state = "ready";
+        job.analysis = {
+          visual_prompt: "A red kayak on still water at dusk",
+          caption: "Hold the last light"
+        };
+        return falJobView(job);
+      }
       if (polls === 1) job.state = "running";
       else if (polls === 2) job.state = "inspecting";
       else {

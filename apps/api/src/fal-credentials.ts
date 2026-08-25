@@ -4,10 +4,12 @@ import {
   FalProviderError,
   decryptCredential,
   encryptCredential,
+  fetchAccount,
   normalizeFalCredential,
   validateFalCredential,
   type CredentialVault,
-  type EncryptedCredential
+  type EncryptedCredential,
+  type FalAccountView
 } from "@f-engine/fal-host";
 
 export interface FalCredentialView {
@@ -15,6 +17,7 @@ export interface FalCredentialView {
   connected: boolean;
   hint?: string;
   validated_at?: string;
+  account?: FalAccountView;
 }
 
 export interface FalCredentialService {
@@ -56,14 +59,15 @@ interface CredentialRow {
   validatedAt: Date | string;
 }
 
-function view(row?: Pick<CredentialRow, "hint" | "validatedAt">): FalCredentialView {
+function view(row?: Pick<CredentialRow, "hint" | "validatedAt">, account?: FalAccountView): FalCredentialView {
   if (!row) return { provider: "fal", connected: false };
   const validated = row.validatedAt instanceof Date ? row.validatedAt : new Date(row.validatedAt);
   return {
     provider: "fal",
     connected: true,
     hint: row.hint,
-    validated_at: validated.toISOString()
+    validated_at: validated.toISOString(),
+    ...(account ? { account } : {})
   };
 }
 
@@ -84,7 +88,19 @@ export class PostgresFalCredentialService implements FalCredentialService {
   }
 
   async status(ownerId: string): Promise<FalCredentialView> {
-    return view(await this.row(ownerId));
+    const row = await this.row(ownerId);
+    if (!row) return view();
+    try {
+      const apiKey = decryptCredential({
+        ciphertext: row.ciphertext,
+        nonce: row.nonce,
+        authTag: row.authTag,
+        keyVersion: row.keyVersion
+      }, { id: row.id, ownerId, provider: "fal" }, this.vault);
+      return view(row, await fetchAccount(apiKey, this.fetchImpl));
+    } catch {
+      return view(row, { credits_unavailable: "provider_unavailable" });
+    }
   }
 
   async connect(ownerId: string, value: unknown): Promise<FalCredentialView> {
@@ -130,7 +146,7 @@ export class PostgresFalCredentialService implements FalCredentialService {
         [ownerId]
       );
       await client.query("COMMIT");
-      return view({ hint, validatedAt });
+      return view({ hint, validatedAt }, await fetchAccount(credential, this.fetchImpl));
     } catch (error) {
       await client.query("ROLLBACK");
       if (error instanceof FalCredentialBusyError) throw error;
@@ -165,7 +181,7 @@ export class PostgresFalCredentialService implements FalCredentialService {
         WHERE id = $2 AND "ownerId" = $3 AND provider = 'fal'`,
       [validatedAt, id, ownerId]
     );
-    return view({ hint: row?.hint ?? apiKey.slice(-4), validatedAt });
+    return view({ hint: row?.hint ?? apiKey.slice(-4), validatedAt }, await fetchAccount(apiKey, this.fetchImpl));
   }
 
   async disconnect(ownerId: string): Promise<void> {

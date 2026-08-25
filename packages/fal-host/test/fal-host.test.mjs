@@ -79,12 +79,17 @@ test("FAL pricing validation maps provider results without leaking bodies", asyn
     validateFalCredential("synthetic:key", async () => { throw new Error("synthetic:key"); }),
     (error) => error instanceof FalProviderError && !error.message.includes("synthetic")
   );
-  await assert.rejects(
-    validateFalCredential("synthetic:key", async (_url, init) => new Promise((_resolve, reject) => {
-      init.signal.addEventListener("abort", () => reject(new Error("synthetic:key")), { once: true });
-    }), 5),
-    (error) => error instanceof FalProviderError && error.code === "unavailable"
-  );
+  const keepAlive = setTimeout(() => undefined, 50);
+  try {
+    await assert.rejects(
+      validateFalCredential("synthetic:key", async (_url, init) => new Promise((_resolve, reject) => {
+        init.signal.addEventListener("abort", () => reject(new Error("synthetic:key")), { once: true });
+      }), 5),
+      (error) => error instanceof FalProviderError && error.code === "unavailable"
+    );
+  } finally {
+    clearTimeout(keepAlive);
+  }
 });
 
 import {
@@ -254,4 +259,92 @@ test("speech result reads audio.url from fal.media and rejects other hosts", asy
     status: 200, headers: { "content-type": "application/json" }
   })), { status: "COMPLETED" });
   await cancelSpeech("k", "req", async () => new Response(null, { status: 202 }));
+});
+
+import {
+  FAL_STILL_ANALYZE_ENDPOINT_ID,
+  FAL_VIDEO_ANALYZE_ENDPOINT_ID,
+  analyzeResult,
+  analyzeStatus,
+  cancelAnalyze,
+  estimateStillAnalysis,
+  estimateVideoAnalysis,
+  falStillAnalyzeInput,
+  falVideoAnalyzeInput,
+  fetchAccount,
+  parseFalAccount,
+  parseStoryFromAnalysis,
+  submitAnalyze,
+  videoAnalysisBillableUnits
+} from "../dist/index.js";
+
+test("FAL billing maps credits and treats API-scope 403 as admin_key_required", async () => {
+  assert.deepEqual(parseFalAccount(200, {
+    username: "studio",
+    credits: { current_balance: 24.5, currency: "USD" }
+  }), {
+    username: "studio",
+    credits: { current_balance: 24.5, currency: "USD" }
+  });
+  assert.deepEqual(parseFalAccount(403, { error: { type: "authorization_error" } }), {
+    credits_unavailable: "admin_key_required"
+  });
+  assert.equal(parseFalAccount(200, { prices: [] }).credits_unavailable, "provider_unavailable");
+  const billed = await fetchAccount("synthetic:key", async (url) => {
+    assert.equal(url, "https://api.fal.ai/v1/account/billing?expand=credits");
+    return new Response(JSON.stringify({
+      username: "studio",
+      credits: { current_balance: 12, currency: "USD" }
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+  assert.equal(billed.credits?.current_balance, 12);
+  const scoped = await fetchAccount("synthetic:key", async () => new Response("no", { status: 403 }));
+  assert.equal(scoped.credits_unavailable, "admin_key_required");
+  assert.equal(JSON.stringify(scoped).includes("no"), false);
+});
+
+test("story analysis clips JSON fields and rejects empty model output", () => {
+  assert.deepEqual(parseStoryFromAnalysis('{"visual_prompt":"A red kayak on still water at dusk","caption":"Hold the last light"}'), {
+    visual_prompt: "A red kayak on still water at dusk",
+    caption: "Hold the last light"
+  });
+  const long = parseStoryFromAnalysis("A ".repeat(200));
+  assert.ok(long.visual_prompt.length <= 240);
+  assert.ok(long.caption.length <= 180);
+  assert.throws(() => parseStoryFromAnalysis("   "), (error) => error instanceof FalImageError && error.code === "unsafe_output");
+});
+
+test("still and video analysis quotes, submits, and reads output without inventing totals", async () => {
+  const still = await estimateStillAnalysis("k", async () => new Response(JSON.stringify({
+    prices: [{ endpoint_id: FAL_STILL_ANALYZE_ENDPOINT_ID, unit_price: 0.002, unit: "request", currency: "USD" }]
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  assert.equal(still.estimated_total, 0.002);
+  assert.equal(videoAnalysisBillableUnits(12_000), 3);
+  const video = await estimateVideoAnalysis("k", 12_000, async () => new Response(JSON.stringify({
+    prices: [{ endpoint_id: FAL_VIDEO_ANALYZE_ENDPOINT_ID, unit_price: 0.01, unit: "5 seconds", currency: "USD" }]
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  assert.equal(video.estimated_total, 0.03);
+  let seen;
+  const submitted = await submitAnalyze("k", FAL_STILL_ANALYZE_ENDPOINT_ID, falStillAnalyzeInput("https://example.invalid/still.jpg"), async (url, init) => {
+    seen = { url, init };
+    return new Response(JSON.stringify({ request_id: "a1" }), {
+      status: 200, headers: { "content-type": "application/json" }
+    });
+  });
+  assert.equal(submitted.request_id, "a1");
+  assert.equal(seen.url, `https://queue.fal.run/${FAL_STILL_ANALYZE_ENDPOINT_ID}`);
+  assert.equal(JSON.parse(seen.init.body).reasoning, false);
+  assert.deepEqual(falVideoAnalyzeInput("https://example.invalid/clip.mp4").detailed_analysis, false);
+  assert.deepEqual(await analyzeStatus("k", FAL_VIDEO_ANALYZE_ENDPOINT_ID, "a1", async () => new Response(JSON.stringify({ status: "COMPLETED" }), {
+    status: 200, headers: { "content-type": "application/json" }
+  })), { status: "COMPLETED" });
+  const result = await analyzeResult("k", FAL_STILL_ANALYZE_ENDPOINT_ID, "a1", async () => new Response(JSON.stringify({
+    output: '{"visual_prompt":"market stall","caption":"Come closer"}'
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  assert.match(result.output, /market stall/);
+  await cancelAnalyze("k", FAL_STILL_ANALYZE_ENDPOINT_ID, "a1", async () => new Response(null, { status: 202 }));
+  await assert.rejects(
+    submitAnalyze("k", "fal-ai/flux/schnell", {}),
+    (error) => error instanceof FalImageError && error.code === "invalid_request"
+  );
 });

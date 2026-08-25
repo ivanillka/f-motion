@@ -3,15 +3,20 @@ import type { Pool, PoolClient } from "pg";
 import {
   FAL_IMAGE_ENDPOINT_ID,
   FAL_SPEECH_ENDPOINT_ID,
+  FAL_STILL_ANALYZE_ENDPOINT_ID,
+  FAL_VIDEO_ANALYZE_ENDPOINT_ID,
   FAL_VIDEO_DURATION,
   FAL_VIDEO_ENDPOINT_ID,
   FalImageError,
   estimateImage,
   estimateSpeech,
+  estimateStillAnalysis,
   estimateVideo,
+  estimateVideoAnalysis,
   falImageInput,
   falSpeechInput,
-  type FalImageQuote
+  type FalImageQuote,
+  type FalStoryFromMedia
 } from "@f-engine/fal-host";
 import { sceneMediaView, type SceneMediaView, type StoredMedia } from "./media-storage.js";
 import {
@@ -23,6 +28,10 @@ const QUOTE_TTL_MS = 10 * 60_000;
 const ACTIVE_STATES = ["queued", "submitting", "running", "downloading", "inspecting"] as const;
 const SOURCE_STILL_MAX_BYTES = 25_000_000;
 const ANIMATABLE_STILL_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const ANALYZE_STILL_TYPES = ANIMATABLE_STILL_TYPES;
+const ANALYZE_VIDEO_TYPE = "video/mp4";
+const ANALYZE_VIDEO_MAX_BYTES = 100_000_000;
+const ANALYZE_PROMPT = "Analyze attached footage";
 
 export type GenerationJobState =
   | "quoted"
@@ -36,7 +45,7 @@ export type GenerationJobState =
   | "failed"
   | "submission_uncertain";
 
-export type GenerationKind = "image" | "image_to_video" | "speech";
+export type GenerationKind = "image" | "image_to_video" | "speech" | "analyze";
 
 export interface GenerationJobView {
   id: string;
@@ -52,6 +61,7 @@ export interface GenerationJobView {
   failure_code?: string;
   result_media?: SceneMediaView;
   source_media_id?: string;
+  analysis?: FalStoryFromMedia;
 }
 
 export interface FalGenerationService {
@@ -64,6 +74,7 @@ export interface FalGenerationService {
     motionPrompt: unknown
   ): Promise<GenerationJobView>;
   quoteSpeech(ownerId: string, projectId: string, prompt: unknown): Promise<GenerationJobView>;
+  quoteAnalyze(ownerId: string, projectId: string, sceneId: string, sourceMediaId: unknown): Promise<GenerationJobView>;
   confirm(ownerId: string, jobId: string, idempotencyKey: unknown): Promise<GenerationJobView>;
   get(ownerId: string, jobId: string): Promise<GenerationJobView | undefined>;
   cancel(ownerId: string, jobId: string): Promise<GenerationJobView>;
@@ -77,6 +88,15 @@ export class FalGenerationConflictError extends Error {
 }
 export class FalGenerationBusyError extends Error {}
 export class FalGenerationNotFoundError extends Error {}
+
+interface AnalyzeSourceSnapshot {
+  source_media_id: string;
+  sealed_sha256: string;
+  declared_type: string;
+  bytes: number;
+  duration_ms?: number;
+  analysis?: FalStoryFromMedia;
+}
 
 interface VideoSourceSnapshot {
   source_media_id: string;
@@ -136,6 +156,29 @@ function normalizeIdempotencyKey(value: unknown): string {
     throw new FalGenerationValidationError("invalid idempotency key");
   }
   return key.toLowerCase();
+}
+
+function asAnalyzeSnapshot(value: unknown): AnalyzeSourceSnapshot | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const row = value as Record<string, unknown>;
+  if (typeof row.source_media_id !== "string" || typeof row.sealed_sha256 !== "string") return undefined;
+  if (typeof row.declared_type !== "string" || typeof row.bytes !== "number") return undefined;
+  const analysis = row.analysis && typeof row.analysis === "object" && !Array.isArray(row.analysis)
+    ? row.analysis as Record<string, unknown>
+    : undefined;
+  const story = analysis
+    && typeof analysis.visual_prompt === "string"
+    && typeof analysis.caption === "string"
+    ? { visual_prompt: analysis.visual_prompt, caption: analysis.caption }
+    : undefined;
+  return {
+    source_media_id: row.source_media_id,
+    sealed_sha256: row.sealed_sha256,
+    declared_type: row.declared_type,
+    bytes: row.bytes,
+    ...(typeof row.duration_ms === "number" ? { duration_ms: row.duration_ms } : {}),
+    ...(story ? { analysis: story } : {})
+  };
 }
 
 function asVideoSnapshot(value: unknown): VideoSourceSnapshot | undefined {
@@ -243,7 +286,10 @@ export class PostgresFalGenerationService implements FalGenerationService {
       quote_expires_at: asDate(row.quoteExpiresAt).toISOString(),
       ...(row.failureCode ? { failure_code: row.failureCode } : {}),
       ...(resultMedia ? { result_media: resultMedia } : {}),
-      ...(row.sourceMediaId ? { source_media_id: row.sourceMediaId } : {})
+      ...(row.sourceMediaId ? { source_media_id: row.sourceMediaId } : {}),
+      ...(asAnalyzeSnapshot(row.inputJson)?.analysis
+        ? { analysis: asAnalyzeSnapshot(row.inputJson)!.analysis }
+        : {})
     };
   }
 
@@ -419,6 +465,91 @@ export class PostgresFalGenerationService implements FalGenerationService {
     return this.viewFromRow(row);
   }
 
+  async quoteAnalyze(
+    ownerId: string,
+    projectId: string,
+    sceneId: string,
+    sourceMediaIdValue: unknown
+  ): Promise<GenerationJobView> {
+    const sourceMediaId = normalizeMediaId(sourceMediaIdValue);
+    await assertOwnedScene(this.pool, ownerId, projectId, sceneId);
+    if (await activeJobCount(this.pool, ownerId) > 0 || await activeJobCount(this.pool, ownerId, sceneId) > 0) {
+      throw new FalGenerationBusyError("active FAL generation");
+    }
+    const media = await this.pool.query<{
+      id: string;
+      state: string;
+      declaredType: string;
+      sealedSha256: string | null;
+      sealedObjectKey: string | null;
+      detected: { type?: string; bytes?: number; duration_ms?: number } | null;
+    }>(
+      `SELECT id, state, "declaredType", "sealedSha256", "sealedObjectKey", detected
+         FROM "MediaAsset"
+        WHERE id = $1 AND "ownerId" = $2 AND "projectId" = $3`,
+      [sourceMediaId, ownerId, projectId]
+    );
+    const asset = media.rows[0];
+    if (!asset) throw new FalGenerationNotFoundError("source media not found");
+    if (asset.state !== "ready" || !asset.sealedSha256 || !asset.sealedObjectKey) {
+      throw new FalGenerationValidationError("source media is not ready");
+    }
+    const type = asset.detected?.type ?? asset.declaredType;
+    const bytes = asset.detected?.bytes ?? 0;
+    const isVideo = type === ANALYZE_VIDEO_TYPE;
+    const isStill = ANALYZE_STILL_TYPES.has(type);
+    if (!isVideo && !isStill) {
+      throw new FalGenerationValidationError("only ready JPEG, PNG, WebP stills or MP4 clips can be analyzed");
+    }
+    if (!Number.isInteger(bytes) || bytes <= 0
+      || bytes > (isVideo ? ANALYZE_VIDEO_MAX_BYTES : SOURCE_STILL_MAX_BYTES)) {
+      throw new FalGenerationValidationError("source media exceeds the analysis size limit");
+    }
+    const durationMs = isVideo ? asset.detected?.duration_ms : undefined;
+    if (isVideo && (!Number.isInteger(durationMs) || (durationMs ?? 0) < 500)) {
+      throw new FalGenerationValidationError("source video duration is required for analysis pricing");
+    }
+    let credential: { id: string; apiKey: string };
+    try {
+      credential = await this.credentials.decryptForOwner(ownerId);
+    } catch (error) {
+      if (error instanceof FalCredentialMissingError) throw error;
+      throw error;
+    }
+    let quote: FalImageQuote;
+    try {
+      quote = isVideo
+        ? await estimateVideoAnalysis(credential.apiKey, durationMs!, this.fetchImpl)
+        : await estimateStillAnalysis(credential.apiKey, this.fetchImpl);
+    } catch (error) {
+      if (error instanceof FalImageError) throw error;
+      throw error;
+    }
+    const id = randomUUID();
+    const inputJson: AnalyzeSourceSnapshot = {
+      source_media_id: sourceMediaId,
+      sealed_sha256: asset.sealedSha256,
+      declared_type: type,
+      bytes,
+      ...(isVideo ? { duration_ms: durationMs } : {})
+    };
+    const quoteExpiresAt = new Date(Date.now() + QUOTE_TTL_MS);
+    const endpointId = isVideo ? FAL_VIDEO_ANALYZE_ENDPOINT_ID : FAL_STILL_ANALYZE_ENDPOINT_ID;
+    await this.pool.query(
+      `INSERT INTO "GenerationJob"
+         (id, "ownerId", "projectId", "sceneId", "credentialId", kind, "endpointId", prompt, "sourceMediaId",
+          "inputJson", "quoteJson", "quoteExpiresAt", state, "idempotencyKey", "updatedAt")
+       VALUES ($1,$2,$3,$4,$5,'analyze',$6,$7,$8,$9,$10,$11,'quoted',$12,NOW())`,
+      [
+        id, ownerId, projectId, sceneId, credential.id, endpointId, ANALYZE_PROMPT, sourceMediaId,
+        JSON.stringify(inputJson), JSON.stringify(quote), quoteExpiresAt, randomUUID()
+      ]
+    );
+    const row = await this.load(ownerId, id);
+    if (!row) throw new Error("generation job missing after insert");
+    return this.viewFromRow(row);
+  }
+
   async confirm(ownerId: string, jobId: string, idempotencyKeyValue: unknown): Promise<GenerationJobView> {
     const idempotencyKey = normalizeIdempotencyKey(idempotencyKeyValue);
     const client = await this.pool.connect();
@@ -454,11 +585,14 @@ export class PostgresFalGenerationService implements FalGenerationService {
       }
       const outboxKind = row.kind === "image_to_video" ? "generate-fal-video"
         : row.kind === "speech" ? "generate-fal-speech"
-          : "generate-fal-image";
-      if (row.kind === "image_to_video") {
-        const snapshot = asVideoSnapshot(row.inputJson);
+          : row.kind === "analyze" ? "generate-fal-analyze"
+            : "generate-fal-image";
+      if (row.kind === "image_to_video" || row.kind === "analyze") {
+        const snapshot = row.kind === "analyze" ? asAnalyzeSnapshot(row.inputJson) : asVideoSnapshot(row.inputJson);
         if (!snapshot || !row.sourceMediaId) {
-          throw new FalGenerationValidationError("invalid video generation snapshot");
+          throw new FalGenerationValidationError(
+            row.kind === "analyze" ? "invalid analysis snapshot" : "invalid video generation snapshot"
+          );
         }
         const source = await client.query<{ sealedSha256: string | null; state: string }>(
           `SELECT "sealedSha256", state FROM "MediaAsset"
@@ -469,7 +603,9 @@ export class PostgresFalGenerationService implements FalGenerationService {
         if (!asset || asset.state !== "ready" || asset.sealedSha256 !== snapshot.sealed_sha256) {
           throw new FalGenerationConflictError(
             "source_changed",
-            "The source image changed. Request a new price before generating."
+            row.kind === "analyze"
+              ? "The source media changed. Request a new price before analyzing."
+              : "The source image changed. Request a new price before generating."
           );
         }
       }
