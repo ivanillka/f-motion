@@ -1,0 +1,108 @@
+{
+  "name": "F-Motion LinkedIn",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fmotion-linkedin",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "Webhook",
+      "name": "F-Motion LinkedIn webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "7c9e8a12-4b3d-4e1a-9f06-12ab34cd56ef"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.body ?? $json;\nconst headers = Object.fromEntries(\n  Object.entries($json.headers ?? {}).map(([key, value]) => [key.toLowerCase(), value]),\n);\nconst requiredSecret = $env.FMOTION_LINKEDIN_WEBHOOK_SECRET || '';\nif (!requiredSecret) {\n  throw new Error('FMOTION_LINKEDIN_WEBHOOK_SECRET is not set on n8n.');\n}\nif (headers['x-fmotion-linkedin-secret'] !== requiredSecret) {\n  throw new Error('Invalid F-Motion LinkedIn webhook secret.');\n}\n\nconst skip = raw.skip === true || raw.skip === 'true';\nconst text = String(raw.text || '').trim();\nconst url = String(raw.url || 'https://f-motion.com').trim() || 'https://f-motion.com';\nconst source = String(raw.source || '').trim() || null;\n\nif (!skip && !text) {\n  throw new Error('text is required unless skip is true.');\n}\nif (!skip && text.length > 2000) {\n  throw new Error('text exceeds 2000 characters.');\n}\n\nreturn [{\n  json: {\n    skip,\n    text,\n    url,\n    source,\n  },\n}];"
+      },
+      "id": "Normalize",
+      "name": "Normalize payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.skip}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "IfSkip",
+      "name": "If skip",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, skipped: true, source: $json.source }) }}"
+      },
+      "id": "RespondSkipped",
+      "name": "Respond skipped",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [720, -120]
+    },
+    {
+      "parameters": {
+        "authentication": "communityManagement",
+        "postAs": "organization",
+        "organization": "144706944",
+        "text": "={{$json.text}}",
+        "shareMediaCategory": "ARTICLE",
+        "additionalFields": {
+          "description": "Vertical video editor in live alpha",
+          "originalUrl": "={{$json.url}}",
+          "title": "F-Motion"
+        }
+      },
+      "id": "LinkedIn",
+      "name": "Create organization post",
+      "type": "n8n-nodes-base.linkedIn",
+      "typeVersion": 1,
+      "position": [720, 120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, skipped: false, source: $('Normalize payload').item.json.source, postId: $json.id || $json.postId || null }) }}"
+      },
+      "id": "RespondPosted",
+      "name": "Respond posted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [960, 120]
+    }
+  ],
+  "connections": {
+    "F-Motion LinkedIn webhook": {
+      "main": [[{ "node": "Normalize payload", "type": "main", "index": 0 }]]
+    },
+    "Normalize payload": {
+      "main": [[{ "node": "If skip", "type": "main", "index": 0 }]]
+    },
+    "If skip": {
+      "main": [
+        [{ "node": "Respond skipped", "type": "main", "index": 0 }],
+        [{ "node": "Create organization post", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create organization post": {
+      "main": [[{ "node": "Respond posted", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null
+}

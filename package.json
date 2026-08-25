@@ -25,7 +25,8 @@
     "demo": "npm run build --workspace apps/api && npm run build --workspace apps/worker && node tests/e2e/run-servers.mjs",
     "stack": "npm run build --workspace apps/api && npm run start --workspace apps/api",
     "test:e2e:web": "playwright test -c tests/e2e/playwright.config.ts",
-    "test:package-consumer": "node --test tests/package-consumer.test.mjs"
+    "test:package-consumer": "node --test tests/package-consumer.test.mjs",
+    "linkedin:n8n:setup": "node scripts/setup-n8n-fmotion-linkedin.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.62.0",
