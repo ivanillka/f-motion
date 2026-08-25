@@ -857,6 +857,42 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .architecture-editor { padding: 14px; border: 1px solid var(--border); border-radius: 8px; }
 .architecture-editor summary { cursor: pointer; font-weight: 700; }
 .architecture-editor[open] summary { margin-bottom: 14px; }
+.create-brief { display: grid; gap: 16px; }
+.create-media-drop {
+  display: grid;
+  gap: 10px;
+  padding: 20px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.create-media-drop p { margin: 0; color: var(--muted); }
+.create-pending-files { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.create-pending-files li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  background: var(--raised);
+  border-radius: 6px;
+}
+.create-pending-files button { width: auto; min-height: 36px; }
+.create-more-settings {
+  display: grid;
+  gap: 16px;
+  padding-top: 32px;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.create-more-eyebrow {
+  margin: 0;
+  color: var(--accent-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
 
 .settings-card {
   display: grid;

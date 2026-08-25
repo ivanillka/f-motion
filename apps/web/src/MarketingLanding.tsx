@@ -121,7 +121,7 @@ export function MarketingLanding({
                 <article className="mkt-recipe">
                   <span>03</span>
                   <h3>MCP agent loop</h3>
-                  <p>OpenClaw, Cursor, or Hermes drive create → command → render → wait with machine keys.</p>
+                  <p>OpenClaw, Cursor, or Hermes: drop media or chat, ask a few questions, return a preview plus a draft link.</p>
                 </article>
               </div>
             </section>

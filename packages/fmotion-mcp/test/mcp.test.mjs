@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const serverPath = fileURLToPath(new URL("../dist/server.js", import.meta.url));
@@ -63,6 +66,9 @@ test("fmotion-mcp lists tools and reports usage over /v1", async () => {
     const tools = await rpc(child, { jsonrpc: "2.0", id: 2, method: "tools/list" });
     const names = tools.result.tools.map((tool) => tool.name);
     assert.deepEqual(names, [
+      "read_media",
+      "compose_reel",
+      "open_draft",
       "create_project",
       "run_command",
       "request_render",
@@ -77,6 +83,26 @@ test("fmotion-mcp lists tools and reports usage over /v1", async () => {
       params: { name: "usage", arguments: {} }
     });
     assert.match(usage.result.content[0].text, /"balance": 12/);
+    const directory = await mkdtemp(join(tmpdir(), "fmotion-mcp-media-"));
+    const png = join(directory, "still.png");
+    await writeFile(png, Buffer.from(
+      "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000a49444154789c6360000000020001e221bc330000000049454e44ae426082",
+      "hex"
+    ));
+    const read = await rpc(child, {
+      jsonrpc: "2.0",
+      id: 4,
+      method: "tools/call",
+      params: { name: "read_media", arguments: { paths: [png] } }
+    });
+    assert.match(read.result.content[0].text, /"image\/png"/);
+    const draft = await rpc(child, {
+      jsonrpc: "2.0",
+      id: 5,
+      method: "tools/call",
+      params: { name: "open_draft", arguments: { project_id: "p1" } }
+    });
+    assert.match(draft.result.content[0].text, /\/app\/\?project=p1/);
   } finally {
     child.kill("SIGTERM");
     await new Promise((resolve, reject) => api.close((error) => error ? reject(error) : resolve()));

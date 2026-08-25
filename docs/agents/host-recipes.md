@@ -40,10 +40,14 @@ CLI equivalent: `fmotion projects create` → `command` → `render` → `wait` 
 
 **When:** An agent operates the reel for a user.
 
-1. Configure MCP `@f-engine/fmotion-mcp` with `FMOTION_API_KEY` + origin.
-2. Tools: `create_project` → `run_command` → `request_render` → `wait_render` →
-   `download_render` (+ `usage`).
-3. Agent returns the file or `projectUrl` to the human/host.
+1. Configure MCP `@f-engine/fmotion-mcp` with `FMOTION_API_KEY` + origin
+   (optional `FMOTION_WEB_ORIGIN` for absolute draft links).
+2. Media first **or** chat only, then at most four questions.
+3. Tools: `read_media` → `compose_reel` → return the preview and `draft_url`.
+   Selective follow-ups use `run_command` / `open_draft` / render wait.
+4. The composed project **is** the draft. Do not clone it.
+
+Contract: [`../contracts/agent-compose.md`](../contracts/agent-compose.md).
 
 Do not put the OpenClaw gateway operator token into F-Motion auth.
 

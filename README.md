@@ -64,9 +64,10 @@ SDKs, persist data, or choose presentation identity.
 Private hosts pin reviewed F-Engine releases and adapt at the package/API
 boundary. They do not edit a vendored fork.
 
-The reference journey accepts a short brief, then either user-owned media or
-licensed Pexels footage from the user's account, and produces an accurate
-vertical preview. AI generation is deliberately not implemented. Settings
+The reference journey accepts dropped media or a short brief, then either
+user-owned media or licensed Pexels footage from the user's account, and
+produces an accurate vertical preview. Agents (Cursor, OpenClaw, Hermes) use
+the same loop and always return a draft URL for selective edits. AI generation is deliberately not implemented. Settings
 connects and validates user-owned Pexels and optional FAL credentials; it never
 returns their values to the browser.
 

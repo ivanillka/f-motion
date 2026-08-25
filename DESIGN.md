@@ -310,7 +310,7 @@ Write concise, direct, reassuring copy.
 The visual system must support these product truths:
 
 - One selected output format at a time: YouTube, Reel/Short, or Story
-- Creation begins as a guided chat
+- Creation begins as media drop or a guided chat; styles and plan controls stay visible below the fold
 - Users choose one of three generated concepts
 - The first output is a preview, not an automatically published video
 - Users may edit or download after preview

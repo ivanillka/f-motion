@@ -88,6 +88,7 @@ your row when done.
 | 064 | OpenClaw skill/docs calling F-Motion API keys | P1 | S | 061 | DONE (`cursor/agent-api-cli-190c`) |
 | 065 | OpenAPI/agent docs polish + smoke check | P1 | S | 061–064 | DONE (`cursor/agent-api-cli-190c`) |
 | 066 | Fotium queue Edit opens a prefilled `/app` draft | P1 | M | 053, 054 | DONE (branch `advisor/056-fotium-queue-edit`) |
+| 067 | Agent compose: media-first or chat-only → preview + draft | P1 | M | 061–064 | DONE (`cursor/agent-compose-flow-316e`) |
 
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (reason)

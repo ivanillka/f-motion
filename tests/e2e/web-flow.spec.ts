@@ -150,10 +150,7 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
   await page.getByRole("button", { name: "Create new video" }).click();
   await expect(page.getByLabel("Visual description")).toHaveValue("Launch a product for small teams");
-  await page.getByRole("button", { name: "Continue to video plan" }).click();
   await expect(page.getByLabel("Recommended video plan")).toContainText("Promote an idea or product");
-  await expect(page.getByLabel("Where should visuals come from?")).not.toBeVisible();
-  await page.getByText("Edit recommended video plan").click();
   await page.getByLabel("Where should visuals come from?").selectOption("own");
   await chooseConcept(page, "Direct");
 
@@ -214,10 +211,7 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   await signIn(page);
   await page.getByRole("button", { name: "Create new video" }).click();
   await page.getByLabel("Visual description").fill("A calm studio introduction");
-  await page.getByRole("button", { name: "Continue to video plan" }).click();
   await expect(page.getByLabel("Recommended video plan")).toContainText("About 30 seconds");
-  await expect(page.getByLabel("How should the story unfold?")).not.toBeVisible();
-  await page.getByText("Edit recommended video plan").click();
   await page.getByLabel("How should the story unfold?").selectOption("mystery");
   await page.getByLabel("What tone fits best?").selectOption("documentary");
   const pexelsMediaPosts: string[] = [];
@@ -298,8 +292,6 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   await signIn(page);
   await page.getByRole("button", { name: "Create new video" }).click();
   await page.getByLabel("Visual description").fill("A fictional lighthouse that does not exist on stock");
-  await page.getByRole("button", { name: "Continue to video plan" }).click();
-  await page.getByText("Edit recommended video plan").click();
   await page.getByLabel("Where should visuals come from?").selectOption("own");
   await chooseConcept(page, "Direct");
   await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
@@ -351,8 +343,6 @@ test("FAL image-to-video quotes, confirms, and attaches only after review", asyn
   await signIn(page);
   await page.getByRole("button", { name: "Create new video" }).click();
   await page.getByLabel("Visual description").fill("Animate a portrait still of a quiet harbor");
-  await page.getByRole("button", { name: "Continue to video plan" }).click();
-  await page.getByText("Edit recommended video plan").click();
   await page.getByLabel("Where should visuals come from?").selectOption("own");
   await chooseConcept(page, "Direct");
   await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();

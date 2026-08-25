@@ -6,6 +6,8 @@ infrastructure, customer data, and operational policy.
 
 Partner import (Fotium and the next CMS), Edit-in-F-Motion, and the return
 webhook contract: [`partner-import.md`](./partner-import.md).  
+Agent compose (media-first or chat-only → preview + draft):
+[`agent-compose.md`](./agent-compose.md).  
 Recipes: [`../agents/host-recipes.md`](../agents/host-recipes.md).  
 Fotium faces/Immich UX (host-owned): [`fotium-faces-ux.md`](./fotium-faces-ux.md).
 

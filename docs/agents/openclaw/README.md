@@ -8,7 +8,39 @@ Call F-Motion over `/v1` with an **F-Motion owner API key**. Do not use the Open
 2. Open **Settings → Machine API keys** and create a key (secret shown once).
 3. Store the key in the skill/tool environment as `FMOTION_API_KEY` (and `FMOTION_API_ORIGIN`).
 
+Prefer the compose loop in [`../../contracts/agent-compose.md`](../../contracts/agent-compose.md)
+and `skills/fmotion/SKILL.md`: `read_media` → few questions → `compose_reel` →
+preview + `draft_url`. Chat-only (no files) is the same loop.
+
 ## Example function-tool schemas
+
+```json
+{
+  "name": "fmotion_read_media",
+  "description": "Inspect local image or video files. Does not upload.",
+  "parameters": {
+    "type": "object",
+    "required": ["paths"],
+    "properties": { "paths": { "type": "array", "items": { "type": "string" } } }
+  }
+}
+```
+
+```json
+{
+  "name": "fmotion_compose_reel",
+  "description": "Create a draft from a brief and/or local media. Returns draft_url and optional preview.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "purpose": { "type": "string" },
+      "media_paths": { "type": "array", "items": { "type": "string" } },
+      "fill_stock": { "type": "boolean" },
+      "render": { "type": "string", "enum": ["preview", "none"] }
+    }
+  }
+}
+```
 
 ```json
 {
@@ -78,6 +110,9 @@ export const tools = {
   fmotion_request_render: ({ project_id, kind = "preview" }) =>
     fmotionRequest(`/v1/projects/${project_id}/render`, { method: "POST", body: { kind } })
 };
+
+Prefer `fmotion-mcp` (`compose_reel`, `read_media`, `open_draft`) when the host
+can attach stdio MCP. The HTTP wrappers above are the thin fallback.
 ```
 
 ## Alternatives

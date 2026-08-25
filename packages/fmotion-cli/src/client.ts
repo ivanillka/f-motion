@@ -15,21 +15,58 @@ export class FmotionApiError extends Error {
   }
 }
 
+export type ProjectView = {
+  id: string;
+  revision: number;
+  brief?: { purpose?: string; audience?: string; tone?: string };
+  selected_concept_id?: string;
+  scenes: Array<{
+    id: string;
+    order: number;
+    duration_ms: number;
+    media_id?: string;
+    caption?: string;
+    visual_prompt?: string;
+    [key: string]: unknown;
+  }>;
+};
+
+export type ConceptView = { id: string; title?: string };
+
 export type FmotionClientOptions = {
   apiOrigin: string;
   apiKey: string;
   fetchImpl?: typeof fetch;
+  putImpl?: typeof fetch;
 };
 
 export class FmotionClient {
   readonly apiOrigin: string;
   readonly apiKey: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly putImpl: typeof fetch;
 
   constructor(options: FmotionClientOptions) {
     this.apiOrigin = options.apiOrigin.replace(/\/$/, "");
     this.apiKey = options.apiKey;
     this.fetchImpl = options.fetchImpl ?? fetch;
+    this.putImpl = options.putImpl ?? options.fetchImpl ?? fetch;
+  }
+
+  commandEnvelope(
+    projectId: string,
+    revision: number,
+    kind: string,
+    payload: Record<string, unknown>
+  ): Record<string, unknown> {
+    return {
+      command_id: crypto.randomUUID(),
+      project_id: projectId,
+      base_revision: revision,
+      client_timestamp: new Date().toISOString(),
+      kind,
+      payload
+    };
   }
 
   async request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -74,7 +111,7 @@ export class FmotionClient {
   }
 
   createProject(brief: { purpose: string; audience?: string; tone?: string }) {
-    return this.request<{ project: { id: string; revision: number }; concepts?: unknown }>(
+    return this.request<{ project: ProjectView; concepts?: ConceptView[] }>(
       "POST",
       "/v1/projects",
       brief
@@ -82,11 +119,51 @@ export class FmotionClient {
   }
 
   getProject(projectId: string) {
-    return this.request<{ project: unknown; concepts?: unknown }>("GET", `/v1/projects/${projectId}`);
+    return this.request<{ project: ProjectView; concepts?: ConceptView[] }>("GET", `/v1/projects/${projectId}`);
   }
 
   command(projectId: string, envelope: Record<string, unknown>) {
-    return this.request("POST", `/v1/projects/${projectId}/commands`, envelope);
+    return this.request<ProjectView>("POST", `/v1/projects/${projectId}/commands`, envelope);
+  }
+
+  admitUpload(projectId: string, declaration: { content_type: string; bytes: number }) {
+    return this.request<{ asset_id: string; upload_url: string; method?: string; expires_in_seconds?: number }>(
+      "POST",
+      `/v1/projects/${projectId}/media/uploads`,
+      declaration
+    );
+  }
+
+  completeUpload(projectId: string, assetId: string) {
+    return this.request<{ asset_id?: string; state?: string; id?: string; detected?: { duration_ms?: number } }>(
+      "POST",
+      `/v1/projects/${projectId}/media/${assetId}/complete`
+    );
+  }
+
+  getMedia(projectId: string, assetId: string) {
+    return this.request<{
+      id: string;
+      state: string;
+      detected?: { duration_ms?: number };
+    }>("GET", `/v1/projects/${projectId}/media/${assetId}`);
+  }
+
+  fillStock(projectId: string) {
+    return this.request<{
+      results: Array<{ scene_id: string; state: string; asset?: { id: string } }>;
+    }>("POST", `/v1/projects/${projectId}/media/pexels/storyboard`, {});
+  }
+
+  async putUpload(uploadUrl: string, body: Buffer, contentType: string): Promise<void> {
+    const response = await this.putImpl(uploadUrl, {
+      method: "PUT",
+      headers: { "content-type": contentType },
+      body
+    });
+    if (!response.ok) {
+      throw new FmotionApiError(response.status, { type: "upstream", message: "upload put failed" });
+    }
   }
 
   render(projectId: string, kind: "preview" | "final") {

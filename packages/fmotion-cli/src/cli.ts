@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import { FmotionApiError, FmotionClient } from "./client.js";
+import { composeReel } from "./compose.js";
 import { loadCredentials, saveCredentials } from "./config.js";
+import { draftUrl, webOriginFromEnv } from "./draft.js";
+import { readMedia } from "./media.js";
 
 type Flags = {
   json: boolean;
@@ -109,6 +112,62 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
         }
         throw new Error("Usage: fmotion projects [list|create|get]");
       }
+      case "media": {
+        const sub = rest[0];
+        if (sub === "read") {
+          const paths = rest.slice(1);
+          if (!paths.length) throw new Error("Usage: fmotion media read <file> [file…]");
+          print(await readMedia(paths), flags.json);
+          return 0;
+        }
+        if (sub === "upload") {
+          const projectId = rest[1] || String(flags.options.project || "");
+          const file = rest[2] || String(flags.options.file || "");
+          if (!projectId || !file) throw new Error("Usage: fmotion media upload <projectId> <file>");
+          const [item] = await readMedia([file]);
+          if (!item?.mime) throw new Error("Unsupported media type");
+          const { readFile } = await import("node:fs/promises");
+          const bytes = await readFile(item.path);
+          const client = await clientFromEnv();
+          const admission = await client.admitUpload(projectId, { content_type: item.mime, bytes: bytes.length });
+          await client.putUpload(admission.upload_url, bytes, item.mime);
+          print({
+            ...await client.completeUpload(projectId, admission.asset_id),
+            asset_id: admission.asset_id
+          }, flags.json);
+          return 0;
+        }
+        throw new Error("Usage: fmotion media read|upload");
+      }
+      case "compose": {
+        const purpose = String(flags.options.purpose || "");
+        const media = typeof flags.options.media === "string"
+          ? flags.options.media.split(",").map((item) => item.trim()).filter(Boolean)
+          : [];
+        print(await composeReel(await clientFromEnv(), {
+          purpose,
+          audience: flags.options.audience ? String(flags.options.audience) : undefined,
+          tone: flags.options.tone ? String(flags.options.tone) : undefined,
+          mediaPaths: media,
+          conceptId: flags.options.concept ? String(flags.options.concept) : undefined,
+          fillStock: Boolean(flags.options.stock),
+          render: flags.options.render === "none" ? "none" : "preview",
+          webOrigin: flags.options["web-origin"]
+            ? String(flags.options["web-origin"])
+            : webOriginFromEnv()
+        }), flags.json);
+        return 0;
+      }
+      case "draft": {
+        const projectId = rest[0] || String(flags.options.project || "");
+        if (!projectId) throw new Error("Usage: fmotion draft <projectId>");
+        const origin = flags.options["web-origin"]
+          ? String(flags.options["web-origin"])
+          : webOriginFromEnv();
+        const projectUrl = draftUrl(projectId, origin);
+        print({ project_id: projectId, draft_url: projectUrl, projectUrl }, flags.json);
+        return 0;
+      }
       case "command": {
         const projectId = rest[0] || String(flags.options.project || "");
         const raw = rest[1] || String(flags.options.body || "");
@@ -146,6 +205,10 @@ Commands:
   login|config --api-key fm_… [--api-origin URL]
   usage
   projects list|create|get
+  media read <file> [file…]
+  media upload <projectId> <file>
+  compose [--purpose "…"] [--media a.jpg,b.jpg] [--stock] [--render none]
+  draft <projectId> [--web-origin URL]
   command <projectId> '<json-envelope>'
   render <projectId> [preview|final]
   wait <jobId> [--timeout seconds]

@@ -7,12 +7,12 @@
   "bin": {
     "fmotion": "./dist/cli.js"
   },
-  "main": "dist/client.js",
-  "types": "dist/client.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/client.d.ts",
-      "import": "./dist/client.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./client": {
       "types": "./dist/client.d.ts",

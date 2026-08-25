@@ -4,7 +4,15 @@
  * Tools wrap the same /v1 client as `fmotion` CLI.
  */
 import { createInterface } from "node:readline";
-import { FmotionApiError, FmotionClient, loadCredentials } from "@f-engine/fmotion-cli";
+import {
+  FmotionApiError,
+  FmotionClient,
+  composeReel,
+  draftUrl,
+  loadCredentials,
+  readMedia,
+  webOriginFromEnv
+} from "@f-engine/fmotion-cli";
 
 type JsonRpc = {
   jsonrpc: "2.0";
@@ -16,6 +24,42 @@ type JsonRpc = {
 };
 
 const TOOLS = [
+  {
+    name: "read_media",
+    description: "Inspect local image/video files (kind, size, dimensions). Does not upload.",
+    inputSchema: {
+      type: "object",
+      required: ["paths"],
+      properties: {
+        paths: { type: "array", items: { type: "string" }, description: "Local file paths" }
+      }
+    }
+  },
+  {
+    name: "compose_reel",
+    description: "Create a draft from a short brief and/or local media. Optionally fill Pexels stock and preview-render. Always returns draft_url.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        purpose: { type: "string", description: "Brief including the few answered questions" },
+        audience: { type: "string" },
+        tone: { type: "string" },
+        media_paths: { type: "array", items: { type: "string" } },
+        concept_id: { type: "string" },
+        fill_stock: { type: "boolean", description: "Match Pexels when the user has no files (BYOK)" },
+        render: { type: "string", enum: ["preview", "none"], default: "preview" }
+      }
+    }
+  },
+  {
+    name: "open_draft",
+    description: "Return the studio draft URL for selective editing in the app or skill.",
+    inputSchema: {
+      type: "object",
+      required: ["project_id"],
+      properties: { project_id: { type: "string" } }
+    }
+  },
   {
     name: "create_project",
     description: "Create an F-Motion project from a brief purpose string.",
@@ -97,14 +141,41 @@ function textResult(value: unknown) {
 }
 
 async function callTool(name: string, args: Record<string, unknown>) {
+  switch (name) {
+    case "read_media": {
+      const paths = Array.isArray(args.paths) ? args.paths.map(String) : [];
+      return textResult(await readMedia(paths));
+    }
+    case "open_draft": {
+      const projectId = String(args.project_id || "");
+      const projectUrl = draftUrl(projectId, webOriginFromEnv());
+      return textResult({ project_id: projectId, draft_url: projectUrl, projectUrl });
+    }
+  }
   const api = await client();
   switch (name) {
-    case "create_project":
-      return textResult(await api.createProject({
+    case "compose_reel": {
+      const mediaPaths = Array.isArray(args.media_paths) ? args.media_paths.map(String) : [];
+      return textResult(await composeReel(api, {
+        purpose: args.purpose ? String(args.purpose) : undefined,
+        audience: args.audience ? String(args.audience) : undefined,
+        tone: args.tone ? String(args.tone) : undefined,
+        mediaPaths,
+        conceptId: args.concept_id ? String(args.concept_id) : undefined,
+        fillStock: Boolean(args.fill_stock),
+        render: args.render === "none" ? "none" : "preview",
+        webOrigin: webOriginFromEnv()
+      }));
+    }
+    case "create_project": {
+      const created = await api.createProject({
         purpose: String(args.purpose || ""),
         ...(args.audience ? { audience: String(args.audience) } : {}),
         ...(args.tone ? { tone: String(args.tone) } : {})
-      }));
+      });
+      const projectUrl = draftUrl(created.project.id, webOriginFromEnv());
+      return textResult({ ...created, draft_url: projectUrl, projectUrl });
+    }
     case "run_command":
       return textResult(await api.command(String(args.project_id), args.envelope as Record<string, unknown>));
     case "request_render": {

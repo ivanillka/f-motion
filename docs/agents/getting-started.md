@@ -14,12 +14,16 @@ Browser sign-in still uses Supabase PKCE/JWT. API keys are created in **Settings
 
 ## Happy path
 
+Simple creator loop (media first **or** chat only): see
+[`docs/contracts/agent-compose.md`](../contracts/agent-compose.md).
+
 1. Auth with API key  
-2. Create project / select concept / replace storyboard (commands)  
-3. Attach media (upload or connected Pexels)  
-4. `POST /v1/projects/{id}/render` with `{ "kind": "preview" | "final" }`  
-5. Poll SSE `/v1/render-jobs/{id}/events` (or `fmotion wait` / MCP `wait_render`)  
-6. `GET /v1/render-jobs/{id}/download`
+2. If the user attached files, `read_media` then at most four questions  
+3. `compose_reel` (or: create project / commands / upload / Pexels)  
+4. Return the preview download **and** `draft_url` (`/app/?project=`)  
+5. Selective edits: `run_command` or open the draft in the app  
+
+Lower-level `/v1` path is unchanged: commands → render → SSE → download.
 
 OpenAPI: [`packages/contracts/openapi.yaml`](../../packages/contracts/openapi.yaml)  
 Route inventory: [`packages/contracts/route-inventory.json`](../../packages/contracts/route-inventory.json)
@@ -46,6 +50,9 @@ npm run build --workspace packages/fmotion-cli
 npx fmotion login --api-key "$FMOTION_API_KEY" --api-origin "$FMOTION_API_ORIGIN"
 npx fmotion usage --json
 npx fmotion projects create --purpose "Island lighthouse reel" --json
+npx fmotion media read ./still.jpg --json
+npx fmotion compose --purpose "Island lighthouse reel" --media ./still.jpg --json
+npx fmotion draft <projectId> --json
 npx fmotion render <projectId> preview --json
 npx fmotion wait <jobId> --json
 npx fmotion download <jobId> --json
@@ -57,7 +64,7 @@ Exit codes map typed API errors (`3` = `quota_exceeded`).
 
 ## MCP (`fmotion-mcp`)
 
-Tools: `create_project`, `run_command`, `request_render`, `wait_render`, `download_render`, `usage`.
+Tools: `read_media`, `compose_reel`, `open_draft`, `create_project`, `run_command`, `request_render`, `wait_render`, `download_render`, `usage`.
 
 ### Hermes `mcp_servers` snippet
 
@@ -69,6 +76,7 @@ mcp_servers:
     env:
       FMOTION_API_KEY: "fm_…"
       FMOTION_API_ORIGIN: "https://your-api.example"
+      FMOTION_WEB_ORIGIN: "https://f-motion.com"
 ```
 
 ### Cursor MCP config snippet
@@ -81,7 +89,8 @@ mcp_servers:
       "args": ["fmotion-mcp"],
       "env": {
         "FMOTION_API_KEY": "fm_…",
-        "FMOTION_API_ORIGIN": "https://your-api.example"
+        "FMOTION_API_ORIGIN": "https://your-api.example",
+        "FMOTION_WEB_ORIGIN": "https://f-motion.com"
       }
     }
   }
