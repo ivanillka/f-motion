@@ -26,7 +26,7 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.doesNotMatch(source, /Automatically matched|strongest licensed match|Finding the best/);
   assert.doesNotMatch(source, /concept_id:\s*"direct"/);
   assert.match(source, /chooseConcept\(/);
-  assert.match(source, /aria-label=\{\`Choose \$\{concept\.title\} concept\`\}/);
+  assert.match(source, /aria-label=\{\`Choose \$\{concept\.title\} concept\. \$\{concept\.hook\}\`\}/);
   assert.match(source, /requestRender\("final"\)/);
   assert.doesNotMatch(source, /requestRender\("preview"\)/);
   assert.match(source, /kind: "final"|JSON\.stringify\(\{ kind \}\)/);
@@ -211,7 +211,8 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.match(source, /stockFillStatus\(/);
     assert.match(source, /pexelsCredential\?\.connected/);
     assert.doesNotMatch(source, /This draft already has scenes/);
-    assert.doesNotMatch(source, /concept\.hook/);
+    assert.match(source, /concept\.hook/);
+    assert.match(source, /concept\.treatment/);
   } finally {
     await vite.close();
   }

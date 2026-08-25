@@ -4,6 +4,7 @@ import {
   ApiClient,
   ApiResponseError,
   applyConversationConceptOverlays,
+  beatsForConcept,
   buildStoryboardDraft,
   conceptsFor,
   clampFocus,
@@ -177,11 +178,8 @@ const architectureLabels = {
   media: { stock: "Pexels real stock video", own: "My own media", mixed: "Pexels stock + my media" }
 } as const;
 
-function beatSteps(summary: string): string[] {
-  return summary.split("→").map((part) => {
-    const beat = part.trim();
-    return beat ? beat.charAt(0).toUpperCase() + beat.slice(1) : "";
-  }).filter(Boolean);
+function beatSteps(summary: string, sceneCount = 6): string[] {
+  return beatsForConcept(summary, sceneCount);
 }
 
 const sourceChoices = [
@@ -2966,23 +2964,30 @@ function App() {
           : "Licensed visuals are matched only after you choose."}</p>
       </div>
       {sourceModules}
-      <div className="concept-choices" aria-label="Story concepts">{conceptChoices.map((concept) =>
+      <div className="concept-choices" aria-label="Story concepts">{conceptChoices.map((concept) => {
+        const beats = beatSteps(concept.beat_summary, concept.scene_count);
+        return (
         <button
           key={concept.id}
           className="concept-module"
           data-concept={concept.id}
           disabled={busy}
-          aria-label={`Choose ${concept.title} concept`}
+          aria-label={`Choose ${concept.title} concept. ${concept.hook}`}
           title={conceptDirection(concept.media_direction, architecture.media)}
           onClick={() => void chooseConcept(concept.id)}
         >
           <span className="concept-module-head">
             <strong>{concept.title}</strong>
+            <span className="concept-meta">About {concept.duration_seconds} seconds · {concept.scene_count} scenes</span>
           </span>
-          <ol className="beat-rail" aria-label={`${concept.title} beats: ${beatSteps(concept.beat_summary).join(", ")}`}>
-            {Array.from({ length: concept.scene_count }, (_, index) => <li key={index} />)}
+          <p className="concept-hook">{concept.hook}</p>
+          <p className="concept-treatment">{concept.treatment}</p>
+          <ol className="beat-rail" aria-label={`${concept.title} beats: ${beats.join(", ")}`}>
+            {beats.map((beat, index) => <li key={`${beat}-${index}`}>{beat}</li>)}
           </ol>
-        </button>)}</div>
+        </button>
+        );
+      })}</div>
       <p role="status" aria-live="polite">{status}</p>
       <button className="secondary" disabled={busy} onClick={() => setStep("architecture")}>Back to video plan</button>
     </section>}

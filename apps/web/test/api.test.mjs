@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, applyConversationConceptOverlays, buildStoryboardDraft, mergeConversationStoryboard, recommendVideoArchitecture, sceneDurationForMedia, storyboardArchitectureForConcept } from "../src/api.ts";
+import { ApiClient, ApiResponseError, applyConversationConceptOverlays, beatsForConcept, buildStoryboardDraft, mergeConversationStoryboard, recommendVideoArchitecture, sceneDurationForMedia, storyboardArchitectureForConcept } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
@@ -140,6 +140,10 @@ test("FAL conversation overlays stay on Direct, Story, and Rhythm", () => {
   assert.equal(merged[0].id, "keep-1");
   assert.equal(merged[0].media_id, "media-1");
   assert.equal(merged[0].caption, "new");
+  assert.deepEqual(beatsForConcept("Problem → impact → friction → solution → proof → result", 4), [
+    "Problem", "Impact", "Friction", "Solution"
+  ]);
+  assert.deepEqual(beatsForConcept("Start → progress", 4), ["Start", "Progress", "Beat 3", "Beat 4"]);
 });
 
 test("API requests read the current token and report unauthorized sessions", async () => {

@@ -193,6 +193,15 @@ export function storyboardArchitectureForConcept(
   return base;
 }
 
+export function beatsForConcept(summary: string, sceneCount: number): string[] {
+  const steps = summary.split("→").map((part) => {
+    const beat = part.trim();
+    return beat ? `${beat.charAt(0).toUpperCase()}${beat.slice(1)}` : "";
+  }).filter(Boolean);
+  const count = Number.isInteger(sceneCount) ? Math.min(8, Math.max(1, sceneCount)) : 1;
+  return Array.from({ length: count }, (_, index) => steps[index] ?? `Beat ${index + 1}`);
+}
+
 export function mergeConversationStoryboard(engineScenes: Scene[], drafted: Scene[]): Scene[] {
   return drafted.map((scene, index) => {
     const existing = engineScenes[index];
