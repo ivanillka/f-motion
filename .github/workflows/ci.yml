@@ -39,7 +39,8 @@ jobs:
         with:
           flutter-version: 3.44.8
           channel: stable
-          cache: true
+          # Post-job SDK tar fills the runner after apk + Playwright (ENOSPC).
+          cache: false
       - uses: android-actions/setup-android@v3
       - run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
       - run: |
