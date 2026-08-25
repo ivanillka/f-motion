@@ -270,7 +270,7 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   const editedCaption = page.getByLabel("Scene 1 caption");
   await editedCaption.fill("Updated after preview");
   await editedCaption.press("Tab");
-  await expect(page.getByText("Updated after preview")).toBeVisible();
+  await expect(editedCaption).toHaveValue("Updated after preview");
   await page.getByRole("button", { name: "Back to drafts" }).click();
   await page.getByRole("button").filter({ hasText: "A calm studio introduction" }).click();
   await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
