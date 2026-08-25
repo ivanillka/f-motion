@@ -27,6 +27,9 @@ import {
   stockBedUrl,
   stockBeds,
   stockFillStatus,
+  captionsFromVoiceScript,
+  durationSecondsFromClipCount,
+  exportGaps,
   showsPartnerBrands,
   cueAtElapsed,
   cuesForScene,
@@ -247,6 +250,7 @@ function App() {
   const [musicOpen, setMusicOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [voiceScript, setVoiceScript] = useState("");
   const [previewingId, setPreviewingId] = useState<number>();
   const [overlayCaption, setOverlayCaption] = useState("");
   const [busy, setBusy] = useState(false);
@@ -296,6 +300,9 @@ function App() {
   const [previewRevision, setPreviewRevision] = useState<number>();
   const [previewMetadata, setPreviewMetadata] = useState<Record<string, string | number | boolean | null>>({});
   const upload = useRef<HTMLInputElement>(null);
+  const gather = useRef<HTMLInputElement>(null);
+  const exportVideo = useRef<HTMLVideoElement>(null);
+  const pendingClips = useRef<File[]>([]);
   const audioUpload = useRef<HTMLInputElement>(null);
   const voiceUpload = useRef<HTMLInputElement>(null);
   const bedAudio = useRef<HTMLAudioElement | null>(null);
@@ -686,12 +693,27 @@ function App() {
       }
       setProject(current);
       setActiveSceneId(current.scenes[0]?.id ?? "");
-      if (architecture.media === "own") {
+      const clips = pendingClips.current;
+      if (architecture.media === "own" && !clips.length) {
         setStatus("Storyboard ready. Upload media for each scene.");
         setStep("media");
         return;
       }
       setStep("editor");
+      if (clips.length) {
+        try {
+          current = await attachPendingClips(current);
+          setActiveSceneId(current.scenes[0]?.id ?? "");
+        } catch {
+          setStatus("Some clips could not be attached. Upload the rest from the storyboard.");
+        }
+      }
+      if (architecture.media === "own") {
+        setStatus(current.scenes.every((scene) => scene.media_id)
+          ? "Clips on the storyboard."
+          : "Storyboard ready. Upload media for each scene.");
+        return;
+      }
       if (!pexelsCredential?.connected) {
         setStatus(pixabayCredential?.connected
           ? "Storyboard ready. Find a licensed clip for each scene, or upload your own."
@@ -750,6 +772,7 @@ function App() {
 
   function startCreate() {
     mediaTransition.current += 1;
+    pendingClips.current = [];
     setProject(undefined);
     setActiveSceneId("");
     setSceneMedia({});
@@ -757,12 +780,40 @@ function App() {
     setCandidates([]);
     setArchitecture(defaultVideoArchitecture);
     setDraft(localStorage.getItem("fengine-draft") ?? "");
+    setVoiceScript("");
     setStatus("");
     setStep("brief");
   }
 
+  function startFromClips() {
+    gather.current?.click();
+  }
+
+  function onGatherFiles(event: { currentTarget: HTMLInputElement }) {
+    const files = [...(event.currentTarget.files ?? [])]
+      .filter((file) => /^(video\/mp4|image\/(jpeg|png|webp))$/.test(file.type))
+      .slice(0, 8);
+    event.currentTarget.value = "";
+    if (!files.length) {
+      setStatus("Use JPEG, PNG, WebP, or MP4 clips.");
+      return;
+    }
+    pendingClips.current = files;
+    setArchitecture({
+      ...defaultVideoArchitecture,
+      media: "own",
+      durationSeconds: durationSecondsFromClipCount(files.length)
+    });
+    setDraft((current) => current.trim() || `Vertical video from ${files.length} clips`);
+    setStatus(`${files.length} clips ready. Continue to the video plan.`);
+    setStep("brief");
+  }
+
   function continueToArchitecture() {
-    setArchitecture(recommendVideoArchitecture(draft));
+    const recommended = recommendVideoArchitecture(draft);
+    setArchitecture(pendingClips.current.length
+      ? { ...recommended, media: "own", durationSeconds: durationSecondsFromClipCount(pendingClips.current.length) }
+      : recommended);
     setStatus("");
     setStep("architecture");
   }
@@ -969,6 +1020,7 @@ function App() {
           level: project.brief.voiceover?.level ?? 1
         });
         setVoiceOpen(false);
+        if (voiceScript.trim()) void applyVoiceCaptions();
       } else {
         await saveSoundtrack({
           kind: "upload",
@@ -1131,6 +1183,65 @@ function App() {
       : `${readyCount} of ${refreshed.scenes.length} scenes have media. Find or upload the rest before rendering.`);
   }
 
+  async function fillRemainingScenes() {
+    if (!project || busy || !pexelsCredential?.connected) return;
+    setBusy(true);
+    try {
+      await fillStockStoryboard(project);
+    } catch (error) {
+      setStatus(stockFillStatus(error instanceof ApiResponseError ? error.type : undefined));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyVoiceCaptions() {
+    if (!project || !voiceScript.trim()) return;
+    const parts = captionsFromVoiceScript(voiceScript, project.scenes);
+    if (!parts.length) return;
+    setBusy(true);
+    try {
+      let current = project;
+      for (const part of parts) {
+        const scene = current.scenes.find((item) => item.id === part.id);
+        if (!scene || scene.caption === part.caption) continue;
+        current = await api.command(current.id, current.revision, "update_scene", {
+          scene: { ...scene, caption: part.caption, caption_cues: undefined }
+        });
+      }
+      setProject(current);
+      setOverlayCaption(current.scenes.find((scene) => scene.id === activeSceneId)?.caption ?? voiceScript);
+      setStatus("Voice script applied as scene captions.");
+    } catch {
+      setStatus("Captions could not be applied from the voice script.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function downloadCover() {
+    const video = exportVideo.current;
+    if (!video || !video.videoWidth) {
+      setStatus("Play the export, then download a cover frame.");
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.drawImage(video, 0, 0);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "cover.jpg";
+      link.click();
+      URL.revokeObjectURL(url);
+    }, "image/jpeg", 0.9);
+  }
+
   async function moveScene(sceneId: string, to: number) {
     if (!project) return;
     try {
@@ -1254,28 +1365,49 @@ function App() {
     }
   }
 
+  async function uploadAndAttach(file: File, projectId: string, sceneId: string): Promise<boolean> {
+    const admission = await api.request<{ asset_id: string; upload_url: string }>(
+      `/api/projects/${projectId}/media/uploads`,
+      {
+        method: "POST",
+        body: JSON.stringify({ content_type: file.type, bytes: file.size })
+      }
+    );
+    const uploaded = await fetch(admission.upload_url, {
+      method: "PUT",
+      headers: { "content-type": file.type },
+      body: file
+    });
+    if (!uploaded.ok) throw new Error("Upload failed");
+    await api.request(`/api/projects/${projectId}/media/${admission.asset_id}/complete`, { method: "POST" });
+    return attachMediaWhenReady(admission.asset_id, projectId, sceneId);
+  }
+
+  async function attachPendingClips(snapshot: ProjectSnapshot): Promise<ProjectSnapshot> {
+    const files = pendingClips.current.slice(0, snapshot.scenes.length);
+    pendingClips.current = [];
+    let current = snapshot;
+    const scenes = [...current.scenes].sort((a, b) => a.order - b.order);
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      const scene = scenes[index];
+      if (!file || !scene) break;
+      setStatus(`Uploading clip ${index + 1} of ${files.length}…`);
+      await uploadAndAttach(file, current.id, scene.id);
+      const found = await api.getProject(current.id);
+      current = found.project;
+      setProject(current);
+    }
+    return current;
+  }
+
   async function admitFile(file: File, intendedSceneId: string) {
     if (!project || !project.scenes.some(({ id }) => id === intendedSceneId)) return;
     mediaTransition.current += 1;
     setBusy(true);
     setStatus("Uploading media…");
     try {
-      const admission = await api.request<{ asset_id: string; upload_url: string }>(
-        `/api/projects/${project.id}/media/uploads`,
-        {
-          method: "POST",
-          body: JSON.stringify({ content_type: file.type, bytes: file.size })
-        }
-      );
-      const uploaded = await fetch(admission.upload_url, {
-        method: "PUT",
-        headers: { "content-type": file.type },
-        body: file
-      });
-      if (!uploaded.ok) throw new Error("Upload failed");
-      await api.request(`/api/projects/${project.id}/media/${admission.asset_id}/complete`, { method: "POST" });
-      setStatus("Media uploaded and queued for inspection.");
-      if (await attachMediaWhenReady(admission.asset_id, project.id, intendedSceneId)) {
+      if (await uploadAndAttach(file, project.id, intendedSceneId)) {
         setStatus("Media attached to this scene.");
         setStep("editor");
       }
@@ -2256,6 +2388,8 @@ function App() {
   }, [activeScene?.id, activeScene?.title, activeScene?.caption]);
   const allScenesHaveMedia = Boolean(project?.scenes.length && project.scenes.every(({ media_id }) =>
     media_id && sceneMedia[media_id]?.state === "ready"));
+  const readyGaps = project ? exportGaps(project) : [];
+  const missingMediaCount = project?.scenes.filter((scene) => !scene.media_id).length ?? 0;
   const allScenesHavePreview = Boolean(project?.scenes.length && project.scenes.every((scene) =>
     scenePreviewUrl(scene.media_id ? sceneMedia[scene.media_id] : undefined)));
   const previewScene = livePlaying
@@ -2599,6 +2733,7 @@ function App() {
       {appNav}
     </nav>}
     <div className="app-stage">
+    {inApp && <input ref={gather} className="clip-start" hidden type="file" multiple accept="video/mp4,image/jpeg,image/png,image/webp" aria-label="Create from my clips" onChange={onGatherFiles} />}
     {(step === "editor" || !inApp || partnerBrands || !online) && <header>
       <div className="header-identity">
         {step === "editor" && project ? <>
@@ -2683,11 +2818,13 @@ function App() {
         <button className="secondary" onClick={() => setStep("settings")}>Choose video sources</button>
       </aside>
       <button onClick={startCreate}>Create new video</button>
+      <button className="secondary" onClick={startFromClips}>Create from my clips</button>
       {draftsLoading && <p role="status">Loading drafts…</p>}
       {!draftsLoading && drafts.length === 0 && <div className="empty-drafts">
         <p role="status">No drafts yet.</p>
         <p>Describe what you want to make — F-Motion will recommend a video plan and storyboard.</p>
         <button onClick={startCreate}>Create new video</button>
+        <button className="secondary" onClick={startFromClips}>Create from my clips</button>
       </div>}
       <div className="concepts drafts-grid">{drafts.map((item) =>
         <button key={item.id} className="card draft-card" onClick={() => void openDraft(item.id)}>
@@ -2701,6 +2838,7 @@ function App() {
       <p>Describe the subject, audience, mood, intended result, media you have, and preferred length in your own words. F-Motion will recommend a complete video plan.</p>
       <label>Visual description<textarea value={draft} maxLength={500} onChange={(event) => setDraft(event.target.value)} placeholder="A remote island in dark ocean fog, an abandoned lighthouse, cinematic aerial shot…" /></label>
       <button disabled={!draft.trim()} onClick={continueToArchitecture}>Continue to video plan</button>
+      <button className="secondary" onClick={startFromClips}>Create from my clips</button>
       <p role="status" aria-live="polite">{status}</p>
       <button className="secondary" disabled={busy} onClick={() => setStep("drafts")}>Back to drafts</button>
     </section>}
@@ -2782,7 +2920,7 @@ function App() {
     {authReady && step === "media" && project && <section>
       <h1>Upload your media</h1>
       <p>Choose one JPEG, PNG, or MP4 you have permission to use. It is inspected before it can be rendered.</p>
-      <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
+      <input ref={upload} className="scene-upload" hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
         const file = event.target.files?.[0];
         if (file && activeScene) void admitFile(file, activeScene.id);
       }} />
@@ -2797,9 +2935,15 @@ function App() {
           <p>{playhead.totalMs
             ? `Live cut · ${formatPlayTime(playhead.offsetMs)} / ${formatPlayTime(playhead.totalMs)}`
             : "Review each beat and replace a still only when another visual fits better."}</p>
+          <p className="export-gaps" data-ready={!readyGaps.length || undefined} aria-label="Ready to export">
+            {readyGaps.length ? readyGaps.map((gap) => <span key={gap}>{gap}</span>) : <span>Ready to export</span>}
+          </p>
         </div>
         <div className="editor-toolbar-actions">
           <button className="secondary" disabled={!allScenesHaveMedia} onClick={() => void requestRender("final")}>Export final</button>
+          {missingMediaCount > 0 && pexelsCredential?.connected ? (
+            <button className="secondary" disabled={busy} onClick={() => void fillRemainingScenes()}>Fill remaining scenes</button>
+          ) : null}
         </div>
       </div>
 
@@ -2955,6 +3099,9 @@ function App() {
           >
             <summary>{recording ? "Recording voice-over" : voiceover ? "Voice-over" : "Add voice-over"}</summary>
             <p className="crop-hint">Record, upload, or generate with FAL. Captions time as spoken subtitles on Play and Export. Music ducks under the voice.</p>
+            <label htmlFor="voice-script">What you'll say
+              <textarea id="voice-script" maxLength={1800} value={voiceScript} disabled={busy || recording} onChange={(event) => setVoiceScript(event.target.value)} />
+            </label>
             <div className="scene-actions">
               <button
                 type="button"
@@ -2966,6 +3113,7 @@ function App() {
               {recording ? <button className="secondary" type="button" onClick={() => cancelVoiceRecord()}>Discard</button> : null}
               <button className="secondary" type="button" disabled={busy || recording} onClick={() => voiceUpload.current?.click()}>Upload voice-over</button>
               <button className="secondary" type="button" disabled={busy || recording} onClick={() => openFalSpeech()}>Generate with FAL</button>
+              <button className="secondary" type="button" disabled={busy || recording || !voiceScript.trim()} onClick={() => void applyVoiceCaptions()}>Use as captions</button>
             </div>
             <input ref={voiceUpload} hidden type="file" accept="audio/mpeg,audio/wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a" onChange={(event) => {
               const file = event.target.files?.[0];
@@ -3195,7 +3343,7 @@ function App() {
             </button>
           )}
           </div>
-          <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
+          <input ref={upload} className="scene-upload" hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) void admitFile(file, activeScene.id);
           }} />
@@ -3405,7 +3553,7 @@ function App() {
         <strong>{renderKind === "final" ? "Export complete" : "Preview ready"}</strong>
         <p>Download the MP4 or keep editing the storyboard.</p>
       </div>}
-      {downloadUrl && <video controls playsInline preload="metadata" src={downloadUrl} onError={() => void refreshPreviewUrl()}>
+      {downloadUrl && <video ref={exportVideo} controls playsInline preload="metadata" src={downloadUrl} onError={() => void refreshPreviewUrl()}>
         Your browser cannot play this MP4. Use the download link instead.
       </video>}
       {downloadUrl && <p>{previewMetadata.width && previewMetadata.height ? `${previewMetadata.width}×${previewMetadata.height}` : "Rendered MP4"}
@@ -3416,6 +3564,7 @@ function App() {
         <button disabled={progress.phase === "complete" || progress.phase === "cancelled" || progress.phase === "failed"} onClick={() => void cancelRender()}>Cancel render</button>
         {(progress.phase === "failed" || progress.phase === "cancelled") && <button onClick={() => void retryRender()}>Retry</button>}
         <a href={downloadUrl} download><button disabled={!downloadUrl || progress.phase === "failed"}>{downloadLabel}</button></a>
+        {downloadUrl && progress.phase === "complete" && <button className="secondary" type="button" onClick={downloadCover}>Download cover</button>}
       </div>
       <button className="secondary" onClick={() => setStep("editor")}>Keep editing</button>
     </section>}

@@ -6,7 +6,7 @@ import { createServer } from "vite";
 
 test("required recovery, accessibility, and preview language is present", async () => {
   const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
-  for (const phrase of ["Drafts", "Continue to video plan", "Plan the video", "prepared this recommendation from your conversation", "Edit recommended video plan", "Recommended video plan", "What should this video achieve", "Who is it for", "How should the story unfold", "What tone fits best", "How fast should it feel", "Target length", "Where should visuals come from", "Pexels real stock video", "Continue to story concepts", "Choose a story approach", "Licensed visuals are matched only after you choose", "Storyboard", "Live preview", "Play progress", "Restart", "Previous scene", "Next scene", "Find licensed media", "Find another licensed video", "Find licensed still", "Generate AI image for scene", "Animate this image", "Generate one 6-second video", "Use video for scene", "Keep image", "Generate one image", "Get FAL price", "Use for scene", "Keep current media", "Generate another", "AI-generated with FAL", "Charged directly to your FAL account", "Select for scene", "Move scene", "Add scene", "Remove scene", "Play preview", "Pause preview", "Export final", "Final export", "Download export", "playsInline", "Older preview", "Reload latest", "Save as new project", "media not copied", "pending", "was not merged", "Reconnecting", "magic link", "Google", "Pexels", "Pixabay", "Cancel render", "Download preview", "Accurate preview failed", "Retry", "Choose video sources", "Real stock video", "AI stills", "More providers", "Locked", "Pexels stock is locked", "Connect your Pexels API key to search real stock video", "FAL generation is locked", "Open provider settings", "Settings", "Sign out", "Waiting for media inspection", "Media is still inspecting", "Connect your own Pexels API key", "F-Motion does not supply or share a Pexels key", "Connect Pexels", "Test Pexels", "Disconnect Pexels", "Connect your own Pixabay API key", "F-Motion does not supply or share a Pixabay key", "Connect Pixabay", "Test Pixabay", "Disconnect Pixabay", "Connect your own FAL API-scope key", "charged directly to your FAL account", "F-Motion does not supply or share a FAL key", "Connect FAL", "Test connection", "Disconnect", "Sign in to open the imported draft from Fotium.", "Open the email link to finish sign-in."]) assert.match(source, new RegExp(phrase));
+  for (const phrase of ["Drafts", "Continue to video plan", "Plan the video", "prepared this recommendation from your conversation", "Edit recommended video plan", "Recommended video plan", "What should this video achieve", "Who is it for", "How should the story unfold", "What tone fits best", "How fast should it feel", "Target length", "Where should visuals come from", "Pexels real stock video", "Continue to story concepts", "Choose a story approach", "Licensed visuals are matched only after you choose", "Storyboard", "Live preview", "Play progress", "Restart", "Previous scene", "Next scene", "Find licensed media", "Find another licensed video", "Find licensed still", "Generate AI image for scene", "Animate this image", "Generate one 6-second video", "Use video for scene", "Keep image", "Generate one image", "Get FAL price", "Use for scene", "Keep current media", "Generate another", "AI-generated with FAL", "Charged directly to your FAL account", "Select for scene", "Move scene", "Add scene", "Remove scene", "Play preview", "Pause preview", "Export final", "Final export", "Download export", "playsInline", "Older preview", "Reload latest", "Save as new project", "media not copied", "pending", "was not merged", "Reconnecting", "magic link", "Google", "Pexels", "Pixabay", "Cancel render", "Download preview", "Accurate preview failed", "Retry", "Choose video sources", "Real stock video", "AI stills", "More providers", "Locked", "Pexels stock is locked", "Connect your Pexels API key to search real stock video", "FAL generation is locked", "Open provider settings", "Settings", "Sign out", "Waiting for media inspection", "Media is still inspecting", "Connect your own Pexels API key", "F-Motion does not supply or share a Pexels key", "Connect Pexels", "Test Pexels", "Disconnect Pexels", "Connect your own Pixabay API key", "F-Motion does not supply or share a Pixabay key", "Connect Pixabay", "Test Pixabay", "Disconnect Pixabay", "Connect your own FAL API-scope key", "charged directly to your FAL account", "F-Motion does not supply or share a FAL key", "Connect FAL", "Test connection", "Disconnect", "Sign in to open the imported draft from Fotium.", "Open the email link to finish sign-in.", "Create from my clips", "Fill remaining scenes", "Ready to export", "Download cover", "What you'll say", "Use as captions"]) assert.match(source, new RegExp(phrase));
   assert.match(source, /className="settings-stage"/);
   assert.match(source, /className="source-panel/);
   assert.doesNotMatch(source, /Why is this locked/);
@@ -124,7 +124,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { ApiResponseError, clampBpm, clampFocus, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, snapshotFromConflict, stockBedUrl, stockFillStatus } = await vite.ssrLoadModule("/src/api.ts");
+    const { ApiResponseError, captionsFromVoiceScript, clampBpm, clampFocus, durationSecondsFromClipCount, exportGaps, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, snapshotFromConflict, stockBedUrl, stockFillStatus } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -198,6 +198,15 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.equal(stockFillStatus("pexels_not_connected"), "Connect your Pexels API key in Settings, or upload your own media.");
     assert.equal(stockFillStatus("provider_unavailable"), "Pexels could not be reached. Find clips in the editor, or try again.");
     assert.match(stockFillStatus(undefined), /Find or upload clips/);
+    assert.equal(durationSecondsFromClipCount(3), 15);
+    assert.equal(durationSecondsFromClipCount(5), 30);
+    assert.equal(durationSecondsFromClipCount(8), 45);
+    assert.deepEqual(exportGaps({ scenes: [{ media_id: "a", caption: "Hi" }], brief: { soundtrack: {}, voiceover: {} } }), []);
+    assert.equal(exportGaps({ scenes: [{ caption: "" }, { caption: "x" }] })[0], "2 scenes need media");
+    assert.deepEqual(
+      captionsFromVoiceScript("Hello there friends today", [{ id: "a", duration_ms: 1000 }, { id: "b", duration_ms: 1000 }]),
+      [{ id: "a", caption: "Hello there" }, { id: "b", caption: "friends today" }]
+    );
     assert.match(source, /snapshotFromConflict\(/);
     assert.match(source, /stockFillStatus\(/);
     assert.match(source, /pexelsCredential\?\.connected/);
@@ -217,6 +226,7 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.studio-board/);
   assert.match(css, /\.concept-module/);
   assert.match(css, /\.beat-rail/);
+  assert.match(css, /\.export-gaps/);
   assert.match(css, /\.source-module/);
   assert.match(css, /\.crop-guide/);
   assert.match(css, /cursor: grab/);

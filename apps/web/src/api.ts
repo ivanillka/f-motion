@@ -194,6 +194,45 @@ export function stockFillStatus(type: string | undefined): string {
   return "Licensed media could not be matched. Find or upload clips for each scene.";
 }
 
+export function durationSecondsFromClipCount(count: number): 15 | 30 | 45 {
+  if (count <= 4) return 15;
+  if (count === 5) return 30;
+  return 45;
+}
+
+export function exportGaps(project: {
+  scenes: Array<{ media_id?: string; caption?: string }>;
+  brief?: { soundtrack?: unknown; voiceover?: unknown };
+}): string[] {
+  const gaps: string[] = [];
+  const missingMedia = project.scenes.filter((scene) => !scene.media_id).length;
+  if (missingMedia) gaps.push(missingMedia === 1 ? "1 scene needs media" : `${missingMedia} scenes need media`);
+  if (!project.brief?.voiceover && project.scenes.some((scene) => !scene.caption?.trim())) {
+    gaps.push("Add captions or a voice-over");
+  }
+  if (!project.brief?.soundtrack && !project.brief?.voiceover) gaps.push("Add music or a voice-over");
+  return gaps;
+}
+
+export function captionsFromVoiceScript(
+  script: string,
+  scenes: Array<{ id: string; duration_ms: number }>
+): Array<{ id: string; caption: string }> {
+  const words = script.trim().split(/\s+/u).filter(Boolean);
+  if (!words.length || !scenes.length) return [];
+  const total = scenes.reduce((sum, scene) => sum + Math.max(1, scene.duration_ms), 0);
+  let cursor = 0;
+  return scenes.map((scene, index) => {
+    const share = Math.max(1, scene.duration_ms) / total;
+    const take = index === scenes.length - 1
+      ? words.length - cursor
+      : Math.max(1, Math.round(words.length * share));
+    const caption = words.slice(cursor, cursor + take).join(" ").slice(0, 180);
+    cursor += take;
+    return { id: scene.id, caption };
+  });
+}
+
 export class ApiClient {
   readonly token: () => string;
   readonly onUnauthorized: () => void;

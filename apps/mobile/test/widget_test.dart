@@ -19,6 +19,11 @@ class FakeApi implements ApiGateway {
     return reachable;
   }
 
+  @override
+  Future<List<ProjectSummary>> listProjects() async => drafts;
+
+  List<ProjectSummary> drafts = [];
+
   ProjectSnapshot project([int revision = 0]) => ProjectSnapshot(
     id: 'project',
     revision: revision,
@@ -114,6 +119,27 @@ class FakeAuth implements AuthGateway {
 }
 
 void main() {
+  testWidgets('signed-in drafts point at the web studio', (tester) async {
+    final api = FakeApi()
+      ..drafts = [
+        ProjectSummary(id: 'p', revision: 1, purpose: 'Top dog breads'),
+      ];
+    await tester.pumpWidget(
+      FMotionApp(api: api, auth: FakeAuth('test-token')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Drafts'), findsOneWidget);
+    expect(find.text('Finish clips in the web studio.'), findsOneWidget);
+    await tester.tap(find.text('Top dog breads'));
+    await tester.pump();
+    expect(
+      find.text(
+        'Open this draft in the web studio to attach clips and export.',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('sign-in and progressive brief are reachable', (tester) async {
     final auth = FakeAuth();
     await tester.pumpWidget(FMotionApp(api: FakeApi(), auth: auth));

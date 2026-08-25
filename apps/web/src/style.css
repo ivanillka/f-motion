@@ -403,6 +403,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   gap: 8px;
   align-items: center;
 }
+.export-gaps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+.export-gaps span {
+  font-size: 0.72rem;
+  color: var(--muted);
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--soft);
+}
+.export-gaps[data-ready] span { color: var(--success); }
+.voice-dock textarea { min-height: 64px; }
 .studio-board {
   display: grid;
   gap: 16px;
