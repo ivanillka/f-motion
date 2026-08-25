@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { credentialVaultFromEnv } from "@f-engine/fal-host";
 import {
@@ -64,6 +65,11 @@ function fakePool() {
   };
   return { query, connect: async () => ({ query, release() {} }), rows };
 }
+
+test("ProviderCredential check includes pixabay", async () => {
+  const sql = await readFile(new URL("../../../prisma/migrations/20260825210000_pixabay_byok_credentials/migration.sql", import.meta.url), "utf8");
+  assert.match(sql, /provider IN \('fal', 'pexels', 'pixabay'\)/);
+});
 
 test("Pixabay BYOK configuration and validation fail closed", async () => {
   assert.equal(pixabayByokEnabled({}), false);
