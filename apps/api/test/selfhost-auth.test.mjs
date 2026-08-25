@@ -7,6 +7,8 @@ import {
   assertSelfhostConfig,
   engineEnv,
   MemorySelfhostOwner,
+  ownerEmailMatches,
+  selfhostOwnerResetRequested,
   SetupClosedError
 } from "../dist/selfhost-auth.js";
 import { UnauthorizedError } from "../dist/auth.js";
@@ -54,9 +56,22 @@ test("first owner setup issues a session and closes further sign-ups", async () 
     await auth.ownerIdForAuthorization(`Bearer ${created.access_token}`),
     "selfhost-operator"
   );
-  const signedIn = await auth.login({ email: "owner@example.com", password: "secret-pass" });
+  const signedIn = await auth.login({ email: "OWNER@example.com", password: "secret-pass" });
   assert.equal(signedIn.owner_id, "selfhost-operator");
-  await assert.rejects(auth.login({ email: "owner@example.com", password: "wrong-pass" }), UnauthorizedError);
+  await assert.rejects(
+    auth.login({ email: "owner@example.com", password: "wrong-pass" }),
+    (error) => error instanceof UnauthorizedError && error.message === "Email or password was rejected."
+  );
+});
+
+test("owner email compare ignores case and surrounding space", () => {
+  assert.equal(ownerEmailMatches("Owner@Example.COM", "owner@example.com"), true);
+  assert.equal(ownerEmailMatches(" owner@example.com ", "owner@example.com"), true);
+  assert.equal(ownerEmailMatches(undefined, "owner@example.com"), false);
+  assert.equal(selfhostOwnerResetRequested({ FENGINE_SELFHOST_RESET_OWNER: "1" }), true);
+  assert.equal(selfhostOwnerResetRequested({ FMOTION_SELFHOST_RESET_OWNER: "1" }), true);
+  assert.equal(selfhostOwnerResetRequested({ FENGINE_SELFHOST_RESET_OWNER: "yes" }), false);
+  assert.equal(selfhostOwnerResetRequested({}), false);
 });
 
 test("self-host HTTP setup then login; projects stay locked until then", async () => {
@@ -88,12 +103,44 @@ test("self-host HTTP setup then login; projects stay locked until then", async (
     assert.equal(replay.status, 409);
     const login = await fetch(`${origin}/api/auth/login`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer fms_stale"
+      },
       body: JSON.stringify({ email: "owner@example.com", password: "secret-pass" })
     });
     assert.equal(login.status, 200);
     assert.match((await login.json()).access_token, /^fms_/);
+    const rejected = await fetch(`${origin}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "owner@example.com", password: "wrong-pass" })
+    });
+    assert.equal(rejected.status, 401);
+    assert.deepEqual(await rejected.json(), {
+      type: "unauthorized",
+      message: "Email or password was rejected."
+    });
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("owner password can be replaced when FENGINE_SELFHOST_RESET_OWNER=1", async () => {
+  const previous = process.env.FENGINE_SELFHOST_RESET_OWNER;
+  try {
+    const auth = new MemorySelfhostOwner([{ id: "selfhost-operator", state: "active" }]);
+    await auth.setup({ email: "owner@example.com", password: "secret-pass" });
+    const first = await auth.login({ email: "owner@example.com", password: "secret-pass" });
+    process.env.FENGINE_SELFHOST_RESET_OWNER = "1";
+    assert.equal(await auth.setupNeeded(), true);
+    const replaced = await auth.setup({ email: "Owner@example.com", password: "new-secret" });
+    assert.equal(replaced.owner_id, "selfhost-operator");
+    await assert.rejects(auth.ownerIdForAuthorization(`Bearer ${first.access_token}`), UnauthorizedError);
+    const signedIn = await auth.login({ email: "owner@example.com", password: "new-secret" });
+    assert.equal(signedIn.owner_id, "selfhost-operator");
+  } finally {
+    if (previous === undefined) delete process.env.FENGINE_SELFHOST_RESET_OWNER;
+    else process.env.FENGINE_SELFHOST_RESET_OWNER = previous;
   }
 });

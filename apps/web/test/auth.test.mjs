@@ -222,6 +222,17 @@ test("self-host auth wins even when dummy Supabase settings are present", async 
   assert.equal(storage.getItem("fengine-selfhost-token"), "fms_session");
 });
 
+test("self-host login maps the API 401 string to a password rejection", async () => {
+  const gateway = createAuthGateway(
+    { origin: "http://127.0.0.1:8080/", allowDemo: false, allowSelfhost: true },
+    { demoStorage: memoryStorage(), fetchImpl: fakeSelfhostApi() }
+  );
+  await assert.rejects(
+    gateway.signInWithPassword("owner@example.com", "secret-pass"),
+    { message: "Email or password was rejected." }
+  );
+});
+
 test("self-host fetch is a direct call so browsers do not see a detached window.fetch", async () => {
   const source = await readFile(new URL("../src/auth.ts", import.meta.url), "utf8");
   assert.match(source, /this\.fetchImpl \? this\.fetchImpl\(input, init\) : fetch\(input, init\)/);

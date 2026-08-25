@@ -169,7 +169,10 @@ class SelfhostAuthGateway implements AuthGateway {
   private async readError(response: Response, fallback: string): Promise<string> {
     try {
       const body = await response.json() as { message?: unknown };
-      if (typeof body.message === "string" && body.message) return body.message;
+      if (typeof body.message === "string" && body.message) {
+        if (body.message === "authentication required") return "Email or password was rejected.";
+        return body.message;
+      }
     } catch {
       // keep fallback
     }

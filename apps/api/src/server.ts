@@ -240,6 +240,16 @@ async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) 
   return out;
 }
 
+function isAnonymousOwnerRoute(request: express.Request): boolean {
+  const candidates = [request.originalUrl, request.url, `${request.baseUrl ?? ""}${request.url}`];
+  return candidates.some((value) => {
+    const path = String(value).split("?")[0];
+    return path === "/api/setup" || path === "/api/auth/login"
+      || path === "/setup" || path === "/auth/login"
+      || path === "/v1/setup" || path === "/v1/auth/login";
+  });
+}
+
 function buildApp(options: AppBaseOptions, identify: Identify) {
   const app = express();
   const projects = options.projects;
@@ -440,6 +450,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     });
   }
   app.use("/api", async (request, response, next) => {
+    if (isAnonymousOwnerRoute(request)) return next();
     try {
       response.locals.ownerId = await identify(request.header("authorization"));
       next();

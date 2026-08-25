@@ -18,6 +18,15 @@ export function assertSelfhostConfig(env: Record<string, string | undefined>): v
   }
 }
 
+/** Physical/SSH access only. Unset after the owner password is replaced. */
+export function selfhostOwnerResetRequested(env: Record<string, string | undefined> = process.env): boolean {
+  return (env.FENGINE_SELFHOST_RESET_OWNER ?? env.FMOTION_SELFHOST_RESET_OWNER) === "1";
+}
+
+export function ownerEmailMatches(stored: string | undefined, email: string): boolean {
+  return stored?.trim().toLowerCase() === email;
+}
+
 export class SetupClosedError extends Error {
   constructor() {
     super("This install already has an owner.");
@@ -135,9 +144,11 @@ abstract class OwnerAuthBase implements SelfhostOwnerAuth {
   protected abstract insertSession(session: SessionRow): Promise<void>;
   protected abstract findSession(tokenHash: string, now: number): Promise<SessionRow | undefined>;
   protected abstract deleteSession(tokenHash: string): Promise<void>;
+  protected abstract deleteSessionsForOwner(ownerId: string): Promise<void>;
   protected abstract afterOwnerReady(ownerId: string): Promise<void>;
 
   async setupNeeded(): Promise<boolean> {
+    if (selfhostOwnerResetRequested()) return true;
     const owners = await this.loadOwners();
     return !owners.some((owner) => owner.passwordHash);
   }
@@ -145,14 +156,21 @@ abstract class OwnerAuthBase implements SelfhostOwnerAuth {
   async setup(input: unknown): Promise<OwnerSessionView> {
     const account = parseAccount(input);
     const owners = await this.loadOwners();
-    if (owners.some((owner) => owner.passwordHash)) throw new SetupClosedError();
+    const occupied = owners.filter((owner) => owner.passwordHash);
+    if (occupied.length && !selfhostOwnerResetRequested()) throw new SetupClosedError();
     const passwordHash = await hashPassword(account.password);
-    const claimed = owners.find((owner) => owner.id === "selfhost-operator") ?? owners[0];
+    const claimed = occupied[0]
+      ?? owners.find((owner) => owner.id === "selfhost-operator")
+      ?? owners[0];
     const owner = claimed
       ? { ...claimed, email: account.email, passwordHash, displayName: account.displayName, state: "active" }
       : { id: randomUUID(), email: account.email, passwordHash, displayName: account.displayName, state: "active" };
-    if (claimed) await this.claimOwner(owner.id, account.email, passwordHash, account.displayName);
-    else await this.insertOwner(owner);
+    if (claimed) {
+      await this.claimOwner(owner.id, account.email, passwordHash, account.displayName);
+      await this.deleteSessionsForOwner(owner.id);
+    } else {
+      await this.insertOwner(owner);
+    }
     await this.afterOwnerReady(owner.id);
     return this.issue(owner);
   }
@@ -164,9 +182,13 @@ abstract class OwnerAuthBase implements SelfhostOwnerAuth {
     const body = input as Record<string, unknown>;
     const email = normalizeEmail(body.email);
     const password = normalizePassword(body.password);
-    const owner = (await this.loadOwners()).find((row) => row.email === email && row.passwordHash);
-    if (!owner || owner.state !== "active" || !owner.passwordHash) throw new UnauthorizedError();
-    if (!await passwordMatches(password, owner.passwordHash)) throw new UnauthorizedError();
+    const owner = (await this.loadOwners()).find((row) => ownerEmailMatches(row.email, email) && row.passwordHash);
+    if (!owner || owner.state !== "active" || !owner.passwordHash) {
+      throw new UnauthorizedError("Email or password was rejected.");
+    }
+    if (!await passwordMatches(password, owner.passwordHash)) {
+      throw new UnauthorizedError("Email or password was rejected.");
+    }
     return this.issue(owner);
   }
 
@@ -241,6 +263,12 @@ export class MemorySelfhostOwner extends OwnerAuthBase {
     if (index >= 0) this.sessions.splice(index, 1);
   }
 
+  protected async deleteSessionsForOwner(ownerId: string): Promise<void> {
+    for (let index = this.sessions.length - 1; index >= 0; index -= 1) {
+      if (this.sessions[index]?.ownerId === ownerId) this.sessions.splice(index, 1);
+    }
+  }
+
   protected async afterOwnerReady(): Promise<void> {}
 }
 
@@ -309,6 +337,10 @@ export class PostgresSelfhostOwner extends OwnerAuthBase {
 
   protected async deleteSession(tokenHash: string): Promise<void> {
     await this.pool.query(`DELETE FROM "OwnerSession" WHERE "tokenHash" = $1`, [tokenHash]);
+  }
+
+  protected async deleteSessionsForOwner(ownerId: string): Promise<void> {
+    await this.pool.query(`DELETE FROM "OwnerSession" WHERE "ownerId" = $1`, [ownerId]);
   }
 
   protected async afterOwnerReady(ownerId: string): Promise<void> {
