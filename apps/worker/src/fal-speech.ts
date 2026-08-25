@@ -224,6 +224,11 @@ export async function processFalSpeechJob(
       completed = true;
       break;
     }
+    await pool.query(
+      `UPDATE "GenerationJob" SET "updatedAt" = NOW()
+        WHERE id = $1 AND "ownerId" = $2 AND state = 'running'`,
+      [job.generationJobId, job.ownerId]
+    );
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
 

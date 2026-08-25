@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import {
   cleanupDispatchedOutbox,
   dispatchOutbox,
-  outboxRetentionHoursFromEnv
+  outboxRetentionHoursFromEnv,
+  reclaimActiveGenerationJobs
 } from "../dist/queue.js";
 
 test("outbox retention defaults to seven days and rejects invalid values", () => {
@@ -86,4 +87,31 @@ test("cleanup is one bounded parameterized batch", async () => {
   assert.match(statement, /"dispatchedAt" IS NOT NULL/);
   assert.match(statement, /FOR UPDATE SKIP LOCKED/);
   assert.match(statement, /LIMIT 250/);
+});
+
+test("reclaim re-queues an active speech job with the original singleton key", async () => {
+  const pool = {
+    async query(sql) {
+      assert.match(sql, /state IN \('queued', 'submitting', 'running', 'downloading', 'inspecting'\)/);
+      return {
+        rows: [{
+          id: "aa5eb9de-9fb9-4de8-b958-95eef574d290",
+          ownerId: "owner",
+          projectId: "project",
+          kind: "speech"
+        }]
+      };
+    }
+  };
+  let sent;
+  const boss = {
+    async send(kind, payload, options) {
+      sent = { kind, payload, options };
+      return "job";
+    }
+  };
+  assert.equal(await reclaimActiveGenerationJobs(pool, boss), 1);
+  assert.equal(sent.kind, "generate-fal-speech");
+  assert.equal(sent.payload.generationJobId, "aa5eb9de-9fb9-4de8-b958-95eef574d290");
+  assert.equal(sent.options.singletonKey, "generate-fal-speech:aa5eb9de-9fb9-4de8-b958-95eef574d290");
 });

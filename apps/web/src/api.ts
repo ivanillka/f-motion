@@ -303,6 +303,48 @@ export function plannedVoiceScript(
   return fallback.trim().slice(0, 1800);
 }
 
+const FAL_SPEECH_LOG: Record<string, string> = {
+  quoted: "FAL priced this script.",
+  queued: "Queued for generation.",
+  submitting: "Sending the script to FAL.",
+  running: "FAL is synthesizing speech.",
+  downloading: "Copying audio into private storage.",
+  inspecting: "Checking the audio file.",
+  ready: "Voice-over is ready to preview.",
+  failed: "Generation failed.",
+  cancelled: "Generation cancelled.",
+  submission_uncertain: "FAL may have started. Check before retrying."
+};
+const FAL_SPEECH_TRAIL = ["quoted", "queued", "submitting", "running", "downloading", "inspecting", "ready"] as const;
+
+/** Determinate bar for FAL speech. Running inches forward so a long FAL wait is not a frozen 45%. */
+export function falSpeechProgress(state: string, elapsedMs = 0): { percent: number; line: string } {
+  const line = FAL_SPEECH_LOG[state] ?? `Status · ${state.replaceAll("_", " ")}`;
+  const base: Record<string, number> = {
+    quoted: 8,
+    queued: 18,
+    submitting: 32,
+    running: 45,
+    downloading: 88,
+    inspecting: 94,
+    ready: 100,
+    failed: 100,
+    cancelled: 100,
+    submission_uncertain: 100
+  };
+  let percent = base[state] ?? 0;
+  if (state === "running") percent = Math.min(84, 45 + Math.floor(Math.max(0, elapsedMs) / 3000));
+  return { percent, line };
+}
+
+export function falSpeechLogTrail(state: string): string[] {
+  const index = (FAL_SPEECH_TRAIL as readonly string[]).indexOf(state);
+  if (index >= 0) return FAL_SPEECH_TRAIL.slice(0, index + 1).map((step) => FAL_SPEECH_LOG[step]!);
+  const terminal = FAL_SPEECH_LOG[state];
+  if (!terminal) return [state.replaceAll("_", " ")];
+  return [FAL_SPEECH_LOG.quoted!, FAL_SPEECH_LOG.queued!, FAL_SPEECH_LOG.submitting!, terminal];
+}
+
 export function captionsFromVoiceScript(
   script: string,
   scenes: Array<{ id: string; duration_ms: number }>

@@ -97,6 +97,9 @@ function fakePool(initial, options = {}) {
       row.resultMediaId = params[0];
       return { rowCount: 1 };
     }
+    if (sql.includes("SET \"updatedAt\" = NOW()") && !sql.includes("SET state")) {
+      return { rowCount: 1 };
+    }
     if (sql.includes("INSERT INTO \"MediaAsset\"")) {
       options.insertedMedia = params;
       return { rowCount: 1 };
@@ -202,4 +205,5 @@ test("queued speech submits once, seals wav, skips inspect-media", async () => {
   assert.equal(options.insertedMedia[8], "audio/wav");
   assert.equal(options.outbox, undefined);
   assert.equal(pool.queries.some(({ sql }) => sql.includes("inspect-media")), false);
+  assert.equal(pool.queries.some(({ sql }) => sql.includes("SET \"updatedAt\" = NOW()") && !sql.includes("SET state")), true);
 });

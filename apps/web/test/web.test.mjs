@@ -10,6 +10,10 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /htmlFor="plan-voice-script"/);
   assert.match(source, /plannedVoiceScript\(/);
   assert.match(source, /id="fal-speech-prompt"[^>]*readOnly/);
+  assert.match(source, /aria-label="Voice-over generation progress"/);
+  assert.match(source, /aria-label="Voice-over generation log"/);
+  assert.match(source, /falSpeechProgress\(/);
+  assert.match(source, /falSpeechLogTrail\(/);
   assert.doesNotMatch(source, /setFalSpeechPrompt\(defaultVoicePrompt/);
   assert.match(source, /className="settings-stage"/);
   assert.match(source, /className="source-panel/);
@@ -289,6 +293,7 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.header-actions \.brand-mark/);
   assert.match(css, /\.music-dock > summary/);
   assert.match(css, /\.plan-voice/);
+  assert.match(css, /dialog \.notice progress/);
   assert.match(css, /\.music-dock:not\(\.voice-dock\)/);
   assert.match(css, /\.music-dock:not\(\[open\]\) > \*:not\(summary\) \{ display: none; \}/);
   assert.match(css, /minmax\(0, 1fr\) 232px/);

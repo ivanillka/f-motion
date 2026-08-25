@@ -314,6 +314,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   border-bottom: 0;
   color: var(--text);
 }
+dialog .notice progress {
+  width: 100%;
+  height: 10px;
+  accent-color: var(--accent-soft);
+}
+dialog .notice .assemble-log {
+  max-height: 180px;
+}
 .concept-choices {
   display: grid;
   grid-template-columns: 1fr;

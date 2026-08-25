@@ -91,6 +91,32 @@ export async function dispatchOutbox(pool: pg.Pool, boss: PgBoss): Promise<numbe
   return dispatched;
 }
 
+export async function reclaimActiveGenerationJobs(pool: pg.Pool, boss: PgBoss): Promise<number> {
+  const rows = await pool.query<{ id: string; ownerId: string; projectId: string; kind: string }>(
+    `SELECT id, "ownerId", "projectId", kind FROM "GenerationJob"
+      WHERE state IN ('queued', 'submitting', 'running', 'downloading', 'inspecting')
+        AND kind IN ('speech', 'image', 'image_to_video')`
+  );
+  let sent = 0;
+  for (const row of rows.rows) {
+    const kind = row.kind === "speech" ? falSpeechQueue
+      : row.kind === "image_to_video" ? falVideoQueue
+        : falImageQueue;
+    await boss.send(kind, {
+      generationJobId: row.id,
+      ownerId: row.ownerId,
+      projectId: row.projectId
+    }, {
+      singletonKey: `${kind}:${row.id}`,
+      retryLimit: 2,
+      retryDelay: 1,
+      expireInSeconds: kind === falVideoQueue ? 1200 : 600
+    });
+    sent += 1;
+  }
+  return sent;
+}
+
 export async function cleanupDispatchedOutbox(
   pool: pg.Pool,
   retentionHours: number
@@ -160,6 +186,7 @@ export async function startQueueRuntime(
     });
   }
   await dispatchOutbox(pool, boss);
+  await reclaimActiveGenerationJobs(pool, boss);
   await cleanupDispatchedOutbox(pool, outboxRetentionHours);
   const dispatchTimer = setInterval(
     () => void dispatchOutbox(pool, boss).catch((error) => boss.emit("error", error)),

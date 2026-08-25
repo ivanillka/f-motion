@@ -34,6 +34,8 @@ import {
   stockFillStatus,
   storyboardArchitectureForConcept,
   captionsFromVoiceScript,
+  falSpeechLogTrail,
+  falSpeechProgress,
   plannedVoiceScript,
   clientId,
   durationSecondsFromClipCount,
@@ -290,6 +292,8 @@ function App() {
   const [falSpeechPrompt, setFalSpeechPrompt] = useState("");
   const [falSpeechJob, setFalSpeechJob] = useState<GenerationJobView>();
   const [falSpeechBusy, setFalSpeechBusy] = useState(false);
+  const [falSpeechStartedAt, setFalSpeechStartedAt] = useState(0);
+  const falSpeechPollRef = useRef<string | undefined>(undefined);
   const [pexelsCredential, setPexelsCredential] = useState<PexelsCredentialView>();
   const [pexelsUnavailable, setPexelsUnavailable] = useState(false);
   const [pexelsKey, setPexelsKey] = useState("");
@@ -2398,6 +2402,7 @@ function App() {
     }
     setFalSpeechPrompt(planned.slice(0, 2000));
     setFalSpeechJob(undefined);
+    setFalSpeechStartedAt(0);
     setFalSpeechOpen(true);
     setVoiceOpen(true);
     const stored = localStorage.getItem(falSpeechStorageKey(project.id));
@@ -2411,7 +2416,8 @@ function App() {
         }
         setFalSpeechJob(job);
         setFalSpeechPrompt(job.prompt);
-        if (!["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(job.state)) {
+        if (falGenerationActive(job.state)) {
+          setFalSpeechStartedAt((current) => current || Date.now());
           void pollFalSpeech(job.id);
         }
       } catch {
@@ -2436,6 +2442,7 @@ function App() {
       );
       setFalSpeechJob(job);
       setFalSpeechPrompt(prompt);
+      setFalSpeechStartedAt(0);
       localStorage.setItem(falSpeechStorageKey(project.id), job.id);
       setStatus("Review the FAL price, then confirm to generate voice-over.");
     } catch (error) {
@@ -2464,6 +2471,7 @@ function App() {
       });
       setFalSpeechJob(job);
       localStorage.setItem(falSpeechStorageKey(project.id), job.id);
+      setFalSpeechStartedAt(Date.now());
       setStatus("FAL voice-over queued.");
       void pollFalSpeech(job.id);
     } catch (error) {
@@ -2479,36 +2487,42 @@ function App() {
   }
 
   async function pollFalSpeech(jobId: string) {
+    if (falSpeechPollRef.current === jobId) return;
+    falSpeechPollRef.current = jobId;
     const deadline = Date.now() + 12 * 60_000;
-    while (Date.now() < deadline) {
-      try {
-        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
-        if (job.state === "ready" && job.result_media && project) {
-          try {
-            const media = await api.request<SceneMediaView>(
-              `/api/projects/${project.id}/media/${job.result_media.id}`
-            );
-            setFalSpeechJob({ ...job, result_media: media });
-          } catch {
+    try {
+      while (Date.now() < deadline) {
+        try {
+          const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
+          if (job.state === "ready" && job.result_media && project) {
+            try {
+              const media = await api.request<SceneMediaView>(
+                `/api/projects/${project.id}/media/${job.result_media.id}`
+              );
+              setFalSpeechJob({ ...job, result_media: media });
+            } catch {
+              setFalSpeechJob(job);
+            }
+          } else {
             setFalSpeechJob(job);
           }
-        } else {
-          setFalSpeechJob(job);
-        }
-        if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
-          if (job.state === "ready") setStatus("AI voice-over ready — review it before attaching.");
-          else if (job.state === "cancelled") setStatus("FAL voice-over cancelled.");
-          else setStatus(falGenFailureMessage(job));
+          if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
+            if (job.state === "ready") setStatus("AI voice-over ready — review it before attaching.");
+            else if (job.state === "cancelled") setStatus("FAL voice-over cancelled.");
+            else setStatus(falGenFailureMessage(job));
+            return;
+          }
+          setStatus(`FAL voice-over · ${job.state.replaceAll("_", " ")}`);
+        } catch {
+          setStatus("Could not refresh FAL voice-over status.");
           return;
         }
-        setStatus(`FAL voice-over · ${job.state.replaceAll("_", " ")}`);
-      } catch {
-        setStatus("Could not refresh FAL voice-over status.");
-        return;
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      setStatus("FAL voice-over is still running. Reopen Generate with FAL to check again.");
+    } finally {
+      if (falSpeechPollRef.current === jobId) falSpeechPollRef.current = undefined;
     }
-    setStatus("FAL voice-over is still running. Reopen Generate with FAL to check again.");
   }
 
   async function cancelFalSpeech() {
@@ -2671,6 +2685,18 @@ function App() {
       : soundtrackMedia?.attribution?.title ?? "Uploaded music";
   const voiceover = project?.brief.voiceover;
   const voiceoverUrl = voiceover?.media_id ? scenePreviewUrl(sceneMedia[voiceover.media_id]) : undefined;
+  const speechElapsedMs = falSpeechStartedAt ? Date.now() - falSpeechStartedAt : 0;
+  const speechProgress = falSpeechJob ? falSpeechProgress(falSpeechJob.state, speechElapsedMs) : { percent: 0, line: "" };
+  const speechLog = falSpeechJob
+    ? falSpeechLogTrail(falSpeechJob.state).map((line, index, all) => (
+      index === all.length - 1 && falSpeechJob.state === "running" && speechElapsedMs
+        ? `${line} · ${formatPlayTime(speechElapsedMs)}`
+        : line
+    ))
+    : [];
+  const speechElapsedLabel = falSpeechJob && falGenerationActive(falSpeechJob.state) && speechElapsedMs
+    ? ` · ${formatPlayTime(speechElapsedMs)}`
+    : "";
   const spokenCue = previewScene && livePlaying
     ? (cueAtElapsed(cuesForScene(previewScene), playhead.sceneElapsedMs)?.text ?? "")
     : shownCaption;
@@ -3751,7 +3777,11 @@ function App() {
             {falSpeechJob.quote.estimated_total !== null
               ? ` · estimated total ${falSpeechJob.quote.currency} ${falSpeechJob.quote.estimated_total}`
               : ` · ${falSpeechJob.quote.estimated_total_explanation ?? "FAL could not calculate a total"}`}</p>
-          <p>Status · {falSpeechJob.state.replaceAll("_", " ")}</p>
+          <p>Status · {falSpeechJob.state.replaceAll("_", " ")}{speechElapsedLabel}</p>
+          <progress max={100} value={speechProgress.percent} aria-label="Voice-over generation progress">{speechProgress.percent}%</progress>
+          <ol className="assemble-log" aria-label="Voice-over generation log">
+            {speechLog.map((line, index) => <li key={`${index}-${line}`}>{line}</li>)}
+          </ol>
         </div>}
         {falSpeechJob?.state === "ready" && falSpeechJob.result_media && (
           <div>

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, applyConversationConceptOverlays, beatsForConcept, buildStoryboardDraft, clientId, mergeConversationStoryboard, plannedVoiceScript, recommendVideoArchitecture, sceneDurationForMedia, stockBedForPace, storyboardArchitectureForConcept } from "../src/api.ts";
+import { ApiClient, ApiResponseError, applyConversationConceptOverlays, beatsForConcept, buildStoryboardDraft, clientId, falSpeechLogTrail, falSpeechProgress, mergeConversationStoryboard, plannedVoiceScript, recommendVideoArchitecture, sceneDurationForMedia, stockBedForPace, storyboardArchitectureForConcept } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
@@ -29,6 +29,21 @@ test("planned voice script prefers FAL caption over the visual description", () 
   assert.equal(plannedVoiceScript({ caption: "   " }, "  A lighthouse  "), "A lighthouse");
   assert.equal(plannedVoiceScript(undefined, "  brief  "), "brief");
   assert.equal(plannedVoiceScript({ caption: "x".repeat(1900) }, "brief").length, 1800);
+});
+
+test("FAL speech progress bar and log follow job state", () => {
+  assert.equal(falSpeechProgress("quoted").percent, 8);
+  assert.equal(falSpeechProgress("running", 0).percent, 45);
+  assert.equal(falSpeechProgress("running", 30_000).percent, 55);
+  assert.equal(falSpeechProgress("running", 600_000).percent, 84);
+  assert.equal(falSpeechProgress("ready").percent, 100);
+  assert.deepEqual(falSpeechLogTrail("running"), [
+    "FAL priced this script.",
+    "Queued for generation.",
+    "Sending the script to FAL.",
+    "FAL is synthesizing speech."
+  ]);
+  assert.equal(falSpeechLogTrail("failed").at(-1), "Generation failed.");
 });
 
 const ids = () => {
