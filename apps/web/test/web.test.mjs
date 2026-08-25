@@ -132,7 +132,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { ApiResponseError, captionsFromVoiceScript, clampBpm, clampFocus, durationSecondsFromClipCount, exportGaps, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, snapshotFromConflict, stockBedUrl, stockFillStatus } = await vite.ssrLoadModule("/src/api.ts");
+    const { ApiResponseError, captionsFromVoiceScript, clampBpm, clampFocus, durationSecondsFromClipCount, exportGaps, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, previewPlaysAsVideo, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, snapshotFromConflict, stockBedUrl, stockFillStatus } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -174,6 +174,38 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.equal(nextLiveSceneId(["a", "b", "c"], "b"), "c");
     assert.equal(nextLiveSceneId(["a", "b", "c"], "c"), "a");
     assert.equal(scenePreviewUrl({ previewUrl: "https://media.example/still.jpg" }), "https://media.example/still.jpg");
+    assert.equal(previewPlaysAsVideo({
+      id: "v",
+      state: "ready",
+      detected: { type: "video/mp4" },
+      attribution: { source: "Pexels", creator: "A", attributionUrl: "https://www.pexels.com/a", previewUrl: "https://images.pexels.com/a.jpg" }
+    }), false);
+    assert.equal(previewPlaysAsVideo({
+      id: "v",
+      state: "ready",
+      detected: { type: "video/mp4" },
+      previewUrl: "blob:http://studio/1"
+    }), true);
+    const blobs = [];
+    const blobApi = {
+      request: async (path) => views[path.split("/").at(-1)],
+      requestBlob: async (path) => {
+        blobs.push(path);
+        return new Blob(["mp4"], { type: "video/mp4" });
+      }
+    };
+    const originalCreate = URL.createObjectURL;
+    URL.createObjectURL = () => "blob:test-selfhost";
+    try {
+      const hydrated = await loadSceneMediaViews(blobApi, project("two", "upload"));
+      assert.equal(hydrated.upload.previewUrl, "blob:test-selfhost");
+      assert.deepEqual(blobs, ["/api/projects/two/media/upload/content"]);
+      const reused = await loadSceneMediaViews(blobApi, project("two", "upload"), hydrated);
+      assert.equal(reused.upload.previewUrl, "blob:test-selfhost");
+      assert.equal(blobs.length, 1);
+    } finally {
+      URL.createObjectURL = originalCreate;
+    }
     const scenes = [
       { id: "a", duration_ms: 1000 },
       { id: "b", duration_ms: 3000 },
@@ -193,6 +225,9 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     await assert.rejects(() => loadSceneMediaViews({ request: async () => { throw new Error("offline"); } }, project("one", "a")), /offline/);
 
     const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
+    const apiSource = await readFile(new URL("../src/api.ts", import.meta.url), "utf8");
+    assert.match(source, /previewPlaysAsVideo/);
+    assert.match(apiSource, /media\/\$\{view\.id\}\/content/);
     assert.match(source, /setSceneMedia\(\{\}\);\s+setStatus\("Opening draft/);
     assert.match(source, /setStatus\(hydrationFailed \? "Draft media details could not be loaded\."/);
 

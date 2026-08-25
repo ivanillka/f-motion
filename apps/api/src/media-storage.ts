@@ -466,6 +466,22 @@ export class PrivateObjectStore {
     );
   }
 
+  /** Same-origin studio playback. Signed MinIO URLs are http://127.0.0.1 and never reach the browser. */
+  async open(objectKey: string): Promise<{ body: Readable; contentType?: string }> {
+    const result = await this.client.send(new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: objectKey
+    }));
+    if (!result.Body) throw new Error("object body missing");
+    const body = result.Body instanceof Readable
+      ? result.Body
+      : Readable.from(Buffer.from(await result.Body.transformToByteArray()));
+    return {
+      body,
+      ...(result.ContentType ? { contentType: result.ContentType } : {})
+    };
+  }
+
   async put(
     objectKey: string,
     body: Uint8Array | Readable,

@@ -471,6 +471,51 @@ test("scene media view is owner-scoped and exposes only validated public fields"
   }
 });
 
+test("sealed media content is streamed same-origin without storage keys", async () => {
+  const bytes = Buffer.from("ftypisom");
+  const server = createServer(createTestApp({
+    media: {
+      repository: {
+        async get(_ownerId, _projectId, assetId) {
+          if (assetId !== "asset-1") return undefined;
+          return {
+            id: "asset-1",
+            ownerId: "authenticated-user",
+            projectId: "project-1",
+            state: "ready",
+            sealedObjectKey: "private/sealed/key",
+            declaredType: "video/mp4",
+            maxBytes: bytes.length,
+            detected: { type: "video/mp4", bytes: bytes.length }
+          };
+        }
+      },
+      store: {
+        async signedGet() { return "http://127.0.0.1:9000/bucket/private/sealed/key"; },
+        async read(key) {
+          assert.equal(key, "private/sealed/key");
+          return bytes;
+        }
+      }
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const missing = await fetch(`${origin}/api/projects/project-1/media/missing/content`);
+    assert.equal(missing.status, 404);
+    const response = await fetch(`${origin}/api/projects/project-1/media/asset-1/content`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "video/mp4");
+    assert.equal(response.headers.get("content-disposition"), "inline");
+    assert.equal(Buffer.compare(Buffer.from(await response.arrayBuffer()), bytes), 0);
+    const json = await (await fetch(`${origin}/api/projects/project-1/media/asset-1`)).json();
+    assert.equal("previewUrl" in json, false);
+    assert.doesNotMatch(JSON.stringify(json), /127\.0\.0\.1|sealed\/key/);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("legacy and invalid persisted stock metadata never invents a preview", async () => {
   let legacy = true;
   const server = createServer(createTestApp({

@@ -959,6 +959,36 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       next(error);
     }
   });
+  app.get("/api/projects/:projectId/media/:assetId/content", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      const asset = await options.media.repository.get(ownerId, request.params.projectId, request.params.assetId);
+      if (!asset || asset.state !== "ready" || !asset.sealedObjectKey) {
+        return response.status(404).json({ type: "not_found", message: "preview unavailable" });
+      }
+      const type = asset.detected?.type;
+      if (type && (allowedMediaTypes.has(type) || allowedAudioTypes.has(type))) {
+        response.setHeader("content-type", type);
+      }
+      response.setHeader("cache-control", "private, max-age=60");
+      response.setHeader("content-disposition", "inline");
+      const store = options.media.store as PrivateObjectStore & {
+        open?: (objectKey: string) => Promise<{ body: NodeJS.ReadableStream; contentType?: string }>;
+        read?: (objectKey: string, maxBytes: number) => Promise<Uint8Array>;
+      };
+      if (typeof store.open === "function") {
+        const { body } = await store.open(asset.sealedObjectKey);
+        body.pipe(response);
+        return;
+      }
+      if (typeof store.read !== "function") return response.status(503).json({ type: "unavailable" });
+      // ponytail: test doubles buffer the object; PrivateObjectStore.open streams.
+      response.end(Buffer.from(await store.read(asset.sealedObjectKey, maximumMediaBytes)));
+    } catch (error) {
+      next(error);
+    }
+  });
   app.get("/api/music/search", async (request, response, next) => {
     try {
       let query: string;

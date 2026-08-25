@@ -21,6 +21,7 @@ import {
   nextLiveSceneId,
   panFocus,
   previousLiveSceneId,
+  previewPlaysAsVideo,
   recommendVideoArchitecture,
   sceneDurationForMedia,
   scenePreviewUrl,
@@ -248,6 +249,8 @@ function App() {
   const [drafts, setDrafts] = useState<ProjectSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [sceneMedia, setSceneMedia] = useState<Record<string, SceneMediaView>>({});
+  const sceneMediaRef = useRef(sceneMedia);
+  sceneMediaRef.current = sceneMedia;
   const [sceneProgress, setSceneProgress] = useState<Record<string, "finding" | "inspecting" | "ready" | "needs_media">>({});
   const [assembleLog, setAssembleLog] = useState<string[]>([]);
   const [assembleDone, setAssembleDone] = useState(0);
@@ -552,7 +555,7 @@ function App() {
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const refresh = async () => {
       try {
-        const views = await loadSceneMediaViews(api, project);
+        const views = await loadSceneMediaViews(api, project, sceneMediaRef.current);
         if (cancelled) return;
         setSceneMedia(views);
         if (Object.values(views).some(({ state }) =>
@@ -836,7 +839,7 @@ function App() {
       }
       let hydrationFailed = false;
       try {
-        const views = await loadSceneMediaViews(api, opened);
+        const views = await loadSceneMediaViews(api, opened, sceneMediaRef.current);
         if (transition !== mediaTransition.current) return false;
         setSceneMedia(views);
       } catch {
@@ -1368,7 +1371,7 @@ function App() {
     }
     const { project: refreshed } = await api.getProject(current.id);
     setProject(refreshed);
-    setSceneMedia(await loadSceneMediaViews(api, refreshed));
+    setSceneMedia(await loadSceneMediaViews(api, refreshed, sceneMediaRef.current));
     const readyCount = refreshed.scenes.filter((scene) => scene.media_id).length;
     const summary = readyCount === refreshed.scenes.length
       ? "Draft ready. Play it, export, or edit."
@@ -3207,8 +3210,8 @@ function App() {
           }}
         >
           {previewUrl
-            ? (media?.detected?.type === "video/mp4"
-              ? <video src={previewUrl} muted playsInline preload="metadata" style={{ objectPosition: `${clampFocus(scene.focal_x) * 100}% ${clampFocus(scene.focal_y) * 100}%` }} />
+            ? (previewPlaysAsVideo(media)
+              ? <video src={previewUrl} poster={media?.attribution?.previewUrl} muted playsInline preload="metadata" style={{ objectPosition: `${clampFocus(scene.focal_x) * 100}% ${clampFocus(scene.focal_y) * 100}%` }} />
               : <img src={previewUrl} alt="" style={{ objectPosition: `${clampFocus(scene.focal_x) * 100}% ${clampFocus(scene.focal_y) * 100}%` }} />)
             : (
               <span className="scene-empty">
@@ -3254,8 +3257,8 @@ function App() {
             onPointerUp={endPreviewPan}
             onPointerCancel={endPreviewPan}
           >
-        {previewUrl && (previewMedia?.detected?.type === "video/mp4"
-          ? <video key={previewScene?.id} src={previewUrl} muted playsInline autoPlay={livePlaying} loop={!livePlaying} controls={false} preload="metadata" draggable={false} className={previewMotionClass} style={previewPosition} onLoadedMetadata={(event) => notePreviewPixels(previewUrl, event.currentTarget.videoWidth, event.currentTarget.videoHeight)} />
+        {previewUrl && (previewPlaysAsVideo(previewMedia)
+          ? <video key={previewScene?.id} src={previewUrl} poster={previewMedia?.attribution?.previewUrl} muted playsInline autoPlay={livePlaying} loop={!livePlaying} controls={false} preload="metadata" draggable={false} className={previewMotionClass} style={previewPosition} onLoadedMetadata={(event) => notePreviewPixels(previewUrl, event.currentTarget.videoWidth, event.currentTarget.videoHeight)} />
           : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} draggable={false} className={previewMotionClass} style={previewPosition} onLoad={(event) => notePreviewPixels(previewUrl, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />)}
         {previewMedia && !previewUrl && <span className="media-placeholder">{previewMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
             {!previewMedia && <span className="media-placeholder">Choose stock or upload media</span>}

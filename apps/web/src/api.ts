@@ -337,6 +337,20 @@ export class ApiClient {
     return body as T;
   }
 
+  async requestBlob(path: string): Promise<Blob> {
+    const headers = new Headers();
+    headers.set("authorization", `Bearer ${this.token()}`);
+    const response = await fetch(path, { headers });
+    if (response.status === 401) this.onUnauthorized();
+    if (!response.ok) {
+      const body = response.headers.get("content-type")?.includes("json")
+        ? await response.json() as Record<string, unknown>
+        : {};
+      throw new ApiResponseError(response.status, body);
+    }
+    return response.blob();
+  }
+
   command(projectId: string, revision: number, kind: string, payload: Record<string, unknown>) {
     return this.request<ProjectSnapshot>(`/api/projects/${projectId}/commands`, {
       method: "POST",
@@ -397,6 +411,20 @@ export function focusFromPoint(
 
 export function scenePreviewUrl(media: SceneMediaView | undefined): string | undefined {
   return media?.previewUrl ?? media?.attribution?.previewUrl;
+}
+
+/** Sealed MP4s play as video; Pexels/Pixabay JPEG fallbacks must not, or the player stays black. */
+export function previewPlaysAsVideo(media: SceneMediaView | undefined): boolean {
+  const url = scenePreviewUrl(media);
+  if (!url || media?.detected?.type !== "video/mp4") return false;
+  if (!media.previewUrl || media.previewUrl !== url) return false;
+  if (url.startsWith("blob:")) return true;
+  try {
+    const path = new URL(url, "https://local.invalid").pathname.toLowerCase();
+    return !/\.(jpe?g|png|webp|gif)$/.test(path);
+  } catch {
+    return true;
+  }
 }
 
 export function nextLiveSceneId(sceneIds: readonly string[], currentId: string): string {
@@ -528,8 +556,9 @@ export function stockBedUrl(id: Soundtrack["stock_id"]): string | undefined {
 
 /** Loads a fresh, project-scoped map so callers replace rather than merge stale media state. */
 export async function loadSceneMediaViews(
-  api: Pick<ApiClient, "request">,
-  project: ProjectSnapshot
+  api: Pick<ApiClient, "request"> & Partial<Pick<ApiClient, "requestBlob">>,
+  project: ProjectSnapshot,
+  previous: Record<string, SceneMediaView> = {}
 ): Promise<Record<string, SceneMediaView>> {
   const soundtrackId = project.brief.soundtrack?.kind === "upload" ? project.brief.soundtrack.media_id : undefined;
   const voiceoverId = project.brief.voiceover?.media_id;
@@ -540,5 +569,33 @@ export async function loadSceneMediaViews(
   ])];
   const views = await Promise.all(mediaIds.map((id) =>
     api.request<SceneMediaView>(`/api/projects/${project.id}/media/${id}`)));
-  return Object.fromEntries(views.map((view) => [view.id, view]));
+  const next = Object.fromEntries(await Promise.all(views.map(async (view) => [
+    view.id,
+    await playableScenePreview(api, project.id, view, previous[view.id])
+  ])));
+  for (const [id, old] of Object.entries(previous)) {
+    const kept = next[id]?.previewUrl;
+    if (old.previewUrl?.startsWith("blob:") && old.previewUrl !== kept) {
+      URL.revokeObjectURL(old.previewUrl);
+    }
+  }
+  return next;
+}
+
+async function playableScenePreview(
+  api: Pick<ApiClient, "request"> & Partial<Pick<ApiClient, "requestBlob">>,
+  projectId: string,
+  view: SceneMediaView,
+  previous?: SceneMediaView
+): Promise<SceneMediaView> {
+  if (view.previewUrl || view.state !== "ready" || typeof api.requestBlob !== "function") return view;
+  if (previous?.previewUrl?.startsWith("blob:") && previous.state === "ready") {
+    return { ...view, previewUrl: previous.previewUrl };
+  }
+  try {
+    const blob = await api.requestBlob(`/api/projects/${projectId}/media/${view.id}/content`);
+    return { ...view, previewUrl: URL.createObjectURL(blob) };
+  } catch {
+    return view;
+  }
 }
