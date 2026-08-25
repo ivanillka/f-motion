@@ -270,6 +270,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .source-module {
   display: grid;
   place-items: center;
+  gap: 4px;
   min-height: 48px;
   padding: 12px 14px;
   text-align: center;
@@ -284,6 +285,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 .source-module strong { font-size: 0.95rem; font-weight: 600; }
+.source-module span { font-size: 0.78rem; color: var(--muted); line-height: 1.3; }
 .stage-hero h1 { margin: 0; }
 .assemble-stage { max-width: 640px; gap: 16px; }
 .assemble-stage progress {

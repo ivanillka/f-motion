@@ -177,7 +177,7 @@ const architectureLabels = {
   structure: { story_arc: "Beginning → turn → resolution", mystery: "Clues → tension → reveal", problem_solution: "Problem → solution → result", chronological: "Chronological journey" },
   tone: { cinematic: "Cinematic", documentary: "Documentary", energetic: "Energetic", calm: "Calm" },
   pace: { slow: "Slow and atmospheric", balanced: "Balanced", fast: "Fast and punchy" },
-  media: { stock: "Pexels real stock video", own: "My own media", mixed: "Pexels stock + my media" }
+  media: { stock: "Pexels and Pixabay", own: "My own media", mixed: "Pexels, Pixabay + my media" }
 } as const;
 
 function beatSteps(summary: string, sceneCount = 6): string[] {
@@ -185,9 +185,9 @@ function beatSteps(summary: string, sceneCount = 6): string[] {
 }
 
 const sourceChoices = [
-  ["stock", "Licensed stock", "Pexels real stock video"],
-  ["own", "My own media", "Build the video from clips you attach"],
-  ["mixed", "Mix", "Pexels stock + my media"]
+  ["stock", "Licensed stock", "Pexels and Pixabay"],
+  ["own", "My own media", "Clips you attach"],
+  ["mixed", "Mix", "Pexels, Pixabay + my media"]
 ] as const;
 
 function conceptDirection(direction: string, media: VideoArchitecture["media"]): string {
@@ -2907,7 +2907,7 @@ function App() {
 
   const sourceModules = (
     <div className="source-modules" role="radiogroup" aria-label="Visual source">
-      {sourceChoices.map(([id, title]) =>
+      {sourceChoices.map(([id, title, detail]) =>
         <button
           key={id}
           type="button"
@@ -2917,6 +2917,7 @@ function App() {
           onClick={() => setArchitecture({ ...architecture, media: id })}
         >
           <strong>{title}</strong>
+          <span>{detail}</span>
         </button>)}
     </div>
   );
@@ -3055,6 +3056,7 @@ function App() {
         <div><dt>Visuals</dt><dd>{architectureLabels.media[architecture.media]}</dd></div>
       </dl>
       {sourceModules}
+      {architecture.media !== "own" && <p>Licensed fill uses Pexels first, then Pixabay for remaining scenes.</p>}
       <details className="architecture-editor">
         <summary>Edit recommended video plan</summary>
         <p>Optional: adjust the decisions before F-Motion builds the storyboard and footage searches.</p>
@@ -3078,7 +3080,7 @@ function App() {
           <option value="15">About 15 seconds · 4 scenes</option><option value="30">About 30 seconds · 5 scenes</option><option value="45">About 45 seconds · 6 scenes</option>
         </select></label>
         <label>Where should visuals come from?<select value={architecture.media} onChange={(event) => setArchitecture({ ...architecture, media: event.target.value as VideoArchitecture["media"] })}>
-          <option value="stock">Pexels real stock video</option><option value="own">My own media</option><option value="mixed">Mix Pexels stock and my media</option>
+          <option value="stock">Licensed stock (Pexels and Pixabay)</option><option value="own">My own media</option><option value="mixed">Mix Pexels, Pixabay, and my media</option>
         </select></label>
         </div>
       </details>
