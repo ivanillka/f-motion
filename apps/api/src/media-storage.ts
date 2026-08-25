@@ -207,6 +207,7 @@ export interface StoredMedia {
     creator: string;
     url: string;
     title?: string;
+    previewUrl?: string;
   } | {
     source: "FAL";
     model: string;
@@ -277,11 +278,21 @@ function safeStockAttribution(value: unknown): SceneMediaView["attribution"] {
     let host = "";
     try { host = new URL(attributionUrl).hostname; } catch { return undefined; }
     if (host !== "mixkit.co" && !host.endsWith(".mixkit.co")) return undefined;
+    let mixkitPreview: string | undefined;
+    if (previewUrl) {
+      try {
+        const previewHost = new URL(previewUrl).hostname;
+        if (previewHost === "assets.mixkit.co") mixkitPreview = previewUrl;
+      } catch {
+        mixkitPreview = undefined;
+      }
+    }
     return {
       source: "Mixkit",
       creator,
       attributionUrl,
-      ...(title && title.length <= 80 ? { title } : {})
+      ...(title && title.length <= 80 ? { title } : {}),
+      ...(mixkitPreview ? { previewUrl: mixkitPreview } : {})
     };
   }
   return undefined;

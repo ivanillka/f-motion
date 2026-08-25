@@ -1090,6 +1090,9 @@ function App() {
       })) {
         setMusicOpen(false);
         setStatus(`Music bed: ${hit.title} · ${hit.artist} · Mixkit`);
+        const latest = (await api.getProject(project.id)).project;
+        setSceneMedia(await loadSceneMediaViews(api, latest, sceneMediaRef.current));
+        hearNewBed();
       }
     } catch {
       setStatus("That licensed track could not be added. Try another.");
@@ -1122,12 +1125,7 @@ function App() {
           body: JSON.stringify({ content_type: type, bytes: file.size })
         }
       );
-      const uploaded = await fetch(admission.upload_url, {
-        method: "PUT",
-        headers: { "content-type": type },
-        body: file
-      });
-      if (!uploaded.ok) throw new Error("Upload failed");
+      await api.putAdmittedObject(project.id, admission.asset_id, admission.upload_url, file, type);
       const ready = await api.request<SceneMediaView>(
         `/api/projects/${project.id}/media/${admission.asset_id}/complete`,
         { method: "POST" }
@@ -1142,7 +1140,7 @@ function App() {
         setVoiceOpen(false);
         if (voiceScript.trim()) void applyVoiceCaptions();
       } else {
-        await saveSoundtrack({
+        const updated = await saveSoundtrack({
           kind: "upload",
           media_id: ready.id,
           bpm: clampBpm(project.brief.soundtrack?.bpm),
@@ -1150,6 +1148,11 @@ function App() {
           level: project.brief.soundtrack?.level ?? 0.8
         });
         setMusicOpen(false);
+        if (updated && project) {
+          const latest = (await api.getProject(project.id)).project;
+          setSceneMedia(await loadSceneMediaViews(api, latest, sceneMediaRef.current));
+        }
+        hearNewBed();
       }
     } catch {
       setStatus(purpose === "voiceover"
@@ -1570,12 +1573,7 @@ function App() {
         body: JSON.stringify({ content_type: file.type, bytes: file.size })
       }
     );
-    const uploaded = await fetch(admission.upload_url, {
-      method: "PUT",
-      headers: { "content-type": file.type },
-      body: file
-    });
-    if (!uploaded.ok) throw new Error("Upload failed");
+    await api.putAdmittedObject(projectId, admission.asset_id, admission.upload_url, file, file.type);
     await api.request(`/api/projects/${projectId}/media/${admission.asset_id}/complete`, { method: "POST" });
     return attachMediaWhenReady(admission.asset_id, projectId, sceneId);
   }
@@ -2680,6 +2678,11 @@ function App() {
     setPlayTick(performance.now());
   }
 
+  function hearNewBed() {
+    stopMusicPreview();
+    playLivePreview();
+  }
+
   function pauseLivePreview() {
     userPausedPreview.current = true;
     armSceneClock(readSceneElapsed(), false);
@@ -3446,8 +3449,11 @@ function App() {
                         bpm: clampBpm(soundtrack?.bpm ?? bed.bpm),
                         offset_ms: 0,
                         level: soundtrack?.level ?? 0.8
+                      }).then((ok) => {
+                        if (!ok) return;
+                        setMusicOpen(false);
+                        hearNewBed();
                       });
-                      setMusicOpen(false);
                     }}
                   >{bed.label}</button>)}
               </div>

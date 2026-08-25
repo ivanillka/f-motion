@@ -516,6 +516,47 @@ test("sealed media content is streamed same-origin without storage keys", async 
   }
 });
 
+test("admitted media bytes can be PUT same-origin when signed URLs are loopback", async () => {
+  const stored = [];
+  const server = createServer(createTestApp({
+    media: {
+      repository: {
+        async get(_ownerId, _projectId, assetId) {
+          if (assetId !== "asset-1") return undefined;
+          return {
+            id: "asset-1",
+            ownerId: "authenticated-user",
+            projectId: "project-1",
+            state: "admitted",
+            quarantineObjectKey: "private/quarantine/key",
+            declaredType: "audio/mpeg",
+            maxBytes: 64
+          };
+        }
+      },
+      store: {
+        async put(key, body, type, length) {
+          stored.push({ key, type, length, bytes: Buffer.from(body).toString() });
+        }
+      }
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const response = await fetch(`${origin}/api/projects/project-1/media/asset-1/bytes`, {
+      method: "PUT",
+      headers: { "content-type": "audio/mpeg" },
+      body: Buffer.from("ID3music")
+    });
+    assert.equal(response.status, 204);
+    assert.equal(stored[0]?.key, "private/quarantine/key");
+    assert.equal(stored[0]?.type, "audio/mpeg");
+    assert.equal(stored[0]?.bytes, "ID3music");
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("legacy and invalid persisted stock metadata never invents a preview", async () => {
   let legacy = true;
   const server = createServer(createTestApp({

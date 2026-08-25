@@ -132,7 +132,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { ApiResponseError, captionsFromVoiceScript, clampBpm, clampFocus, durationSecondsFromClipCount, exportGaps, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, previewPlaysAsVideo, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, snapshotFromConflict, stockBedUrl, stockFillStatus } = await vite.ssrLoadModule("/src/api.ts");
+    const { ApiResponseError, browserCanPut, captionsFromVoiceScript, clampBpm, clampFocus, durationSecondsFromClipCount, exportGaps, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, previewPlaysAsVideo, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, snapshotFromConflict, stockBedUrl, stockFillStatus } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -166,6 +166,9 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.equal(musicLaneBeats(2000, 120).length, 5);
     assert.equal(stockBedUrl("pulse"), "/music/pulse.mp3");
     assert.equal(stockBedUrl(undefined), undefined);
+    assert.equal(browserCanPut("https://storage.example/put", "http://89.1.2.3:8090"), true);
+    assert.equal(browserCanPut("http://127.0.0.1:9000/bucket", "http://89.1.2.3:8090"), false);
+    assert.equal(browserCanPut("http://127.0.0.1:9000/bucket", "http://127.0.0.1:4173"), true);
     const partnerToken = `x.${btoa(JSON.stringify({ email: "Owner@Example.com" })).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "")}.x`;
     assert.equal(jwtEmail(partnerToken), "owner@example.com");
     assert.equal(showsPartnerBrands(partnerToken, "owner@example.com"), true);
@@ -226,7 +229,8 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
 
     const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
     const apiSource = await readFile(new URL("../src/api.ts", import.meta.url), "utf8");
-    assert.match(source, /previewPlaysAsVideo/);
+    assert.match(source, /hearNewBed\(/);
+    assert.match(source, /putAdmittedObject/);
     assert.match(apiSource, /media\/\$\{view\.id\}\/content/);
     assert.match(source, /setSceneMedia\(\{\}\);\s+setStatus\("Opening draft/);
     assert.match(source, /setStatus\(hydrationFailed \? "Draft media details could not be loaded\."/);

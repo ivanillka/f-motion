@@ -351,6 +351,39 @@ export class ApiClient {
     return response.blob();
   }
 
+  async putBytes(path: string, body: Blob, contentType: string): Promise<void> {
+    const headers = new Headers();
+    headers.set("authorization", `Bearer ${this.token()}`);
+    headers.set("content-type", contentType);
+    const response = await fetch(path, { method: "PUT", headers, body });
+    if (response.status === 401) this.onUnauthorized();
+    if (!response.ok) {
+      const errorBody = response.headers.get("content-type")?.includes("json")
+        ? await response.json() as Record<string, unknown>
+        : {};
+      throw new ApiResponseError(response.status, errorBody);
+    }
+  }
+
+  async putAdmittedObject(
+    projectId: string,
+    assetId: string,
+    uploadUrl: string,
+    body: Blob,
+    contentType: string
+  ): Promise<void> {
+    if (browserCanPut(uploadUrl)) {
+      const uploaded = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "content-type": contentType },
+        body
+      });
+      if (!uploaded.ok) throw new Error("Upload failed");
+      return;
+    }
+    await this.putBytes(`/api/projects/${projectId}/media/${assetId}/bytes`, body, contentType);
+  }
+
   command(projectId: string, revision: number, kind: string, payload: Record<string, unknown>) {
     return this.request<ProjectSnapshot>(`/api/projects/${projectId}/commands`, {
       method: "POST",
@@ -552,6 +585,21 @@ export function stockBedForPace(pace: VideoArchitecture["pace"]): (typeof stockB
 
 export function stockBedUrl(id: Soundtrack["stock_id"]): string | undefined {
   return id ? `/music/${id}.mp3` : undefined;
+}
+
+/** Presigned MinIO URLs are http://127.0.0.1 on the VPS; the browser must PUT through the API. */
+export function browserCanPut(url: string, pageOrigin = globalThis.location?.origin ?? ""): boolean {
+  try {
+    const target = new URL(url, pageOrigin || undefined);
+    if (target.protocol === "https:") return true;
+    if (!pageOrigin) return false;
+    const here = new URL(pageOrigin);
+    const loopback = (host: string) => host === "127.0.0.1" || host === "localhost" || host === "[::1]";
+    if (loopback(target.hostname) && loopback(here.hostname)) return true;
+    return target.host === here.host;
+  } catch {
+    return false;
+  }
 }
 
 /** Loads a fresh, project-scoped map so callers replace rather than merge stale media state. */
