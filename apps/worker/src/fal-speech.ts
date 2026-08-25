@@ -9,6 +9,7 @@ import type pg from "pg";
 import {
   FAL_SPEECH_ENDPOINT_ID,
   FAL_SPEECH_MAX_BYTES,
+  FalImageError,
   assertFalMediaUrl,
   cancelSpeech,
   credentialVaultFromEnv,
@@ -142,6 +143,30 @@ export async function processFalSpeechJob(
   fetchImpl: typeof fetch = fetch,
   pollCeilingMs: number = POLL_CEILING_MS
 ): Promise<Record<string, unknown>> {
+  try {
+    return await runFalSpeechJob(pool, store, job, signal, env, fetchImpl, pollCeilingMs);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    const code = error instanceof FalImageError ? error.code : "provider_unavailable";
+    await pool.query(
+      `UPDATE "GenerationJob" SET state = 'failed', "failureCode" = $1, "updatedAt" = NOW()
+        WHERE id = $2 AND "ownerId" = $3
+          AND state NOT IN ('ready', 'cancelled', 'failed', 'submission_uncertain')`,
+      [code, job.generationJobId, job.ownerId]
+    );
+    return { state: "failed" };
+  }
+}
+
+async function runFalSpeechJob(
+  pool: pg.Pool,
+  store: WorkerObjectStore,
+  job: FalSpeechJob,
+  signal: AbortSignal,
+  env: Record<string, string | undefined>,
+  fetchImpl: typeof fetch,
+  pollCeilingMs: number
+): Promise<Record<string, unknown>> {
   let row = await loadJob(pool, job);
   if (!row) return { state: "ignored" };
   if (["ready", "cancelled", "failed", "submission_uncertain"].includes(row.state)) {
@@ -211,7 +236,21 @@ export async function processFalSpeechJob(
       );
       return { state: "cancelled" };
     }
-    const status = await speechStatus(key, row.providerRequestId!, fetchImpl, 30_000, signal);
+    let status;
+    try {
+      status = await speechStatus(key, row.providerRequestId!, fetchImpl, 30_000, signal);
+    } catch (error) {
+      if (!(error instanceof FalImageError) || (error.code !== "provider_unavailable" && error.code !== "rate_limited")) {
+        throw error;
+      }
+      await pool.query(
+        `UPDATE "GenerationJob" SET "updatedAt" = NOW()
+          WHERE id = $1 AND "ownerId" = $2 AND state = 'running'`,
+        [job.generationJobId, job.ownerId]
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      continue;
+    }
     if (status.status === "FAILED") {
       await pool.query(
         `UPDATE "GenerationJob" SET state = 'failed', "failureCode" = $1, "updatedAt" = NOW()

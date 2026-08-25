@@ -207,3 +207,55 @@ test("queued speech submits once, seals wav, skips inspect-media", async () => {
   assert.equal(pool.queries.some(({ sql }) => sql.includes("inspect-media")), false);
   assert.equal(pool.queries.some(({ sql }) => sql.includes("SET \"updatedAt\" = NOW()") && !sql.includes("SET state")), true);
 });
+
+test("a 404 FAL status after submit is retried until COMPLETED", async () => {
+  const { credentialVaultFromEnv, encryptCredential } = await import("@f-engine/fal-host");
+  const vault = credentialVaultFromEnv(env);
+  const encrypted = encryptCredential("fal-test-key", {
+    id: "cred-1",
+    ownerId: "owner",
+    provider: "fal"
+  }, vault);
+  const pool = fakePool(baseRow({
+    state: "running",
+    providerRequestId: "req-speech",
+    ciphertext: Buffer.from(encrypted.ciphertext),
+    nonce: Buffer.from(encrypted.nonce),
+    authTag: Buffer.from(encrypted.authTag),
+    keyVersion: encrypted.keyVersion
+  }));
+  let phase = 0;
+  const wav = wavBytes();
+  const fetchImpl = async (url) => {
+    if (String(url).includes("/status")) {
+      phase += 1;
+      if (phase === 1) return new Response("{}", { status: 404 });
+      return new Response(JSON.stringify({ status: "COMPLETED" }), {
+        status: 200, headers: { "content-type": "application/json" }
+      });
+    }
+    if (String(url).includes("/requests/")) {
+      return new Response(JSON.stringify({
+        audio: { url: "https://v3.fal.media/files/voice.wav" }
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).includes("fal.media")) {
+      return new Response(wav, {
+        status: 200,
+        headers: { "content-type": "audio/wav", "content-length": String(wav.length) }
+      });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  const result = await processFalSpeechJob(
+    pool,
+    { async put() { return { etag: "\"etag\"" }; }, async delete() {} },
+    { generationJobId: "job-s1", ownerId: "owner", projectId: "project" },
+    new AbortController().signal,
+    env,
+    fetchImpl
+  );
+  assert.equal(phase, 2);
+  assert.equal(result.state, "ready");
+  assert.equal(pool.row.state, "ready");
+});
