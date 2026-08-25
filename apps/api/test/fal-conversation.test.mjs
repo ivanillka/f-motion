@@ -133,6 +133,7 @@ test("FalConversationService decrypts the owner key and posts to any-llm", async
   assert.equal(body.prompt, "A lonely lighthouse");
   assert.equal(body.model, FAL_LLM_DEFAULT_MODEL);
   assert.match(body.system_prompt, /direct, story, and rhythm/);
+  assert.match(body.system_prompt, /spoken script/);
   assert.equal(plan.source.caption, "The light still turns.");
   assert.equal(plan.architecture.structure, "mystery");
 });

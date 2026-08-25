@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, applyConversationConceptOverlays, beatsForConcept, buildStoryboardDraft, clientId, mergeConversationStoryboard, recommendVideoArchitecture, sceneDurationForMedia, stockBedForPace, storyboardArchitectureForConcept } from "../src/api.ts";
+import { ApiClient, ApiResponseError, applyConversationConceptOverlays, beatsForConcept, buildStoryboardDraft, clientId, mergeConversationStoryboard, plannedVoiceScript, recommendVideoArchitecture, sceneDurationForMedia, stockBedForPace, storyboardArchitectureForConcept } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
@@ -22,6 +22,13 @@ test("conversation recommendations prefill distinct, editable video architecture
     goal: "educate", audience: "internal", structure: "story_arc", tone: "documentary",
     pace: "balanced", durationSeconds: 45, media: "own"
   });
+});
+
+test("planned voice script prefers FAL caption over the visual description", () => {
+  assert.equal(plannedVoiceScript({ caption: "  The bass dropped.  " }, "visual fog"), "The bass dropped.");
+  assert.equal(plannedVoiceScript({ caption: "   " }, "  A lighthouse  "), "A lighthouse");
+  assert.equal(plannedVoiceScript(undefined, "  brief  "), "brief");
+  assert.equal(plannedVoiceScript({ caption: "x".repeat(1900) }, "brief").length, 1800);
 });
 
 const ids = () => {

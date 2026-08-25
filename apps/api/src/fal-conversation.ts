@@ -58,8 +58,8 @@ export interface FalConversationPlanner {
 }
 
 export const FAL_CONVERSATION_SYSTEM_PROMPT = `You plan one short vertical video. Reply with JSON only, no markdown, no extra keys.
-{"architecture":{"goal":"story|explain|promote|educate","audience":"general|social|customers|internal","structure":"story_arc|mystery|problem_solution|chronological","tone":"cinematic|documentary|energetic|calm","pace":"slow|balanced|fast","durationSeconds":15,"media":"stock|own|mixed"},"source":{"caption":"on-screen sentences for the whole video","visual_hint":"concrete footage subject"},"concept_overlays":{"direct":{"hook":"...","treatment":"..."},"story":{"hook":"...","treatment":"..."},"rhythm":{"hook":"...","treatment":"..."}}}
-durationSeconds must be 15, 30, or 45. caption is readable on-screen copy as short sentences (max 2000 characters). visual_hint is searchable footage words (max 240). Use only concept ids direct, story, and rhythm. Do not invent a fourth concept. Prefer specific, speakable sentences over slogans.`;
+{"architecture":{"goal":"story|explain|promote|educate","audience":"general|social|customers|internal","structure":"story_arc|mystery|problem_solution|chronological","tone":"cinematic|documentary|energetic|calm","pace":"slow|balanced|fast","durationSeconds":15,"media":"stock|own|mixed"},"source":{"caption":"spoken voice-over script the user can edit before generating audio","visual_hint":"concrete footage subject"},"concept_overlays":{"direct":{"hook":"...","treatment":"..."},"story":{"hook":"...","treatment":"..."},"rhythm":{"hook":"...","treatment":"..."}}}
+durationSeconds must be 15, 30, or 45. caption is the spoken script as short sentences (max 2000 characters). visual_hint is searchable footage words (max 240). Use only concept ids direct, story, and rhythm. Do not invent a fourth concept. Prefer specific, speakable sentences over slogans.`;
 
 function clipText(value: unknown, max: number): string | undefined {
   if (typeof value !== "string") return undefined;

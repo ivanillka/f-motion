@@ -34,6 +34,7 @@ import {
   stockFillStatus,
   storyboardArchitectureForConcept,
   captionsFromVoiceScript,
+  plannedVoiceScript,
   clientId,
   durationSecondsFromClipCount,
   exportGaps,
@@ -552,7 +553,7 @@ function App() {
     setVoiceOpen(true);
     setVoiceScript((current) => current.trim()
       ? current
-      : (project?.scenes.map((scene) => scene.caption.trim()).filter(Boolean).join("\n") ?? ""));
+      : (project ? defaultVoicePrompt(project) : ""));
   }, [step, project?.id]);
 
   useEffect(() => {
@@ -739,19 +740,23 @@ function App() {
       }
       setAssembleTotal(2 + Math.max(1, current.scenes.length));
       noteAssemble(`Laid out ${current.scenes.length} scenes.`, true);
-      if (conversationSource && current.scenes.length) {
+      const spoken = voiceScript.trim();
+      const spokenSource = spoken || conversationSource
+        ? { ...conversationSource, ...(spoken ? { caption: spoken } : {}) }
+        : undefined;
+      if (spokenSource && current.scenes.length) {
         try {
-          noteAssemble("Applying on-screen copy…");
+          noteAssemble("Applying spoken copy…");
           const drafted = buildStoryboardDraft(
             current.brief.purpose,
             clientId,
             storyboardArchitectureForConcept(conceptId, architecture),
-            conversationSource
+            spokenSource
           );
           current = await api.command(current.id, current.revision, "replace_storyboard", {
             scenes: mergeConversationStoryboard(current.scenes, drafted)
           });
-          noteAssemble("On-screen copy is on the storyboard.");
+          noteAssemble("Spoken copy is on the storyboard.");
         } catch {
           noteAssemble("Kept the engine captions.");
         }
@@ -772,7 +777,9 @@ function App() {
       }
       setProject(current);
       setActiveSceneId(current.scenes[0]?.id ?? "");
-      setVoiceScript(current.scenes.map((scene) => scene.caption.trim()).filter(Boolean).join("\n"));
+      if (!spoken) {
+        setVoiceScript(current.scenes.map((scene) => scene.caption.trim()).filter(Boolean).join("\n"));
+      }
       const clips = pendingClips.current;
       if (architecture.media === "own" && !clips.length) {
         noteAssemble("Upload media for each scene next.");
@@ -836,6 +843,7 @@ function App() {
       setActiveSceneId(opened.scenes[0]?.id ?? "");
       localStorage.setItem("fengine-project", opened.id);
       setDraft(opened.brief.purpose);
+      setVoiceScript(defaultVoicePrompt(opened));
       if (!opened.scenes.length) {
         setConceptChoices(found.concepts?.length ? found.concepts : [...conceptsFor(opened.brief)]);
         setStep("concepts");
@@ -927,7 +935,7 @@ function App() {
           source = planned.source;
           overlays = planned.concept_overlays;
           kind = "fal";
-          note = "FAL wrote this plan and on-screen copy. Usage is billed to your FAL account.";
+          note = "FAL wrote this plan and spoken copy. Usage is billed to your FAL account.";
         } catch {
           // Keep the rule-based plan.
         }
@@ -938,6 +946,7 @@ function App() {
       setConversationSource(source);
       setConversationOverlays(overlays);
       setConversationPlanKind(kind);
+      setVoiceScript(plannedVoiceScript(source, brief));
       setStatus(note);
       setStep("architecture");
     } finally {
@@ -2381,7 +2390,13 @@ function App() {
       showFalLock();
       return;
     }
-    setFalSpeechPrompt(defaultVoicePrompt(project));
+    const planned = voiceScript.trim();
+    if (!planned) {
+      setVoiceOpen(true);
+      setStatus("Edit What you'll say, then generate the voice-over.");
+      return;
+    }
+    setFalSpeechPrompt(planned.slice(0, 2000));
     setFalSpeechJob(undefined);
     setFalSpeechOpen(true);
     setVoiceOpen(true);
@@ -2407,9 +2422,9 @@ function App() {
 
   async function quoteFalSpeech() {
     if (!project) return;
-    const prompt = falSpeechPrompt.trim();
+    const prompt = voiceScript.trim();
     if (!prompt || prompt.length > 2000) {
-      setStatus("Enter a voice-over script between 1 and 2000 characters.");
+      setStatus("Edit What you'll say, then generate the voice-over.");
       return;
     }
     setFalSpeechBusy(true);
@@ -2420,6 +2435,7 @@ function App() {
         { method: "POST", body: JSON.stringify({ prompt }) }
       );
       setFalSpeechJob(job);
+      setFalSpeechPrompt(prompt);
       localStorage.setItem(falSpeechStorageKey(project.id), job.id);
       setStatus("Review the FAL price, then confirm to generate voice-over.");
     } catch (error) {
@@ -3068,6 +3084,10 @@ function App() {
         <div><dt>Length</dt><dd>About {architecture.durationSeconds} seconds</dd></div>
         <div><dt>Visuals</dt><dd>{architectureLabels.media[architecture.media]}</dd></div>
       </dl>
+      <label className="plan-voice" htmlFor="plan-voice-script">What you'll say
+        <textarea id="plan-voice-script" maxLength={1800} value={voiceScript} onChange={(event) => setVoiceScript(event.target.value)} />
+      </label>
+      <p>This spoken copy is planned now so you can edit it before generating a voice-over.</p>
       {sourceModules}
       {architecture.media !== "own" && <p>Licensed fill uses Pexels first, then Pixabay for remaining scenes.</p>}
       <details className="architecture-editor">
@@ -3168,7 +3188,7 @@ function App() {
         <div>
           <h1>{step === "review" ? "Your draft" : "Storyboard"}</h1>
           <p>{step === "review"
-            ? (busy ? "Assembling captions, clips, and music…" : "Play the cut. Spoken copy is in What you'll say. Captions on the picture are not a voice track until you record, upload, or generate.")
+          ? (busy ? "Assembling captions, clips, and music…" : "Play the cut. Edit What you'll say, then record, upload, or generate. Captions on the picture are not a voice track.")
             : (playhead.totalMs
               ? `Live cut · ${formatPlayTime(playhead.offsetMs)} / ${formatPlayTime(playhead.totalMs)}`
               : "Review each beat and replace a still only when another visual fits better.")}</p>
@@ -3344,7 +3364,7 @@ function App() {
             onToggle={(event) => setVoiceOpen(event.currentTarget.open)}
           >
             <summary>{recording ? "Recording voice-over" : voiceover ? "Voice-over" : "Add voice-over"}</summary>
-            <p className="crop-hint">Record, upload, or generate with FAL. Captions time as spoken subtitles on Play and Export. Music ducks under the voice.</p>
+            <p className="crop-hint">Edit this script first. Record, upload, or generate with FAL after it reads the way you want. Captions time as spoken subtitles on Play and Export. Music ducks under the voice.</p>
             <label htmlFor="voice-script">What you'll say
               <textarea id="voice-script" maxLength={1800} value={voiceScript} disabled={busy || recording} onChange={(event) => setVoiceScript(event.target.value)} />
             </label>
@@ -3721,9 +3741,9 @@ function App() {
       </dialog>}
       {falSpeechOpen && project && <dialog open aria-labelledby="fal-speech-title">
         <h2 id="fal-speech-title">Generate voice-over</h2>
-        <p>Uses Kokoro American English on FAL. Charged directly to your FAL account. F-Motion copies the result into private storage.</p>
+        <p>Uses Kokoro American English on FAL. Charged directly to your FAL account. F-Motion copies the result into private storage. This is the script from What you'll say. Close and edit it there if you need to change it.</p>
         <label htmlFor="fal-speech-prompt">Voice-over script
-          <textarea id="fal-speech-prompt" maxLength={2000} value={falSpeechPrompt} disabled={falSpeechBusy || (falSpeechJob && !["quoted", "failed", "cancelled", "submission_uncertain", "ready"].includes(falSpeechJob.state))} onChange={(event) => setFalSpeechPrompt(event.target.value)} />
+          <textarea id="fal-speech-prompt" maxLength={2000} value={falSpeechPrompt} readOnly />
         </label>
         {falSpeechJob && <div className="notice">
           <p>Model · Kokoro American English</p>
@@ -3766,7 +3786,8 @@ function App() {
               }}>Keep current audio</button>
               <button className="secondary" disabled={falSpeechBusy} onClick={() => {
                 setFalSpeechJob(undefined);
-                setStatus("Request a new FAL price to generate another voice-over.");
+                setFalSpeechPrompt(voiceScript.trim().slice(0, 2000));
+                setStatus("Edit What you'll say if needed, then request a new FAL price.");
               }}>Generate another</button>
             </>
           )}

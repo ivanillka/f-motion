@@ -293,6 +293,16 @@ export function exportGaps(project: {
   return gaps;
 }
 
+/** Prefills What you'll say from FAL caption, else the description. */
+export function plannedVoiceScript(
+  source: { caption?: string } | undefined,
+  fallback = ""
+): string {
+  const caption = source?.caption?.trim();
+  if (caption) return caption.slice(0, 1800);
+  return fallback.trim().slice(0, 1800);
+}
+
 export function captionsFromVoiceScript(
   script: string,
   scenes: Array<{ id: string; duration_ms: number }>
