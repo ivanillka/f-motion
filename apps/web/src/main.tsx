@@ -32,6 +32,7 @@ import {
   stockFillStatus,
   storyboardArchitectureForConcept,
   captionsFromVoiceScript,
+  clientId,
   durationSecondsFromClipCount,
   exportGaps,
   showsPartnerBrands,
@@ -707,13 +708,13 @@ function App() {
         }
       }
       if (conversationSource && current.scenes.length) {
-        const drafted = buildStoryboardDraft(
-          current.brief.purpose,
-          () => crypto.randomUUID(),
-          storyboardArchitectureForConcept(conceptId, architecture),
-          conversationSource
-        );
         try {
+          const drafted = buildStoryboardDraft(
+            current.brief.purpose,
+            clientId,
+            storyboardArchitectureForConcept(conceptId, architecture),
+            conversationSource
+          );
           current = await api.command(current.id, current.revision, "replace_storyboard", {
             scenes: mergeConversationStoryboard(current.scenes, drafted)
           });
@@ -1327,7 +1328,7 @@ function App() {
     if (!project || project.scenes.length >= 8) return;
     const activeIndex = Math.max(0, project.scenes.findIndex(({ id }) => id === activeSceneId));
     const scene: Scene = {
-      id: crypto.randomUUID(), order: activeIndex + 1, caption: "",
+      id: clientId(), order: activeIndex + 1, caption: "",
       visual_prompt: `${project.brief.purpose.slice(0, 210).trim()} — additional visual beat`,
       duration_ms: 3000, focal_x: 0.5, focal_y: 0.5, motion: "zoom", audio_level: 1, ducking: false
     };
@@ -1495,11 +1496,11 @@ function App() {
       ?? conceptsFor(brief).find(({ id }) => id === "story")?.id
       ?? conceptsFor(brief)[0].id;
     updated = await api.command(updated.id, updated.revision, "select_concept", { concept_id: conceptId });
-    const scenes = (source.scenes.length ? source.scenes : buildStoryboardDraft(brief.purpose, () => crypto.randomUUID())).map((scene, order) => {
+    const scenes = (source.scenes.length ? source.scenes : buildStoryboardDraft(brief.purpose, () => clientId())).map((scene, order) => {
       const { media_id: _mediaId, ...withoutMedia } = scene;
       return {
         ...withoutMedia,
-        id: crypto.randomUUID(),
+        id: clientId(),
         order,
         visual_prompt: scene.visual_prompt || `${brief.purpose.slice(0, 210).trim()} — scene ${order + 1}`
       };
@@ -1942,7 +1943,7 @@ function App() {
     try {
       const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falGenJob.id}/confirm`, {
         method: "POST",
-        body: JSON.stringify({ idempotency_key: crypto.randomUUID() })
+        body: JSON.stringify({ idempotency_key: clientId() })
       });
       setFalGenJob(job);
       localStorage.setItem(falJobStorageKey(project.id, activeScene.id), job.id);
@@ -2133,7 +2134,7 @@ function App() {
     try {
       const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falVideoJob.id}/confirm`, {
         method: "POST",
-        body: JSON.stringify({ idempotency_key: crypto.randomUUID() })
+        body: JSON.stringify({ idempotency_key: clientId() })
       });
       setFalVideoJob(job);
       localStorage.setItem(falVideoStorageKey(project.id, activeScene.id), job.id);
@@ -2305,7 +2306,7 @@ function App() {
     try {
       const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falSpeechJob.id}/confirm`, {
         method: "POST",
-        body: JSON.stringify({ idempotency_key: crypto.randomUUID() })
+        body: JSON.stringify({ idempotency_key: clientId() })
       });
       setFalSpeechJob(job);
       localStorage.setItem(falSpeechStorageKey(project.id), job.id);

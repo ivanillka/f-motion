@@ -26,6 +26,8 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.doesNotMatch(source, /Automatically matched|strongest licensed match|Finding the best/);
   assert.doesNotMatch(source, /concept_id:\s*"direct"/);
   assert.match(source, /chooseConcept\(/);
+  assert.match(source, /clientId/);
+  assert.doesNotMatch(source, /crypto\.randomUUID\(/);
   assert.match(source, /aria-label=\{\`Choose \$\{concept\.title\} concept\. \$\{concept\.hook\}\`\}/);
   assert.match(source, /requestRender\("final"\)/);
   assert.doesNotMatch(source, /requestRender\("preview"\)/);

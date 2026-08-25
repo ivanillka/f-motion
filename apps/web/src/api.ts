@@ -236,6 +236,20 @@ export class ApiResponseError extends Error {
   }
 }
 
+/** Client command/scene ids. `crypto.randomUUID` is missing on plain HTTP origins. */
+export function clientId(): string {
+  const webCrypto = globalThis.crypto;
+  if (typeof webCrypto.randomUUID === "function") return webCrypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  webCrypto.getRandomValues(bytes);
+  const clock = bytes[6] ?? 0;
+  const variant = bytes[8] ?? 0;
+  bytes[6] = (clock & 0x0f) | 0x40;
+  bytes[8] = (variant & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 /** Uses the server snapshot after a stale-revision 409 so a lost first click can continue. */
 export function snapshotFromConflict(error: unknown, projectId: string): ProjectSnapshot | undefined {
   if (!(error instanceof ApiResponseError) || error.status !== 409) return;
@@ -327,7 +341,7 @@ export class ApiClient {
     return this.request<ProjectSnapshot>(`/api/projects/${projectId}/commands`, {
       method: "POST",
       body: JSON.stringify({
-        command_id: crypto.randomUUID(),
+        command_id: clientId(),
         base_revision: revision,
         client_timestamp: new Date().toISOString(),
         kind,

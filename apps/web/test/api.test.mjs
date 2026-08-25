@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, applyConversationConceptOverlays, beatsForConcept, buildStoryboardDraft, mergeConversationStoryboard, recommendVideoArchitecture, sceneDurationForMedia, storyboardArchitectureForConcept } from "../src/api.ts";
+import { ApiClient, ApiResponseError, applyConversationConceptOverlays, beatsForConcept, buildStoryboardDraft, clientId, mergeConversationStoryboard, recommendVideoArchitecture, sceneDurationForMedia, storyboardArchitectureForConcept } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
@@ -179,6 +179,47 @@ test("project listing rejects an HTML fallback response instead of crashing the 
   try {
     const client = new ApiClient(() => "token");
     await assert.rejects(client.listProjects(), /invalid projects response/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+function withoutRandomUUID(run) {
+  const cryptoObj = globalThis.crypto;
+  const original = Object.getOwnPropertyDescriptor(cryptoObj, "randomUUID");
+  Object.defineProperty(cryptoObj, "randomUUID", { configurable: true, value: undefined });
+  try {
+    return run();
+  } finally {
+    if (original) Object.defineProperty(cryptoObj, "randomUUID", original);
+    else delete cryptoObj.randomUUID;
+  }
+}
+
+test("client IDs still generate when randomUUID is missing", () => {
+  const id = withoutRandomUUID(() => clientId());
+  assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  assert.match(clientId(), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  const second = withoutRandomUUID(() => clientId());
+  assert.notEqual(second, id);
+});
+
+test("commands still send an id when randomUUID is missing", async () => {
+  const originalFetch = globalThis.fetch;
+  let body;
+  globalThis.fetch = async (_path, init) => {
+    body = JSON.parse(String(init.body));
+    return new Response(JSON.stringify({ id: "p1", revision: 1, scenes: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  };
+  try {
+    const client = new ApiClient(() => "token");
+    await withoutRandomUUID(() => client.command("p1", 0, "select_concept", { concept_id: "story" }));
+    assert.match(body.command_id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    assert.equal(body.kind, "select_concept");
+    assert.equal(body.payload.concept_id, "story");
   } finally {
     globalThis.fetch = originalFetch;
   }
