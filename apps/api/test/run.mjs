@@ -10,6 +10,7 @@ await import("./access-policy.test.mjs");
 await import("./external-import.test.mjs");
 await import("./fal-credentials.test.mjs");
 await import("./fal-credentials-integration.test.mjs");
+await import("./fal-conversation.test.mjs");
 await import("./fal-generation.test.mjs");
 await import("./pexels-credentials.test.mjs");
 await import("./pixabay-credentials.test.mjs");

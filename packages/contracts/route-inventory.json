@@ -9,6 +9,7 @@
     { "method": "PUT", "path": "/providers/fal/credential", "auth": "bearer" },
     { "method": "POST", "path": "/providers/fal/credential/test", "auth": "bearer" },
     { "method": "DELETE", "path": "/providers/fal/credential", "auth": "bearer" },
+    { "method": "POST", "path": "/providers/fal/conversation", "auth": "bearer" },
     { "method": "GET", "path": "/providers/pexels/credential", "auth": "bearer" },
     { "method": "PUT", "path": "/providers/pexels/credential", "auth": "bearer" },
     { "method": "POST", "path": "/providers/pexels/credential/test", "auth": "bearer" },

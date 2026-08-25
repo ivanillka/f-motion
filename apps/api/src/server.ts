@@ -59,6 +59,10 @@ import {
   type FalCredentialService
 } from "./fal-credentials.js";
 import {
+  falConversationHttpError,
+  type FalConversationPlanner
+} from "./fal-conversation.js";
+import {
   falGenerationHttpError,
   type FalGenerationService
 } from "./fal-generation.js";
@@ -107,6 +111,7 @@ interface AppBaseOptions {
   /** Test adapter for trusted remote-media imports. */
   externalMediaRequest?: typeof fetch;
   falCredentials?: FalCredentialService;
+  falConversation?: FalConversationPlanner;
   falGeneration?: FalGenerationService;
   pexelsCredentials?: PexelsCredentialService;
   pixabayCredentials?: PixabayCredentialService;
@@ -559,6 +564,23 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       ));
     } catch (error) {
       const mapped = falCredentialHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/providers/fal/conversation", async (request, response, next) => {
+    try {
+      if (!options.falConversation) return falUnavailable(response);
+      if (!exactObject(request.body, ["brief"])) {
+        return response.status(422).json({ type: "validation", message: "Describe the video in your own words." });
+      }
+      const plan = await options.falConversation.plan(
+        String(response.locals.ownerId),
+        (request.body as { brief?: unknown }).brief
+      );
+      response.status(201).json(plan);
+    } catch (error) {
+      const mapped = falConversationHttpError(error);
       if (mapped) return response.status(mapped.status).json(mapped.body);
       next(error);
     }

@@ -6,6 +6,7 @@ import {
   defaultVideoArchitecture,
   VOICEOVER_DUCK,
   type Concept,
+  type StoryboardSource,
   type VideoArchitecture
 } from "@f-engine/reel-engine";
 
@@ -89,13 +90,22 @@ export {
   defaultVideoArchitecture,
   VOICEOVER_DUCK,
   type Concept,
+  type StoryboardSource,
   type VideoArchitecture
 };
 
-/** Prefills the reference UI until a host supplies a reviewed conversation-model adapter. */
+export type ConversationConceptOverlay = { hook?: string; treatment?: string };
+export type ConversationConceptOverlays = Partial<Record<"direct" | "story" | "rhythm", ConversationConceptOverlay>>;
+
+export interface CreateConversationPlan {
+  architecture: VideoArchitecture;
+  source: StoryboardSource;
+  concept_overlays?: ConversationConceptOverlays;
+}
+
+/** Rule-based plan used when FAL conversation is disconnected or unavailable. */
 export function recommendVideoArchitecture(conversation: string): VideoArchitecture {
-  // ponytail: deterministic semantic signals are the ceiling; replace this
-  // host-only function with a structured model decision when that adapter exists.
+  // ponytail: keyword rules remain the disconnected fallback; FAL any-llm writes copy when connected.
   const text = conversation.normalize("NFKC").toLowerCase();
   const matches = (pattern: RegExp) => pattern.test(text);
   const goal: VideoArchitecture["goal"] = matches(/\b(how to|tutorial|teach|lesson|guide|learn)\b/u)
@@ -147,6 +157,52 @@ export function recommendVideoArchitecture(conversation: string): VideoArchitect
       ? "own"
       : "stock";
   return { goal, audience, structure, tone, pace, durationSeconds, media };
+}
+
+export function applyConversationConceptOverlays(
+  concepts: Concept[],
+  overlays: ConversationConceptOverlays | undefined
+): Concept[] {
+  if (!overlays) return concepts;
+  return concepts.map((concept) => {
+    const overlay = overlays[concept.id as keyof ConversationConceptOverlays];
+    if (!overlay) return concept;
+    const hook = overlay.hook?.trim();
+    const treatment = overlay.treatment?.trim();
+    return {
+      ...concept,
+      hook: hook ? hook.slice(0, 160) : concept.hook,
+      treatment: treatment ? treatment.slice(0, 280) : concept.treatment
+    };
+  });
+}
+
+export function storyboardArchitectureForConcept(
+  conceptId: string,
+  base: VideoArchitecture
+): VideoArchitecture {
+  if (conceptId === "direct") {
+    return { ...base, goal: "promote", structure: "problem_solution", durationSeconds: 15 };
+  }
+  if (conceptId === "story") {
+    return { ...base, goal: "story", structure: "story_arc", durationSeconds: 30 };
+  }
+  if (conceptId === "rhythm") {
+    return { ...base, goal: "story", structure: "chronological", pace: "fast", durationSeconds: 45 };
+  }
+  return base;
+}
+
+export function mergeConversationStoryboard(engineScenes: Scene[], drafted: Scene[]): Scene[] {
+  return drafted.map((scene, index) => {
+    const existing = engineScenes[index];
+    if (!existing) return scene;
+    return {
+      ...scene,
+      id: existing.id,
+      ...(existing.media_id ? { media_id: existing.media_id } : {})
+    };
+  });
 }
 
 /** Uses the inspected clip length while keeping it inside the engine's scene bounds. */
@@ -279,6 +335,13 @@ export class ApiClient {
 
   getProject(projectId: string) {
     return this.request<{ project: ProjectSnapshot; concepts?: Concept[] }>(`/api/projects/${projectId}`);
+  }
+
+  planCreateConversation(brief: string) {
+    return this.request<CreateConversationPlan>("/api/providers/fal/conversation", {
+      method: "POST",
+      body: JSON.stringify({ brief })
+    });
   }
 }
 

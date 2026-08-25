@@ -120,6 +120,47 @@ paths:
               schema: { $ref: "#/components/schemas/TypedError" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /providers/fal/conversation:
+    post:
+      operationId: planFalConversation
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [brief]
+              properties:
+                brief: { type: string, minLength: 1, maxLength: 2000 }
+              additionalProperties: false
+      responses:
+        "201":
+          description: Video plan and on-screen copy billed to the owner's FAL key
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [architecture, source]
+                properties:
+                  architecture: { type: object, additionalProperties: true }
+                  source:
+                    type: object
+                    required: [caption]
+                    properties:
+                      caption: { type: string }
+                      visualHint: { type: string }
+                  concept_overlays: { type: object, additionalProperties: true }
+                additionalProperties: false
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: FAL not connected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TypedError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
   /providers/pexels/credential:
     get:
       operationId: getPexelsCredential

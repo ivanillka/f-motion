@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   ApiClient,
   ApiResponseError,
+  applyConversationConceptOverlays,
   buildStoryboardDraft,
   conceptsFor,
   clampFocus,
@@ -14,6 +15,7 @@ import {
   livePlayhead,
   liveTimeline,
   loadSceneMediaViews,
+  mergeConversationStoryboard,
   musicLaneBeats,
   nextLiveSceneId,
   panFocus,
@@ -27,6 +29,7 @@ import {
   stockBedUrl,
   stockBeds,
   stockFillStatus,
+  storyboardArchitectureForConcept,
   captionsFromVoiceScript,
   durationSecondsFromClipCount,
   exportGaps,
@@ -35,11 +38,13 @@ import {
   cuesForScene,
   VOICEOVER_DUCK,
   type Concept,
+  type ConversationConceptOverlays,
   type ProjectSnapshot,
   type ProjectSummary,
   type Scene,
   type SceneMediaView,
   type Soundtrack,
+  type StoryboardSource,
   type VideoArchitecture,
   type Voiceover
 } from "./api";
@@ -224,6 +229,9 @@ function App() {
   const [awaitingEmail, setAwaitingEmail] = useState(false);
   const [draft, setDraft] = useState(() => localStorage.getItem("fengine-draft") ?? "");
   const [architecture, setArchitecture] = useState<VideoArchitecture>(defaultVideoArchitecture);
+  const [conversationSource, setConversationSource] = useState<StoryboardSource>();
+  const [conversationOverlays, setConversationOverlays] = useState<ConversationConceptOverlays>();
+  const [conversationPlanKind, setConversationPlanKind] = useState<"fal" | "rules">("rules");
   const [conceptChoices, setConceptChoices] = useState<Concept[]>([]);
   const [project, setProject] = useState<ProjectSnapshot>();
   const [activeSceneId, setActiveSceneId] = useState("");
@@ -641,14 +649,23 @@ function App() {
         });
         current = body.project;
         localStorage.setItem("fengine-project", current.id);
-        choices = body.concepts?.length ? body.concepts : [...conceptsFor(briefForConcepts())];
+        choices = applyConversationConceptOverlays(
+          body.concepts?.length ? body.concepts : [...conceptsFor(briefForConcepts())],
+          conversationOverlays
+        );
       } else {
         try {
           const found = await api.getProject(current.id);
           current = found.project;
-          choices = found.concepts?.length ? found.concepts : [...conceptsFor(current.brief.purpose ? current.brief : briefForConcepts())];
+          choices = applyConversationConceptOverlays(
+            found.concepts?.length ? found.concepts : [...conceptsFor(current.brief.purpose ? current.brief : briefForConcepts())],
+            conversationOverlays
+          );
         } catch {
-          choices = [...conceptsFor(current.brief.purpose ? current.brief : briefForConcepts())];
+          choices = applyConversationConceptOverlays(
+            [...conceptsFor(current.brief.purpose ? current.brief : briefForConcepts())],
+            conversationOverlays
+          );
         }
       }
       setProject(current);
@@ -689,6 +706,21 @@ function App() {
           current = authoritative.scenes.length
             ? authoritative
             : await api.command(authoritative.id, authoritative.revision, "select_concept", { concept_id: conceptId });
+        }
+      }
+      if (conversationSource && current.scenes.length) {
+        const drafted = buildStoryboardDraft(
+          current.brief.purpose,
+          () => crypto.randomUUID(),
+          storyboardArchitectureForConcept(conceptId, architecture),
+          conversationSource
+        );
+        try {
+          current = await api.command(current.id, current.revision, "replace_storyboard", {
+            scenes: mergeConversationStoryboard(current.scenes, drafted)
+          });
+        } catch {
+          // Keep the engine storyboard if FAL copy cannot be applied.
         }
       }
       setProject(current);
@@ -779,6 +811,9 @@ function App() {
     setSceneProgress({});
     setCandidates([]);
     setArchitecture(defaultVideoArchitecture);
+    setConversationSource(undefined);
+    setConversationOverlays(undefined);
+    setConversationPlanKind("rules");
     setDraft(localStorage.getItem("fengine-draft") ?? "");
     setVoiceScript("");
     setStatus("");
@@ -809,13 +844,43 @@ function App() {
     setStep("brief");
   }
 
-  function continueToArchitecture() {
-    const recommended = recommendVideoArchitecture(draft);
-    setArchitecture(pendingClips.current.length
-      ? { ...recommended, media: "own", durationSeconds: durationSecondsFromClipCount(pendingClips.current.length) }
-      : recommended);
-    setStatus("");
-    setStep("architecture");
+  async function continueToArchitecture() {
+    const brief = draft.trim();
+    if (!brief || busy) return;
+    setBusy(true);
+    const falReady = Boolean(falCredential?.connected && !falUnavailable);
+    setStatus(falReady ? "Writing the video plan…" : "");
+    try {
+      let recommended = recommendVideoArchitecture(brief);
+      let source: StoryboardSource | undefined;
+      let overlays: ConversationConceptOverlays | undefined;
+      let kind: "fal" | "rules" = "rules";
+      let note = falReady
+        ? "FAL conversation was unavailable. Using the rule-based plan."
+        : "Rule-based plan. Connect FAL in Settings for smarter copy.";
+      if (falReady) {
+        try {
+          const planned = await api.planCreateConversation(brief);
+          recommended = planned.architecture;
+          source = planned.source;
+          overlays = planned.concept_overlays;
+          kind = "fal";
+          note = "FAL wrote this plan and on-screen copy. Usage is billed to your FAL account.";
+        } catch {
+          // Keep the rule-based plan.
+        }
+      }
+      setArchitecture(pendingClips.current.length
+        ? { ...recommended, media: "own", durationSeconds: durationSecondsFromClipCount(pendingClips.current.length) }
+        : recommended);
+      setConversationSource(source);
+      setConversationOverlays(overlays);
+      setConversationPlanKind(kind);
+      setStatus(note);
+      setStep("architecture");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function saveScenePatch(sceneId: string, patch: Partial<Scene>) {
@@ -2837,7 +2902,9 @@ function App() {
       <h1>What do you want to make?</h1>
       <p>Describe the subject, audience, mood, intended result, media you have, and preferred length in your own words. F-Motion will recommend a complete video plan.</p>
       <label>Visual description<textarea value={draft} maxLength={500} onChange={(event) => setDraft(event.target.value)} placeholder="A remote island in dark ocean fog, an abandoned lighthouse, cinematic aerial shot…" /></label>
-      <button disabled={!draft.trim()} onClick={continueToArchitecture}>Continue to video plan</button>
+      <button disabled={!draft.trim() || busy} onClick={() => void continueToArchitecture()}>
+        {busy ? "Writing the video plan…" : "Continue to video plan"}
+      </button>
       <button className="secondary" onClick={startFromClips}>Create from my clips</button>
       <p role="status" aria-live="polite">{status}</p>
       <button className="secondary" disabled={busy} onClick={() => setStep("drafts")}>Back to drafts</button>
@@ -2846,7 +2913,9 @@ function App() {
       <div className="stage-hero">
         <p className="settings-kicker">Plan</p>
         <h1>Plan the video</h1>
-        <p>F-Motion prepared this recommendation from your conversation. Build it as proposed, or unfold the details to edit any decision.</p>
+        <p>{conversationPlanKind === "fal"
+          ? "F-Motion prepared this recommendation from your conversation. Build it as proposed, or unfold the details to edit any decision."
+          : "This is a rule-based plan from your description. Connect FAL in Settings for smarter copy, or unfold the details to edit any decision."}</p>
       </div>
       <dl className="architecture-summary" aria-label="Recommended video plan">
         <div><dt>Goal</dt><dd>{architectureLabels.goal[architecture.goal]}</dd></div>
@@ -3639,7 +3708,7 @@ function App() {
           <div className="source-head">
             <div>
               <h2 id="fal-settings-title">FAL</h2>
-              <p>Connect your own FAL API-scope key for AI stills. Each image is quoted, then charged directly to your FAL account. F-Motion does not supply or share a FAL key.</p>
+              <p>Connect your own FAL API-scope key for AI stills, video, voice, and Create-video copy. Each image is quoted, then charged directly to your FAL account. F-Motion does not supply or share a FAL key.</p>
             </div>
             <span className="source-state">{falCredential?.connected && !falUnavailable ? "Connected" : "Optional"}</span>
           </div>

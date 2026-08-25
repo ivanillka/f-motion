@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, buildStoryboardDraft, recommendVideoArchitecture, sceneDurationForMedia } from "../src/api.ts";
+import { ApiClient, ApiResponseError, applyConversationConceptOverlays, buildStoryboardDraft, mergeConversationStoryboard, recommendVideoArchitecture, sceneDurationForMedia, storyboardArchitectureForConcept } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
@@ -115,6 +115,31 @@ test("short vague input is not split into one-word scenes or sent to Pexels as e
   assert.match(scenes[3].visual_prompt, /dramatic silhouette reveal cinematic$/);
   assert.ok(scenes.every(({ visual_prompt }) =>
     visual_prompt.length <= 100 && !/opening|pacing|unease/u.test(visual_prompt)));
+});
+
+test("FAL conversation overlays stay on Direct, Story, and Rhythm", () => {
+  const concepts = applyConversationConceptOverlays([
+    { id: "direct", title: "Direct", treatment: "engine", hook: "engine hook", beat_summary: "a", duration_seconds: 15, scene_count: 4, media_direction: "x" },
+    { id: "story", title: "Story", treatment: "engine", hook: "engine hook", beat_summary: "a", duration_seconds: 30, scene_count: 5, media_direction: "x" },
+    { id: "rhythm", title: "Rhythm", treatment: "engine", hook: "engine hook", beat_summary: "a", duration_seconds: 45, scene_count: 6, media_direction: "x" }
+  ], {
+    direct: { hook: "Lead with the light.", treatment: "Show the result first." },
+    extra: { hook: "Invented fourth concept" }
+  });
+  assert.equal(concepts.length, 3);
+  assert.equal(concepts[0].hook, "Lead with the light.");
+  assert.equal(concepts[0].treatment, "Show the result first.");
+  assert.equal(concepts[1].hook, "engine hook");
+  assert.equal(concepts[2].id, "rhythm");
+  assert.equal(storyboardArchitectureForConcept("direct", recommendVideoArchitecture("mystery island")).durationSeconds, 15);
+  assert.equal(storyboardArchitectureForConcept("rhythm", recommendVideoArchitecture("mystery island")).structure, "chronological");
+  const merged = mergeConversationStoryboard(
+    [{ id: "keep-1", order: 0, caption: "old", duration_ms: 1000, focal_x: 0.5, focal_y: 0.5, motion: "none", audio_level: 1, ducking: false, media_id: "media-1" }],
+    [{ id: "new-1", order: 0, caption: "new", duration_ms: 2000, focal_x: 0.5, focal_y: 0.5, motion: "zoom", audio_level: 1, ducking: false, visual_prompt: "fog" }]
+  );
+  assert.equal(merged[0].id, "keep-1");
+  assert.equal(merged[0].media_id, "media-1");
+  assert.equal(merged[0].caption, "new");
 });
 
 test("API requests read the current token and report unauthorized sessions", async () => {

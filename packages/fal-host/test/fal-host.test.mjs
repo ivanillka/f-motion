@@ -114,7 +114,10 @@ import {
   submitSpeech,
   speechStatus,
   speechResult,
-  cancelSpeech
+  cancelSpeech,
+  FAL_LLM_DEFAULT_MODEL,
+  FAL_LLM_ENDPOINT_ID,
+  runFalLlm
 } from "../dist/index.js";
 
 test("estimateImage maps megapixel billing to the pinned portrait still", async () => {
@@ -256,4 +259,39 @@ test("speech result reads audio.url from fal.media and rejects other hosts", asy
     status: 200, headers: { "content-type": "application/json" }
   })), { status: "COMPLETED" });
   await cancelSpeech("k", "req", async () => new Response(null, { status: 202 }));
+});
+
+test("runFalLlm posts to fal-ai/any-llm and reads output without leaking bodies", async () => {
+  let seen;
+  const output = await runFalLlm("synthetic:key", {
+    prompt: "  A lonely island  ",
+    system_prompt: "JSON only",
+    model: FAL_LLM_DEFAULT_MODEL
+  }, async (url, init) => {
+    seen = { url, init };
+    return new Response(JSON.stringify({ output: "{\"goal\":\"story\"}" }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  });
+  assert.equal(output, "{\"goal\":\"story\"}");
+  assert.equal(seen.url, `https://fal.run/${FAL_LLM_ENDPOINT_ID}`);
+  assert.match(JSON.stringify(seen.init.headers), /synthetic:key/);
+  assert.deepEqual(JSON.parse(seen.init.body), {
+    prompt: "A lonely island",
+    model: FAL_LLM_DEFAULT_MODEL,
+    system_prompt: "JSON only"
+  });
+  await assert.rejects(
+    runFalLlm("k", { prompt: "x" }, async () => new Response("sensitive", { status: 401 })),
+    (error) => error instanceof FalImageError && error.code === "credential" && !error.message.includes("sensitive")
+  );
+  await assert.rejects(
+    runFalLlm("k", { prompt: "x" }, async () => new Response("busy", { status: 429 })),
+    (error) => error instanceof FalImageError && error.code === "rate_limited"
+  );
+  await assert.rejects(
+    runFalLlm("k", { prompt: "" }),
+    (error) => error instanceof FalImageError && error.code === "invalid_request"
+  );
 });
