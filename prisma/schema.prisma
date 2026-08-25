@@ -248,6 +248,7 @@ enum GenerationKind {
   image
   image_to_video
   speech
+  analyze
 }
 
 enum GenerationState {

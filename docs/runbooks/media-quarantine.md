@@ -73,3 +73,12 @@ Endpoint contract checked 2026-08-02: `fal-ai/minimax/hailuo-2.3-fast/standard/i
 submits once, and downloads only HTTPS results on `storage.googleapis.com/falserverless/`
 or `*.fal.media`. Signed source URLs are never persisted or logged. Result MP4s
 enter the same quarantine → inspect → seal path (100 MB cap).
+
+## FAL footage analysis
+
+Endpoint contracts checked 2026-08-25: `fal-ai/moondream3-preview/query` (stills)
+and `fal-ai/video-understanding` (MP4). The worker signs the sealed source for
+one hour, submits once, and stores only clipped `visual_prompt` / `caption`
+text on the generation job. Analysis does not download a FAL media result.
+Account billing (`GET /v1/account/billing?expand=credits`) is ADMIN-scoped;
+API-scope keys still generate and analyze.

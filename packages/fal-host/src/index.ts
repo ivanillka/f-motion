@@ -686,6 +686,336 @@ export async function cancelSpeech(
   }
 }
 
+/** Contract checked 2026-08-25: GET /v1/account/billing is ADMIN-scoped. API-scope keys 401/403. */
+const falBillingUrl = "https://api.fal.ai/v1/account/billing?expand=credits";
+
+export type FalCreditsUnavailable = "admin_key_required" | "provider_unavailable";
+
+export interface FalAccountView {
+  username?: string;
+  credits?: { current_balance: number; currency: string };
+  credits_unavailable?: FalCreditsUnavailable;
+}
+
+function asUsername(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const username = value.trim();
+  if (!username || username.length > 64 || /[\u0000-\u001f\u007f]/.test(username)) return undefined;
+  return username;
+}
+
+export function parseFalAccount(status: number, body: unknown): FalAccountView {
+  if (status === 401 || status === 403) return { credits_unavailable: "admin_key_required" };
+  if (status < 200 || status >= 300 || !body || typeof body !== "object" || Array.isArray(body)) {
+    return { credits_unavailable: "provider_unavailable" };
+  }
+  const record = body as Record<string, unknown>;
+  const username = asUsername(record.username);
+  const credits = record.credits && typeof record.credits === "object" && !Array.isArray(record.credits)
+    ? record.credits as Record<string, unknown>
+    : undefined;
+  const current_balance = credits && typeof credits.current_balance === "number" && Number.isFinite(credits.current_balance)
+    && credits.current_balance >= 0
+    ? credits.current_balance
+    : undefined;
+  const currency = credits && typeof credits.currency === "string" && /^[A-Z]{3}$/.test(credits.currency)
+    ? credits.currency
+    : undefined;
+  if (current_balance === undefined || !currency) {
+    return {
+      ...(username ? { username } : {}),
+      credits_unavailable: "provider_unavailable"
+    };
+  }
+  return {
+    ...(username ? { username } : {}),
+    credits: { current_balance, currency }
+  };
+}
+
+export async function fetchAccount(
+  credential: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falHttpTimeoutMs,
+  signal?: AbortSignal
+): Promise<FalAccountView> {
+  try {
+    const { status, body } = await falJson(credential, falBillingUrl, { method: "GET" }, fetchImpl, timeoutMs, signal);
+    return parseFalAccount(status, body);
+  } catch (error) {
+    if (error instanceof FalImageError && error.code === "credential") {
+      return { credits_unavailable: "admin_key_required" };
+    }
+    return { credits_unavailable: "provider_unavailable" };
+  }
+}
+
+/** Contract checked 2026-08-25 against fal.ai Moondream 3 query + video-understanding docs. */
+export const FAL_STILL_ANALYZE_ENDPOINT_ID = "fal-ai/moondream3-preview/query";
+export const FAL_VIDEO_ANALYZE_ENDPOINT_ID = "fal-ai/video-understanding";
+export const FAL_ANALYZE_STILL_PROMPT =
+  "Describe this still for a vertical reel. Reply with JSON only: {\"visual_prompt\":\"...\",\"caption\":\"...\"}. visual_prompt is a factual visual description, max 220 characters. caption is the on-screen line, max 160 characters. Do not invent people, brands, or text that is not visible.";
+export const FAL_ANALYZE_VIDEO_PROMPT =
+  "Describe this footage for a vertical reel. Reply with JSON only: {\"visual_prompt\":\"...\",\"caption\":\"...\"}. visual_prompt is a factual description of what happens, max 220 characters. caption is the on-screen line, max 160 characters. Do not invent people, brands, or text that is not visible.";
+const falStillAnalyzePricingUrl =
+  "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai%2Fmoondream3-preview%2Fquery";
+const falVideoAnalyzePricingUrl =
+  "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai%2Fvideo-understanding";
+
+export type FalAnalyzeQuote = FalImageQuote;
+export type FalAnalyzeSubmitResult = FalImageSubmitResult;
+export type FalAnalyzeStatus = FalImageStatus;
+export interface FalAnalyzeResult {
+  output: string;
+}
+
+export interface FalStoryFromMedia {
+  visual_prompt: string;
+  caption: string;
+}
+
+function clipStoryField(value: string, max: number): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= max) return compact;
+  const sliced = compact.slice(0, max);
+  const boundary = sliced.lastIndexOf(" ");
+  return (boundary >= 40 ? sliced.slice(0, boundary) : sliced).trim();
+}
+
+export function parseStoryFromAnalysis(raw: string): FalStoryFromMedia {
+  const trimmed = raw.trim();
+  if (!trimmed) throw new FalImageError("unsafe_output");
+  const jsonStart = trimmed.indexOf("{");
+  const jsonEnd = trimmed.lastIndexOf("}");
+  if (jsonStart >= 0 && jsonEnd > jsonStart) {
+    try {
+      const parsed = JSON.parse(trimmed.slice(jsonStart, jsonEnd + 1)) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const record = parsed as Record<string, unknown>;
+        const visual = typeof record.visual_prompt === "string" ? record.visual_prompt : "";
+        const caption = typeof record.caption === "string" ? record.caption : "";
+        const visual_prompt = clipStoryField(visual, 240);
+        const line = clipStoryField(caption || visual, 180);
+        if (visual_prompt && line) return { visual_prompt, caption: line };
+      }
+    } catch {
+      // Fall through to plain-text clipping.
+    }
+  }
+  const visual_prompt = clipStoryField(trimmed, 240);
+  const caption = clipStoryField(trimmed.split(/(?<=[.!?])\s/)[0] ?? trimmed, 180);
+  if (!visual_prompt || !caption) throw new FalImageError("unsafe_output");
+  return { visual_prompt, caption };
+}
+
+function pickEndpointPrice(
+  body: unknown,
+  endpointId: string,
+  estimatedTotal: (unit: string, unitPrice: number) => number | null
+): FalAnalyzeQuote {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new FalImageError("provider_unavailable");
+  }
+  const prices = (body as { prices?: unknown }).prices;
+  if (!Array.isArray(prices)) throw new FalImageError("provider_unavailable");
+  const match = prices.find((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+    const price = item as Record<string, unknown>;
+    return price.endpoint_id === endpointId
+      && typeof price.unit_price === "number"
+      && Number.isFinite(price.unit_price)
+      && price.unit_price >= 0
+      && typeof price.unit === "string"
+      && typeof price.currency === "string";
+  }) as { endpoint_id: string; unit_price: number; unit: string; currency: string } | undefined;
+  if (!match) throw new FalImageError("provider_unavailable");
+  const estimated_total = estimatedTotal(match.unit.toLowerCase(), match.unit_price);
+  return {
+    endpoint_id: match.endpoint_id,
+    unit_price: match.unit_price,
+    unit: match.unit,
+    currency: match.currency,
+    estimated_total,
+    ...(estimated_total === null ? {
+      estimated_total_explanation: `FAL bills this model per ${match.unit}; a fixed dollar total is not computed for this analysis.`
+    } : {})
+  };
+}
+
+export async function estimateStillAnalysis(
+  credential: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falHttpTimeoutMs,
+  signal?: AbortSignal
+): Promise<FalAnalyzeQuote> {
+  const { status, body } = await falJson(credential, falStillAnalyzePricingUrl, { method: "GET" }, fetchImpl, timeoutMs, signal);
+  if (status === 401 || status === 403) throw new FalImageError("credential");
+  if (status < 200 || status >= 300) throw new FalImageError(classifyHttp(status));
+  return pickEndpointPrice(body, FAL_STILL_ANALYZE_ENDPOINT_ID, (unit, unitPrice) => {
+    const perRequest = unit === "request" || unit === "requests" || unit === "image" || unit === "images"
+      || unit === "unit" || unit === "units";
+    return perRequest ? unitPrice : null;
+  });
+}
+
+export function videoAnalysisBillableUnits(durationMs: number): number {
+  if (!Number.isInteger(durationMs) || durationMs < 500) throw new FalImageError("invalid_request");
+  return Math.max(1, Math.ceil(durationMs / 5_000));
+}
+
+export async function estimateVideoAnalysis(
+  credential: string,
+  durationMs: number,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falHttpTimeoutMs,
+  signal?: AbortSignal
+): Promise<FalAnalyzeQuote> {
+  const units = videoAnalysisBillableUnits(durationMs);
+  const { status, body } = await falJson(credential, falVideoAnalyzePricingUrl, { method: "GET" }, fetchImpl, timeoutMs, signal);
+  if (status === 401 || status === 403) throw new FalImageError("credential");
+  if (status < 200 || status >= 300) throw new FalImageError(classifyHttp(status));
+  return pickEndpointPrice(body, FAL_VIDEO_ANALYZE_ENDPOINT_ID, (unit, unitPrice) => {
+    const perRequest = unit === "request" || unit === "requests" || unit === "video" || unit === "videos"
+      || unit === "unit" || unit === "units";
+    const perFiveSeconds = unit.includes("5") && unit.includes("second");
+    const perSecond = (unit === "second" || unit === "seconds") && !perFiveSeconds;
+    if (perFiveSeconds) return unitPrice * units;
+    if (perSecond) return unitPrice * Math.max(1, Math.ceil(durationMs / 1000));
+    if (perRequest) return unitPrice;
+    return null;
+  });
+}
+
+export function falStillAnalyzeInput(imageUrl: string): Record<string, unknown> {
+  if (typeof imageUrl !== "string" || !imageUrl.startsWith("https://")) {
+    throw new FalImageError("invalid_request");
+  }
+  return { image_url: imageUrl, prompt: FAL_ANALYZE_STILL_PROMPT, reasoning: false };
+}
+
+export function falVideoAnalyzeInput(videoUrl: string): Record<string, unknown> {
+  if (typeof videoUrl !== "string" || !videoUrl.startsWith("https://")) {
+    throw new FalImageError("invalid_request");
+  }
+  return { video_url: videoUrl, prompt: FAL_ANALYZE_VIDEO_PROMPT, detailed_analysis: false };
+}
+
+function analyzeQueueBase(endpointId: string): string {
+  if (endpointId !== FAL_STILL_ANALYZE_ENDPOINT_ID && endpointId !== FAL_VIDEO_ANALYZE_ENDPOINT_ID) {
+    throw new FalImageError("invalid_request");
+  }
+  return `https://queue.fal.run/${endpointId}`;
+}
+
+export async function submitAnalyze(
+  credential: string,
+  endpointId: string,
+  payload: Record<string, unknown>,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falHttpTimeoutMs,
+  signal?: AbortSignal
+): Promise<FalAnalyzeSubmitResult> {
+  const { status, body } = await falJson(credential, analyzeQueueBase(endpointId), {
+    method: "POST",
+    headers: {
+      "X-Fal-Store-IO": "0",
+      "X-Fal-Object-Lifecycle-Preference": JSON.stringify({ expiration_duration_seconds: 3600 })
+    },
+    body: JSON.stringify(payload)
+  }, fetchImpl, timeoutMs, signal);
+  if (status === 401 || status === 403) throw new FalImageError("credential");
+  if (status === 429) throw new FalImageError("rate_limited");
+  if (status < 200 || status >= 300) throw new FalImageError(classifyHttp(status));
+  const requestId = body && typeof body === "object" && !Array.isArray(body)
+    ? (body as { request_id?: unknown }).request_id
+    : undefined;
+  if (typeof requestId !== "string" || !requestId.trim()) throw new FalImageError("provider_unavailable");
+  return { request_id: requestId.trim() };
+}
+
+export async function analyzeStatus(
+  credential: string,
+  endpointId: string,
+  requestId: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falHttpTimeoutMs,
+  signal?: AbortSignal
+): Promise<FalAnalyzeStatus> {
+  if (!requestId.trim()) throw new FalImageError("invalid_request");
+  const { status, body } = await falJson(
+    credential,
+    `${analyzeQueueBase(endpointId)}/requests/${encodeURIComponent(requestId)}/status`,
+    { method: "GET" },
+    fetchImpl,
+    timeoutMs,
+    signal
+  );
+  if (status === 401 || status === 403) throw new FalImageError("credential");
+  if (status < 200 || status >= 300) throw new FalImageError(classifyHttp(status));
+  const state = body && typeof body === "object" && !Array.isArray(body)
+    ? String((body as { status?: unknown }).status ?? "")
+    : "";
+  if (state === "IN_QUEUE" || state === "IN_PROGRESS") return { status: state };
+  if (state === "COMPLETED") return { status: "COMPLETED" };
+  if (state === "FAILED") return { status: "FAILED", failureCode: "unsafe_output" };
+  throw new FalImageError("provider_unavailable");
+}
+
+function analyzeOutput(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (typeof record.output === "string") return record.output;
+  return undefined;
+}
+
+export async function analyzeResult(
+  credential: string,
+  endpointId: string,
+  requestId: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falHttpTimeoutMs,
+  signal?: AbortSignal
+): Promise<FalAnalyzeResult> {
+  if (!requestId.trim()) throw new FalImageError("invalid_request");
+  const { status, body } = await falJson(
+    credential,
+    `${analyzeQueueBase(endpointId)}/requests/${encodeURIComponent(requestId)}`,
+    { method: "GET" },
+    fetchImpl,
+    timeoutMs,
+    signal
+  );
+  if (status === 401 || status === 403) throw new FalImageError("credential");
+  if (status < 200 || status >= 300) throw new FalImageError(classifyHttp(status));
+  const output = analyzeOutput(body);
+  if (typeof output !== "string" || !output.trim()) throw new FalImageError("unsafe_output");
+  return { output: output.trim() };
+}
+
+export async function cancelAnalyze(
+  credential: string,
+  endpointId: string,
+  requestId: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falHttpTimeoutMs,
+  signal?: AbortSignal
+): Promise<void> {
+  if (!requestId.trim()) throw new FalImageError("invalid_request");
+  const { status } = await falJson(
+    credential,
+    `${analyzeQueueBase(endpointId)}/requests/${encodeURIComponent(requestId)}/cancel`,
+    { method: "PUT" },
+    fetchImpl,
+    timeoutMs,
+    signal
+  );
+  if (status === 401 || status === 403) throw new FalImageError("credential");
+  if (status === 404) return;
+  if (!status.toString().startsWith("2") && status !== 409) {
+    throw new FalImageError(classifyHttp(status));
+  }
+}
+
 export interface CredentialVault {
   activeVersion: number;
   keys: ReadonlyMap<number, Uint8Array>;

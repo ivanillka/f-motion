@@ -33,6 +33,7 @@
     { "method": "POST", "path": "/projects/{project_id}/scenes/{scene_id}/fal/image-quotes", "auth": "bearer" },
     { "method": "POST", "path": "/projects/{project_id}/scenes/{scene_id}/fal/video-quotes", "auth": "bearer" },
     { "method": "POST", "path": "/projects/{project_id}/fal/speech-quotes", "auth": "bearer" },
+    { "method": "POST", "path": "/projects/{project_id}/scenes/{scene_id}/fal/analyze-quotes", "auth": "bearer" },
     { "method": "POST", "path": "/generation-jobs/{job_id}/confirm", "auth": "bearer" },
     { "method": "GET", "path": "/generation-jobs/{job_id}", "auth": "bearer" },
     { "method": "POST", "path": "/generation-jobs/{job_id}/cancel", "auth": "bearer" },

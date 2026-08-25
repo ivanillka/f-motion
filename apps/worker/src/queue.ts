@@ -8,6 +8,7 @@ export const falImageQueue = "generate-fal-image";
 export const falVideoQueue = "generate-fal-video";
 export const falSpeechQueue = "generate-fal-speech";
 export { renderNotifyQueue };
+export const falAnalyzeQueue = "generate-fal-analyze";
 
 export interface InspectionJob {
   assetId: string;
@@ -31,6 +32,7 @@ export interface FalImageQueueJob {
 
 export type FalVideoQueueJob = FalImageQueueJob;
 export type FalSpeechQueueJob = FalImageQueueJob;
+export type FalAnalyzeQueueJob = FalImageQueueJob;
 
 export interface QueueHandlers {
   inspect(job: InspectionJob, signal: AbortSignal): Promise<Record<string, unknown>>;
@@ -39,6 +41,7 @@ export interface QueueHandlers {
   generateFalImage?(job: FalImageQueueJob, signal: AbortSignal): Promise<Record<string, unknown>>;
   generateFalVideo?(job: FalVideoQueueJob, signal: AbortSignal): Promise<Record<string, unknown>>;
   generateFalSpeech?(job: FalSpeechQueueJob, signal: AbortSignal): Promise<Record<string, unknown>>;
+  generateFalAnalyze?(job: FalAnalyzeQueueJob, signal: AbortSignal): Promise<Record<string, unknown>>;
 }
 
 interface OutboxRow {
@@ -78,7 +81,7 @@ export async function dispatchOutbox(pool: pg.Pool, boss: PgBoss): Promise<numbe
       retryDelay: 1,
       retryBackoff: true,
       expireInSeconds: row.kind === renderQueue ? 300
-        : (row.kind === falImageQueue || row.kind === falVideoQueue) ? 1200
+        : (row.kind === falImageQueue || row.kind === falVideoQueue || row.kind === falAnalyzeQueue) ? 1200
           : row.kind === falSpeechQueue ? 600
             : 60
     });
@@ -132,6 +135,7 @@ export async function startQueueRuntime(
   await boss.createQueue(falVideoQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 1200 });
   await boss.createQueue(falSpeechQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 600 });
   await boss.createQueue(renderNotifyQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 60 });
+  await boss.createQueue(falAnalyzeQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 600 });
   await boss.work<InspectionJob>(inspectionQueue, { pollingIntervalSeconds: 1 }, async (jobs: Job<InspectionJob>[]) => {
     const job = jobs[0];
     if (!job) return;
@@ -168,6 +172,13 @@ export async function startQueueRuntime(
       const job = jobs[0];
       if (!job) return;
       return handlers.generateFalSpeech!(job.data, job.signal);
+    });
+  }
+  if (handlers.generateFalAnalyze) {
+    await boss.work<FalAnalyzeQueueJob>(falAnalyzeQueue, { pollingIntervalSeconds: 1 }, async (jobs: Job<FalAnalyzeQueueJob>[]) => {
+      const job = jobs[0];
+      if (!job) return;
+      return handlers.generateFalAnalyze!(job.data, job.signal);
     });
   }
   await dispatchOutbox(pool, boss);

@@ -41,6 +41,7 @@ import type { InspectionJob, PreviewJob, QueueHandlers } from "./queue.js";
 import { processFalImageJob } from "./fal-image.js";
 import { processFalVideoJob } from "./fal-video.js";
 import { processFalSpeechJob } from "./fal-speech.js";
+import { processFalAnalyzeJob } from "./fal-analyze.js";
 
 interface ObjectIdentity {
   etag: string;
@@ -572,6 +573,9 @@ export function createQueueHandlers(
       }
       await deliverRenderNotify(job, notify.secret, notify.origins);
       return { state: "delivered" };
+    },
+    async generateFalAnalyze(job, signal) {
+      return processFalAnalyzeJob(pool, store, job, signal, env);
     },
     async render(job: PreviewJob, signal: AbortSignal) {
       let stored: Awaited<ReturnType<typeof storedRender>>;
