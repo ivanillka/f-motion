@@ -557,7 +557,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .editor[data-mode="review"] .scene-strip-actions,
 .editor[data-mode="review"] .scene-controls,
-.editor[data-mode="review"] .music-dock,
+.editor[data-mode="review"] .music-dock:not(.voice-dock),
 .editor[data-mode="review"] .crop-guide,
 .editor[data-mode="review"] .candidates {
   display: none;

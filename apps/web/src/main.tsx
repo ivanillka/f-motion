@@ -547,6 +547,13 @@ function App() {
     if (step !== "assemble") return;
     assembleLogEl.current?.scrollTo({ top: assembleLogEl.current.scrollHeight });
   }, [assembleLog, step]);
+  useEffect(() => {
+    if (step !== "review") return;
+    setVoiceOpen(true);
+    setVoiceScript((current) => current.trim()
+      ? current
+      : (project?.scenes.map((scene) => scene.caption.trim()).filter(Boolean).join("\n") ?? ""));
+  }, [step, project?.id]);
 
   useEffect(() => {
     if ((step !== "editor" && step !== "review") || !project || !Object.values(sceneMedia).some(({ state }) =>
@@ -3161,7 +3168,7 @@ function App() {
         <div>
           <h1>{step === "review" ? "Your draft" : "Storyboard"}</h1>
           <p>{step === "review"
-            ? (busy ? "Assembling captions, clips, and music…" : "Play the cut. Export if it works, or edit before export.")
+            ? (busy ? "Assembling captions, clips, and music…" : "Play the cut. Spoken copy is in What you'll say. Captions on the picture are not a voice track until you record, upload, or generate.")
             : (playhead.totalMs
               ? `Live cut · ${formatPlayTime(playhead.offsetMs)} / ${formatPlayTime(playhead.totalMs)}`
               : "Review each beat and replace a still only when another visual fits better.")}</p>
