@@ -238,7 +238,8 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   await continueToConcepts(page);
   expect(pexelsMediaPosts).toEqual([]);
   await page.getByRole("button", { name: "Choose Story concept" }).click();
-  await expect(page.getByRole("heading", { name: "Your draft" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Building your draft" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your draft" })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
   await expect(page.getByText(/The story begins\.|Calm studio introduction/i).first()).toBeVisible();
   await expect(page.getByRole("status").filter({

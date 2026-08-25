@@ -285,6 +285,33 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .source-module strong { font-size: 0.95rem; font-weight: 600; }
 .stage-hero h1 { margin: 0; }
+.assemble-stage { max-width: 640px; gap: 16px; }
+.assemble-stage progress {
+  width: 100%;
+  height: 10px;
+  accent-color: var(--accent-soft);
+}
+.assemble-log {
+  max-height: min(48vh, 360px);
+  overflow: auto;
+  margin: 0;
+  padding: 10px 16px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.assemble-log li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.assemble-log li:last-child {
+  border-bottom: 0;
+  color: var(--text);
+}
 .concept-choices {
   display: grid;
   grid-template-columns: 1fr;
