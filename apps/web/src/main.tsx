@@ -2595,7 +2595,6 @@ function App() {
       {!draftsLoading && drafts.length === 0 && <div className="empty-drafts">
         <p role="status">No drafts yet.</p>
         <p>Describe what you want to make — F-Motion will recommend a video plan and storyboard.</p>
-        <button onClick={startCreate}>Create new video</button>
       </div>}
       <div className="concepts drafts-grid">{drafts.map((item) =>
         <button key={item.id} className="card draft-card" onClick={() => void openDraft(item.id)}>
