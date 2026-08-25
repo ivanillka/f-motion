@@ -70,7 +70,7 @@ async function chooseConcept(page: Page, title: "Direct" | "Story" | "Rhythm"): 
 
 async function attachFixtureToScene(page: Page, sceneNumber: number): Promise<void> {
   await page.getByRole("button", { name: `Edit scene ${sceneNumber}` }).click();
-  const input = page.locator('input[type="file"]');
+  const input = page.locator('input[type="file"][accept="video/mp4,image/jpeg,image/png,image/webp"]');
   await input.setInputFiles([]);
   await input.setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("status").filter({ hasText: "Media attached to this scene" })).toBeVisible();
