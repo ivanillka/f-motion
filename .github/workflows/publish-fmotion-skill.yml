@@ -12,7 +12,7 @@ on:
       changelog:
         description: Release notes
         type: string
-        default: Compose loop: media or chat, preview plus draft.
+        default: "Compose loop: media or chat, preview plus draft."
 
 jobs:
   check:
