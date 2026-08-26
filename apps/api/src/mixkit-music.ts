@@ -129,7 +129,8 @@ export async function importMixkitTrack(
         source: "Mixkit",
         creator: track.artist,
         url: track.page,
-        title: track.title
+        title: track.title,
+        previewUrl: sourceUrl
       }
     };
     const upload = createReadStream(path);

@@ -149,6 +149,7 @@ class _WorkflowPageState extends State<WorkflowPage> {
   Uri? downloadUrl;
   String pexelsQuery = '';
   List<JsonMap> pexelsResults = [];
+  List<ProjectSummary> drafts = [];
   final cache = DraftCache();
   final briefController = TextEditingController();
   StreamSubscription<AuthSessionState>? authSubscription;
@@ -162,6 +163,7 @@ class _WorkflowPageState extends State<WorkflowPage> {
     stage = widget.auth.isSignedIn ? 1 : 0;
     status = widget.configurationError ?? '';
     unawaited(_probeApi());
+    if (widget.auth.isSignedIn) unawaited(_loadDrafts());
     // ponytail: five-second API polling is enough for this slice; replace it with
     // lifecycle-aware monitoring if background traffic becomes material.
     connectivityTimer = Timer.periodic(
@@ -193,6 +195,16 @@ class _WorkflowPageState extends State<WorkflowPage> {
       status = state.isSignedIn ? 'Signed in' : 'Signed out';
       sendingAuth = false;
     });
+    if (state.isSignedIn) unawaited(_loadDrafts());
+  }
+
+  Future<void> _loadDrafts() async {
+    try {
+      final listed = await widget.api.listProjects();
+      if (mounted) setState(() => drafts = listed);
+    } catch (_) {
+      if (mounted) setState(() => status = 'Drafts could not be loaded.');
+    }
   }
 
   Future<void> _probeApi() async {
@@ -493,6 +505,24 @@ class _WorkflowPageState extends State<WorkflowPage> {
     if (stage == 1) {
       return ListView(
         children: [
+          if (drafts.isNotEmpty) ...[
+            const Text(
+              'Drafts',
+              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            ...drafts.map(
+              (item) => ListTile(
+                title: Text(item.purpose.isEmpty ? 'Untitled draft' : item.purpose),
+                subtitle: const Text('Finish clips in the web studio.'),
+                onTap: () => setState(
+                  () => status =
+                      'Open this draft in the web studio to attach clips and export.',
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
           const Text(
             'What should this video achieve?',
             style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),

@@ -14,6 +14,13 @@ export const FAL_IMAGE_SIZE = "portrait_16_9" as const;
 export const FAL_IMAGE_WIDTH = 576;
 export const FAL_IMAGE_HEIGHT = 1024;
 const falHttpTimeoutMs = 30_000;
+export const FAL_LLM_ENDPOINT_ID = "fal-ai/any-llm";
+export const FAL_LLM_DEFAULT_MODEL = "google/gemini-2.5-flash";
+const falLlmUrl = `https://fal.run/${FAL_LLM_ENDPOINT_ID}`;
+const falLlmTimeoutMs = 45_000;
+const falLlmMaxPrompt = 4_000;
+const falLlmMaxSystem = 4_000;
+const falLlmMaxModel = 120;
 
 export type FalImageErrorCode =
   | "credential"
@@ -501,6 +508,8 @@ export const FAL_SPEECH_MAX_BYTES = 25_000_000;
 const falSpeechPricingUrl =
   "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai%2Fkokoro%2Famerican-english";
 const falSpeechQueueBase = `https://queue.fal.run/${FAL_SPEECH_ENDPOINT_ID}`;
+const falSpeechRunUrl = `https://fal.run/${FAL_SPEECH_ENDPOINT_ID}`;
+const falSpeechRunTimeoutMs = 45_000;
 
 export type FalSpeechQuote = FalImageQuote;
 export type FalSpeechSubmitResult = FalImageSubmitResult;
@@ -639,6 +648,32 @@ function firstFalAudioUrl(value: unknown): string | undefined {
   return undefined;
 }
 
+/** Blocking Kokoro TTS. Queue+poll is for long jobs; this model finishes in seconds. */
+export async function runSpeech(
+  credential: string,
+  input: { prompt: string },
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falSpeechRunTimeoutMs,
+  signal?: AbortSignal
+): Promise<FalSpeechResult> {
+  const payload = falSpeechInput(input.prompt);
+  const { status, body } = await falJson(credential, falSpeechRunUrl, {
+    method: "POST",
+    headers: {
+      "X-Fal-Store-IO": "0",
+      "X-Fal-Object-Lifecycle-Preference": JSON.stringify({ expiration_duration_seconds: 3600 })
+    },
+    body: JSON.stringify(payload)
+  }, fetchImpl, timeoutMs, signal);
+  if (status === 401 || status === 403) throw new FalImageError("credential");
+  if (status === 429) throw new FalImageError("rate_limited");
+  if (status < 200 || status >= 300) throw new FalImageError(classifyHttp(status));
+  const url = firstFalAudioUrl(body);
+  if (!url) throw new FalImageError("unsafe_output");
+  assertFalMediaUrl(url);
+  return { url };
+}
+
 export async function speechResult(
   credential: string,
   requestId: string,
@@ -686,6 +721,49 @@ export async function cancelSpeech(
   }
 }
 
+function normalizeLlmPrompt(prompt: unknown, max: number): string {
+  if (typeof prompt !== "string") throw new FalImageError("invalid_request");
+  const trimmed = prompt.trim();
+  if (!trimmed || trimmed.length > max) throw new FalImageError("invalid_request");
+  return trimmed;
+}
+
+function falLlmOutput(body: unknown): string | undefined {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return undefined;
+  const output = (body as { output?: unknown }).output;
+  return typeof output === "string" && output.trim() ? output : undefined;
+}
+
+/** Sync fal-ai/any-llm call billed to the owner's FAL key. */
+export async function runFalLlm(
+  credential: string,
+  input: { prompt: string; system_prompt?: string; model?: string },
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falLlmTimeoutMs,
+  signal?: AbortSignal
+): Promise<string> {
+  const prompt = normalizeLlmPrompt(input.prompt, falLlmMaxPrompt);
+  const system_prompt = input.system_prompt === undefined
+    ? undefined
+    : normalizeLlmPrompt(input.system_prompt, falLlmMaxSystem);
+  const model = (input.model ?? FAL_LLM_DEFAULT_MODEL).trim();
+  if (!model || model.length > falLlmMaxModel) throw new FalImageError("invalid_request");
+  const { status, body } = await falJson(credential, falLlmUrl, {
+    method: "POST",
+    body: JSON.stringify({
+      prompt,
+      model,
+      ...(system_prompt ? { system_prompt } : {})
+    })
+  }, fetchImpl, timeoutMs, signal);
+  if (status === 401 || status === 403) throw new FalImageError("credential");
+  if (status === 429) throw new FalImageError("rate_limited");
+  if (status < 200 || status >= 300) throw new FalImageError(classifyHttp(status));
+  const output = falLlmOutput(body);
+  if (!output) throw new FalImageError("provider_unavailable");
+  return output;
+}
+
 export interface CredentialVault {
   activeVersion: number;
   keys: ReadonlyMap<number, Uint8Array>;
@@ -701,7 +779,7 @@ export interface EncryptedCredential {
 export interface CredentialIdentity {
   id: string;
   ownerId: string;
-  provider: "fal" | "pexels";
+  provider: "fal" | "pexels" | "pixabay";
 }
 
 export class FalProviderError extends Error {
@@ -767,6 +845,13 @@ export function assertNoSharedPexelsCredential(env: Record<string, string | unde
   if ((env.FENGINE_ENV === "hosted" || env.NODE_ENV === "production")
     && env.PEXELS_API_KEY !== undefined) {
     throw new Error("shared Pexels credentials are forbidden in hosted mode");
+  }
+}
+
+export function assertNoSharedPixabayCredential(env: Record<string, string | undefined>): void {
+  if ((env.FENGINE_ENV === "hosted" || env.NODE_ENV === "production")
+    && env.PIXABAY_API_KEY !== undefined) {
+    throw new Error("shared Pixabay credentials are forbidden in hosted mode");
   }
 }
 

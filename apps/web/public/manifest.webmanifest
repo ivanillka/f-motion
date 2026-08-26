@@ -1,11 +1,11 @@
 {
-  "name": "F-Engine Reference",
-  "short_name": "F-Engine",
-  "description": "Online vertical-video storyboard and accurate preview workflow",
+  "name": "F-Motion",
+  "short_name": "F-Motion",
+  "description": "Write a brief, pick a story, download a 720p vertical preview.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0b0b0e",
-  "theme_color": "#111114",
+  "background_color": "#111213",
+  "theme_color": "#111213",
   "icons": [
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]

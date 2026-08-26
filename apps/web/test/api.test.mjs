@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, buildStoryboardDraft, recommendVideoArchitecture, sceneDurationForMedia } from "../src/api.ts";
+import { ApiClient, ApiResponseError, applyConversationConceptOverlays, beatsForConcept, buildStoryboardDraft, clientId, falSpeechLogTrail, falSpeechProgress, mergeConversationStoryboard, plannedVoiceScript, recommendVideoArchitecture, sceneDurationForMedia, stockBedForPace, storyboardArchitectureForConcept } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
@@ -22,6 +22,36 @@ test("conversation recommendations prefill distinct, editable video architecture
     goal: "educate", audience: "internal", structure: "story_arc", tone: "documentary",
     pace: "balanced", durationSeconds: 45, media: "own"
   });
+});
+
+test("planned voice script prefers FAL caption over the visual description", () => {
+  assert.equal(plannedVoiceScript({ caption: "  The bass dropped.  " }, "visual fog"), "The bass dropped.");
+  assert.equal(plannedVoiceScript({ caption: "   " }, "  A lighthouse  "), "A lighthouse");
+  assert.equal(plannedVoiceScript(undefined, "  brief  "), "brief");
+  assert.equal(plannedVoiceScript({ caption: "x".repeat(1900) }, "brief").length, 1800);
+});
+
+test("FAL speech progress bar and log follow job state", () => {
+  assert.equal(falSpeechProgress("quoted").percent, 8);
+  assert.equal(falSpeechProgress("submitting", 0).percent, 32);
+  assert.equal(falSpeechProgress("submitting", 8_000).percent, 42);
+  assert.equal(falSpeechProgress("submitting", 120_000).percent, 80);
+  assert.equal(falSpeechProgress("running", 0).percent, 45);
+  assert.equal(falSpeechProgress("running", 30_000).percent, 55);
+  assert.equal(falSpeechProgress("running", 600_000).percent, 84);
+  assert.equal(falSpeechProgress("ready").percent, 100);
+  assert.deepEqual(falSpeechLogTrail("submitting"), [
+    "FAL priced this script.",
+    "Queued for generation.",
+    "FAL is generating speech."
+  ]);
+  assert.deepEqual(falSpeechLogTrail("running"), [
+    "FAL priced this script.",
+    "Queued for generation.",
+    "FAL is generating speech.",
+    "FAL is synthesizing speech."
+  ]);
+  assert.equal(falSpeechLogTrail("failed").at(-1), "Generation failed.");
 });
 
 const ids = () => {
@@ -117,6 +147,35 @@ test("short vague input is not split into one-word scenes or sent to Pexels as e
     visual_prompt.length <= 100 && !/opening|pacing|unease/u.test(visual_prompt)));
 });
 
+test("FAL conversation overlays stay on Direct, Story, and Rhythm", () => {
+  const concepts = applyConversationConceptOverlays([
+    { id: "direct", title: "Direct", treatment: "engine", hook: "engine hook", beat_summary: "a", duration_seconds: 15, scene_count: 4, media_direction: "x" },
+    { id: "story", title: "Story", treatment: "engine", hook: "engine hook", beat_summary: "a", duration_seconds: 30, scene_count: 5, media_direction: "x" },
+    { id: "rhythm", title: "Rhythm", treatment: "engine", hook: "engine hook", beat_summary: "a", duration_seconds: 45, scene_count: 6, media_direction: "x" }
+  ], {
+    direct: { hook: "Lead with the light.", treatment: "Show the result first." },
+    extra: { hook: "Invented fourth concept" }
+  });
+  assert.equal(concepts.length, 3);
+  assert.equal(concepts[0].hook, "Lead with the light.");
+  assert.equal(concepts[0].treatment, "Show the result first.");
+  assert.equal(concepts[1].hook, "engine hook");
+  assert.equal(concepts[2].id, "rhythm");
+  assert.equal(storyboardArchitectureForConcept("direct", recommendVideoArchitecture("mystery island")).durationSeconds, 15);
+  assert.equal(storyboardArchitectureForConcept("rhythm", recommendVideoArchitecture("mystery island")).structure, "chronological");
+  const merged = mergeConversationStoryboard(
+    [{ id: "keep-1", order: 0, caption: "old", duration_ms: 1000, focal_x: 0.5, focal_y: 0.5, motion: "none", audio_level: 1, ducking: false, media_id: "media-1" }],
+    [{ id: "new-1", order: 0, caption: "new", duration_ms: 2000, focal_x: 0.5, focal_y: 0.5, motion: "zoom", audio_level: 1, ducking: false, visual_prompt: "fog" }]
+  );
+  assert.equal(merged[0].id, "keep-1");
+  assert.equal(merged[0].media_id, "media-1");
+  assert.equal(merged[0].caption, "new");
+  assert.deepEqual(beatsForConcept("Problem → impact → friction → solution → proof → result", 4), [
+    "Problem", "Impact", "Friction", "Solution"
+  ]);
+  assert.deepEqual(beatsForConcept("Start → progress", 4), ["Start", "Progress", "Beat 3", "Beat 4"]);
+});
+
 test("API requests read the current token and report unauthorized sessions", async () => {
   const originalFetch = globalThis.fetch;
   let token = "first";
@@ -153,4 +212,51 @@ test("project listing rejects an HTML fallback response instead of crashing the 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+function withoutRandomUUID(run) {
+  const cryptoObj = globalThis.crypto;
+  const original = Object.getOwnPropertyDescriptor(cryptoObj, "randomUUID");
+  Object.defineProperty(cryptoObj, "randomUUID", { configurable: true, value: undefined });
+  try {
+    return run();
+  } finally {
+    if (original) Object.defineProperty(cryptoObj, "randomUUID", original);
+    else delete cryptoObj.randomUUID;
+  }
+}
+
+test("client IDs still generate when randomUUID is missing", () => {
+  const id = withoutRandomUUID(() => clientId());
+  assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  assert.match(clientId(), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  const second = withoutRandomUUID(() => clientId());
+  assert.notEqual(second, id);
+});
+
+test("commands still send an id when randomUUID is missing", async () => {
+  const originalFetch = globalThis.fetch;
+  let body;
+  globalThis.fetch = async (_path, init) => {
+    body = JSON.parse(String(init.body));
+    return new Response(JSON.stringify({ id: "p1", revision: 1, scenes: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  };
+  try {
+    const client = new ApiClient(() => "token");
+    await withoutRandomUUID(() => client.command("p1", 0, "select_concept", { concept_id: "story" }));
+    assert.match(body.command_id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    assert.equal(body.kind, "select_concept");
+    assert.equal(body.payload.concept_id, "story");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("stock beds follow pace", () => {
+  assert.equal(stockBedForPace("fast").id, "drive");
+  assert.equal(stockBedForPace("slow").id, "air");
+  assert.equal(stockBedForPace("balanced").id, "pulse");
 });

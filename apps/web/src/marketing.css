@@ -1,4 +1,24 @@
-@import url("https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap");
+@font-face {
+  font-family: Syne;
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/web/fonts/syne-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: Syne;
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/web/fonts/syne-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: Syne;
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/web/fonts/syne-800.woff2") format("woff2");
+}
 
 .mkt {
   --mkt-bg: #111213;
@@ -13,13 +33,25 @@
   --mkt-cyan: #00e5ff;
   --mkt-max: 1280px;
   color: var(--mkt-text);
-  font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  font-family: ui-sans-serif, system-ui, sans-serif;
   background: var(--mkt-bg);
   min-height: 100dvh;
 }
 
 .mkt * { box-sizing: border-box; }
 .mkt a { color: inherit; text-decoration: none; }
+
+.mkt-skip {
+  position: absolute;
+  left: 1rem;
+  top: -4rem;
+  z-index: 60;
+  padding: 0.5rem 1rem;
+  background: var(--mkt-accent);
+  color: var(--mkt-text);
+  border-radius: 0.25rem;
+}
+.mkt-skip:focus { top: 1rem; }
 
 .mkt-nav {
   position: fixed;
@@ -50,29 +82,67 @@
 .mkt-nav-links {
   display: none;
   gap: 2rem;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.75rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
+.mkt-menu { display: block; position: relative; }
+.mkt-menu summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 0.75rem;
+  cursor: pointer;
+  list-style: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mkt-text);
+}
+.mkt-menu summary::-webkit-details-marker { display: none; }
+.mkt-menu nav {
+  position: absolute;
+  top: calc(100% + 0.6rem);
+  left: 0;
+  min-width: 12.5rem;
+  padding: 0.5rem;
+  border-radius: 0.75rem;
+  background: var(--mkt-overlay);
+  border: 1px solid var(--mkt-border);
+  display: grid;
+  z-index: 60;
+}
+.mkt-menu nav a {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 0.75rem;
+  color: var(--mkt-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.mkt-menu nav a[aria-current="page"] { color: var(--mkt-accent-soft); }
+
 @media (min-width: 768px) {
+  .mkt-menu { display: none; }
   .mkt-nav-links { display: flex; }
 }
 
-.mkt-nav-links button {
-  background: none;
-  border: 0;
+.mkt-nav-links a {
   border-bottom: 1px solid transparent;
   padding: 0 0 2px;
   color: var(--mkt-muted);
-  font: inherit;
-  cursor: pointer;
-  min-height: auto;
-  border-radius: 0;
 }
 
-.mkt-nav-links button[aria-current="true"] {
+.mkt-nav-links a[aria-current="page"] {
   color: var(--mkt-accent-soft);
   border-bottom-color: rgba(255, 177, 196, 0.4);
   font-weight: 700;
@@ -86,7 +156,7 @@
   padding: 0.75rem 1.5rem;
   border: 0;
   border-radius: 999px;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -114,7 +184,7 @@
 
 .mkt-hero {
   position: relative;
-  min-height: 88vh;
+  min-height: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -124,15 +194,6 @@
   background:
     radial-gradient(ellipse 80% 50% at 50% 0%, rgba(180, 40, 70, 0.18), transparent 70%),
     var(--mkt-bg);
-}
-
-.mkt-hero-logo {
-  width: min(10rem, 40vw);
-  height: auto;
-  margin-bottom: 1.5rem;
-  filter: drop-shadow(0 0 15px rgba(255, 177, 196, 0.3));
-  mix-blend-mode: screen;
-  opacity: 0.95;
 }
 
 .mkt-hero h1 {
@@ -145,6 +206,39 @@
   max-width: 18ch;
 }
 
+.mkt-lead {
+  margin: 0 0 1.25rem;
+  max-width: 36rem;
+  color: var(--mkt-muted);
+  font-size: clamp(1.05rem, 2.2vw, 1.25rem);
+  line-height: 1.5;
+}
+
+.mkt-section-lead {
+  text-align: center;
+  color: var(--mkt-muted);
+  max-width: 36rem;
+  margin: -1.5rem auto 2rem;
+  line-height: 1.55;
+}
+
+.mkt-text-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.35rem;
+  color: var(--mkt-accent-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.mkt-text-link:hover { color: var(--mkt-text); }
+
 .mkt-chip {
   display: inline-block;
   margin: 0 0 1.5rem;
@@ -153,7 +247,7 @@
   border: 1px solid var(--mkt-border);
   background: var(--mkt-raised);
   color: var(--mkt-accent-soft);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.75rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -169,35 +263,18 @@
 
 .mkt-hero-media {
   width: min(100%, var(--mkt-max));
-  aspect-ratio: 21 / 9;
+  aspect-ratio: 16 / 9;
   border-radius: 0.75rem;
   overflow: hidden;
   border: 0.5px solid rgba(255, 255, 255, 0.1);
-  position: relative;
+  background: var(--mkt-raised);
+  box-shadow: 0 0 60px rgba(165, 77, 103, 0.08);
 }
 
 .mkt-hero-media img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  animation: mktKen 22s ease-out forwards;
-}
-
-.mkt-hero-media::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to top, #111213, transparent 45%);
-  pointer-events: none;
-}
-
-@keyframes mktKen {
-  from { transform: scale(1.06); }
-  to { transform: scale(1); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mkt-hero-media img { animation: none; }
 }
 
 .mkt-section {
@@ -249,7 +326,7 @@
   background: var(--mkt-raised);
   display: grid;
   place-items: center;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   color: var(--mkt-accent-soft);
@@ -344,6 +421,7 @@
 }
 
 .mkt-cta h2 { margin-bottom: 1.5rem; }
+.mkt-cta .mkt-section-lead { margin: 0 auto 1.5rem; }
 
 .mkt-footer {
   padding: 2.5rem 1.5rem;
@@ -355,7 +433,7 @@
   align-items: center;
   max-width: var(--mkt-max);
   margin: 0 auto;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.625rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -368,18 +446,7 @@
   gap: 1.25rem;
 }
 
-.mkt-footer button {
-  background: none;
-  border: 0;
-  color: var(--mkt-muted);
-  font: inherit;
-  cursor: pointer;
-  min-height: auto;
-  padding: 0;
-  border-radius: 0;
-}
-
-.mkt-footer button:hover { color: var(--mkt-cyan); }
+.mkt-footer a:hover { color: var(--mkt-cyan); }
 
 /* Integrate tab */
 .mkt-int-hero {
@@ -398,7 +465,7 @@
   border-radius: 999px;
   border: 1px solid var(--mkt-border);
   background: var(--mkt-raised);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.625rem;
   letter-spacing: 0.1em;
   color: var(--mkt-muted);
@@ -463,11 +530,26 @@
 }
 
 .mkt-recipe span {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.65rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--mkt-accent-soft);
+}
+
+.mkt-recipe a {
+  color: var(--mkt-accent-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+
+.mkt-note {
+  max-width: 40rem;
+  margin: 1.5rem auto 0;
+  color: var(--mkt-muted);
+  line-height: 1.55;
+  text-align: center;
 }
 
 .mkt-code {
@@ -481,7 +563,7 @@
   margin: 0;
   padding: 1.25rem;
   overflow-x: auto;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.75rem;
   line-height: 1.55;
   color: var(--mkt-muted);

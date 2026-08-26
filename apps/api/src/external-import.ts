@@ -201,9 +201,9 @@ export function externalImportConfigFromEnv(
   return { token, ownerId, webOrigin: origin.origin, mediaOrigins: [...new Set(mediaOrigins)] };
 }
 
-/** Hosted studio lives at /app/; marketing at / forwards leftover ?project= there. */
+/** Hosted studio lives at /studio; /app/ still redirects there. */
 export function externalProjectUrl(webOrigin: string, projectId: string): string {
-  const url = new URL("/app/", webOrigin);
+  const url = new URL("/studio", webOrigin);
   url.searchParams.set("project", projectId);
   return url.toString();
 }

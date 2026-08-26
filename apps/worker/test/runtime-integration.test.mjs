@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -36,16 +36,10 @@ test("worker probes stored media and renders an immutable project result", async
   });
   await s3.send(new CreateBucketCommand({ Bucket: bucket }));
   try {
-    for (const path of [
-      "../../../prisma/migrations/20260726000000_initial/migration.sql",
-      "../../../prisma/migrations/20260726001000_media_admission/migration.sql",
-      "../../../prisma/migrations/20260726002000_render_events/migration.sql",
-      "../../../prisma/migrations/20260731000000_render_job_input/migration.sql",
-      "../../../prisma/migrations/20260731000000_seal_inspected_media/migration.sql",
-      "../../../prisma/migrations/20260801000000_coalesce_render_jobs/migration.sql",
-      "../../../prisma/migrations/20260801120000_render_kind_profile/migration.sql"
-    ]) {
-      await pool.query(await readFile(new URL(path, import.meta.url), "utf8"));
+    const migrations = new URL("../../../prisma/migrations/", import.meta.url);
+    for (const directory of (await readdir(migrations)).sort()) {
+      if (!/^\d{14}_/.test(directory)) continue;
+      await pool.query(await readFile(new URL(`${directory}/migration.sql`, migrations), "utf8"));
     }
     await pool.query(`INSERT INTO "User" (id, state) VALUES ('owner', 'active')`);
     await pool.query(

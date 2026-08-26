@@ -19,8 +19,9 @@ Requires Docker access (your user must be in the `docker` group).
 
 ```sh
 cp .env.example .env
-# To test stock search, enable FENGINE_PEXELS_BYOK_ENABLED, configure the
-# credential vault key, then connect your own Pexels key in Settings.
+# To test stock search, enable FENGINE_PEXELS_BYOK_ENABLED and/or
+# FENGINE_PIXABAY_BYOK_ENABLED, configure the credential vault key, then
+# connect your own key in Settings.
 
 bash scripts/local-deps.sh
 npx prisma migrate deploy

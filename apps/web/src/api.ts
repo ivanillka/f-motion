@@ -6,6 +6,7 @@ import {
   defaultVideoArchitecture,
   VOICEOVER_DUCK,
   type Concept,
+  type StoryboardSource,
   type VideoArchitecture
 } from "@f-engine/reel-engine";
 
@@ -66,7 +67,7 @@ export interface SceneMediaView {
     duration_ms?: number;
   };
   attribution?: {
-    source: "Pexels" | "Mixkit";
+    source: "Pexels" | "Pixabay" | "Mixkit";
     creator: string;
     attributionUrl: string;
     previewUrl?: string;
@@ -89,13 +90,22 @@ export {
   defaultVideoArchitecture,
   VOICEOVER_DUCK,
   type Concept,
+  type StoryboardSource,
   type VideoArchitecture
 };
 
-/** Prefills the reference UI until a host supplies a reviewed conversation-model adapter. */
+export type ConversationConceptOverlay = { hook?: string; treatment?: string };
+export type ConversationConceptOverlays = Partial<Record<"direct" | "story" | "rhythm", ConversationConceptOverlay>>;
+
+export interface CreateConversationPlan {
+  architecture: VideoArchitecture;
+  source: StoryboardSource;
+  concept_overlays?: ConversationConceptOverlays;
+}
+
+/** Rule-based plan used when FAL conversation is disconnected or unavailable. */
 export function recommendVideoArchitecture(conversation: string): VideoArchitecture {
-  // ponytail: deterministic semantic signals are the ceiling; replace this
-  // host-only function with a structured model decision when that adapter exists.
+  // ponytail: keyword rules remain the disconnected fallback; FAL any-llm writes copy when connected.
   const text = conversation.normalize("NFKC").toLowerCase();
   const matches = (pattern: RegExp) => pattern.test(text);
   const goal: VideoArchitecture["goal"] = matches(/\b(how to|tutorial|teach|lesson|guide|learn)\b/u)
@@ -149,6 +159,61 @@ export function recommendVideoArchitecture(conversation: string): VideoArchitect
   return { goal, audience, structure, tone, pace, durationSeconds, media };
 }
 
+export function applyConversationConceptOverlays(
+  concepts: Concept[],
+  overlays: ConversationConceptOverlays | undefined
+): Concept[] {
+  if (!overlays) return concepts;
+  return concepts.map((concept) => {
+    const overlay = overlays[concept.id as keyof ConversationConceptOverlays];
+    if (!overlay) return concept;
+    const hook = overlay.hook?.trim();
+    const treatment = overlay.treatment?.trim();
+    return {
+      ...concept,
+      hook: hook ? hook.slice(0, 160) : concept.hook,
+      treatment: treatment ? treatment.slice(0, 280) : concept.treatment
+    };
+  });
+}
+
+export function storyboardArchitectureForConcept(
+  conceptId: string,
+  base: VideoArchitecture
+): VideoArchitecture {
+  if (conceptId === "direct") {
+    return { ...base, goal: "promote", structure: "problem_solution", durationSeconds: 15 };
+  }
+  if (conceptId === "story") {
+    return { ...base, goal: "story", structure: "story_arc", durationSeconds: 30 };
+  }
+  if (conceptId === "rhythm") {
+    return { ...base, goal: "story", structure: "chronological", pace: "fast", durationSeconds: 45 };
+  }
+  return base;
+}
+
+export function beatsForConcept(summary: string, sceneCount: number): string[] {
+  const steps = summary.split("→").map((part) => {
+    const beat = part.trim();
+    return beat ? `${beat.charAt(0).toUpperCase()}${beat.slice(1)}` : "";
+  }).filter(Boolean);
+  const count = Number.isInteger(sceneCount) ? Math.min(8, Math.max(1, sceneCount)) : 1;
+  return Array.from({ length: count }, (_, index) => steps[index] ?? `Beat ${index + 1}`);
+}
+
+export function mergeConversationStoryboard(engineScenes: Scene[], drafted: Scene[]): Scene[] {
+  return drafted.map((scene, index) => {
+    const existing = engineScenes[index];
+    if (!existing) return scene;
+    return {
+      ...scene,
+      id: existing.id,
+      ...(existing.media_id ? { media_id: existing.media_id } : {})
+    };
+  });
+}
+
 /** Uses the inspected clip length while keeping it inside the engine's scene bounds. */
 export function sceneDurationForMedia(detectedDurationMs: unknown, fallbackMs: number): number {
   if (typeof detectedDurationMs !== "number" || !Number.isFinite(detectedDurationMs)) return fallbackMs;
@@ -169,6 +234,135 @@ export class ApiResponseError extends Error {
   get type(): string | undefined {
     return typeof this.body.type === "string" ? this.body.type : undefined;
   }
+}
+
+/** Client command/scene ids. `crypto.randomUUID` is missing on plain HTTP origins. */
+export function clientId(): string {
+  const webCrypto = globalThis.crypto;
+  if (typeof webCrypto.randomUUID === "function") return webCrypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  webCrypto.getRandomValues(bytes);
+  const clock = bytes[6] ?? 0;
+  const variant = bytes[8] ?? 0;
+  bytes[6] = (clock & 0x0f) | 0x40;
+  bytes[8] = (variant & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/** Uses the server snapshot after a stale-revision 409 so a lost first click can continue. */
+export function snapshotFromConflict(error: unknown, projectId: string): ProjectSnapshot | undefined {
+  if (!(error instanceof ApiResponseError) || error.status !== 409) return;
+  const snapshot = error.body.authoritative_snapshot;
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return;
+  const value = snapshot as Partial<ProjectSnapshot>;
+  if (value.id !== projectId || typeof value.revision !== "number" || !Array.isArray(value.scenes)) return;
+  return value as ProjectSnapshot;
+}
+
+export function stockFillStatus(type: string | undefined): string {
+  if (type === "pexels_not_connected" || type === "pixabay_not_connected") {
+    return "Connect your Pexels API key in Settings, or upload your own media.";
+  }
+  if (type === "invalid_provider_credential") {
+    return "Pexels rejected this API key. Update it in Settings, or upload your own media.";
+  }
+  if (type === "provider_unavailable") {
+    return "Pexels could not be reached. Find clips in the editor, or try again.";
+  }
+  return "Licensed media could not be matched. Find or upload clips for each scene.";
+}
+
+export function durationSecondsFromClipCount(count: number): 15 | 30 | 45 {
+  if (count <= 4) return 15;
+  if (count === 5) return 30;
+  return 45;
+}
+
+export function exportGaps(project: {
+  scenes: Array<{ media_id?: string; caption?: string }>;
+  brief?: { soundtrack?: unknown; voiceover?: unknown };
+}): string[] {
+  const gaps: string[] = [];
+  const missingMedia = project.scenes.filter((scene) => !scene.media_id).length;
+  if (missingMedia) gaps.push(missingMedia === 1 ? "1 scene needs media" : `${missingMedia} scenes need media`);
+  if (!project.brief?.voiceover && project.scenes.some((scene) => !scene.caption?.trim())) {
+    gaps.push("Add captions or a voice-over");
+  }
+  if (!project.brief?.soundtrack && !project.brief?.voiceover) gaps.push("Add music or a voice-over");
+  return gaps;
+}
+
+/** Prefills What you'll say from FAL caption, else the description. */
+export function plannedVoiceScript(
+  source: { caption?: string } | undefined,
+  fallback = ""
+): string {
+  const caption = source?.caption?.trim();
+  if (caption) return caption.slice(0, 1800);
+  return fallback.trim().slice(0, 1800);
+}
+
+const FAL_SPEECH_LOG: Record<string, string> = {
+  quoted: "FAL priced this script.",
+  queued: "Queued for generation.",
+  submitting: "FAL is generating speech.",
+  running: "FAL is synthesizing speech.",
+  downloading: "Copying audio into private storage.",
+  inspecting: "Checking the audio file.",
+  ready: "Voice-over is ready to preview.",
+  failed: "Generation failed.",
+  cancelled: "Generation cancelled.",
+  submission_uncertain: "FAL may have started. Check before retrying."
+};
+const FAL_SPEECH_TRAIL = ["quoted", "queued", "submitting", "running", "downloading", "inspecting", "ready"] as const;
+
+/** Determinate bar for FAL speech. Running inches forward so a long FAL wait is not a frozen 45%. */
+export function falSpeechProgress(state: string, elapsedMs = 0): { percent: number; line: string } {
+  const line = FAL_SPEECH_LOG[state] ?? `Status · ${state.replaceAll("_", " ")}`;
+  const base: Record<string, number> = {
+    quoted: 8,
+    queued: 18,
+    submitting: 32,
+    running: 45,
+    downloading: 88,
+    inspecting: 94,
+    ready: 100,
+    failed: 100,
+    cancelled: 100,
+    submission_uncertain: 100
+  };
+  let percent = base[state] ?? 0;
+  if (state === "submitting") percent = Math.min(80, 32 + Math.floor(Math.max(0, elapsedMs) / 800));
+  if (state === "running") percent = Math.min(84, 45 + Math.floor(Math.max(0, elapsedMs) / 3000));
+  return { percent, line };
+}
+
+export function falSpeechLogTrail(state: string): string[] {
+  const index = (FAL_SPEECH_TRAIL as readonly string[]).indexOf(state);
+  if (index >= 0) return FAL_SPEECH_TRAIL.slice(0, index + 1).map((step) => FAL_SPEECH_LOG[step]!);
+  const terminal = FAL_SPEECH_LOG[state];
+  if (!terminal) return [state.replaceAll("_", " ")];
+  return [FAL_SPEECH_LOG.quoted!, FAL_SPEECH_LOG.queued!, FAL_SPEECH_LOG.submitting!, terminal];
+}
+
+export function captionsFromVoiceScript(
+  script: string,
+  scenes: Array<{ id: string; duration_ms: number }>
+): Array<{ id: string; caption: string }> {
+  const words = script.trim().split(/\s+/u).filter(Boolean);
+  if (!words.length || !scenes.length) return [];
+  const total = scenes.reduce((sum, scene) => sum + Math.max(1, scene.duration_ms), 0);
+  let cursor = 0;
+  return scenes.map((scene, index) => {
+    const share = Math.max(1, scene.duration_ms) / total;
+    const take = index === scenes.length - 1
+      ? words.length - cursor
+      : Math.max(1, Math.round(words.length * share));
+    const caption = words.slice(cursor, cursor + take).join(" ").slice(0, 180);
+    cursor += take;
+    return { id: scene.id, caption };
+  });
 }
 
 export class ApiClient {
@@ -196,11 +390,58 @@ export class ApiClient {
     return body as T;
   }
 
+  async requestBlob(path: string): Promise<Blob> {
+    const headers = new Headers();
+    headers.set("authorization", `Bearer ${this.token()}`);
+    const response = await fetch(path, { headers });
+    if (response.status === 401) this.onUnauthorized();
+    if (!response.ok) {
+      const body = response.headers.get("content-type")?.includes("json")
+        ? await response.json() as Record<string, unknown>
+        : {};
+      throw new ApiResponseError(response.status, body);
+    }
+    return response.blob();
+  }
+
+  async putBytes(path: string, body: Blob, contentType: string): Promise<void> {
+    const headers = new Headers();
+    headers.set("authorization", `Bearer ${this.token()}`);
+    headers.set("content-type", contentType);
+    const response = await fetch(path, { method: "PUT", headers, body });
+    if (response.status === 401) this.onUnauthorized();
+    if (!response.ok) {
+      const errorBody = response.headers.get("content-type")?.includes("json")
+        ? await response.json() as Record<string, unknown>
+        : {};
+      throw new ApiResponseError(response.status, errorBody);
+    }
+  }
+
+  async putAdmittedObject(
+    projectId: string,
+    assetId: string,
+    uploadUrl: string,
+    body: Blob,
+    contentType: string
+  ): Promise<void> {
+    if (browserCanPut(uploadUrl)) {
+      const uploaded = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "content-type": contentType },
+        body
+      });
+      if (!uploaded.ok) throw new Error("Upload failed");
+      return;
+    }
+    await this.putBytes(`/api/projects/${projectId}/media/${assetId}/bytes`, body, contentType);
+  }
+
   command(projectId: string, revision: number, kind: string, payload: Record<string, unknown>) {
     return this.request<ProjectSnapshot>(`/api/projects/${projectId}/commands`, {
       method: "POST",
       body: JSON.stringify({
-        command_id: crypto.randomUUID(),
+        command_id: clientId(),
         base_revision: revision,
         client_timestamp: new Date().toISOString(),
         kind,
@@ -217,6 +458,13 @@ export class ApiClient {
 
   getProject(projectId: string) {
     return this.request<{ project: ProjectSnapshot; concepts?: Concept[] }>(`/api/projects/${projectId}`);
+  }
+
+  planCreateConversation(brief: string) {
+    return this.request<CreateConversationPlan>("/api/providers/fal/conversation", {
+      method: "POST",
+      body: JSON.stringify({ brief })
+    });
   }
 }
 
@@ -249,6 +497,20 @@ export function focusFromPoint(
 
 export function scenePreviewUrl(media: SceneMediaView | undefined): string | undefined {
   return media?.previewUrl ?? media?.attribution?.previewUrl;
+}
+
+/** Sealed MP4s play as video; Pexels/Pixabay JPEG fallbacks must not, or the player stays black. */
+export function previewPlaysAsVideo(media: SceneMediaView | undefined): boolean {
+  const url = scenePreviewUrl(media);
+  if (!url || media?.detected?.type !== "video/mp4") return false;
+  if (!media.previewUrl || media.previewUrl !== url) return false;
+  if (url.startsWith("blob:")) return true;
+  try {
+    const path = new URL(url, "https://local.invalid").pathname.toLowerCase();
+    return !/\.(jpe?g|png|webp|gif)$/.test(path);
+  } catch {
+    return true;
+  }
 }
 
 export function nextLiveSceneId(sceneIds: readonly string[], currentId: string): string {
@@ -369,14 +631,35 @@ export const stockBeds = [
   { id: "rise" as const, label: "Hot Swing", hint: "Kevin MacLeod", bpm: 140 }
 ];
 
+export function stockBedForPace(pace: VideoArchitecture["pace"]): (typeof stockBeds)[number] {
+  const id = pace === "fast" ? "drive" : pace === "slow" ? "air" : "pulse";
+  return stockBeds.find((bed) => bed.id === id) ?? stockBeds[0]!;
+}
+
 export function stockBedUrl(id: Soundtrack["stock_id"]): string | undefined {
   return id ? `/music/${id}.mp3` : undefined;
 }
 
+/** Presigned MinIO URLs are http://127.0.0.1 on the VPS; the browser must PUT through the API. */
+export function browserCanPut(url: string, pageOrigin = globalThis.location?.origin ?? ""): boolean {
+  try {
+    const target = new URL(url, pageOrigin || undefined);
+    if (target.protocol === "https:") return true;
+    if (!pageOrigin) return false;
+    const here = new URL(pageOrigin);
+    const loopback = (host: string) => host === "127.0.0.1" || host === "localhost" || host === "[::1]";
+    if (loopback(target.hostname) && loopback(here.hostname)) return true;
+    return target.host === here.host;
+  } catch {
+    return false;
+  }
+}
+
 /** Loads a fresh, project-scoped map so callers replace rather than merge stale media state. */
 export async function loadSceneMediaViews(
-  api: Pick<ApiClient, "request">,
-  project: ProjectSnapshot
+  api: Pick<ApiClient, "request"> & Partial<Pick<ApiClient, "requestBlob">>,
+  project: ProjectSnapshot,
+  previous: Record<string, SceneMediaView> = {}
 ): Promise<Record<string, SceneMediaView>> {
   const soundtrackId = project.brief.soundtrack?.kind === "upload" ? project.brief.soundtrack.media_id : undefined;
   const voiceoverId = project.brief.voiceover?.media_id;
@@ -387,5 +670,33 @@ export async function loadSceneMediaViews(
   ])];
   const views = await Promise.all(mediaIds.map((id) =>
     api.request<SceneMediaView>(`/api/projects/${project.id}/media/${id}`)));
-  return Object.fromEntries(views.map((view) => [view.id, view]));
+  const next = Object.fromEntries(await Promise.all(views.map(async (view) => [
+    view.id,
+    await playableScenePreview(api, project.id, view, previous[view.id])
+  ])));
+  for (const [id, old] of Object.entries(previous)) {
+    const kept = next[id]?.previewUrl;
+    if (old.previewUrl?.startsWith("blob:") && old.previewUrl !== kept) {
+      URL.revokeObjectURL(old.previewUrl);
+    }
+  }
+  return next;
+}
+
+export async function playableScenePreview(
+  api: Pick<ApiClient, "request"> & Partial<Pick<ApiClient, "requestBlob">>,
+  projectId: string,
+  view: SceneMediaView,
+  previous?: SceneMediaView
+): Promise<SceneMediaView> {
+  if (view.previewUrl || view.state !== "ready" || typeof api.requestBlob !== "function") return view;
+  if (previous?.previewUrl?.startsWith("blob:") && previous.state === "ready") {
+    return { ...view, previewUrl: previous.previewUrl };
+  }
+  try {
+    const blob = await api.requestBlob(`/api/projects/${projectId}/media/${view.id}/content`);
+    return { ...view, previewUrl: URL.createObjectURL(blob) };
+  } catch {
+    return view;
+  }
 }

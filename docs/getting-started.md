@@ -1,8 +1,11 @@
 # Self-host onboarding
 
-This guide creates an isolated F-Engine reference deployment using accounts
-and data stores you control. The repository contains no maintainer credentials,
-customer data, production domains, or shared hosted service.
+For the one-image VPS path (`docker compose up`), see
+[Self-host with one image](runbooks/self-host.md).
+
+This guide creates an isolated deployment using accounts and data stores you
+control. The repository contains no maintainer credentials, customer data,
+production domains, or shared hosted service.
 
 If you only want to evaluate the workflow, use `npm run demo` from the root.
 That path requires no accounts and does not contact Supabase, Pexels, cloud
@@ -44,16 +47,18 @@ under your control.
 | `DATABASE_URL`, `QUEUE_DATABASE_URL` | API/worker secret | No |
 | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | API/worker secret | No |
 | `FENGINE_PEXELS_BYOK_ENABLED` | API configuration | No credential value |
+| `FENGINE_PIXABAY_BYOK_ENABLED` | API configuration | No credential value |
 | `FENGINE_CREDENTIAL_KEY_V<n>` | API secret | No |
 | Supabase service-role key | Not used | Never expose |
 
 Only variables prefixed with `VITE_` can enter the browser build. A Supabase
 service-role key must never be placed in any `VITE_*` variable.
 
-With Pexels BYOK enabled, each authenticated user enters their own API key in
-Settings. The browser sends it over HTTPS once; the API validates and encrypts
-it with the versioned credential key, returns only last-four metadata, and uses
-it only for that owner's Pexels requests. A shared `PEXELS_API_KEY` is forbidden.
+With Pexels or Pixabay BYOK enabled, each authenticated user enters their own API
+key in Settings. The browser sends it over HTTPS once; the API validates and
+encrypts it with the versioned credential key, returns only last-four metadata,
+and uses it only for that owner's stock requests. Shared `PEXELS_API_KEY` and
+`PIXABAY_API_KEY` values are forbidden.
 
 ## 4. Configure authentication
 

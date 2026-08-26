@@ -4,6 +4,7 @@ import {
   FalProviderError,
   assertNoSharedFalCredential,
   assertNoSharedPexelsCredential,
+  assertNoSharedPixabayCredential,
   credentialVaultFromEnv,
   decryptCredential,
   encryptCredential,
@@ -42,6 +43,7 @@ test("credential configuration fails closed", () => {
   assert.throws(() => assertNoSharedFalCredential({ NODE_ENV: "production", FAL_API_KEY: "synthetic" }), /forbidden/);
   assert.throws(() => assertNoSharedFalCredential({ FENGINE_ENV: "hosted", FAL_KEY: "" }), /forbidden/);
   assert.throws(() => assertNoSharedPexelsCredential({ FENGINE_ENV: "hosted", PEXELS_API_KEY: "" }), /forbidden/);
+  assert.throws(() => assertNoSharedPixabayCredential({ FENGINE_ENV: "hosted", PIXABAY_API_KEY: "" }), /forbidden/);
   assert.doesNotThrow(() => assertNoSharedFalCredential({ FENGINE_ENV: "hosted" }));
 });
 
@@ -110,9 +112,13 @@ import {
   estimateSpeech,
   falSpeechInput,
   submitSpeech,
+  runSpeech,
   speechStatus,
   speechResult,
-  cancelSpeech
+  cancelSpeech,
+  FAL_LLM_DEFAULT_MODEL,
+  FAL_LLM_ENDPOINT_ID,
+  runFalLlm
 } from "../dist/index.js";
 
 test("estimateImage maps megapixel billing to the pinned portrait still", async () => {
@@ -254,4 +260,66 @@ test("speech result reads audio.url from fal.media and rejects other hosts", asy
     status: 200, headers: { "content-type": "application/json" }
   })), { status: "COMPLETED" });
   await cancelSpeech("k", "req", async () => new Response(null, { status: 202 }));
+});
+
+test("runSpeech posts Kokoro to fal.run and reads audio.url without polling", async () => {
+  let seen;
+  const result = await runSpeech("synthetic:key", { prompt: "  Hello from the storyboard.  " }, async (url, init) => {
+    seen = { url, init };
+    return new Response(JSON.stringify({
+      audio: { url: "https://v3.fal.media/files/voice.wav" }
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+  assert.equal(result.url, "https://v3.fal.media/files/voice.wav");
+  assert.equal(seen.url, `https://fal.run/${FAL_SPEECH_ENDPOINT_ID}`);
+  assert.deepEqual(JSON.parse(seen.init.body), falSpeechInput("Hello from the storyboard."));
+  await assert.rejects(
+    runSpeech("k", { prompt: "x" }, async () => new Response("sensitive", { status: 401 })),
+    (error) => error instanceof FalImageError && error.code === "credential" && !error.message.includes("sensitive")
+  );
+  await assert.rejects(
+    runSpeech("k", { prompt: "x" }, async () => new Response("busy", { status: 429 })),
+    (error) => error instanceof FalImageError && error.code === "rate_limited"
+  );
+  await assert.rejects(
+    runSpeech("k", { prompt: "x" }, async () => new Response(JSON.stringify({
+      audio: { url: "https://evil.example/voice.wav" }
+    }), { status: 200, headers: { "content-type": "application/json" } })),
+    (error) => error instanceof FalImageError && error.code === "unsafe_output"
+  );
+});
+
+test("runFalLlm posts to fal-ai/any-llm and reads output without leaking bodies", async () => {
+  let seen;
+  const output = await runFalLlm("synthetic:key", {
+    prompt: "  A lonely island  ",
+    system_prompt: "JSON only",
+    model: FAL_LLM_DEFAULT_MODEL
+  }, async (url, init) => {
+    seen = { url, init };
+    return new Response(JSON.stringify({ output: "{\"goal\":\"story\"}" }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  });
+  assert.equal(output, "{\"goal\":\"story\"}");
+  assert.equal(seen.url, `https://fal.run/${FAL_LLM_ENDPOINT_ID}`);
+  assert.match(JSON.stringify(seen.init.headers), /synthetic:key/);
+  assert.deepEqual(JSON.parse(seen.init.body), {
+    prompt: "A lonely island",
+    model: FAL_LLM_DEFAULT_MODEL,
+    system_prompt: "JSON only"
+  });
+  await assert.rejects(
+    runFalLlm("k", { prompt: "x" }, async () => new Response("sensitive", { status: 401 })),
+    (error) => error instanceof FalImageError && error.code === "credential" && !error.message.includes("sensitive")
+  );
+  await assert.rejects(
+    runFalLlm("k", { prompt: "x" }, async () => new Response("busy", { status: 429 })),
+    (error) => error instanceof FalImageError && error.code === "rate_limited"
+  );
+  await assert.rejects(
+    runFalLlm("k", { prompt: "" }),
+    (error) => error instanceof FalImageError && error.code === "invalid_request"
+  );
 });

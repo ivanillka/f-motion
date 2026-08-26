@@ -85,9 +85,16 @@ test("all API routes reject requests without a Bearer token", async () => {
       [`${context.apiOrigin}/api/projects/project/render`, { method: "POST" }],
       [`${context.apiOrigin}/api/providers/fal/credential`, { method: "GET" }],
       [`${context.apiOrigin}/api/providers/fal/credential/test`, { method: "POST" }],
+      [`${context.apiOrigin}/api/providers/fal/conversation`, { method: "POST" }],
       [`${context.apiOrigin}/api/providers/pexels/credential`, { method: "GET" }],
       [`${context.apiOrigin}/api/providers/pexels/credential/test`, { method: "POST" }],
+      [`${context.apiOrigin}/api/providers`, { method: "GET" }],
+      [`${context.apiOrigin}/api/providers/pixabay/credential`, { method: "GET" }],
+      [`${context.apiOrigin}/api/providers/pixabay/credential/test`, { method: "POST" }],
       [`${context.apiOrigin}/api/pexels/search?q=ocean`, { method: "GET" }],
+      [`${context.apiOrigin}/api/pexels/photos/search?q=ocean`, { method: "GET" }],
+      [`${context.apiOrigin}/api/pixabay/search?q=ocean`, { method: "GET" }],
+      [`${context.apiOrigin}/api/pixabay/photos/search?q=ocean`, { method: "GET" }],
       [`${context.apiOrigin}/api/music/search?q=hip+hop`, { method: "GET" }],
       [`${context.apiOrigin}/api/projects/project/media/music`, { method: "POST" }],
       [`${context.apiOrigin}/api/me/usage`, { method: "GET" }],
@@ -390,7 +397,9 @@ test("Pexels search is bounded and never exposes provider source URLs", async ()
         id: 7,
         creator: "Creator",
         attributionUrl: "https://www.pexels.com/video/7",
-        previewUrl: "https://images.pexels.com/videos/7/preview.jpg"
+        previewUrl: "https://images.pexels.com/videos/7/preview.jpg",
+        source: "pexels",
+        kind: "video"
       }]
     });
   } finally {
@@ -457,6 +466,92 @@ test("scene media view is owner-scoped and exposes only validated public fields"
     assert.deepEqual(lookups, [["authenticated-user", "project-1", "asset-1"]]);
     const body = JSON.stringify(await (await fetch(`${origin}/api/projects/project-1/media/asset-1`)).json());
     assert.doesNotMatch(body, /objectKey|private\/object|sourceUrl|private-source/);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("sealed media content is streamed same-origin without storage keys", async () => {
+  const bytes = Buffer.from("ftypisom");
+  const server = createServer(createTestApp({
+    media: {
+      repository: {
+        async get(_ownerId, _projectId, assetId) {
+          if (assetId !== "asset-1") return undefined;
+          return {
+            id: "asset-1",
+            ownerId: "authenticated-user",
+            projectId: "project-1",
+            state: "ready",
+            sealedObjectKey: "private/sealed/key",
+            declaredType: "video/mp4",
+            maxBytes: bytes.length,
+            detected: { type: "video/mp4", bytes: bytes.length }
+          };
+        }
+      },
+      store: {
+        async signedGet() { return "http://127.0.0.1:9000/bucket/private/sealed/key"; },
+        async read(key) {
+          assert.equal(key, "private/sealed/key");
+          return bytes;
+        }
+      }
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const missing = await fetch(`${origin}/api/projects/project-1/media/missing/content`);
+    assert.equal(missing.status, 404);
+    const response = await fetch(`${origin}/api/projects/project-1/media/asset-1/content`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "video/mp4");
+    assert.equal(response.headers.get("content-disposition"), "inline");
+    assert.equal(Buffer.compare(Buffer.from(await response.arrayBuffer()), bytes), 0);
+    const json = await (await fetch(`${origin}/api/projects/project-1/media/asset-1`)).json();
+    assert.equal("previewUrl" in json, false);
+    assert.doesNotMatch(JSON.stringify(json), /127\.0\.0\.1|sealed\/key/);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("admitted media bytes can be PUT same-origin when signed URLs are loopback", async () => {
+  const stored = [];
+  const server = createServer(createTestApp({
+    media: {
+      repository: {
+        async get(_ownerId, _projectId, assetId) {
+          if (assetId !== "asset-1") return undefined;
+          return {
+            id: "asset-1",
+            ownerId: "authenticated-user",
+            projectId: "project-1",
+            state: "admitted",
+            quarantineObjectKey: "private/quarantine/key",
+            declaredType: "audio/mpeg",
+            maxBytes: 64
+          };
+        }
+      },
+      store: {
+        async put(key, body, type, length) {
+          stored.push({ key, type, length, bytes: Buffer.from(body).toString() });
+        }
+      }
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const response = await fetch(`${origin}/api/projects/project-1/media/asset-1/bytes`, {
+      method: "PUT",
+      headers: { "content-type": "audio/mpeg" },
+      body: Buffer.from("ID3music")
+    });
+    assert.equal(response.status, 204);
+    assert.equal(stored[0]?.key, "private/quarantine/key");
+    assert.equal(stored[0]?.type, "audio/mpeg");
+    assert.equal(stored[0]?.bytes, "ID3music");
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

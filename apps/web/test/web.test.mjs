@@ -6,7 +6,22 @@ import { createServer } from "vite";
 
 test("required recovery, accessibility, and preview language is present", async () => {
   const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
-  for (const phrase of ["Drafts", "Continue to video plan", "Plan the video", "prepared this recommendation from your conversation", "Edit recommended video plan", "Recommended video plan", "What should this video achieve", "Who is it for", "How should the story unfold", "What tone fits best", "How fast should it feel", "Target length", "Where should visuals come from", "Pexels real stock video", "Continue to story concepts", "Choose a story approach", "Licensed visuals are matched only after you choose", "Storyboard", "Live preview", "Play progress", "Restart", "Previous scene", "Next scene", "Find licensed media", "Find another licensed video", "Generate AI image for scene", "Animate this image", "Generate one 6-second video", "Use video for scene", "Keep image", "Generate one image", "Get FAL price", "Use for scene", "Keep current media", "Generate another", "AI-generated with FAL", "Charged directly to your FAL account", "Select for scene", "Move scene", "Add scene", "Remove scene", "Play preview", "Pause preview", "Export final", "Final export", "Download export", "playsInline", "Older preview", "Reload latest", "Save as new project", "media not copied", "pending", "was not merged", "Reconnecting", "magic link", "Google", "Pexels", "Cancel render", "Download preview", "Accurate preview failed", "Retry", "Choose video sources", "Choose your video sources", "Real stock video", "AI stills", "More providers", "More ways to create", "Locked", "Why is this locked", "Pexels stock is locked", "Connect your Pexels API key to search real stock video", "FAL generation is locked", "Open provider settings", "Settings", "Sign out", "Waiting for media inspection", "Media is still inspecting", "Connect your own Pexels API key", "F-Motion does not supply or share a Pexels key", "Connect Pexels", "Test Pexels", "Disconnect Pexels", "Connect your own FAL API-scope key", "charged directly to your FAL account", "F-Motion does not supply or share a FAL key", "Connect FAL", "Test connection", "Disconnect", "Sign in to open the imported draft from Fotium.", "Open the email link to finish sign-in."]) assert.match(source, new RegExp(phrase));
+  for (const phrase of ["Drafts", "Continue to video plan", "Plan the video", "prepared this recommendation from your conversation", "Edit recommended video plan", "Recommended video plan", "What should this video achieve", "Who is it for", "How should the story unfold", "What tone fits best", "How fast should it feel", "Target length", "Where should visuals come from", "Pexels and Pixabay", "Mix Pexels, Pixabay, and my media", "Licensed fill uses Pexels first, then Pixabay for remaining scenes", "Continue to story concepts", "Choose a story approach", "Captions, licensed clips, and a music bed are assembled after you choose", "Building your draft", "This can take a minute", "Your draft", "Edit What you'll say, then record, upload, or generate", "Edit storyboard", "Storyboard", "Live preview", "Play progress", "Restart", "Previous scene", "Next scene", "Find licensed media", "Find another licensed video", "Find licensed still", "Generate AI image for scene", "Animate this image", "Generate one 6-second video", "Use video for scene", "Keep image", "Generate one image", "Get FAL price", "Use for scene", "Keep current media", "Generate another", "AI-generated with FAL", "Charged directly to your FAL account", "Select for scene", "Move scene", "Add scene", "Remove scene", "Play preview", "Pause preview", "Export final", "Final export", "Download export", "playsInline", "Older preview", "Reload latest", "Save as new project", "media not copied", "pending", "was not merged", "Reconnecting", "magic link", "Google", "Pexels", "Pixabay", "Cancel render", "Download preview", "Accurate preview failed", "Retry", "Choose video sources", "Real stock video", "AI stills", "More providers", "Locked", "Pexels stock is locked", "Connect your Pexels API key to search real stock video", "FAL generation is locked", "Open provider settings", "Settings", "Sign out", "Waiting for media inspection", "Media is still inspecting", "Connect your own Pexels API key", "F-Motion does not supply or share a Pexels key", "Connect Pexels", "Test Pexels", "Disconnect Pexels", "Connect your own Pixabay API key", "F-Motion does not supply or share a Pixabay key", "Connect Pixabay", "Test Pixabay", "Disconnect Pixabay", "Connect your own FAL API-scope key", "charged directly to your FAL account", "F-Motion does not supply or share a FAL key", "Connect FAL", "Test connection", "Disconnect", "Sign in to open the imported draft from Fotium.", "Open the email link to finish sign-in.", "Create from my clips", "Fill remaining scenes", "Ready to export", "Download cover", "What you'll say", "Use as captions", "Email or password was rejected.", "Writing the video plan", "Rule-based plan. Connect FAL in Settings for smarter copy.", "FAL conversation was unavailable. Using the rule-based plan.", "FAL wrote this plan and spoken copy", "This spoken copy is planned now so you can edit it before generating a voice-over", "Edit What you'll say, then generate the voice-over", "Close and edit it there if you need to change it", "Create-video copy"]) assert.match(source, new RegExp(phrase));
+  assert.match(source, /htmlFor="plan-voice-script"/);
+  assert.match(source, /plannedVoiceScript\(/);
+  assert.match(source, /id="fal-speech-prompt"[^>]*readOnly/);
+  assert.match(source, /aria-label="Voice-over generation progress"/);
+  assert.match(source, /aria-label="Voice-over generation log"/);
+  assert.match(source, /falSpeechProgress\(/);
+  assert.match(source, /falSpeechLogTrail\(/);
+  assert.doesNotMatch(source, /setFalSpeechPrompt\(defaultVoicePrompt/);
+  assert.match(source, /className="settings-stage"/);
+  assert.match(source, /className="source-panel/);
+  assert.doesNotMatch(source, /Why is this locked/);
+  assert.doesNotMatch(source, /More ways to create/);
+  assert.doesNotMatch(source, /Coming soon/);
+  assert.doesNotMatch(source, /Privacy and terms will ship/);
+  assert.doesNotMatch(source, /Choose your video sources/);
   assert.match(source, /activeSceneId/);
   assert.match(source, /openConflict\(/);
   assert.match(source, /intendedSceneId/);
@@ -19,7 +34,15 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.doesNotMatch(source, /Automatically matched|strongest licensed match|Finding the best/);
   assert.doesNotMatch(source, /concept_id:\s*"direct"/);
   assert.match(source, /chooseConcept\(/);
-  assert.match(source, /aria-label=\{\`Choose \$\{concept\.title\} concept\`\}/);
+  assert.match(source, /setStep\("review"\)/);
+  assert.match(source, /setStep\("assemble"\)/);
+  assert.match(source, /aria-label="Assembly log"/);
+  assert.match(source, /Building your draft/);
+  assert.match(source, /noteAssemble\(/);
+  assert.match(source, /data-mode=\{step === "review" \? "review" : "edit"\}/);
+  assert.match(source, /clientId/);
+  assert.doesNotMatch(source, /crypto\.randomUUID\(/);
+  assert.match(source, /aria-label=\{\`Choose \$\{concept\.title\} concept\. \$\{concept\.hook\}\`\}/);
   assert.match(source, /requestRender\("final"\)/);
   assert.doesNotMatch(source, /requestRender\("preview"\)/);
   assert.match(source, /kind: "final"|JSON\.stringify\(\{ kind \}\)/);
@@ -66,7 +89,10 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Music ducks under the voice/);
   assert.match(source, /Kokoro American English/);
   assert.match(source, /openFalSpeech\(/);
-  assert.match(source, /useFalSpeechMedia\(/);
+    assert.match(source, /useFalSpeechMedia\(/);
+    assert.match(source, /loadSceneMediaViews\(api, saved, sceneMediaRef\.current\)/);
+    assert.match(source, /cueVoicePlayback\(/);
+    assert.match(source, /playableScenePreview\(/);
   assert.doesNotMatch(source, /ElevenLabs|elevenlabs/);
   assert.doesNotMatch(source, /<audio controls/);
   assert.match(source, /htmlFor=\{`caption-\$\{activeScene.id\}`\}/);
@@ -104,6 +130,9 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.doesNotMatch(source, /(?:localStorage|sessionStorage)\.[^\n]*\bpexelsKey\b/);
   assert.doesNotMatch(source, /(?:localStorage|sessionStorage)\.[^\n]*["'`][^"'`]*PEXELS/);
   assert.doesNotMatch(source, /VITE_.*PEXELS/);
+  assert.doesNotMatch(source, /(?:localStorage|sessionStorage)\.[^\n]*\bpixabayKey\b/);
+  assert.doesNotMatch(source, /(?:localStorage|sessionStorage)\.[^\n]*["'`][^"'`]*PIXABAY/);
+  assert.doesNotMatch(source, /VITE_.*PIXABAY/);
 });
 
 test("draft media hydration replaces project-scoped stock, upload, reopen, and failure state", async () => {
@@ -114,7 +143,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { clampBpm, clampFocus, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, stockBedUrl } = await vite.ssrLoadModule("/src/api.ts");
+    const { ApiResponseError, browserCanPut, captionsFromVoiceScript, clampBpm, clampFocus, durationSecondsFromClipCount, exportGaps, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, previewPlaysAsVideo, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, snapshotFromConflict, stockBedUrl, stockFillStatus } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -148,6 +177,9 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.equal(musicLaneBeats(2000, 120).length, 5);
     assert.equal(stockBedUrl("pulse"), "/music/pulse.mp3");
     assert.equal(stockBedUrl(undefined), undefined);
+    assert.equal(browserCanPut("https://storage.example/put", "http://89.1.2.3:8090"), true);
+    assert.equal(browserCanPut("http://127.0.0.1:9000/bucket", "http://89.1.2.3:8090"), false);
+    assert.equal(browserCanPut("http://127.0.0.1:9000/bucket", "http://127.0.0.1:4173"), true);
     const partnerToken = `x.${btoa(JSON.stringify({ email: "Owner@Example.com" })).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "")}.x`;
     assert.equal(jwtEmail(partnerToken), "owner@example.com");
     assert.equal(showsPartnerBrands(partnerToken, "owner@example.com"), true);
@@ -156,6 +188,51 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.equal(nextLiveSceneId(["a", "b", "c"], "b"), "c");
     assert.equal(nextLiveSceneId(["a", "b", "c"], "c"), "a");
     assert.equal(scenePreviewUrl({ previewUrl: "https://media.example/still.jpg" }), "https://media.example/still.jpg");
+    assert.equal(previewPlaysAsVideo({
+      id: "v",
+      state: "ready",
+      detected: { type: "video/mp4" },
+      attribution: { source: "Pexels", creator: "A", attributionUrl: "https://www.pexels.com/a", previewUrl: "https://images.pexels.com/a.jpg" }
+    }), false);
+    assert.equal(previewPlaysAsVideo({
+      id: "v",
+      state: "ready",
+      detected: { type: "video/mp4" },
+      previewUrl: "blob:http://studio/1"
+    }), true);
+    const blobs = [];
+    const blobApi = {
+      request: async (path) => views[path.split("/").at(-1)],
+      requestBlob: async (path) => {
+        blobs.push(path);
+        return new Blob(["mp4"], { type: "video/mp4" });
+      }
+    };
+    const originalCreate = URL.createObjectURL;
+    URL.createObjectURL = () => "blob:test-selfhost";
+    try {
+      const hydrated = await loadSceneMediaViews(blobApi, project("two", "upload"));
+      assert.equal(hydrated.upload.previewUrl, "blob:test-selfhost");
+      assert.deepEqual(blobs, ["/api/projects/two/media/upload/content"]);
+      const reused = await loadSceneMediaViews(blobApi, project("two", "upload"), hydrated);
+      assert.equal(reused.upload.previewUrl, "blob:test-selfhost");
+      assert.equal(blobs.length, 1);
+      const voiced = await loadSceneMediaViews(blobApi, {
+        id: "vo",
+        revision: 1,
+        brief: {
+          purpose: "vo",
+          audience: "Viewers",
+          tone: "Warm",
+          voiceover: { media_id: "upload", offset_ms: 0, level: 1 }
+        },
+        scenes: [{ id: "scene-vo" }]
+      });
+      assert.equal(voiced.upload.previewUrl, "blob:test-selfhost");
+      assert.equal(blobs.at(-1), "/api/projects/vo/media/upload/content");
+    } finally {
+      URL.createObjectURL = originalCreate;
+    }
     const scenes = [
       { id: "a", duration_ms: 1000 },
       { id: "b", duration_ms: 3000 },
@@ -175,8 +252,38 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     await assert.rejects(() => loadSceneMediaViews({ request: async () => { throw new Error("offline"); } }, project("one", "a")), /offline/);
 
     const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
+    const apiSource = await readFile(new URL("../src/api.ts", import.meta.url), "utf8");
+    assert.match(source, /hearNewBed\(/);
+    assert.match(source, /putAdmittedObject/);
+    assert.match(apiSource, /media\/\$\{view\.id\}\/content/);
     assert.match(source, /setSceneMedia\(\{\}\);\s+setStatus\("Opening draft/);
     assert.match(source, /setStatus\(hydrationFailed \? "Draft media details could not be loaded\."/);
+
+    const conflict = new ApiResponseError(409, {
+      type: "conflict",
+      authoritative_snapshot: { id: "p1", revision: 1, scenes: [{ id: "s1" }] }
+    });
+    assert.equal(snapshotFromConflict(conflict, "p1")?.revision, 1);
+    assert.equal(snapshotFromConflict(conflict, "other"), undefined);
+    assert.equal(snapshotFromConflict(new Error("offline"), "p1"), undefined);
+    assert.equal(stockFillStatus("pexels_not_connected"), "Connect your Pexels API key in Settings, or upload your own media.");
+    assert.equal(stockFillStatus("provider_unavailable"), "Pexels could not be reached. Find clips in the editor, or try again.");
+    assert.match(stockFillStatus(undefined), /Find or upload clips/);
+    assert.equal(durationSecondsFromClipCount(3), 15);
+    assert.equal(durationSecondsFromClipCount(5), 30);
+    assert.equal(durationSecondsFromClipCount(8), 45);
+    assert.deepEqual(exportGaps({ scenes: [{ media_id: "a", caption: "Hi" }], brief: { soundtrack: {}, voiceover: {} } }), []);
+    assert.equal(exportGaps({ scenes: [{ caption: "" }, { caption: "x" }] })[0], "2 scenes need media");
+    assert.deepEqual(
+      captionsFromVoiceScript("Hello there friends today", [{ id: "a", duration_ms: 1000 }, { id: "b", duration_ms: 1000 }]),
+      [{ id: "a", caption: "Hello there" }, { id: "b", caption: "friends today" }]
+    );
+    assert.match(source, /snapshotFromConflict\(/);
+    assert.match(source, /stockFillStatus\(/);
+    assert.match(source, /pexelsCredential\?\.connected/);
+    assert.doesNotMatch(source, /This draft already has scenes/);
+    assert.match(source, /concept\.hook/);
+    assert.match(source, /concept\.treatment/);
   } finally {
     await vite.close();
   }
@@ -189,12 +296,21 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.app-rail/);
   assert.match(css, /\.app-dock/);
   assert.match(css, /\.studio-board/);
+  assert.match(css, /\.concept-module/);
+  assert.match(css, /\.beat-rail/);
+  assert.match(css, /\.export-gaps/);
+  assert.match(css, /\.source-module/);
+  assert.match(css, /\.assemble-stage/);
+  assert.match(css, /\.assemble-log/);
   assert.match(css, /\.crop-guide/);
   assert.match(css, /cursor: grab/);
   assert.match(css, /cursor: grabbing/);
   assert.match(css, /\.scene-strip-actions/);
   assert.match(css, /\.header-actions \.brand-mark/);
   assert.match(css, /\.music-dock > summary/);
+  assert.match(css, /\.plan-voice/);
+  assert.match(css, /dialog \.notice progress/);
+  assert.match(css, /\.music-dock:not\(\.voice-dock\)/);
   assert.match(css, /\.music-dock:not\(\[open\]\) > \*:not\(summary\) \{ display: none; \}/);
   assert.match(css, /minmax\(0, 1fr\) 232px/);
   assert.match(css, /preview-push/);
@@ -228,127 +344,69 @@ test("studio shell brands F-Motion and keeps real destinations only", async () =
   const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
   assert.match(html, /<title>F-Motion<\/title>/);
+  assert.match(html, /<meta name="description"/);
   assert.match(source, /<strong>F-Motion<\/strong>/);
+  assert.match(source, /Make a vertical preview/);
+  assert.match(source, /Create your studio/);
+  assert.doesNotMatch(source, /operator token/);
+  assert.match(source, /F-Motion — Studio/);
   assert.doesNotMatch(source, /F-Engine Reference/);
   assert.match(source, /className="app-rail"/);
   assert.match(source, /className="app-dock"/);
   assert.match(source, /className="studio-board"/);
+  assert.match(source, /className="concept-module"/);
+  assert.match(source, /className="source-module"/);
+  assert.match(source, /Clips you attach/);
+  assert.match(source, /beatSteps\(/);
   assert.match(source, /partner-brands/);
   assert.match(source, /className="editor-foot"/);
   assert.match(source, /crop-guide/);
   assert.match(source, /isWideMedia/);
   assert.match(source, /motion: "zoom"/);
   assert.match(source, /href="\/"/);
+  assert.match(source, /MarketingApp/);
+  assert.match(source, /\/studio/);
   assert.doesNotMatch(source, /Assets|Effects|Pro Studio|multitrack/i);
 });
 
-test("build puts marketing at site root and studio under /app", async () => {
+test("build puts the SPA at site root and redirects /app to /studio", async () => {
   const { readFile, access } = await import("node:fs/promises");
   const dist = new URL("../dist/", import.meta.url);
   await access(new URL("index.html", dist));
-  await access(new URL("app/index.html", dist));
   await access(new URL("_redirects", dist));
   await access(new URL("music/pulse.mp3", dist));
   const home = await readFile(new URL("index.html", dist), "utf8");
   const redirects = await readFile(new URL("_redirects", dist), "utf8");
-  const app = await readFile(new URL("app/index.html", dist), "utf8");
-  assert.match(home, /Vertical reels from your own media/);
-  assert.match(home, /glitch-logo/);
-  assert.match(home, /new URL\("\/app\/"/);
-  assert.match(home, /searchParams\.set\("project"/);
-  assert.match(home, /params\.get\("code"\)/);
-  assert.match(home, /error_code/);
-  assert.match(app, /\/app\/assets\//);
-  assert.match(redirects, /\/web\/ \/\s*301/);
+  assert.match(home, /<div id="root">/);
+  assert.match(home, /<title>F-Motion<\/title>/);
+  assert.match(redirects, /\/app \/studio\s+301/);
+  assert.doesNotMatch(redirects, /\/index\.html\s+200/);
+  for (const page of ["self-host.html", "hosted.html", "studio.html"]) {
+    const copy = await readFile(new URL(page, dist), "utf8");
+    assert.equal(copy, home);
+  }
 });
 
-test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind", async () => {
+test("legal pages and marketing assets stay local with no CDN Tailwind", async () => {
   const root = new URL("../public/web/", import.meta.url);
-  const home = await readFile(new URL("index.html", root), "utf8");
-  const integrate = await readFile(new URL("integrate.html", root), "utf8");
-  const css = await readFile(new URL("web.css", root), "utf8");
-  const motion = await readFile(new URL("web-motion.js", root), "utf8");
-  for (const phrase of [
-    "Vertical reels from your own media",
-    "brief → storyboard → preview",
-    "Open studio",
-    "See integration",
-    "Your media, your keys",
-    "./assets/hero-reel.jpg",
-    "./assets/studio-ui.jpg"
-  ]) {
-    assert.match(home, new RegExp(phrase.replace(/[→]/g, "\\$&")));
-  }
-  assert.match(home, /new URL\("\/app\/"/);
-  assert.match(home, /searchParams\.set\("project"/);
-  for (const phrase of [
-    "Embed cinematic creation in your product",
-    "Integration Recipes",
-    "api.f-motion.com",
-    "./assets/host-diagram.jpg",
-    "MCP Agent Loop"
-  ]) {
-    assert.match(integrate, new RegExp(phrase));
-  }
-  assert.doesNotMatch(home, /cdn\.tailwindcss\.com|fonts\.googleapis\.com|assets\/logo\.png/);
-  assert.doesNotMatch(integrate, /cdn\.tailwindcss\.com|fonts\.googleapis\.com|assets\/logo\.png/);
-  assert.match(css, /--accent:\s*#a54d67/);
-  assert.match(css, /prefers-reduced-motion/);
-  assert.match(css, /\.glitch-logo/);
-  assert.match(css, /font-family:\s*"Syne"|--display:\s*"Syne"/);
-  assert.match(css, /syne-700\.woff2/);
-  assert.match(home, /data-glitch="rgb-split"/);
-  assert.match(home, /data-glitch="scramble-cascade"/);
-  assert.match(home, /data-glitch="slice-tear"/);
-  assert.match(integrate, /data-glitch="flip-corrupt"/);
-  assert.match(integrate, /data-glitch="pulse-shard"/);
-  assert.match(motion, /scramble-cascade/);
-  assert.match(motion, /prefers-reduced-motion/);
-  assert.match(motion, /pagehide/);
-  assert.match(motion, /pointerenter/);
-  assert.match(motion, /delayedCall\(gsap\.utils\.random/);
-  assert.match(home, /skip-link/);
-  assert.match(home, /href="#main"/);
-  assert.match(home, /class="nav-compact"/);
-  assert.match(home, /href="\.\/terms\.html"/);
-  assert.match(home, /href="\.\/privacy\.html"/);
-  assert.match(home, /hero-reel\.webp/);
-  assert.match(home, /type="image\/webp"/);
-  assert.doesNotMatch(integrate, /ScrambleTextPlugin/);
-  assert.match(integrate, /host-diagram\.webp/);
-  assert.doesNotMatch(home, /#docs|View docs/);
-  assert.doesNotMatch(integrate, /#docs|View docs/);
-  assert.match(integrate, /Open studio →/);
-  assert.match(home, /href="\/app\/"/);
-  assert.match(integrate, /href="\/app\/"/);
-  assert.match(integrate, /href="\.\/terms\.html"/);
   const terms = await readFile(new URL("terms.html", root), "utf8");
   const privacy = await readFile(new URL("privacy.html", root), "utf8");
+  const css = await readFile(new URL("web.css", root), "utf8");
+  const headers = await readFile(new URL("../public/_headers", import.meta.url), "utf8");
   assert.match(terms, /Terms of use/);
   assert.match(privacy, /Privacy notice/);
-  assert.doesNotMatch(terms, /ScrollTrigger|ScrambleText/);
-  assert.match(css, /\.nav-compact/);
-  assert.match(css, /\.skip-link/);
-  const headers = await readFile(new URL("../public/_headers", import.meta.url), "utf8");
+  assert.doesNotMatch(terms, /cdn\.tailwindcss\.com|fonts\.googleapis\.com/);
+  assert.match(css, /--accent:\s*#a54d67/);
+  assert.match(css, /prefers-reduced-motion/);
   assert.match(headers, /Content-Security-Policy/);
-  assert.match(headers, /connect-src[^;]*https:\/\/\*\.supabase\.co/);
-  assert.match(headers, /connect-src[^;]*wss:\/\/\*\.supabase\.co/);
-  assert.match(home, /params\.get\("code"\)/);
-  assert.match(home, /error_code/);
   assert.match(headers, /X-Content-Type-Options:\s*nosniff/);
   for (const asset of [
     "hero-reel.jpg",
     "hero-reel.webp",
-    "hero-reel-800.webp",
     "studio-ui.jpg",
-    "studio-ui.webp",
-    "host-diagram.jpg",
-    "host-diagram.webp"
+    "studio-ui.webp"
   ]) {
     await readFile(new URL(`assets/${asset}`, root));
-  }
-  for (const vendor of ["gsap.min.js", "ScrollTrigger.min.js", "ScrambleTextPlugin.min.js"]) {
-    await readFile(new URL(`vendor/${vendor}`, root));
   }
   for (const font of ["syne-600.woff2", "syne-700.woff2", "syne-800.woff2"]) {
     await readFile(new URL(`fonts/${font}`, root));

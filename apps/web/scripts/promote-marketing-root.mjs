@@ -1,15 +1,13 @@
 /**
- * After Vite build: SPA lives under /app/, marketing from public/web/ is the site root.
- * Vite already copied public/ → dist/ (including web/). We nest the SPA and lift marketing.
+ * After Vite build: SPA owns /, /self-host, /hosted, /studio.
+ * Keep legal pages from public/web/ and send /app to /studio.
  */
-import { mkdir, rename, cp, writeFile, rm, access } from "node:fs/promises";
+import { copyFile, writeFile, access } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = resolve(root, "dist");
-const app = resolve(dist, "app");
-const web = resolve(dist, "web");
 
 async function exists(path) {
   try {
@@ -24,37 +22,35 @@ async function main() {
   if (!(await exists(resolve(dist, "index.html")))) {
     throw new Error("Missing dist/index.html — run vite build first");
   }
-  if (!(await exists(web))) {
-    throw new Error("Missing dist/web/ — marketing public/web was not copied");
+
+  // Cloudflare Pages Pretty URLs 308 /index.html → /. A 200 rewrite to
+  // /index.html therefore bounces /studio (and friends) to /. Copy the SPA
+  // shell to the pretty-URL filenames so those paths stay 200.
+  const spa = resolve(dist, "index.html");
+  for (const page of ["self-host", "hosted", "studio"]) {
+    await copyFile(spa, resolve(dist, `${page}.html`));
   }
 
-  await mkdir(app, { recursive: true });
-  await rename(resolve(dist, "index.html"), resolve(app, "index.html"));
-  if (await exists(resolve(dist, "assets"))) {
-    await rename(resolve(dist, "assets"), resolve(app, "assets"));
-  }
-
-  // Lift marketing to site root (overwrite nothing critical; SPA already moved)
-  await cp(web, dist, { recursive: true });
-
-  // Keep /web/ working via redirects for old links
   await writeFile(
     resolve(dist, "_redirects"),
     [
+      "/app /studio 301",
+      "/app/ /studio 301",
+      "/app/* /studio 301",
       "/web / 301",
       "/web/ / 301",
-      "/web/* /:splat 301",
+      "/web/index.html / 301",
+      "/web/integrate.html /self-host 301",
       ""
     ].join("\n")
   );
 
-  // Functions only on /api; static marketing + /app SPA otherwise
   await writeFile(
     resolve(dist, "_routes.json"),
     JSON.stringify({ version: 1, include: ["/api/*"], exclude: [] }, null, 2) + "\n"
   );
 
-  console.log("Site root = marketing; studio at /app/; /web/* redirects to /*");
+  console.log("Site root = SPA marketing; studio at /studio; /app redirects to /studio");
 }
 
 main().catch((error) => {

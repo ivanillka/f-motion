@@ -6,22 +6,31 @@ import { externalImportConfigFromEnv } from "./external-import.js";
 import { PostgresProjectRepository } from "./domain.js";
 import { freeRenderUnitsFromEnv, PostgresHostUsageService } from "./host-usage.js";
 import { assertLocalAuthAllowed } from "./local-auth.js";
+import { assertProductIsolation, engineEnv } from "./product.js";
+import { assertSelfhostConfig, PostgresSelfhostOwner } from "./selfhost-auth.js";
 import { PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
 import { PostgresRenderRepository, renderProfilesFromEnv } from "./render-repository.js";
 import { createApp, createTestApp } from "./server.js";
 import {
   assertNoSharedFalCredential,
   assertNoSharedPexelsCredential,
+  assertNoSharedPixabayCredential,
   credentialVaultFromEnv,
   falByokEnabled
 } from "@f-engine/fal-host";
 import { PostgresFalCredentialService } from "./fal-credentials.js";
+import { FalConversationService } from "./fal-conversation.js";
 import { PostgresFalGenerationService } from "./fal-generation.js";
 import {
   PexelsProviderError,
   PostgresPexelsCredentialService,
   pexelsByokEnabled
 } from "./pexels-credentials.js";
+import {
+  PixabayProviderError,
+  PostgresPixabayCredentialService,
+  pixabayByokEnabled
+} from "./pixabay-credentials.js";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -38,8 +47,10 @@ function extraAuthIssuers(env: NodeJS.ProcessEnv) {
 }
 
 assertLocalAuthAllowed(process.env);
+assertProductIsolation(process.env);
 assertNoSharedFalCredential(process.env);
 assertNoSharedPexelsCredential(process.env);
+assertNoSharedPixabayCredential(process.env);
 const accessPolicy = accessPolicyFromEnv(process.env);
 const externalImports = externalImportConfigFromEnv(process.env);
 
@@ -66,15 +77,24 @@ const apiKeys = new PostgresApiKeyService(pool);
 const hostUsage = new PostgresHostUsageService(pool, freeRenderUnitsFromEnv(process.env));
 const falEnabled = falByokEnabled(process.env);
 const pexelsEnabled = pexelsByokEnabled(process.env);
-const credentialVault = falEnabled || pexelsEnabled ? credentialVaultFromEnv(process.env) : undefined;
+const pixabayEnabled = pixabayByokEnabled(process.env);
+const credentialVault = falEnabled || pexelsEnabled || pixabayEnabled
+  ? credentialVaultFromEnv(process.env)
+  : undefined;
 const falCredentials = falEnabled
   ? new PostgresFalCredentialService(pool, credentialVault!)
   : undefined;
 const falGeneration = falCredentials
   ? new PostgresFalGenerationService(pool, falCredentials)
   : undefined;
+const falConversation = falCredentials
+  ? new FalConversationService(falCredentials)
+  : undefined;
 const pexelsCredentials = pexelsEnabled
   ? new PostgresPexelsCredentialService(pool, credentialVault!)
+  : undefined;
+const pixabayCredentials = pixabayEnabled
+  ? new PostgresPixabayCredentialService(pool, credentialVault!)
   : undefined;
 const media = {
   repository: new PostgresMediaRepository(pool),
@@ -82,6 +102,10 @@ const media = {
   pexelsForOwner: async (ownerId: string) => {
     if (!pexelsCredentials) throw new PexelsProviderError("unavailable");
     return pexelsCredentials.client(ownerId);
+  },
+  pixabayForOwner: async (ownerId: string) => {
+    if (!pixabayCredentials) throw new PixabayProviderError("unavailable");
+    return pixabayCredentials.client(ownerId);
   }
 };
 
@@ -92,7 +116,23 @@ const ready = async () => {
   return true;
 };
 
-if (process.env.FENGINE_LOCAL_AUTH === "1") {
+if (engineEnv(process.env) === "selfhost") {
+  assertSelfhostConfig(process.env);
+  createTestApp({
+    ownerAuth: new PostgresSelfhostOwner(pool, hostUsage),
+    projects,
+    renders,
+    media,
+    ready,
+    falCredentials,
+    falConversation,
+    falGeneration,
+    pexelsCredentials,
+    pixabayCredentials,
+    apiKeys,
+    hostUsage
+  }).listen(port);
+} else if (process.env.FENGINE_LOCAL_AUTH === "1") {
   // ponytail: local-only identity inject. Ceiling: single fixed owner. Upgrade: real Supabase JWT.
   const ownerId = "local-dev";
   await pool.query(
@@ -108,8 +148,10 @@ if (process.env.FENGINE_LOCAL_AUTH === "1") {
     media,
     ready,
     falCredentials,
+    falConversation,
     falGeneration,
     pexelsCredentials,
+    pixabayCredentials,
     apiKeys,
     hostUsage
   }).listen(port);
@@ -119,8 +161,10 @@ if (process.env.FENGINE_LOCAL_AUTH === "1") {
     renders,
     media,
     falCredentials,
+    falConversation,
     falGeneration,
     pexelsCredentials,
+    pixabayCredentials,
     apiKeys,
     hostUsage,
     ready,

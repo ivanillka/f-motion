@@ -22,7 +22,7 @@ export type EnsureUser = (ownerId: string) => Promise<void>;
 export type ApiKeyLookup = (token: string) => Promise<string | undefined>;
 
 export class UnauthorizedError extends Error {
-  constructor() { super("authentication required"); }
+  constructor(message = "authentication required") { super(message); }
 }
 
 export async function verifyAccessToken(token: string, config: AuthConfig): Promise<JWTPayload> {

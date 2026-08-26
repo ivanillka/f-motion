@@ -138,7 +138,7 @@ test("Mixkit catalog search ranks hip hop and aliases trendy", async () => {
 
 test("importMixkitTrack seals allowlisted MP3 and rejects other origins", async () => {
   const { importMixkitTrack, mixkitTrackById, mixkitAudioUrl } = await import("../dist/mixkit-music.js");
-  const { ExternalMediaImportError } = await import("../dist/media-storage.js");
+  const { ExternalMediaImportError, sceneMediaView } = await import("../dist/media-storage.js");
   const track = mixkitTrackById(445);
   assert.ok(track);
   const mp3 = Buffer.from("ID3" + "x".repeat(64));
@@ -169,6 +169,8 @@ test("importMixkitTrack seals allowlisted MP3 and rejects other origins", async 
   );
   assert.equal(ready.attribution.source, "Mixkit");
   assert.equal(ready.attribution.title, track.title);
+  assert.equal(ready.attribution.previewUrl, mixkitAudioUrl(track.id));
+  assert.equal(sceneMediaView(ready).attribution.previewUrl, mixkitAudioUrl(track.id));
   assert.equal(ready.detected.type, "audio/mpeg");
   assert.equal(inserted[0].type, "audio/mpeg");
   const { createHash } = await import("node:crypto");

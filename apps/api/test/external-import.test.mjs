@@ -152,7 +152,7 @@ test("trusted imports create one editable project and retry idempotently", async
     assert.equal(first.status, 201);
     const created = await first.json();
     assert.equal(created.project_id, projectIdForExternalImport(ownerId, body.external_id));
-    assert.equal(created.project_url, `https://f-motion.example/app/?project=${created.project_id}`);
+    assert.equal(created.project_url, `https://f-motion.example/studio?project=${created.project_id}`);
     assert.equal(created.projectUrl, created.project_url);
     const project = projects.get(ownerId, created.project_id);
     assert.equal(project.scenes.length, 4);
@@ -177,7 +177,7 @@ test("trusted imports create one editable project and retry idempotently", async
     });
     assert.equal(messy.status, 201);
     const messyBody = await messy.json();
-    assert.match(messyBody.projectUrl, /\/app\/\?project=/);
+    assert.match(messyBody.projectUrl, /\/studio\?project=/);
     assert.equal(messyBody.project_id, projectIdForExternalImport(ownerId, "task-41654960-337a-4288-96c1-96a0e7c2ddb8"));
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
@@ -351,7 +351,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     const rejected = await request({ ...baseBody, external_id: "followup:blocked", media_urls: ["https://example.com/private.jpg"] });
     assert.equal(rejected.status, 201);
     const blocked = await rejected.json();
-    assert.match(blocked.project_url, /\/app\/\?project=/);
+    assert.match(blocked.project_url, /\/studio\?project=/);
     assert.ok(projects.get(ownerId, blocked.project_id).scenes.every((scene) => !scene.media_id));
 
     const unreachable = await request({
@@ -364,7 +364,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     });
     assert.equal(unreachable.status, 201);
     const partial = await unreachable.json();
-    assert.match(partial.project_url, /\/app\/\?project=/);
+    assert.match(partial.project_url, /\/studio\?project=/);
     const partialProject = projects.get(ownerId, partial.project_id);
     assert.ok(partialProject.scenes.every((scene) => scene.media_id));
     assert.equal(new Set(partialProject.scenes.map((scene) => scene.media_id)).size, 2);
@@ -375,7 +375,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
       media_urls: ["https://media.fotium.vip/galleries/look/store.jpg"]
     });
     assert.equal(storeBroke.status, 201);
-    assert.match((await storeBroke.json()).project_url, /\/app\/\?project=/);
+    assert.match((await storeBroke.json()).project_url, /\/studio\?project=/);
 
     const bounced = await request({
       ...baseBody,
@@ -383,7 +383,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
       media_urls: ["https://media.fotium.vip/galleries/look/bounce.jpg"]
     });
     assert.equal(bounced.status, 201);
-    assert.match((await bounced.json()).project_url, /\/app\/\?project=/);
+    assert.match((await bounced.json()).project_url, /\/studio\?project=/);
 
     const webp = await request({
       ...baseBody,
@@ -528,7 +528,7 @@ test("trusted import returns the draft URL before host stills finish copying", a
     assert.equal(response.status, 201);
     assert.ok(Date.now() - started < 250);
     const body = await response.json();
-    assert.match(body.project_url, /\/app\/\?project=/);
+    assert.match(body.project_url, /\/studio\?project=/);
     const project = projects.get(ownerId, body.project_id);
     assert.ok(project.scenes.every((scene) => scene.media_id));
     assert.ok([...assets.values()].every((asset) => asset.state === "admitted"));

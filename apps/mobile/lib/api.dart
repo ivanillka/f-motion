@@ -43,6 +43,27 @@ class CreatedProject {
   final List<JsonMap> concepts;
 }
 
+class ProjectSummary {
+  ProjectSummary({
+    required this.id,
+    required this.revision,
+    required this.purpose,
+  });
+
+  factory ProjectSummary.fromJson(JsonMap json) {
+    final brief = Map<String, Object?>.from(json['brief']! as Map);
+    return ProjectSummary(
+      id: json['id']! as String,
+      revision: json['revision']! as int,
+      purpose: (brief['purpose'] as String?)?.trim() ?? '',
+    );
+  }
+
+  final String id;
+  final int revision;
+  final String purpose;
+}
+
 class RenderJob {
   RenderJob(this.id, this.state);
   final String id;
@@ -58,6 +79,7 @@ class RenderEvent {
 
 abstract interface class ApiGateway {
   Future<bool> isReachable();
+  Future<List<ProjectSummary>> listProjects();
   Future<CreatedProject> createProject(String brief);
   Future<ProjectSnapshot> command(
     String projectId,
@@ -134,6 +156,14 @@ class HttpApiGateway implements ApiGateway {
   Future<JsonMap> _json(String method, String path, [JsonMap? body]) async {
     final (_, text, _) = await _raw(method, path, body);
     return Map<String, Object?>.from(jsonDecode(text) as Map);
+  }
+
+  @override
+  Future<List<ProjectSummary>> listProjects() async {
+    final json = await _json('GET', '/api/projects');
+    return (json['projects']! as List)
+        .map((value) => ProjectSummary.fromJson(Map<String, Object?>.from(value as Map)))
+        .toList();
   }
 
   @override

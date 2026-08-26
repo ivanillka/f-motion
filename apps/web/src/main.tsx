@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import {
   ApiClient,
   ApiResponseError,
+  applyConversationConceptOverlays,
+  beatsForConcept,
   buildStoryboardDraft,
   conceptsFor,
   clampFocus,
@@ -14,35 +16,52 @@ import {
   livePlayhead,
   liveTimeline,
   loadSceneMediaViews,
+  mergeConversationStoryboard,
+  playableScenePreview,
   musicLaneBeats,
   nextLiveSceneId,
   panFocus,
   previousLiveSceneId,
+  previewPlaysAsVideo,
   recommendVideoArchitecture,
   sceneDurationForMedia,
   scenePreviewUrl,
   seekLivePlayhead,
   snapDurationToBeat,
+  snapshotFromConflict,
   stockBedUrl,
   stockBeds,
+  stockBedForPace,
+  stockFillStatus,
+  storyboardArchitectureForConcept,
+  captionsFromVoiceScript,
+  falSpeechLogTrail,
+  falSpeechProgress,
+  plannedVoiceScript,
+  clientId,
+  durationSecondsFromClipCount,
+  exportGaps,
   showsPartnerBrands,
   cueAtElapsed,
   cuesForScene,
   VOICEOVER_DUCK,
   type Concept,
+  type ConversationConceptOverlays,
   type ProjectSnapshot,
   type ProjectSummary,
   type Scene,
   type SceneMediaView,
   type Soundtrack,
+  type StoryboardSource,
   type VideoArchitecture,
   type Voiceover
 } from "./api";
 import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOrigin } from "./auth";
 import { clearImportedProject, isImportedProjectId, rememberImportedProject } from "./imported-project";
+import { MarketingApp } from "./marketing/MarketingApp";
 import "./style.css";
 
-type Step = "sign-in" | "drafts" | "brief" | "architecture" | "concepts" | "media" | "editor" | "render" | "settings";
+type Step = "sign-in" | "drafts" | "brief" | "architecture" | "concepts" | "media" | "assemble" | "review" | "editor" | "render" | "settings";
 interface PreviewPanState {
   pointerId: number;
   startX: number;
@@ -52,11 +71,13 @@ interface PreviewPanState {
   sceneId: string;
   wasPlaying: boolean;
 }
-interface PexelsMatch {
+interface StockMatch {
   id: number;
   creator: string;
   attributionUrl: string;
   previewUrl: string;
+  source: "pexels" | "pixabay";
+  kind: "video" | "still";
 }
 interface MixkitMatch {
   id: number;
@@ -143,6 +164,12 @@ interface PexelsCredentialView {
   hint?: string;
   validated_at?: string;
 }
+interface PixabayCredentialView {
+  provider: "pixabay";
+  connected: boolean;
+  hint?: string;
+  validated_at?: string;
+}
 interface FeatureLock {
   title: string;
   message: string;
@@ -155,8 +182,24 @@ const architectureLabels = {
   structure: { story_arc: "Beginning → turn → resolution", mystery: "Clues → tension → reveal", problem_solution: "Problem → solution → result", chronological: "Chronological journey" },
   tone: { cinematic: "Cinematic", documentary: "Documentary", energetic: "Energetic", calm: "Calm" },
   pace: { slow: "Slow and atmospheric", balanced: "Balanced", fast: "Fast and punchy" },
-  media: { stock: "Pexels real stock video", own: "My own media", mixed: "Pexels stock + my media" }
+  media: { stock: "Pexels and Pixabay", own: "My own media", mixed: "Pexels, Pixabay + my media" }
 } as const;
+
+function beatSteps(summary: string, sceneCount = 6): string[] {
+  return beatsForConcept(summary, sceneCount);
+}
+
+const sourceChoices = [
+  ["stock", "Licensed stock", "Pexels and Pixabay"],
+  ["own", "My own media", "Clips you attach"],
+  ["mixed", "Mix", "Pexels, Pixabay + my media"]
+] as const;
+
+function conceptDirection(direction: string, media: VideoArchitecture["media"]): string {
+  if (media === "own") return "Attach your own clips to each scene.";
+  if (media === "mixed") return "Attach your clips, then fill gaps with licensed stock.";
+  return direction;
+}
 
 function App() {
   const authSetup = useMemo(() => {
@@ -166,7 +209,8 @@ function App() {
           url: import.meta.env.VITE_SUPABASE_URL,
           publicKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
           origin: studioOrigin(location.href),
-          allowDemo: Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1"
+          allowDemo: Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1",
+          allowSelfhost: import.meta.env.VITE_SELFHOST_AUTH === "1"
         })
       };
     } catch (error) {
@@ -176,14 +220,23 @@ function App() {
     }
   }, []);
   const tokenRef = useRef("");
+  const justOnboarded = useRef(false);
   const [token, setToken] = useState("");
   const [authReady, setAuthReady] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [step, setStep] = useState<Step>("sign-in");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [selfhostGate, setSelfhostGate] = useState<"checking" | "setup" | "login">("checking");
+  const [onboardSources, setOnboardSources] = useState(false);
   const [awaitingEmail, setAwaitingEmail] = useState(false);
   const [draft, setDraft] = useState(() => localStorage.getItem("fengine-draft") ?? "");
   const [architecture, setArchitecture] = useState<VideoArchitecture>(defaultVideoArchitecture);
+  const [conversationSource, setConversationSource] = useState<StoryboardSource>();
+  const [conversationOverlays, setConversationOverlays] = useState<ConversationConceptOverlays>();
+  const [conversationPlanKind, setConversationPlanKind] = useState<"fal" | "rules">("rules");
   const [conceptChoices, setConceptChoices] = useState<Concept[]>([]);
   const [project, setProject] = useState<ProjectSnapshot>();
   const [activeSceneId, setActiveSceneId] = useState("");
@@ -200,16 +253,23 @@ function App() {
   const [drafts, setDrafts] = useState<ProjectSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [sceneMedia, setSceneMedia] = useState<Record<string, SceneMediaView>>({});
+  const sceneMediaRef = useRef(sceneMedia);
+  sceneMediaRef.current = sceneMedia;
   const [sceneProgress, setSceneProgress] = useState<Record<string, "finding" | "inspecting" | "ready" | "needs_media">>({});
+  const [assembleLog, setAssembleLog] = useState<string[]>([]);
+  const [assembleDone, setAssembleDone] = useState(0);
+  const [assembleTotal, setAssembleTotal] = useState(4);
+  const assembleLogEl = useRef<HTMLOListElement>(null);
   const mediaTransition = useRef(0);
   const searchTransition = useRef(0);
   const searchAbort = useRef<AbortController | null>(null);
-  const [candidates, setCandidates] = useState<PexelsMatch[]>([]);
+  const [candidates, setCandidates] = useState<StockMatch[]>([]);
   const [musicHits, setMusicHits] = useState<MixkitMatch[]>([]);
   const [musicQuery, setMusicQuery] = useState("trendy");
   const [musicOpen, setMusicOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [voiceScript, setVoiceScript] = useState("");
   const [previewingId, setPreviewingId] = useState<number>();
   const [overlayCaption, setOverlayCaption] = useState("");
   const [busy, setBusy] = useState(false);
@@ -227,16 +287,22 @@ function App() {
   const [falVideoPrompt, setFalVideoPrompt] = useState("");
   const [falVideoJob, setFalVideoJob] = useState<GenerationJobView>();
   const [falVideoBusy, setFalVideoBusy] = useState(false);
-  const falVideoPollRef = useRef<string>();
-  const falGenPollRef = useRef<string>();
+  const falVideoPollRef = useRef<string | undefined>(undefined);
+  const falGenPollRef = useRef<string | undefined>(undefined);
   const [falSpeechOpen, setFalSpeechOpen] = useState(false);
   const [falSpeechPrompt, setFalSpeechPrompt] = useState("");
   const [falSpeechJob, setFalSpeechJob] = useState<GenerationJobView>();
   const [falSpeechBusy, setFalSpeechBusy] = useState(false);
+  const [falSpeechStartedAt, setFalSpeechStartedAt] = useState(0);
+  const falSpeechPollRef = useRef<string | undefined>(undefined);
   const [pexelsCredential, setPexelsCredential] = useState<PexelsCredentialView>();
   const [pexelsUnavailable, setPexelsUnavailable] = useState(false);
   const [pexelsKey, setPexelsKey] = useState("");
   const [pexelsBusy, setPexelsBusy] = useState(false);
+  const [pixabayCredential, setPixabayCredential] = useState<PixabayCredentialView>();
+  const [pixabayUnavailable, setPixabayUnavailable] = useState(false);
+  const [pixabayKey, setPixabayKey] = useState("");
+  const [pixabayBusy, setPixabayBusy] = useState(false);
   const [featureLock, setFeatureLock] = useState<FeatureLock>();
   const api = useMemo(() => new ApiClient(
     () => tokenRef.current,
@@ -255,6 +321,9 @@ function App() {
   const [previewRevision, setPreviewRevision] = useState<number>();
   const [previewMetadata, setPreviewMetadata] = useState<Record<string, string | number | boolean | null>>({});
   const upload = useRef<HTMLInputElement>(null);
+  const gather = useRef<HTMLInputElement>(null);
+  const exportVideo = useRef<HTMLVideoElement>(null);
+  const pendingClips = useRef<File[]>([]);
   const audioUpload = useRef<HTMLInputElement>(null);
   const voiceUpload = useRef<HTMLInputElement>(null);
   const bedAudio = useRef<HTMLAudioElement | null>(null);
@@ -329,6 +398,10 @@ function App() {
     setPexelsUnavailable(false);
     setPexelsKey("");
     setPexelsBusy(false);
+    setPixabayCredential(undefined);
+    setPixabayUnavailable(false);
+    setPixabayKey("");
+    setPixabayBusy(false);
     setFeatureLock(undefined);
     setAwaitingEmail(false);
     setMusicHits([]);
@@ -336,6 +409,11 @@ function App() {
     setMusicOpen(false);
     setPreviewingId(undefined);
     setOverlayCaption("");
+    setPassword("");
+    setConfirmPassword("");
+    setDisplayName("");
+    setSelfhostGate("checking");
+    setOnboardSources(false);
     setStep("sign-in");
   }
 
@@ -373,9 +451,32 @@ function App() {
         callback.searchParams.delete("code");
         history.replaceState(null, "", `${callback.pathname}${callback.search}${callback.hash}`);
       }
+      if (justOnboarded.current) {
+        justOnboarded.current = false;
+        setOnboardSources(true);
+        setStep("settings");
+        return;
+      }
       setStep((current) => current === "sign-in" ? "drafts" : current);
     });
   }, [authSetup.error, authSetup.gateway]);
+
+  useEffect(() => {
+    if (import.meta.env.VITE_SELFHOST_AUTH !== "1") return;
+    if (!authReady || token || !authSetup.gateway?.setupNeeded) return;
+    let cancelled = false;
+    void authSetup.gateway.setupNeeded().then((needed) => {
+      if (!cancelled) setSelfhostGate(needed ? "setup" : "login");
+    }).catch(() => {
+      if (!cancelled) {
+        setSelfhostGate("login");
+        setStatus("Could not check this install.");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, token, authSetup.gateway]);
 
   useEffect(() => {
     const up = () => setOnline(true);
@@ -393,12 +494,14 @@ function App() {
     if (!token) return;
     void loadFalCredential();
     void loadPexelsCredential();
+    void loadPixabayCredential();
   }, [token]);
 
   useEffect(() => {
     if (step !== "settings") {
       setFalKey("");
       setPexelsKey("");
+      setPixabayKey("");
     }
   }, [step]);
 
@@ -447,13 +550,25 @@ function App() {
   }, [api, step, token]);
 
   useEffect(() => {
-    if (step !== "editor" || !project || !Object.values(sceneMedia).some(({ state }) =>
+    if (step !== "assemble") return;
+    assembleLogEl.current?.scrollTo({ top: assembleLogEl.current.scrollHeight });
+  }, [assembleLog, step]);
+  useEffect(() => {
+    if (step !== "review") return;
+    setVoiceOpen(true);
+    setVoiceScript((current) => current.trim()
+      ? current
+      : (project ? defaultVoicePrompt(project) : ""));
+  }, [step, project?.id]);
+
+  useEffect(() => {
+    if ((step !== "editor" && step !== "review") || !project || !Object.values(sceneMedia).some(({ state }) =>
       state === "admitted" || state === "inspecting" || state === "quarantined")) return;
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const refresh = async () => {
       try {
-        const views = await loadSceneMediaViews(api, project);
+        const views = await loadSceneMediaViews(api, project, sceneMediaRef.current);
         if (cancelled) return;
         setSceneMedia(views);
         if (Object.values(views).some(({ state }) =>
@@ -502,6 +617,38 @@ function App() {
     }
   }
 
+  async function setupOwner() {
+    if (!authSetup.gateway?.setupAccount) return;
+    if (password !== confirmPassword) {
+      setStatus("Passwords do not match.");
+      return;
+    }
+    setAuthBusy(true);
+    try {
+      justOnboarded.current = true;
+      await authSetup.gateway.setupAccount(email, password, displayName);
+      setStatus("");
+    } catch (error) {
+      justOnboarded.current = false;
+      setStatus(error instanceof Error ? error.message : "Could not create the owner account.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function passwordSignIn() {
+    if (!authSetup.gateway?.signInWithPassword) return;
+    setAuthBusy(true);
+    try {
+      await authSetup.gateway.signInWithPassword(email, password);
+      setStatus("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Email or password was rejected.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
   function briefForConcepts(): ProjectSnapshot["brief"] {
     return {
       purpose: draft,
@@ -519,6 +666,7 @@ function App() {
     setStatus("Preparing story concepts…");
     try {
       let current = project;
+      let choices: Concept[] = [];
       if (!current) {
         const body = await api.request<{ project: ProjectSnapshot; concepts?: Concept[] }>("/api/projects", {
           method: "POST",
@@ -526,14 +674,38 @@ function App() {
         });
         current = body.project;
         localStorage.setItem("fengine-project", current.id);
-        setProject(current);
-        setConceptChoices(body.concepts?.length ? body.concepts : [...conceptsFor(briefForConcepts())]);
+        choices = applyConversationConceptOverlays(
+          body.concepts?.length ? body.concepts : [...conceptsFor(briefForConcepts())],
+          conversationOverlays
+        );
       } else {
-        setConceptChoices([...conceptsFor(current.brief.purpose ? current.brief : briefForConcepts())]);
+        try {
+          const found = await api.getProject(current.id);
+          current = found.project;
+          choices = applyConversationConceptOverlays(
+            found.concepts?.length ? found.concepts : [...conceptsFor(current.brief.purpose ? current.brief : briefForConcepts())],
+            conversationOverlays
+          );
+        } catch {
+          choices = applyConversationConceptOverlays(
+            [...conceptsFor(current.brief.purpose ? current.brief : briefForConcepts())],
+            conversationOverlays
+          );
+        }
       }
+      setProject(current);
+      if (current.scenes.length) {
+        setActiveSceneId(current.scenes[0]?.id ?? "");
+        setStep("editor");
+        setStatus("");
+        return;
+      }
+      setConceptChoices(choices);
       setActiveSceneId("");
       setStep("concepts");
-      setStatus("Licensed visuals are matched only after you choose a story approach.");
+      setStatus(architecture.media === "own"
+        ? "Pick a story shape, then attach your media to each scene."
+        : "Captions, licensed clips, and a music bed are assembled after you choose.");
     } catch {
       setStatus("Story concepts could not be prepared. Please try again.");
     } finally {
@@ -541,37 +713,124 @@ function App() {
     }
   }
 
+  function noteAssemble(line: string, advance = false) {
+    setAssembleLog((lines) => [...lines.slice(-48), line]);
+    setStatus(line);
+    if (advance) setAssembleDone((done) => done + 1);
+  }
+
   async function chooseConcept(conceptId: string) {
     if (busy || !project) return;
     mediaTransition.current += 1;
     setSceneMedia({});
     setSceneProgress({});
+    setAssembleLog([]);
+    setAssembleDone(0);
+    setAssembleTotal(4);
     setBusy(true);
-    setStatus("Building the selected storyboard…");
+    setStep("assemble");
+    noteAssemble("Writing captions and laying out scenes…");
     try {
       let current = project;
-      if (!current.scenes.length || current.selected_concept_id !== conceptId) {
-        if (current.scenes.length) {
-          // ponytail: empty projects are the concept gate; non-empty reselection stays replace-free.
-          setStatus("This draft already has scenes. Open it from Drafts to keep editing.");
-          return;
+      if (!current.scenes.length) {
+        try {
+          current = await api.command(current.id, current.revision, "select_concept", { concept_id: conceptId });
+        } catch (error) {
+          const authoritative = snapshotFromConflict(error, current.id);
+          if (!authoritative) throw error;
+          current = authoritative.scenes.length
+            ? authoritative
+            : await api.command(authoritative.id, authoritative.revision, "select_concept", { concept_id: conceptId });
         }
-        current = await api.command(current.id, current.revision, "select_concept", { concept_id: conceptId });
+      }
+      setAssembleTotal(2 + Math.max(1, current.scenes.length));
+      noteAssemble(`Laid out ${current.scenes.length} scenes.`, true);
+      const spoken = voiceScript.trim();
+      const spokenSource = spoken || conversationSource
+        ? { ...conversationSource, ...(spoken ? { caption: spoken } : {}) }
+        : undefined;
+      if (spokenSource && current.scenes.length) {
+        try {
+          noteAssemble("Applying spoken copy…");
+          const drafted = buildStoryboardDraft(
+            current.brief.purpose,
+            clientId,
+            storyboardArchitectureForConcept(conceptId, architecture),
+            spokenSource
+          );
+          current = await api.command(current.id, current.revision, "replace_storyboard", {
+            scenes: mergeConversationStoryboard(current.scenes, drafted)
+          });
+          noteAssemble("Spoken copy is on the storyboard.");
+        } catch {
+          noteAssemble("Kept the engine captions.");
+        }
+      }
+      if (!current.brief.soundtrack) {
+        try {
+          const bed = stockBedForPace(architecture.pace);
+          noteAssemble(`Adding music bed · ${bed.label}…`);
+          current = await api.command(current.id, current.revision, "update_soundtrack", {
+            soundtrack: { kind: "stock", stock_id: bed.id, bpm: bed.bpm, offset_ms: 0, level: 0.8 }
+          });
+          noteAssemble(`Music bed · ${bed.label}.`, true);
+        } catch {
+          noteAssemble("Continuing without a music bed.", true);
+        }
+      } else {
+        noteAssemble("Music bed already on this draft.", true);
       }
       setProject(current);
       setActiveSceneId(current.scenes[0]?.id ?? "");
-      if (architecture.media === "own") {
+      if (!spoken) {
+        setVoiceScript(current.scenes.map((scene) => scene.caption.trim()).filter(Boolean).join("\n"));
+      }
+      const clips = pendingClips.current;
+      if (architecture.media === "own" && !clips.length) {
+        noteAssemble("Upload media for each scene next.");
         setStatus("Storyboard ready. Upload media for each scene.");
         setStep("media");
         return;
       }
-      setStep("editor");
-      await fillStockStoryboard(current);
+      if (clips.length) {
+        try {
+          noteAssemble(`Attaching ${clips.length} of your clips…`);
+          current = await attachPendingClips(current);
+          setActiveSceneId(current.scenes[0]?.id ?? "");
+          noteAssemble("Your clips are on the storyboard.", true);
+        } catch {
+          noteAssemble("Some clips could not be attached.");
+          setStatus("Some clips could not be attached. Upload the rest from the storyboard.");
+        }
+      }
+      if (architecture.media === "own") {
+        setStep("review");
+        setStatus(current.scenes.every((scene) => scene.media_id)
+          ? "Clips on the storyboard. Play the draft, then export or edit."
+          : "Storyboard ready. Upload media for each scene.");
+        return;
+      }
+      if (!pexelsCredential?.connected && !pixabayCredential?.connected) {
+        noteAssemble("Connect Pexels or Pixabay in Settings to match licensed clips.");
+        setStatus(stockFillStatus("pexels_not_connected"));
+        setStep("review");
+        return;
+      }
+      try {
+        await fillStockStoryboard(current);
+      } catch (error) {
+        const message = stockFillStatus(error instanceof ApiResponseError ? error.type : undefined);
+        noteAssemble(message);
+        setStatus(message);
+      }
+      setStep("review");
     } catch (error) {
-      const type = error instanceof ApiResponseError ? error.type : undefined;
-      setStatus(type === "pexels_not_connected"
-        ? "Connect your Pexels API key in Settings, or upload your own media."
-        : "Your storyboard could not be created. Please try again.");
+      const detail = error instanceof ApiResponseError ? error.message : "";
+      const message = detail && detail.length < 120
+        ? `Your storyboard could not be created. ${detail}`
+        : "Your storyboard could not be created. Please try again.";
+      noteAssemble(message);
+      setStatus(message);
     } finally {
       setBusy(false);
     }
@@ -589,15 +848,18 @@ function App() {
       setActiveSceneId(opened.scenes[0]?.id ?? "");
       localStorage.setItem("fengine-project", opened.id);
       setDraft(opened.brief.purpose);
+      setVoiceScript(defaultVoicePrompt(opened));
       if (!opened.scenes.length) {
         setConceptChoices(found.concepts?.length ? found.concepts : [...conceptsFor(opened.brief)]);
         setStep("concepts");
-        setStatus("Licensed visuals are matched only after you choose a story approach.");
+        setStatus(architecture.media === "own"
+          ? "Pick a story shape, then attach your media to each scene."
+          : "Captions, licensed clips, and a music bed are assembled after you choose.");
         return true;
       }
       let hydrationFailed = false;
       try {
-        const views = await loadSceneMediaViews(api, opened);
+        const views = await loadSceneMediaViews(api, opened, sceneMediaRef.current);
         if (transition !== mediaTransition.current) return false;
         setSceneMedia(views);
       } catch {
@@ -615,21 +877,86 @@ function App() {
 
   function startCreate() {
     mediaTransition.current += 1;
+    pendingClips.current = [];
     setProject(undefined);
     setActiveSceneId("");
     setSceneMedia({});
     setSceneProgress({});
+    setAssembleLog([]);
+    setAssembleDone(0);
     setCandidates([]);
     setArchitecture(defaultVideoArchitecture);
+    setConversationSource(undefined);
+    setConversationOverlays(undefined);
+    setConversationPlanKind("rules");
     setDraft(localStorage.getItem("fengine-draft") ?? "");
+    setVoiceScript("");
     setStatus("");
     setStep("brief");
   }
 
-  function continueToArchitecture() {
-    setArchitecture(recommendVideoArchitecture(draft));
-    setStatus("");
-    setStep("architecture");
+  function startFromClips() {
+    gather.current?.click();
+  }
+
+  function onGatherFiles(event: { currentTarget: HTMLInputElement }) {
+    const files = [...(event.currentTarget.files ?? [])]
+      .filter((file) => /^(video\/mp4|image\/(jpeg|png|webp))$/.test(file.type))
+      .slice(0, 8);
+    event.currentTarget.value = "";
+    if (!files.length) {
+      setStatus("Use JPEG, PNG, WebP, or MP4 clips.");
+      return;
+    }
+    pendingClips.current = files;
+    setArchitecture({
+      ...defaultVideoArchitecture,
+      media: "own",
+      durationSeconds: durationSecondsFromClipCount(files.length)
+    });
+    setDraft((current) => current.trim() || `Vertical video from ${files.length} clips`);
+    setStatus(`${files.length} clips ready. Continue to the video plan.`);
+    setStep("brief");
+  }
+
+  async function continueToArchitecture() {
+    const brief = draft.trim();
+    if (!brief || busy) return;
+    setBusy(true);
+    const falReady = Boolean(falCredential?.connected && !falUnavailable);
+    setStatus(falReady ? "Writing the video plan…" : "");
+    try {
+      let recommended = recommendVideoArchitecture(brief);
+      let source: StoryboardSource | undefined;
+      let overlays: ConversationConceptOverlays | undefined;
+      let kind: "fal" | "rules" = "rules";
+      let note = falReady
+        ? "FAL conversation was unavailable. Using the rule-based plan."
+        : "Rule-based plan. Connect FAL in Settings for smarter copy.";
+      if (falReady) {
+        try {
+          const planned = await api.planCreateConversation(brief);
+          recommended = planned.architecture;
+          source = planned.source;
+          overlays = planned.concept_overlays;
+          kind = "fal";
+          note = "FAL wrote this plan and spoken copy. Usage is billed to your FAL account.";
+        } catch {
+          // Keep the rule-based plan.
+        }
+      }
+      setArchitecture(pendingClips.current.length
+        ? { ...recommended, media: "own", durationSeconds: durationSecondsFromClipCount(pendingClips.current.length) }
+        : recommended);
+      setConversationSource(source);
+      setConversationOverlays(overlays);
+      setConversationPlanKind(kind);
+      setVoiceScript(plannedVoiceScript(source, brief));
+      setStatus(note);
+      setStep("architecture");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function saveScenePatch(sceneId: string, patch: Partial<Scene>) {
@@ -689,7 +1016,7 @@ function App() {
       const updated = await api.command(project.id, project.revision, "update_voiceover", { voiceover });
       setProject(updated);
       setStatus("✓ All changes saved");
-      return true;
+      return updated;
     } catch (error) {
       if (error instanceof ApiResponseError && error.status === 409) {
         openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
@@ -784,6 +1111,9 @@ function App() {
       })) {
         setMusicOpen(false);
         setStatus(`Music bed: ${hit.title} · ${hit.artist} · Mixkit`);
+        const latest = (await api.getProject(project.id)).project;
+        setSceneMedia(await loadSceneMediaViews(api, latest, sceneMediaRef.current));
+        hearNewBed();
       }
     } catch {
       setStatus("That licensed track could not be added. Try another.");
@@ -816,26 +1146,26 @@ function App() {
           body: JSON.stringify({ content_type: type, bytes: file.size })
         }
       );
-      const uploaded = await fetch(admission.upload_url, {
-        method: "PUT",
-        headers: { "content-type": type },
-        body: file
-      });
-      if (!uploaded.ok) throw new Error("Upload failed");
+      await api.putAdmittedObject(project.id, admission.asset_id, admission.upload_url, file, type);
       const ready = await api.request<SceneMediaView>(
         `/api/projects/${project.id}/media/${admission.asset_id}/complete`,
         { method: "POST" }
       );
       setSceneMedia((current) => ({ ...current, [ready.id]: ready }));
       if (purpose === "voiceover") {
-        await saveVoiceover({
+        const saved = await saveVoiceover({
           media_id: ready.id,
           offset_ms: project.brief.voiceover?.offset_ms ?? 0,
           level: project.brief.voiceover?.level ?? 1
         });
+        if (saved) {
+          setSceneMedia(await loadSceneMediaViews(api, saved, sceneMediaRef.current));
+          hearNewBed();
+        }
         setVoiceOpen(false);
+        if (voiceScript.trim()) void applyVoiceCaptions();
       } else {
-        await saveSoundtrack({
+        const updated = await saveSoundtrack({
           kind: "upload",
           media_id: ready.id,
           bpm: clampBpm(project.brief.soundtrack?.bpm),
@@ -843,6 +1173,11 @@ function App() {
           level: project.brief.soundtrack?.level ?? 0.8
         });
         setMusicOpen(false);
+        if (updated && project) {
+          const latest = (await api.getProject(project.id)).project;
+          setSceneMedia(await loadSceneMediaViews(api, latest, sceneMediaRef.current));
+        }
+        hearNewBed();
       }
     } catch {
       setStatus(purpose === "voiceover"
@@ -962,38 +1297,174 @@ function App() {
     return false;
   }
 
+  async function fillPixabayGaps(snapshot: ProjectSnapshot): Promise<ProjectSnapshot> {
+    let current = snapshot;
+    const used = new Set<number>();
+    for (const scene of [...current.scenes].sort((a, b) => a.order - b.order)) {
+      if (scene.media_id) continue;
+      const query = scene.visual_prompt?.trim().slice(0, 100);
+      if (!query) {
+        setSceneProgress((progress) => ({ ...progress, [scene.id]: "needs_media" }));
+        noteAssemble(`Scene ${scene.order + 1} · no search text.`, true);
+        continue;
+      }
+      setSceneProgress((progress) => ({ ...progress, [scene.id]: "finding" }));
+      noteAssemble(`Searching Pixabay for scene ${scene.order + 1}…`);
+      try {
+        const page = await api.request<{ results: StockMatch[] }>(`/api/pixabay/search?q=${encodeURIComponent(query)}`);
+        const hit = page.results.find((item) => item.kind !== "still" && !used.has(item.id))
+          ?? page.results.find((item) => !used.has(item.id));
+        if (!hit) {
+          setSceneProgress((progress) => ({ ...progress, [scene.id]: "needs_media" }));
+          noteAssemble(`Scene ${scene.order + 1} · no Pixabay clip.`, true);
+          continue;
+        }
+        used.add(hit.id);
+        setSceneProgress((progress) => ({ ...progress, [scene.id]: "inspecting" }));
+        noteAssemble(`Scene ${scene.order + 1} · inspecting ${hit.creator}…`);
+        const path = hit.kind === "still"
+          ? `/api/projects/${current.id}/media/pixabay/photo`
+          : `/api/projects/${current.id}/media/pixabay`;
+        const copied = await api.request<{ asset: { id: string } }>(path, {
+          method: "POST",
+          body: JSON.stringify({ query, pixabay_id: hit.id })
+        });
+        if (!await attachMediaWhenReady(copied.asset.id, current.id, scene.id)) {
+          setSceneProgress((progress) => ({ ...progress, [scene.id]: "needs_media" }));
+          noteAssemble(`Scene ${scene.order + 1} · inspection did not finish.`, true);
+        } else {
+          noteAssemble(`Scene ${scene.order + 1} · Pixabay clip by ${hit.creator}.`, true);
+        }
+        current = (await api.getProject(current.id)).project;
+        setProject(current);
+      } catch {
+        setSceneProgress((progress) => ({ ...progress, [scene.id]: "needs_media" }));
+        noteAssemble(`Scene ${scene.order + 1} · Pixabay search failed.`, true);
+      }
+    }
+    return current;
+  }
+
   async function fillStockStoryboard(snapshot: ProjectSnapshot): Promise<void> {
     setSceneProgress(Object.fromEntries(
       snapshot.scenes.map((scene) => [scene.id, scene.media_id ? "ready" as const : "finding" as const])
     ));
-    setStatus("Finding licensed media for each scene…");
-    const body = await api.request<{
-      results: Array<{
-        scene_id: string;
-        state: "matched" | "no_result" | "skipped";
-        asset?: { id: string };
-      }>;
-    }>(`/api/projects/${snapshot.id}/media/pexels/storyboard`, {
-      method: "POST",
-      body: "{}"
-    });
-    for (const result of body.results) {
-      if (result.state === "skipped") continue;
-      if (result.state !== "matched" || !result.asset) {
-        setSceneProgress((current) => ({ ...current, [result.scene_id]: "needs_media" }));
-        continue;
+    noteAssemble("Matching licensed clips…");
+    let current = snapshot;
+    const sceneOrder = (id: string) => (snapshot.scenes.find((scene) => scene.id === id)?.order ?? 0) + 1;
+    if (pexelsCredential?.connected) {
+      try {
+        noteAssemble("Searching Pexels…");
+        const body = await api.request<{
+          results: Array<{
+            scene_id: string;
+            state: "matched" | "no_result" | "skipped";
+            asset?: { id: string };
+          }>;
+        }>(`/api/projects/${snapshot.id}/media/pexels/storyboard`, {
+          method: "POST",
+          body: "{}"
+        });
+        for (const result of body.results) {
+          const label = `Scene ${sceneOrder(result.scene_id)}`;
+          if (result.state === "skipped") {
+            noteAssemble(`${label} already has media.`, true);
+            continue;
+          }
+          if (result.state !== "matched" || !result.asset) {
+            setSceneProgress((progress) => ({ ...progress, [result.scene_id]: "needs_media" }));
+            noteAssemble(`${label} · no Pexels clip.`, true);
+            continue;
+          }
+          setSceneProgress((progress) => ({ ...progress, [result.scene_id]: "inspecting" }));
+          noteAssemble(`${label} · inspecting Pexels clip…`);
+          const attached = await attachMediaWhenReady(result.asset.id, snapshot.id, result.scene_id);
+          if (!attached) {
+            setSceneProgress((progress) => ({ ...progress, [result.scene_id]: "needs_media" }));
+            noteAssemble(`${label} · inspection did not finish.`, true);
+          } else {
+            noteAssemble(`${label} · Pexels clip attached.`, true);
+          }
+        }
+        current = (await api.getProject(snapshot.id)).project;
+        setProject(current);
+      } catch (error) {
+        noteAssemble("Pexels matching failed.");
+        if (!pixabayCredential?.connected) throw error;
       }
-      setSceneProgress((current) => ({ ...current, [result.scene_id]: "inspecting" }));
-      const attached = await attachMediaWhenReady(result.asset.id, snapshot.id, result.scene_id);
-      if (!attached) setSceneProgress((current) => ({ ...current, [result.scene_id]: "needs_media" }));
     }
-    const { project: refreshed } = await api.getProject(snapshot.id);
+    if (pixabayCredential?.connected && current.scenes.some((scene) => !scene.media_id)) {
+      noteAssemble("Filling remaining scenes from Pixabay…");
+      current = await fillPixabayGaps(current);
+    }
+    const { project: refreshed } = await api.getProject(current.id);
     setProject(refreshed);
-    setSceneMedia(await loadSceneMediaViews(api, refreshed));
+    setSceneMedia(await loadSceneMediaViews(api, refreshed, sceneMediaRef.current));
     const readyCount = refreshed.scenes.filter((scene) => scene.media_id).length;
-    setStatus(readyCount === refreshed.scenes.length
-      ? "Licensed media attached for every scene. Review attribution, then render."
-      : `${readyCount} of ${refreshed.scenes.length} scenes have media. Find or upload the rest before rendering.`);
+    const summary = readyCount === refreshed.scenes.length
+      ? "Draft ready. Play it, export, or edit."
+      : `${readyCount} of ${refreshed.scenes.length} scenes have media. Find or upload the rest before rendering.`;
+    noteAssemble(summary);
+    setStatus(summary);
+  }
+
+  async function fillRemainingScenes() {
+    if (!project || busy || !(pexelsCredential?.connected || pixabayCredential?.connected)) return;
+    setBusy(true);
+    try {
+      await fillStockStoryboard(project);
+    } catch (error) {
+      setStatus(stockFillStatus(error instanceof ApiResponseError ? error.type : undefined));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyVoiceCaptions() {
+    if (!project || !voiceScript.trim()) return;
+    const parts = captionsFromVoiceScript(voiceScript, project.scenes);
+    if (!parts.length) return;
+    setBusy(true);
+    try {
+      let current = project;
+      for (const part of parts) {
+        const scene = current.scenes.find((item) => item.id === part.id);
+        if (!scene || scene.caption === part.caption) continue;
+        current = await api.command(current.id, current.revision, "update_scene", {
+          scene: { ...scene, caption: part.caption, caption_cues: undefined }
+        });
+      }
+      setProject(current);
+      setOverlayCaption(current.scenes.find((scene) => scene.id === activeSceneId)?.caption ?? voiceScript);
+      setStatus("Voice script applied as scene captions.");
+    } catch {
+      setStatus("Captions could not be applied from the voice script.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function downloadCover() {
+    const video = exportVideo.current;
+    if (!video || !video.videoWidth) {
+      setStatus("Play the export, then download a cover frame.");
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.drawImage(video, 0, 0);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "cover.jpg";
+      link.click();
+      URL.revokeObjectURL(url);
+    }, "image/jpeg", 0.9);
   }
 
   async function moveScene(sceneId: string, to: number) {
@@ -1018,7 +1489,7 @@ function App() {
     if (!project || project.scenes.length >= 8) return;
     const activeIndex = Math.max(0, project.scenes.findIndex(({ id }) => id === activeSceneId));
     const scene: Scene = {
-      id: crypto.randomUUID(), order: activeIndex + 1, caption: "",
+      id: clientId(), order: activeIndex + 1, caption: "",
       visual_prompt: `${project.brief.purpose.slice(0, 210).trim()} — additional visual beat`,
       duration_ms: 3000, focal_x: 0.5, focal_y: 0.5, motion: "zoom", audio_level: 1, ducking: false
     };
@@ -1052,7 +1523,7 @@ function App() {
     }
   }
 
-  async function searchStock(sceneId: string) {
+  async function searchStock(sceneId: string, kind: "video" | "still") {
     const scene = project?.scenes.find(({ id }) => id === sceneId);
     const query = scene?.visual_prompt?.trim().slice(0, 100);
     if (!query) return;
@@ -1062,44 +1533,92 @@ function App() {
     const transition = ++searchTransition.current;
     setCandidates([]);
     setStatus("Finding licensed options for this scene…");
+    const paths: string[] = [];
+    if (pexelsCredential?.connected) {
+      paths.push(kind === "still" ? `/api/pexels/photos/search?q=${encodeURIComponent(query)}` : `/api/pexels/search?q=${encodeURIComponent(query)}`);
+    }
+    if (pixabayCredential?.connected) {
+      paths.push(kind === "still" ? `/api/pixabay/photos/search?q=${encodeURIComponent(query)}` : `/api/pixabay/search?q=${encodeURIComponent(query)}`);
+    }
     try {
-      const body = await api.request<{ results: PexelsMatch[] }>(`/api/pexels/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+      const pages = await Promise.all(paths.map((path) => api.request<{ results: StockMatch[] }>(path, { signal: controller.signal })));
       if (transition !== searchTransition.current || activeSceneId !== sceneId) return;
-      setCandidates(body.results.slice(0, 3));
-      setStatus(body.results.length ? "Choose the footage that fits this scene." : "No licensed options found. Refine the footage search.");
+      const results = pages.flatMap((page) => page.results);
+      setCandidates(results.slice(0, 6));
+      setStatus(results.length
+        ? (kind === "still" ? "Choose the still that fits this scene." : "Choose the footage that fits this scene.")
+        : "No licensed options found. Refine the footage search.");
     } catch (error) {
       if (!controller.signal.aborted) {
         const type = error instanceof ApiResponseError ? error.body.type : undefined;
-        setStatus(type === "pexels_not_connected"
-          ? "Connect your Pexels API key in Settings, or upload your own media."
+        setStatus(type === "pexels_not_connected" || type === "pixabay_not_connected"
+          ? "Connect a Pexels or Pixabay API key in Settings, or upload your own media."
           : "Licensed media search failed. Your scene edits are safe.");
       }
     }
   }
 
-  async function selectStock(sceneId: string, candidate: PexelsMatch) {
+  async function selectStock(sceneId: string, candidate: StockMatch) {
     if (!project) return;
     const scene = project.scenes.find(({ id }) => id === sceneId);
     const query = scene?.visual_prompt?.trim().slice(0, 100);
     if (!scene || !query) return;
     setBusy(true);
-    setStatus(`Copying video by ${candidate.creator} for inspection…`);
+    setStatus(`Copying ${candidate.kind === "still" ? "still" : "video"} by ${candidate.creator} for inspection…`);
+    const path = candidate.source === "pixabay"
+      ? (candidate.kind === "still" ? `/api/projects/${project.id}/media/pixabay/photo` : `/api/projects/${project.id}/media/pixabay`)
+      : (candidate.kind === "still" ? `/api/projects/${project.id}/media/pexels/photo` : `/api/projects/${project.id}/media/pexels`);
+    const bodyJson = candidate.source === "pixabay"
+      ? { query, pixabay_id: candidate.id }
+      : { query, pexels_id: candidate.id };
     try {
-      const body = await api.request<{ asset: { id: string } }>(`/api/projects/${project.id}/media/pexels`, {
+      const body = await api.request<{ asset: { id: string } }>(path, {
         method: "POST",
-        body: JSON.stringify({ query, pexels_id: candidate.id })
+        body: JSON.stringify(bodyJson)
       });
       if (await attachMediaWhenReady(body.asset.id, project.id, sceneId)) {
-        setStatus(`Scene media selected · video by ${candidate.creator} on Pexels`);
+        const label = candidate.source === "pixabay" ? "Pixabay" : "Pexels";
+        setStatus(`Scene media selected · ${candidate.kind === "still" ? "still" : "video"} by ${candidate.creator} on ${label}`);
       }
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.body.type : undefined;
-      setStatus(type === "pexels_not_connected"
-        ? "Connect your Pexels API key in Settings, or upload your own media."
+      setStatus(type === "pexels_not_connected" || type === "pixabay_not_connected"
+        ? "Connect a Pexels or Pixabay API key in Settings, or upload your own media."
         : "That licensed visual could not be attached. Choose another or try again.");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function uploadAndAttach(file: File, projectId: string, sceneId: string): Promise<boolean> {
+    const admission = await api.request<{ asset_id: string; upload_url: string }>(
+      `/api/projects/${projectId}/media/uploads`,
+      {
+        method: "POST",
+        body: JSON.stringify({ content_type: file.type, bytes: file.size })
+      }
+    );
+    await api.putAdmittedObject(projectId, admission.asset_id, admission.upload_url, file, file.type);
+    await api.request(`/api/projects/${projectId}/media/${admission.asset_id}/complete`, { method: "POST" });
+    return attachMediaWhenReady(admission.asset_id, projectId, sceneId);
+  }
+
+  async function attachPendingClips(snapshot: ProjectSnapshot): Promise<ProjectSnapshot> {
+    const files = pendingClips.current.slice(0, snapshot.scenes.length);
+    pendingClips.current = [];
+    let current = snapshot;
+    const scenes = [...current.scenes].sort((a, b) => a.order - b.order);
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      const scene = scenes[index];
+      if (!file || !scene) break;
+      setStatus(`Uploading clip ${index + 1} of ${files.length}…`);
+      await uploadAndAttach(file, current.id, scene.id);
+      const found = await api.getProject(current.id);
+      current = found.project;
+      setProject(current);
+    }
+    return current;
   }
 
   async function admitFile(file: File, intendedSceneId: string) {
@@ -1108,22 +1627,7 @@ function App() {
     setBusy(true);
     setStatus("Uploading media…");
     try {
-      const admission = await api.request<{ asset_id: string; upload_url: string }>(
-        `/api/projects/${project.id}/media/uploads`,
-        {
-          method: "POST",
-          body: JSON.stringify({ content_type: file.type, bytes: file.size })
-        }
-      );
-      const uploaded = await fetch(admission.upload_url, {
-        method: "PUT",
-        headers: { "content-type": file.type },
-        body: file
-      });
-      if (!uploaded.ok) throw new Error("Upload failed");
-      await api.request(`/api/projects/${project.id}/media/${admission.asset_id}/complete`, { method: "POST" });
-      setStatus("Media uploaded and queued for inspection.");
-      if (await attachMediaWhenReady(admission.asset_id, project.id, intendedSceneId)) {
+      if (await uploadAndAttach(file, project.id, intendedSceneId)) {
         setStatus("Media attached to this scene.");
         setStep("editor");
       }
@@ -1148,11 +1652,11 @@ function App() {
       ?? conceptsFor(brief).find(({ id }) => id === "story")?.id
       ?? conceptsFor(brief)[0].id;
     updated = await api.command(updated.id, updated.revision, "select_concept", { concept_id: conceptId });
-    const scenes = (source.scenes.length ? source.scenes : buildStoryboardDraft(brief.purpose, () => crypto.randomUUID())).map((scene, order) => {
+    const scenes = (source.scenes.length ? source.scenes : buildStoryboardDraft(brief.purpose, () => clientId())).map((scene, order) => {
       const { media_id: _mediaId, ...withoutMedia } = scene;
       return {
         ...withoutMedia,
-        id: crypto.randomUUID(),
+        id: clientId(),
         order,
         visual_prompt: scene.visual_prompt || `${brief.purpose.slice(0, 210).trim()} — scene ${order + 1}`
       };
@@ -1351,6 +1855,76 @@ function App() {
     }
   }
 
+  async function loadPixabayCredential() {
+    setPixabayBusy(true);
+    try {
+      const view = await api.request<PixabayCredentialView>("/api/providers/pixabay/credential");
+      setPixabayCredential(view);
+      setPixabayUnavailable(false);
+    } catch (error) {
+      setPixabayCredential(undefined);
+      setPixabayUnavailable(error instanceof ApiResponseError && error.status === 503);
+    } finally {
+      setPixabayBusy(false);
+    }
+  }
+
+  async function connectPixabay() {
+    if (!pixabayKey.trim()) return;
+    if (pixabayCredential?.connected && !window.confirm("Replace your saved Pixabay API key?")) return;
+    setPixabayBusy(true);
+    try {
+      const view = await api.request<PixabayCredentialView>("/api/providers/pixabay/credential", {
+        method: "PUT",
+        body: JSON.stringify({ api_key: pixabayKey })
+      });
+      setPixabayCredential(view);
+      setPixabayUnavailable(false);
+      setStatus("Pixabay connected. Licensed searches now use your encrypted key.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "invalid_provider_credential"
+        ? "Pixabay rejected this API key. Check it and try again."
+        : type === "provider_unavailable"
+          ? "Pixabay could not be reached. Your existing projects are safe."
+          : "Pixabay could not be connected.");
+    } finally {
+      setPixabayKey("");
+      setPixabayBusy(false);
+    }
+  }
+
+  async function testPixabay() {
+    setPixabayBusy(true);
+    try {
+      const view = await api.request<PixabayCredentialView>("/api/providers/pixabay/credential/test", { method: "POST" });
+      setPixabayCredential(view);
+      setStatus("Pixabay connection verified.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "invalid_provider_credential"
+        ? "Pixabay rejected the saved key. Replace or disconnect it."
+        : "Pixabay could not verify the saved key. Try again later.");
+    } finally {
+      setPixabayBusy(false);
+    }
+  }
+
+  async function disconnectPixabay() {
+    if (!window.confirm("Disconnect Pixabay and delete your saved encrypted key? Licensed search will stop working.")) return;
+    setPixabayBusy(true);
+    try {
+      await api.request("/api/providers/pixabay/credential", { method: "DELETE" });
+      setPixabayCredential({ provider: "pixabay", connected: false });
+      setPixabayKey("");
+      setStatus("Pixabay disconnected. You can still upload your own media.");
+    } catch {
+      setStatus("Pixabay could not be disconnected. Try again.");
+    } finally {
+      setPixabayBusy(false);
+    }
+  }
+
   async function connectFal() {
     if (!falKey.trim()) return;
     if (falCredential?.connected && !window.confirm("Replace your saved FAL API key? Active generation must finish first.")) return;
@@ -1408,9 +1982,17 @@ function App() {
   }
 
   function showPexelsLock() {
-    setFeatureLock(pexelsUnavailable
+    setFeatureLock(pexelsUnavailable && pixabayUnavailable
       ? { title: "Pexels is unavailable", message: "This deployment cannot connect Pexels. Upload your own media instead." }
       : { title: "Pexels stock is locked", message: "Connect your Pexels API key to search real stock video.", action: "settings" });
+  }
+
+  function showStockLock() {
+    if (pexelsUnavailable && pixabayUnavailable) {
+      setFeatureLock({ title: "Licensed stock is unavailable", message: "This deployment cannot connect Pexels or Pixabay. Upload your own media instead." });
+      return;
+    }
+    showPexelsLock();
   }
 
   function falJobStorageKey(projectId: string, sceneId: string) {
@@ -1517,7 +2099,7 @@ function App() {
     try {
       const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falGenJob.id}/confirm`, {
         method: "POST",
-        body: JSON.stringify({ idempotency_key: crypto.randomUUID() })
+        body: JSON.stringify({ idempotency_key: clientId() })
       });
       setFalGenJob(job);
       localStorage.setItem(falJobStorageKey(project.id, activeScene.id), job.id);
@@ -1708,7 +2290,7 @@ function App() {
     try {
       const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falVideoJob.id}/confirm`, {
         method: "POST",
-        body: JSON.stringify({ idempotency_key: crypto.randomUUID() })
+        body: JSON.stringify({ idempotency_key: clientId() })
       });
       setFalVideoJob(job);
       localStorage.setItem(falVideoStorageKey(project.id, activeScene.id), job.id);
@@ -1817,8 +2399,15 @@ function App() {
       showFalLock();
       return;
     }
-    setFalSpeechPrompt(defaultVoicePrompt(project));
+    const planned = voiceScript.trim();
+    if (!planned) {
+      setVoiceOpen(true);
+      setStatus("Edit What you'll say, then generate the voice-over.");
+      return;
+    }
+    setFalSpeechPrompt(planned.slice(0, 2000));
     setFalSpeechJob(undefined);
+    setFalSpeechStartedAt(0);
     setFalSpeechOpen(true);
     setVoiceOpen(true);
     const stored = localStorage.getItem(falSpeechStorageKey(project.id));
@@ -1832,7 +2421,8 @@ function App() {
         }
         setFalSpeechJob(job);
         setFalSpeechPrompt(job.prompt);
-        if (!["ready", "cancelled", "failed", "submission_uncertain", "quoted"].includes(job.state)) {
+        if (falGenerationActive(job.state)) {
+          setFalSpeechStartedAt((current) => current || Date.now());
           void pollFalSpeech(job.id);
         }
       } catch {
@@ -1843,9 +2433,9 @@ function App() {
 
   async function quoteFalSpeech() {
     if (!project) return;
-    const prompt = falSpeechPrompt.trim();
+    const prompt = voiceScript.trim();
     if (!prompt || prompt.length > 2000) {
-      setStatus("Enter a voice-over script between 1 and 2000 characters.");
+      setStatus("Edit What you'll say, then generate the voice-over.");
       return;
     }
     setFalSpeechBusy(true);
@@ -1856,6 +2446,8 @@ function App() {
         { method: "POST", body: JSON.stringify({ prompt }) }
       );
       setFalSpeechJob(job);
+      setFalSpeechPrompt(prompt);
+      setFalSpeechStartedAt(0);
       localStorage.setItem(falSpeechStorageKey(project.id), job.id);
       setStatus("Review the FAL price, then confirm to generate voice-over.");
     } catch (error) {
@@ -1880,10 +2472,11 @@ function App() {
     try {
       const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falSpeechJob.id}/confirm`, {
         method: "POST",
-        body: JSON.stringify({ idempotency_key: crypto.randomUUID() })
+        body: JSON.stringify({ idempotency_key: clientId() })
       });
       setFalSpeechJob(job);
       localStorage.setItem(falSpeechStorageKey(project.id), job.id);
+      setFalSpeechStartedAt(Date.now());
       setStatus("FAL voice-over queued.");
       void pollFalSpeech(job.id);
     } catch (error) {
@@ -1899,36 +2492,45 @@ function App() {
   }
 
   async function pollFalSpeech(jobId: string) {
+    if (falSpeechPollRef.current === jobId) return;
+    falSpeechPollRef.current = jobId;
     const deadline = Date.now() + 12 * 60_000;
-    while (Date.now() < deadline) {
-      try {
-        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
-        if (job.state === "ready" && job.result_media && project) {
-          try {
-            const media = await api.request<SceneMediaView>(
-              `/api/projects/${project.id}/media/${job.result_media.id}`
-            );
-            setFalSpeechJob({ ...job, result_media: media });
-          } catch {
+    try {
+      while (Date.now() < deadline) {
+        try {
+          const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
+          if (job.state === "ready" && job.result_media && project) {
+            try {
+              const media = await api.request<SceneMediaView>(
+                `/api/projects/${project.id}/media/${job.result_media.id}`
+              );
+              setFalSpeechJob({
+                ...job,
+                result_media: await playableScenePreview(api, project.id, media)
+              });
+            } catch {
+              setFalSpeechJob(job);
+            }
+          } else {
             setFalSpeechJob(job);
           }
-        } else {
-          setFalSpeechJob(job);
-        }
-        if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
-          if (job.state === "ready") setStatus("AI voice-over ready — review it before attaching.");
-          else if (job.state === "cancelled") setStatus("FAL voice-over cancelled.");
-          else setStatus(falGenFailureMessage(job));
+          if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
+            if (job.state === "ready") setStatus("AI voice-over ready — review it before attaching.");
+            else if (job.state === "cancelled") setStatus("FAL voice-over cancelled.");
+            else setStatus(falGenFailureMessage(job));
+            return;
+          }
+          setStatus(`FAL voice-over · ${job.state.replaceAll("_", " ")}`);
+        } catch {
+          setStatus("Could not refresh FAL voice-over status.");
           return;
         }
-        setStatus(`FAL voice-over · ${job.state.replaceAll("_", " ")}`);
-      } catch {
-        setStatus("Could not refresh FAL voice-over status.");
-        return;
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      setStatus("FAL voice-over is still running. Reopen Generate with FAL to check again.");
+    } finally {
+      if (falSpeechPollRef.current === jobId) falSpeechPollRef.current = undefined;
     }
-    setStatus("FAL voice-over is still running. Reopen Generate with FAL to check again.");
   }
 
   async function cancelFalSpeech() {
@@ -1955,16 +2557,17 @@ function App() {
       const media = await api.request<SceneMediaView>(
         `/api/projects/${project.id}/media/${falSpeechJob.result_media.id}`
       );
-      setSceneMedia((current) => ({ ...current, [media.id]: media }));
       const saved = await saveVoiceover({
         media_id: media.id,
         offset_ms: project.brief.voiceover?.offset_ms ?? 0,
         level: project.brief.voiceover?.level ?? 1
       });
       if (!saved) return;
+      setSceneMedia(await loadSceneMediaViews(api, saved, sceneMediaRef.current));
       localStorage.removeItem(falSpeechStorageKey(project.id));
       setFalSpeechOpen(false);
-      setStatus("Voice-over uses AI-generated FAL audio.");
+      setStatus("Voice-over uses AI-generated FAL audio. Press Play to hear it.");
+      hearNewBed();
     } catch {
       setStatus("Generated voice-over could not be attached.");
     } finally {
@@ -2026,6 +2629,8 @@ function App() {
   }, [activeScene?.id, activeScene?.title, activeScene?.caption]);
   const allScenesHaveMedia = Boolean(project?.scenes.length && project.scenes.every(({ media_id }) =>
     media_id && sceneMedia[media_id]?.state === "ready"));
+  const readyGaps = project ? exportGaps(project) : [];
+  const missingMediaCount = project?.scenes.filter((scene) => !scene.media_id).length ?? 0;
   const allScenesHavePreview = Boolean(project?.scenes.length && project.scenes.every((scene) =>
     scenePreviewUrl(scene.media_id ? sceneMedia[scene.media_id] : undefined)));
   const previewScene = livePlaying
@@ -2089,6 +2694,34 @@ function App() {
       : soundtrackMedia?.attribution?.title ?? "Uploaded music";
   const voiceover = project?.brief.voiceover;
   const voiceoverUrl = voiceover?.media_id ? scenePreviewUrl(sceneMedia[voiceover.media_id]) : undefined;
+  function cueVoicePlayback(audio: HTMLAudioElement) {
+    if (!livePlaying || !voiceover) {
+      audio.pause();
+      return;
+    }
+    audio.volume = voiceover.level;
+    audio.loop = false;
+    const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
+    const at = (playhead.offsetMs + voiceover.offset_ms) / 1000;
+    if (duration && at >= duration) {
+      audio.pause();
+      return;
+    }
+    if (duration) audio.currentTime = at;
+    void audio.play().catch(() => undefined);
+  }
+  const speechElapsedMs = falSpeechStartedAt ? Date.now() - falSpeechStartedAt : 0;
+  const speechProgress = falSpeechJob ? falSpeechProgress(falSpeechJob.state, speechElapsedMs) : { percent: 0, line: "" };
+  const speechLog = falSpeechJob
+    ? falSpeechLogTrail(falSpeechJob.state).map((line, index, all) => (
+      index === all.length - 1 && (falSpeechJob.state === "running" || falSpeechJob.state === "submitting") && speechElapsedMs
+        ? `${line} · ${formatPlayTime(speechElapsedMs)}`
+        : line
+    ))
+    : [];
+  const speechElapsedLabel = falSpeechJob && falGenerationActive(falSpeechJob.state) && speechElapsedMs
+    ? ` · ${formatPlayTime(speechElapsedMs)}`
+    : "";
   const spokenCue = previewScene && livePlaying
     ? (cueAtElapsed(cuesForScene(previewScene), playhead.sceneElapsedMs)?.text ?? "")
     : shownCaption;
@@ -2117,6 +2750,11 @@ function App() {
     armSceneClock(sceneClock.current.elapsedAtPause, true);
     setLivePlaying(true);
     setPlayTick(performance.now());
+  }
+
+  function hearNewBed() {
+    stopMusicPreview();
+    playLivePreview();
   }
 
   function pauseLivePreview() {
@@ -2239,14 +2877,14 @@ function App() {
     setPlayTick(0);
   }, [project?.id]);
   useEffect(() => {
-    if (step !== "editor" || !allScenesHavePreview || userPausedPreview.current) return;
+    if ((step !== "editor" && step !== "review") || !allScenesHavePreview || userPausedPreview.current) return;
     if (livePlaying) return;
     armSceneClock(0, true);
     setLivePlaying(true);
     setPlayTick(performance.now());
   }, [step, project?.id, allScenesHavePreview]);
   useEffect(() => {
-    if (!livePlaying || step !== "editor" || !project?.scenes.length) return;
+    if (!livePlaying || (step !== "editor" && step !== "review") || !project?.scenes.length) return;
     const tick = () => {
       const now = performance.now();
       const current = project.scenes.find(({ id }) => id === playSceneId) ?? project.scenes[0];
@@ -2264,7 +2902,7 @@ function App() {
     return () => window.clearInterval(timer);
   }, [livePlaying, step, project, playSceneId]);
   useEffect(() => {
-    if (step !== "editor") return;
+    if (step !== "editor" && step !== "review") return;
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
@@ -2302,20 +2940,11 @@ function App() {
   useEffect(() => {
     const audio = voiceAudio.current;
     if (!audio) return;
-    audio.volume = voiceover ? voiceover.level : 0;
-    audio.loop = false;
     if (!livePlaying || !voiceoverUrl) {
       audio.pause();
       return;
     }
-    const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
-    const at = (playhead.offsetMs + (voiceover?.offset_ms ?? 0)) / 1000;
-    if (!duration || at >= duration) {
-      audio.pause();
-      return;
-    }
-    audio.currentTime = at;
-    void audio.play().catch(() => undefined);
+    cueVoicePlayback(audio);
   }, [livePlaying, voiceoverUrl, voiceover?.level, voiceover?.offset_ms, bedSeek]);
   useEffect(() => {
     if (!recording) return;
@@ -2329,8 +2958,10 @@ function App() {
     if (livePlaying) stopMusicPreview();
   }, [livePlaying]);
   const inApp = authReady && Boolean(token) && step !== "sign-in";
+  const stockVideo = Boolean(pexelsCredential?.connected || pixabayCredential?.connected);
+  const stockStill = stockVideo;
   const partnerBrands = showsPartnerBrands(token ?? "", String(import.meta.env.VITE_PARTNER_BRAND_EMAIL ?? ""));
-  const createFlow = step === "brief" || step === "architecture" || step === "concepts" || step === "media" || step === "editor" || step === "render";
+  const createFlow = step === "brief" || step === "architecture" || step === "concepts" || step === "media" || step === "assemble" || step === "review" || step === "editor" || step === "render";
   const projectTitle = project?.brief.purpose?.trim() || "Untitled draft";
   const saveBusy = busy || status === "Saving…";
   const saveLabel = saveBusy ? "Saving…" : (status.startsWith("✓") || !status ? "Saved" : status);
@@ -2345,20 +2976,36 @@ function App() {
     <button type="button" aria-current={step === "settings" ? "page" : undefined} onClick={() => setStep("settings")}>Settings</button>
   </> : null;
 
-  return <div className={`app-shell${inApp ? " app-shell-signed" : ""}${step === "editor" ? " app-shell-editor" : ""}`}>
+  const sourceModules = (
+    <div className="source-modules" role="radiogroup" aria-label="Visual source">
+      {sourceChoices.map(([id, title, detail]) =>
+        <button
+          key={id}
+          type="button"
+          className="source-module"
+          data-source={id}
+          aria-pressed={architecture.media === id}
+          onClick={() => setArchitecture({ ...architecture, media: id })}
+        >
+          <strong>{title}</strong>
+          <span>{detail}</span>
+        </button>)}
+    </div>
+  );
+
+  return <div className={`app-shell${inApp ? " app-shell-signed" : ""}${(step === "editor" || step === "review") ? " app-shell-editor" : ""}`}>
     {inApp && <nav className="app-rail" aria-label="Primary">
-      <a className="rail-brand" href="/">F-MOTION</a>
+      <a className="rail-brand" href="/">F-Motion</a>
       {appNav}
     </nav>}
     <div className="app-stage">
-    <header>
+    {inApp && <input ref={gather} className="clip-start" hidden type="file" multiple accept="video/mp4,image/jpeg,image/png,image/webp" aria-label="Create from my clips" onChange={onGatherFiles} />}
+    {((step === "editor" || step === "review") || !inApp || partnerBrands || !online) && <header>
       <div className="header-identity">
-        <strong>F-Motion</strong>
-        {step === "editor" && project && <>
-          <span className="header-sep" aria-hidden="true">·</span>
-          <span className="project-title">{projectTitle}</span>
+        {(step === "editor" || step === "review") && project ? <>
+          <strong className="project-title">{projectTitle}</strong>
           <span className="save-pill" data-busy={saveBusy || undefined}>{saveLabel}</span>
-        </>}
+        </> : inApp ? null : <strong>F-Motion</strong>}
       </div>
       <div className="header-actions">
         {partnerBrands && (
@@ -2369,23 +3016,45 @@ function App() {
           </span>
         )}
         {authReady && token && step !== "sign-in" && !inApp && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
-        <span role="status">{online ? "● Connected" : "○ Reconnecting — draft kept locally"}</span>
+        <span role="status">{online ? "" : "Reconnecting — draft kept locally"}</span>
       </div>
-    </header>
+    </header>}
     {!authReady && <section><p role="status">Checking session…</p></section>}
     {authReady && step === "sign-in" && <section>
-      <h1>Shape a vertical video</h1>
+      <h1>{import.meta.env.VITE_SELFHOST_AUTH === "1"
+        ? selfhostGate === "setup" ? "Create your studio" : "Open your studio"
+        : "Make a vertical preview"}</h1>
       <p>{pendingImportId
         ? "Sign in to open the imported draft from Fotium."
-        : "Sign in to keep projects private."}</p>
-      <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-      <button disabled={authBusy || !authSetup.gateway || (Boolean(import.meta.env.VITE_SUPABASE_URL) && !email.trim())} onClick={() => void magicLink()}>Email me a magic link</button>
-      {Boolean(import.meta.env.VITE_SUPABASE_URL) && <p>{awaitingEmail
-        ? "Email sent. Open the link to finish sign-in on this studio."
-        : "Open the email link to finish sign-in."}</p>}
-      {import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "1"
-        ? <button className="secondary" disabled={authBusy || !authSetup.gateway} onClick={() => void googleSignIn()}>Continue with Google</button>
-        : null}
+        : import.meta.env.VITE_SELFHOST_AUTH === "1"
+          ? selfhostGate === "setup"
+            ? "Step 1 of 2 — create the single owner for this install. No one else can join later."
+            : selfhostGate === "checking"
+              ? "Checking this install…"
+              : "Sign in with the owner email and password you created on first open."
+          : "Write a brief, pick a story, add your clips. Sign in to keep projects private. Nothing publishes itself."}</p>
+      {import.meta.env.VITE_SELFHOST_AUTH === "1" ? (
+        selfhostGate === "checking" ? null : selfhostGate === "setup" ? <>
+          <label>Name<input type="text" autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
+          <label>Email<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+          <label>Password<input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+          <label>Confirm password<input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
+          <button disabled={authBusy || !authSetup.gateway?.setupAccount || !email.trim() || password.length < 8} onClick={() => void setupOwner()}>Create owner and continue</button>
+        </> : <>
+          <label>Email<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+          <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+          <button disabled={authBusy || !authSetup.gateway?.signInWithPassword || !email.trim() || password.length < 8} onClick={() => void passwordSignIn()}>Open studio</button>
+        </>
+      ) : <>
+        <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+        <button disabled={authBusy || !authSetup.gateway || (Boolean(import.meta.env.VITE_SUPABASE_URL) && !email.trim())} onClick={() => void magicLink()}>Email me a magic link</button>
+        {Boolean(import.meta.env.VITE_SUPABASE_URL) && <p>{awaitingEmail
+          ? "Email sent. Open the link to finish sign-in on this studio."
+          : "Open the email link to finish sign-in."}</p>}
+        {import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "1"
+          ? <button className="secondary" disabled={authBusy || !authSetup.gateway} onClick={() => void googleSignIn()}>Continue with Google</button>
+          : null}
+      </>}
       <p role="status">{status}</p>
     </section>}
     {authReady && step === "drafts" && <section>
@@ -2396,6 +3065,9 @@ function App() {
       <aside className="provider-preview" aria-label="Creation sources">
         <button className="provider-preview-item" data-locked={!pexelsCredential?.connected} onClick={() => pexelsCredential?.connected ? setStep("settings") : showPexelsLock()}>
           <strong>Pexels</strong><span>Real stock video · {pexelsCredential?.connected ? "unlocked" : "locked"}</span>
+        </button>
+        <button className="provider-preview-item" data-locked={!pixabayCredential?.connected} onClick={() => pixabayCredential?.connected ? setStep("settings") : showStockLock()}>
+          <strong>Pixabay</strong><span>Stock video and stills · {pixabayCredential?.connected ? "unlocked" : "locked"}</span>
         </button>
         <button className="provider-preview-item" data-locked={!falCredential?.connected || falUnavailable} onClick={showFalLock}>
           <strong>FAL</strong><span>{falCredential?.connected && !falUnavailable ? "AI stills in storyboard" : "AI stills · locked"}</span>
@@ -2412,11 +3084,13 @@ function App() {
         <button className="secondary" onClick={() => setStep("settings")}>Choose video sources</button>
       </aside>
       <button onClick={startCreate}>Create new video</button>
+      <button className="secondary" onClick={startFromClips}>Create from my clips</button>
       {draftsLoading && <p role="status">Loading drafts…</p>}
       {!draftsLoading && drafts.length === 0 && <div className="empty-drafts">
         <p role="status">No drafts yet.</p>
         <p>Describe what you want to make — F-Motion will recommend a video plan and storyboard.</p>
         <button onClick={startCreate}>Create new video</button>
+        <button className="secondary" onClick={startFromClips}>Create from my clips</button>
       </div>}
       <div className="concepts drafts-grid">{drafts.map((item) =>
         <button key={item.id} className="card draft-card" onClick={() => void openDraft(item.id)}>
@@ -2429,13 +3103,21 @@ function App() {
       <h1>What do you want to make?</h1>
       <p>Describe the subject, audience, mood, intended result, media you have, and preferred length in your own words. F-Motion will recommend a complete video plan.</p>
       <label>Visual description<textarea value={draft} maxLength={500} onChange={(event) => setDraft(event.target.value)} placeholder="A remote island in dark ocean fog, an abandoned lighthouse, cinematic aerial shot…" /></label>
-      <button disabled={!draft.trim()} onClick={continueToArchitecture}>Continue to video plan</button>
+      <button disabled={!draft.trim() || busy} onClick={() => void continueToArchitecture()}>
+        {busy ? "Writing the video plan…" : "Continue to video plan"}
+      </button>
+      <button className="secondary" onClick={startFromClips}>Create from my clips</button>
       <p role="status" aria-live="polite">{status}</p>
       <button className="secondary" disabled={busy} onClick={() => setStep("drafts")}>Back to drafts</button>
     </section>}
     {authReady && step === "architecture" && <section>
-      <h1>Plan the video</h1>
-      <p>F-Motion prepared this recommendation from your conversation. Build it as proposed, or unfold the details to edit any decision.</p>
+      <div className="stage-hero">
+        <p className="settings-kicker">Plan</p>
+        <h1>Plan the video</h1>
+        <p>{conversationPlanKind === "fal"
+          ? "F-Motion prepared this recommendation from your conversation. Build it as proposed, or unfold the details to edit any decision."
+          : "This is a rule-based plan from your description. Connect FAL in Settings for smarter copy, or unfold the details to edit any decision."}</p>
+      </div>
       <dl className="architecture-summary" aria-label="Recommended video plan">
         <div><dt>Goal</dt><dd>{architectureLabels.goal[architecture.goal]}</dd></div>
         <div><dt>Audience</dt><dd>{architectureLabels.audience[architecture.audience]}</dd></div>
@@ -2444,6 +3126,12 @@ function App() {
         <div><dt>Length</dt><dd>About {architecture.durationSeconds} seconds</dd></div>
         <div><dt>Visuals</dt><dd>{architectureLabels.media[architecture.media]}</dd></div>
       </dl>
+      <label className="plan-voice" htmlFor="plan-voice-script">What you'll say
+        <textarea id="plan-voice-script" maxLength={1800} value={voiceScript} onChange={(event) => setVoiceScript(event.target.value)} />
+      </label>
+      <p>This spoken copy is planned now so you can edit it before generating a voice-over.</p>
+      {sourceModules}
+      {architecture.media !== "own" && <p>Licensed fill uses Pexels first, then Pixabay for remaining scenes.</p>}
       <details className="architecture-editor">
         <summary>Edit recommended video plan</summary>
         <p>Optional: adjust the decisions before F-Motion builds the storyboard and footage searches.</p>
@@ -2467,7 +3155,7 @@ function App() {
           <option value="15">About 15 seconds · 4 scenes</option><option value="30">About 30 seconds · 5 scenes</option><option value="45">About 45 seconds · 6 scenes</option>
         </select></label>
         <label>Where should visuals come from?<select value={architecture.media} onChange={(event) => setArchitecture({ ...architecture, media: event.target.value as VideoArchitecture["media"] })}>
-          <option value="stock">Pexels real stock video</option><option value="own">My own media</option><option value="mixed">Mix Pexels stock and my media</option>
+          <option value="stock">Licensed stock (Pexels and Pixabay)</option><option value="own">My own media</option><option value="mixed">Mix Pexels, Pixabay, and my media</option>
         </select></label>
         </div>
       </details>
@@ -2475,30 +3163,61 @@ function App() {
       <button className="secondary" disabled={busy} onClick={() => setStep("brief")}>Back to description</button>
       <p role="status" aria-live="polite">{status}</p>
     </section>}
-    {authReady && step === "concepts" && project && <section>
-      <h1>Choose a story approach</h1>
-      <p>Each option builds a different multi-scene plan. Licensed stock is matched only after you choose.</p>
-      <div className="concept-choices" aria-label="Story concepts">{conceptChoices.map((concept) =>
+    {authReady && step === "concepts" && project && <section className="concepts-stage">
+      <div className="stage-hero">
+        <p className="settings-kicker">Story</p>
+        <h1>Choose a story approach</h1>
+        <p>{architecture.media === "own"
+          ? "Pick a story shape, then attach your media to each scene."
+          : "Captions, licensed clips, and a music bed are assembled after you choose."}</p>
+      </div>
+      {sourceModules}
+      <div className="concept-choices" aria-label="Story concepts">{conceptChoices.map((concept) => {
+        const beats = beatSteps(concept.beat_summary, concept.scene_count);
+        return (
         <button
           key={concept.id}
-          className="card"
+          className="concept-module"
+          data-concept={concept.id}
           disabled={busy}
-          aria-label={`Choose ${concept.title} concept`}
+          aria-label={`Choose ${concept.title} concept. ${concept.hook}`}
+          title={conceptDirection(concept.media_direction, architecture.media)}
           onClick={() => void chooseConcept(concept.id)}
         >
-          <strong>{concept.title}</strong>
-          <span>{concept.hook}</span>
-          <span>{concept.beat_summary}</span>
-          <span>About {concept.duration_seconds} seconds · {concept.scene_count} scenes</span>
-          <span>{concept.media_direction}</span>
-        </button>)}</div>
+          <span className="concept-module-head">
+            <strong>{concept.title}</strong>
+            <span className="concept-meta">About {concept.duration_seconds} seconds · {concept.scene_count} scenes</span>
+          </span>
+          <p className="concept-hook">{concept.hook}</p>
+          <p className="concept-treatment">{concept.treatment}</p>
+          <ol className="beat-rail" aria-label={`${concept.title} beats: ${beats.join(", ")}`}>
+            {beats.map((beat, index) => <li key={`${beat}-${index}`}>{beat}</li>)}
+          </ol>
+        </button>
+        );
+      })}</div>
       <p role="status" aria-live="polite">{status}</p>
       <button className="secondary" disabled={busy} onClick={() => setStep("architecture")}>Back to video plan</button>
+    </section>}
+    {authReady && step === "assemble" && <section className="assemble-stage">
+      <div className="stage-hero">
+        <p className="settings-kicker">Assembling</p>
+        <h1>Building your draft</h1>
+        <p>Captions, licensed clips, and music. This can take a minute.</p>
+      </div>
+      <progress max={Math.max(assembleTotal, 1)} value={Math.min(assembleDone, assembleTotal)} aria-label="Draft assembly progress" />
+      <p role="status" aria-live="polite">{status || "Starting…"}</p>
+      <ol ref={assembleLogEl} className="assemble-log" aria-label="Assembly log">
+        {assembleLog.map((line, index) => <li key={`${index}-${line.slice(0, 24)}`}>{line}</li>)}
+      </ol>
+      {!busy && status.includes("could not be created") ? (
+        <button className="secondary" onClick={() => setStep("concepts")}>Back to story approaches</button>
+      ) : null}
     </section>}
     {authReady && step === "media" && project && <section>
       <h1>Upload your media</h1>
       <p>Choose one JPEG, PNG, or MP4 you have permission to use. It is inspected before it can be rendered.</p>
-      <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
+      <input ref={upload} className="scene-upload" hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
         const file = event.target.files?.[0];
         if (file && activeScene) void admitFile(file, activeScene.id);
       }} />
@@ -2506,16 +3225,33 @@ function App() {
       <p role="status" aria-live="polite">{status}</p>
       <button className="secondary" disabled={busy} onClick={() => setStep("editor")}>Back to storyboard</button>
     </section>}
-    {authReady && step === "editor" && project && activeScene && <section className="editor">
+    {authReady && (step === "editor" || step === "review") && project && activeScene && <section className="editor" data-mode={step === "review" ? "review" : "edit"}>
       <div className="editor-toolbar">
         <div>
-          <h1>Storyboard</h1>
-          <p>{playhead.totalMs
-            ? `Live cut · ${formatPlayTime(playhead.offsetMs)} / ${formatPlayTime(playhead.totalMs)}`
-            : "Review each beat and replace a still only when another visual fits better."}</p>
+          <h1>{step === "review" ? "Your draft" : "Storyboard"}</h1>
+          <p>{step === "review"
+          ? (busy ? "Assembling captions, clips, and music…" : "Play the cut. Edit What you'll say, then record, upload, or generate. Captions on the picture are not a voice track.")
+            : (playhead.totalMs
+              ? `Live cut · ${formatPlayTime(playhead.offsetMs)} / ${formatPlayTime(playhead.totalMs)}`
+              : "Review each beat and replace a still only when another visual fits better.")}</p>
+          <p className="export-gaps" data-ready={!readyGaps.length || undefined} aria-label="Ready to export">
+            {readyGaps.length ? readyGaps.map((gap) => <span key={gap}>{gap}</span>) : <span>Ready to export</span>}
+          </p>
+          {step === "review" ? <p role="status" aria-live="polite">{status}</p> : null}
         </div>
         <div className="editor-toolbar-actions">
           <button className="secondary" disabled={!allScenesHaveMedia} onClick={() => void requestRender("final")}>Export final</button>
+          {step === "review" ? (
+            <>
+              {falCredential?.connected && !falUnavailable ? (
+                <button className="secondary" disabled={busy} onClick={() => openFalSpeech()}>Generate voice-over</button>
+              ) : null}
+              <button className="secondary" disabled={busy} onClick={() => setStep("editor")}>Edit storyboard</button>
+            </>
+          ) : null}
+          {missingMediaCount > 0 && (pexelsCredential?.connected || pixabayCredential?.connected) ? (
+            <button className="secondary" disabled={busy} onClick={() => void fillRemainingScenes()}>Fill remaining scenes</button>
+          ) : null}
         </div>
       </div>
 
@@ -2546,8 +3282,8 @@ function App() {
           }}
         >
           {previewUrl
-            ? (media?.detected?.type === "video/mp4"
-              ? <video src={previewUrl} muted playsInline preload="metadata" style={{ objectPosition: `${clampFocus(scene.focal_x) * 100}% ${clampFocus(scene.focal_y) * 100}%` }} />
+            ? (previewPlaysAsVideo(media)
+              ? <video src={previewUrl} poster={media?.attribution?.previewUrl} muted playsInline preload="metadata" style={{ objectPosition: `${clampFocus(scene.focal_x) * 100}% ${clampFocus(scene.focal_y) * 100}%` }} />
               : <img src={previewUrl} alt="" style={{ objectPosition: `${clampFocus(scene.focal_x) * 100}% ${clampFocus(scene.focal_y) * 100}%` }} />)
             : (
               <span className="scene-empty">
@@ -2593,8 +3329,8 @@ function App() {
             onPointerUp={endPreviewPan}
             onPointerCancel={endPreviewPan}
           >
-        {previewUrl && (previewMedia?.detected?.type === "video/mp4"
-          ? <video key={previewScene?.id} src={previewUrl} muted playsInline autoPlay={livePlaying} loop={!livePlaying} controls={false} preload="metadata" draggable={false} className={previewMotionClass} style={previewPosition} onLoadedMetadata={(event) => notePreviewPixels(previewUrl, event.currentTarget.videoWidth, event.currentTarget.videoHeight)} />
+        {previewUrl && (previewPlaysAsVideo(previewMedia)
+          ? <video key={previewScene?.id} src={previewUrl} poster={previewMedia?.attribution?.previewUrl} muted playsInline autoPlay={livePlaying} loop={!livePlaying} controls={false} preload="metadata" draggable={false} className={previewMotionClass} style={previewPosition} onLoadedMetadata={(event) => notePreviewPixels(previewUrl, event.currentTarget.videoWidth, event.currentTarget.videoHeight)} />
           : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} draggable={false} className={previewMotionClass} style={previewPosition} onLoad={(event) => notePreviewPixels(previewUrl, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />)}
         {previewMedia && !previewUrl && <span className="media-placeholder">{previewMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
             {!previewMedia && <span className="media-placeholder">Choose stock or upload media</span>}
@@ -2662,7 +3398,13 @@ function App() {
             </div>
             ) : null}
             {soundtrackUrl && <audio ref={bedAudio} src={soundtrackUrl} preload="auto" hidden />}
-            {voiceoverUrl && <audio ref={voiceAudio} src={voiceoverUrl} preload="auto" hidden />}
+            {voiceoverUrl && <audio
+              ref={voiceAudio}
+              src={voiceoverUrl}
+              preload="auto"
+              hidden
+              onLoadedMetadata={(event) => cueVoicePlayback(event.currentTarget)}
+            />}
           </div>
           <details
             className={`music-dock voice-dock${voiceover ? " has-bed" : ""}`}
@@ -2670,7 +3412,10 @@ function App() {
             onToggle={(event) => setVoiceOpen(event.currentTarget.open)}
           >
             <summary>{recording ? "Recording voice-over" : voiceover ? "Voice-over" : "Add voice-over"}</summary>
-            <p className="crop-hint">Record, upload, or generate with FAL. Captions time as spoken subtitles on Play and Export. Music ducks under the voice.</p>
+            <p className="crop-hint">Edit this script first. Record, upload, or generate with FAL after it reads the way you want. Captions time as spoken subtitles on Play and Export. Music ducks under the voice.</p>
+            <label htmlFor="voice-script">What you'll say
+              <textarea id="voice-script" maxLength={1800} value={voiceScript} disabled={busy || recording} onChange={(event) => setVoiceScript(event.target.value)} />
+            </label>
             <div className="scene-actions">
               <button
                 type="button"
@@ -2682,6 +3427,7 @@ function App() {
               {recording ? <button className="secondary" type="button" onClick={() => cancelVoiceRecord()}>Discard</button> : null}
               <button className="secondary" type="button" disabled={busy || recording} onClick={() => voiceUpload.current?.click()}>Upload voice-over</button>
               <button className="secondary" type="button" disabled={busy || recording} onClick={() => openFalSpeech()}>Generate with FAL</button>
+              <button className="secondary" type="button" disabled={busy || recording || !voiceScript.trim()} onClick={() => void applyVoiceCaptions()}>Use as captions</button>
             </div>
             <input ref={voiceUpload} hidden type="file" accept="audio/mpeg,audio/wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a" onChange={(event) => {
               const file = event.target.files?.[0];
@@ -2778,8 +3524,11 @@ function App() {
                         bpm: clampBpm(soundtrack?.bpm ?? bed.bpm),
                         offset_ms: 0,
                         level: soundtrack?.level ?? 0.8
+                      }).then((ok) => {
+                        if (!ok) return;
+                        setMusicOpen(false);
+                        hearNewBed();
                       });
-                      setMusicOpen(false);
                     }}
                   >{bed.label}</button>)}
               </div>
@@ -2819,7 +3568,7 @@ function App() {
             : "Drag the still to frame it."}</p>
           {activeMedia?.attribution && <p>
             Video by <a href={activeMedia.attribution.attributionUrl} target="_blank" rel="noreferrer">{activeMedia.attribution.creator}</a>
-            {" · "}<a href="https://www.pexels.com" target="_blank" rel="noreferrer">Pexels</a>
+            {" · "}<a href={activeMedia.attribution.source === "Pixabay" ? "https://pixabay.com" : "https://www.pexels.com"} target="_blank" rel="noreferrer">{activeMedia.attribution.source === "Pixabay" ? "Pixabay" : "Pexels"}</a>
           </p>}
           {activeMedia?.generation?.source === "FAL" && <p>AI-generated with FAL{activeMedia.generation.derivedFromImage ? " · from your still" : ""} · {activeMedia.generation.model}</p>}
         </div>
@@ -2882,13 +3631,19 @@ function App() {
           <button className="secondary" onClick={() => void saveScenePatch(activeScene.id, { audio_level: activeScene.audio_level === 0 ? 1 : 0 })}>{activeScene.audio_level === 0 ? `Unmute scene ${activeSceneNumber}` : `Mute scene ${activeSceneNumber}`}</button>
           </div>
           <div className="inspector-block">
-          <button className={!pexelsCredential?.connected ? "locked-feature" : undefined}
-            disabled={busy || (Boolean(pexelsCredential?.connected) && !activeScene.visual_prompt)}
+          <button className={!stockVideo ? "locked-feature" : undefined}
+            disabled={busy || (stockVideo && !activeScene.visual_prompt)}
             aria-label={activeMedia
               ? `Find another licensed video for scene ${activeSceneNumber}`
               : `Find licensed media for scene ${activeSceneNumber}`}
-            onClick={() => pexelsCredential?.connected ? void searchStock(activeScene.id) : showPexelsLock()}>
-            {!pexelsCredential?.connected ? "🔒 " : ""}{activeMedia ? "Find another licensed video" : "Find licensed media"}
+            onClick={() => stockVideo ? void searchStock(activeScene.id, "video") : showStockLock()}>
+            {!stockVideo ? "🔒 " : ""}{activeMedia ? "Find another licensed video" : "Find licensed media"}
+          </button>
+          <button className={!stockStill ? "locked-feature" : undefined}
+            disabled={busy || (stockStill && !activeScene.visual_prompt)}
+            aria-label={`Find licensed still for scene ${activeSceneNumber}`}
+            onClick={() => stockStill ? void searchStock(activeScene.id, "still") : showStockLock()}>
+            {!stockStill ? "🔒 " : ""}Find licensed still
           </button>
           <button className={!falCredential?.connected || falUnavailable ? "locked-feature" : undefined}
             disabled={busy || falGenBusy}
@@ -2905,7 +3660,7 @@ function App() {
             </button>
           )}
           </div>
-          <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
+          <input ref={upload} className="scene-upload" hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) void admitFile(file, activeScene.id);
           }} />
@@ -2918,9 +3673,9 @@ function App() {
         </div>
       </div>
 
-      {candidates.length > 0 && <div className="candidates" aria-label={`Licensed media options for scene ${activeSceneNumber}`}>{candidates.map((candidate) => <article key={candidate.id} className="candidate">
-        <img src={candidate.previewUrl} alt={`Pexels preview by ${candidate.creator}`} />
-        <a href={candidate.attributionUrl} target="_blank" rel="noreferrer">{candidate.creator} on Pexels</a>
+      {candidates.length > 0 && <div className="candidates" aria-label={`Licensed media options for scene ${activeSceneNumber}`}>{candidates.map((candidate) => <article key={`${candidate.source}-${candidate.kind}-${candidate.id}`} className="candidate">
+        <img src={candidate.previewUrl} alt={`${candidate.source === "pixabay" ? "Pixabay" : "Pexels"} preview by ${candidate.creator}`} />
+        <a href={candidate.attributionUrl} target="_blank" rel="noreferrer">{candidate.creator} on {candidate.source === "pixabay" ? "Pixabay" : "Pexels"}</a>
         <button disabled={busy} onClick={() => void selectStock(activeScene.id, candidate)}>Select for scene {activeSceneNumber}</button>
       </article>)}</div>}
 
@@ -3034,9 +3789,9 @@ function App() {
       </dialog>}
       {falSpeechOpen && project && <dialog open aria-labelledby="fal-speech-title">
         <h2 id="fal-speech-title">Generate voice-over</h2>
-        <p>Uses Kokoro American English on FAL. Charged directly to your FAL account. F-Motion copies the result into private storage.</p>
+        <p>Uses Kokoro American English on FAL. Charged directly to your FAL account. F-Motion copies the result into private storage. This is the script from What you'll say. Close and edit it there if you need to change it.</p>
         <label htmlFor="fal-speech-prompt">Voice-over script
-          <textarea id="fal-speech-prompt" maxLength={2000} value={falSpeechPrompt} disabled={falSpeechBusy || (falSpeechJob && !["quoted", "failed", "cancelled", "submission_uncertain", "ready"].includes(falSpeechJob.state))} onChange={(event) => setFalSpeechPrompt(event.target.value)} />
+          <textarea id="fal-speech-prompt" maxLength={2000} value={falSpeechPrompt} readOnly />
         </label>
         {falSpeechJob && <div className="notice">
           <p>Model · Kokoro American English</p>
@@ -3044,7 +3799,11 @@ function App() {
             {falSpeechJob.quote.estimated_total !== null
               ? ` · estimated total ${falSpeechJob.quote.currency} ${falSpeechJob.quote.estimated_total}`
               : ` · ${falSpeechJob.quote.estimated_total_explanation ?? "FAL could not calculate a total"}`}</p>
-          <p>Status · {falSpeechJob.state.replaceAll("_", " ")}</p>
+          <p>Status · {falSpeechJob.state.replaceAll("_", " ")}{speechElapsedLabel}</p>
+          <progress max={100} value={speechProgress.percent} aria-label="Voice-over generation progress">{speechProgress.percent}%</progress>
+          <ol className="assemble-log" aria-label="Voice-over generation log">
+            {speechLog.map((line, index) => <li key={`${index}-${line}`}>{line}</li>)}
+          </ol>
         </div>}
         {falSpeechJob?.state === "ready" && falSpeechJob.result_media && (
           <div>
@@ -3079,7 +3838,8 @@ function App() {
               }}>Keep current audio</button>
               <button className="secondary" disabled={falSpeechBusy} onClick={() => {
                 setFalSpeechJob(undefined);
-                setStatus("Request a new FAL price to generate another voice-over.");
+                setFalSpeechPrompt(voiceScript.trim().slice(0, 2000));
+                setStatus("Edit What you'll say if needed, then request a new FAL price.");
               }}>Generate another</button>
             </>
           )}
@@ -3115,7 +3875,7 @@ function App() {
         <strong>{renderKind === "final" ? "Export complete" : "Preview ready"}</strong>
         <p>Download the MP4 or keep editing the storyboard.</p>
       </div>}
-      {downloadUrl && <video controls playsInline preload="metadata" src={downloadUrl} onError={() => void refreshPreviewUrl()}>
+      {downloadUrl && <video ref={exportVideo} controls playsInline preload="metadata" src={downloadUrl} onError={() => void refreshPreviewUrl()}>
         Your browser cannot play this MP4. Use the download link instead.
       </video>}
       {downloadUrl && <p>{previewMetadata.width && previewMetadata.height ? `${previewMetadata.width}×${previewMetadata.height}` : "Rendered MP4"}
@@ -3126,101 +3886,123 @@ function App() {
         <button disabled={progress.phase === "complete" || progress.phase === "cancelled" || progress.phase === "failed"} onClick={() => void cancelRender()}>Cancel render</button>
         {(progress.phase === "failed" || progress.phase === "cancelled") && <button onClick={() => void retryRender()}>Retry</button>}
         <a href={downloadUrl} download><button disabled={!downloadUrl || progress.phase === "failed"}>{downloadLabel}</button></a>
+        {downloadUrl && progress.phase === "complete" && <button className="secondary" type="button" onClick={downloadCover}>Download cover</button>}
       </div>
       <button className="secondary" onClick={() => setStep("editor")}>Keep editing</button>
     </section>}
-    {authReady && step === "settings" && <section>
-      <h1>Choose your video sources</h1>
-      <p>Connect only the services you want to use. Each provider stays under your account and uses your own API key.</p>
-      <div className="provider-onboarding" aria-label="Video source options">
-        <article className={`provider-card ${pexelsCredential?.connected ? "provider-live" : "provider-locked"}`}>
-          <span className={`provider-status ${pexelsCredential?.connected ? "" : "provider-soon"}`}>{pexelsCredential?.connected ? "Unlocked" : "Locked"}</span>
-          <h2>Pexels</h2>
-          <strong>Real stock video</strong>
-          <p>Search licensed footage from real creators and select it scene by scene.</p>
-          {pexelsCredential?.connected
-            ? <a href="#pexels-settings-title">Manage Pexels</a>
-            : <button className="lock-trigger" onClick={showPexelsLock}>Why is this locked?</button>}
+    {authReady && step === "settings" && <section className="settings-stage">
+      <div className="settings-hero">
+        <p className="settings-kicker">{onboardSources ? "Optional" : "Workspace"}</p>
+        <h1>Sources</h1>
+        <p>{onboardSources
+          ? "Connect a key only if you want stock or AI stills. Skip this and use your own uploads."
+          : "Keys stay on this install. Uploads, editing, and preview work without them."}</p>
+      </div>
+      <div className="source-list" aria-label="Video sources">
+        <article className={`source-panel${pexelsCredential?.connected ? " is-on" : ""}`} aria-labelledby="pexels-settings-title">
+          <div className="source-head">
+            <div>
+              <h2 id="pexels-settings-title">Pexels</h2>
+              <p>Licensed stock video and stills. Connect your own Pexels API key. F-Motion does not supply or share a Pexels key.</p>
+            </div>
+            <span className="source-state">{pexelsCredential?.connected ? "Connected" : "Optional"}</span>
+          </div>
+          {pexelsUnavailable && <p className="notice">Pexels is not enabled on this install.</p>}
+          {!pexelsUnavailable && pexelsCredential?.connected && <p className="source-meta">
+            Key ending …{pexelsCredential.hint}
+            {pexelsCredential.validated_at ? ` · verified ${new Date(pexelsCredential.validated_at).toLocaleString()}` : ""}
+          </p>}
+          {!pexelsUnavailable && <>
+            <div className="source-connect">
+              <label htmlFor="pexels-key">{pexelsCredential?.connected ? "Replace key" : "API key"}
+                <input id="pexels-key" type="password" autoComplete="new-password" spellCheck={false}
+                  value={pexelsKey} onChange={(event) => setPexelsKey(event.target.value)} placeholder="Paste your Pexels API key" />
+              </label>
+              <button disabled={pexelsBusy || !pexelsKey.trim()} onClick={() => void connectPexels()}>{pexelsCredential?.connected ? "Replace key" : "Connect Pexels"}</button>
+            </div>
+            <div className="settings-actions">
+              {pexelsCredential?.connected && <button className="secondary" disabled={pexelsBusy} onClick={() => void testPexels()}>Test Pexels</button>}
+              {pexelsCredential?.connected && <button className="secondary" disabled={pexelsBusy} onClick={() => void disconnectPexels()}>Disconnect Pexels</button>}
+              <a href="https://www.pexels.com/api/" target="_blank" rel="noreferrer">Get a Pexels API key</a>
+            </div>
+            <p className="source-note">Added clips keep on-product attribution in the editor.</p>
+          </>}
         </article>
-        <article className={`provider-card ${falCredential?.connected && !falUnavailable ? "provider-live" : "provider-locked"}`}>
-          <span className={`provider-status ${falCredential?.connected && !falUnavailable ? "" : "provider-soon"}`}>{falCredential?.connected && !falUnavailable ? "Unlocked" : "Locked"}</span>
-          <h2>FAL</h2>
-          <strong>AI stills</strong>
-          <p>Connect your key for AI still generation. Open a storyboard scene and choose Generate AI image to quote, confirm, and review one still.</p>
-          {falCredential?.connected && !falUnavailable
-            ? <a href="#fal-settings-title">Manage FAL</a>
-            : <button className="lock-trigger" onClick={showFalLock}>Why is this locked?</button>}
+        <article className={`source-panel${pixabayCredential?.connected ? " is-on" : ""}`} aria-labelledby="pixabay-settings-title">
+          <div className="source-head">
+            <div>
+              <h2 id="pixabay-settings-title">Pixabay</h2>
+              <p>Licensed stock video and stills. Connect your own Pixabay API key. F-Motion does not supply or share a Pixabay key.</p>
+            </div>
+            <span className="source-state">{pixabayCredential?.connected ? "Connected" : "Optional"}</span>
+          </div>
+          {pixabayUnavailable && <p className="notice">Pixabay is not enabled on this install.</p>}
+          {!pixabayUnavailable && pixabayCredential?.connected && <p className="source-meta">
+            Key ending …{pixabayCredential.hint}
+            {pixabayCredential.validated_at ? ` · verified ${new Date(pixabayCredential.validated_at).toLocaleString()}` : ""}
+          </p>}
+          {!pixabayUnavailable && <>
+            <div className="source-connect">
+              <label htmlFor="pixabay-key">{pixabayCredential?.connected ? "Replace key" : "API key"}
+                <input id="pixabay-key" type="password" autoComplete="new-password" spellCheck={false}
+                  value={pixabayKey} onChange={(event) => setPixabayKey(event.target.value)} placeholder="Paste your Pixabay API key" />
+              </label>
+              <button disabled={pixabayBusy || !pixabayKey.trim()} onClick={() => void connectPixabay()}>{pixabayCredential?.connected ? "Replace key" : "Connect Pixabay"}</button>
+            </div>
+            <div className="settings-actions">
+              {pixabayCredential?.connected && <button className="secondary" disabled={pixabayBusy} onClick={() => void testPixabay()}>Test Pixabay</button>}
+              {pixabayCredential?.connected && <button className="secondary" disabled={pixabayBusy} onClick={() => void disconnectPixabay()}>Disconnect Pixabay</button>}
+              <a href="https://pixabay.com/api/docs/" target="_blank" rel="noreferrer">Get a Pixabay API key</a>
+            </div>
+            <p className="source-note">Added clips keep on-product attribution in the editor.</p>
+          </>}
         </article>
-        {partnerBrands ? (
-          <article className="provider-card provider-live">
-            <span className="provider-status">Unlocked</span>
-            <h2>Fotium</h2>
-            <strong>Your galleries</strong>
-            <p>Imported stills from Fotium open as F-Motion drafts. Other accounts do not see this source.</p>
+        <article className={`source-panel${falCredential?.connected && !falUnavailable ? " is-on" : ""}`} aria-labelledby="fal-settings-title">
+          <div className="source-head">
+            <div>
+              <h2 id="fal-settings-title">FAL</h2>
+              <p>Connect your own FAL API-scope key for AI stills, video, voice, and Create-video copy. Each image is quoted, then charged directly to your FAL account. F-Motion does not supply or share a FAL key.</p>
+            </div>
+            <span className="source-state">{falCredential?.connected && !falUnavailable ? "Connected" : "Optional"}</span>
+          </div>
+          {falUnavailable && <p className="notice">FAL is not enabled on this install.</p>}
+          {!falUnavailable && falCredential?.connected && <p className="source-meta">
+            Key ending …{falCredential.hint}
+            {falCredential.validated_at ? ` · verified ${new Date(falCredential.validated_at).toLocaleString()}` : ""}
+          </p>}
+          {!falUnavailable && <>
+            <div className="source-connect">
+              <label htmlFor="fal-key">{falCredential?.connected ? "Replace key" : "API key"}
+                <input id="fal-key" type="password" autoComplete="new-password" spellCheck={false}
+                  value={falKey} onChange={(event) => setFalKey(event.target.value)} placeholder="Paste an API-scope key" />
+              </label>
+              <button disabled={falBusy || !falKey.trim()} onClick={() => void connectFal()}>{falCredential?.connected ? "Replace key" : "Connect FAL"}</button>
+            </div>
+            <div className="settings-actions">
+              {falCredential?.connected && <button className="secondary" disabled={falBusy} onClick={() => void testFal()}>Test connection</button>}
+              {falCredential?.connected && <button className="secondary" disabled={falBusy} onClick={() => void disconnectFal()}>Disconnect</button>}
+              <a href="https://fal.ai/dashboard/keys" target="_blank" rel="noreferrer">Open FAL API keys</a>
+            </div>
+          </>}
+        </article>
+        {partnerBrands && (
+          <article className="source-panel is-on">
+            <div className="source-head">
+              <div>
+                <h2>Fotium</h2>
+                <p>Your galleries open as drafts on this studio.</p>
+              </div>
+              <span className="source-state">Connected</span>
+            </div>
             <a href="https://fotium.vip" target="_blank" rel="noreferrer">Open Fotium</a>
-          </article>
-        ) : (
-          <article className="provider-card provider-future">
-            <span className="provider-status provider-soon">Coming soon</span>
-            <h2>More providers</h2>
-            <strong>More ways to create</strong>
-            <p>Additional stock, AI video, voice, and media services can join the same provider flow.</p>
-            <button className="lock-trigger" onClick={showFutureLock}>Why is this locked?</button>
           </article>
         )}
       </div>
-      <p>Pexels videos require on-product attribution — see “Use video by … · Pexels” in the editor when you add stock footage.</p>
-      <article className="settings-card" aria-labelledby="pexels-settings-title">
-        <h2 id="pexels-settings-title">Pexels licensed media</h2>
-        <p>Connect your own Pexels API key. Licensed searches use your Pexels account; F-Motion does not supply or share a Pexels key.</p>
-        {pexelsUnavailable && <p className="notice">Pexels connection is unavailable here. Uploading, editing, and rendering still work.</p>}
-        {!pexelsUnavailable && pexelsCredential?.connected && <p>
-          Connected · key ending …{pexelsCredential.hint}
-          {pexelsCredential.validated_at ? ` · verified ${new Date(pexelsCredential.validated_at).toLocaleString()}` : ""}
-        </p>}
-        {!pexelsUnavailable && <label htmlFor="pexels-key">{pexelsCredential?.connected ? "Replacement Pexels API key" : "Pexels API key"}
-          <input id="pexels-key" type="password" autoComplete="new-password" spellCheck={false}
-            value={pexelsKey} onChange={(event) => setPexelsKey(event.target.value)} placeholder="Paste your Pexels API key" />
-          <small>The key is validated, encrypted server-side, and never shown again.</small>
-        </label>}
-        {!pexelsUnavailable && <div className="settings-actions">
-          <button disabled={pexelsBusy || !pexelsKey.trim()} onClick={() => void connectPexels()}>{pexelsCredential?.connected ? "Replace key" : "Connect Pexels"}</button>
-          {pexelsCredential?.connected && <button className="secondary" disabled={pexelsBusy} onClick={() => void testPexels()}>Test Pexels</button>}
-          {pexelsCredential?.connected && <button className="secondary" disabled={pexelsBusy} onClick={() => void disconnectPexels()}>Disconnect Pexels</button>}
-        </div>}
-        <a href="https://www.pexels.com/api/" target="_blank" rel="noreferrer">Get a Pexels API key</a>
-      </article>
-      <article className="settings-card" aria-labelledby="fal-settings-title">
-        <h2 id="fal-settings-title">FAL generation</h2>
-        <p>Connect your own FAL API-scope key for AI still generation in the storyboard. Each image is charged directly to your FAL account after you see the estimated cost and confirm it. F-Motion does not supply or share a FAL key.</p>
-        {falUnavailable && <p className="notice">FAL connection is unavailable here. Uploads, Pexels, editing, and rendering still work.</p>}
-        {!falUnavailable && falCredential?.connected && <p>
-          Connected · key ending …{falCredential.hint}
-          {falCredential.validated_at ? ` · verified ${new Date(falCredential.validated_at).toLocaleString()}` : ""}
-        </p>}
-        {!falUnavailable && <label htmlFor="fal-key">{falCredential?.connected ? "Replacement FAL API key" : "FAL API key"}
-          <input
-            id="fal-key"
-            type="password"
-            autoComplete="new-password"
-            spellCheck={false}
-            value={falKey}
-            onChange={(event) => setFalKey(event.target.value)}
-            placeholder="Paste an API-scope key"
-          />
-          <small>Create an API-scope key in FAL. F-Motion can verify that it calls models, but FAL does not provide scope introspection.</small>
-        </label>}
-        {!falUnavailable && <div className="settings-actions">
-          <button disabled={falBusy || !falKey.trim()} onClick={() => void connectFal()}>{falCredential?.connected ? "Replace key" : "Connect FAL"}</button>
-          {falCredential?.connected && <button className="secondary" disabled={falBusy} onClick={() => void testFal()}>Test connection</button>}
-          {falCredential?.connected && <button className="secondary" disabled={falBusy} onClick={() => void disconnectFal()}>Disconnect</button>}
-        </div>}
-        <a href="https://fal.ai/dashboard/keys" target="_blank" rel="noreferrer">Open FAL API keys</a>
-      </article>
-      <p>Privacy and terms will ship with Gate 0 launch policy evidence.</p>
       <p role="status" aria-live="polite">{status}</p>
-      <button disabled={authBusy} onClick={() => void signOut()}>Sign out</button>
-      <button className="secondary" onClick={() => { setFalKey(""); setPexelsKey(""); setStep("drafts"); }}>Back to drafts</button>
+      <div className="settings-foot">
+        <button onClick={() => { setFalKey(""); setPexelsKey(""); setPixabayKey(""); setOnboardSources(false); setStep("drafts"); }}>{onboardSources ? "Continue to drafts" : "Done"}</button>
+        <button className="ghost" disabled={authBusy} onClick={() => void signOut()}>Sign out</button>
+      </div>
     </section>}
     {featureLock && <dialog open aria-labelledby="feature-lock-title">
       <span className="lock-label">Locked</span>
@@ -3234,4 +4016,69 @@ function App() {
   </div>;
 }
 
-createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);
+function studioPath(pathname: string): boolean {
+  return pathname === "/studio" || pathname.startsWith("/studio/")
+    || pathname === "/app" || pathname.startsWith("/app/");
+}
+
+const pageTitles: Record<string, string> = {
+  "/": "F-Motion — Vertical reels from your own media",
+  "/self-host": "F-Motion — Self-host",
+  "/hosted": "F-Motion — Hosted studio"
+};
+
+function documentTitleFor(pathname: string): string {
+  if (import.meta.env.VITE_SELFHOST_AUTH === "1" || studioPath(pathname)) return "F-Motion — Studio";
+  return pageTitles[pathname] ?? "F-Motion";
+}
+
+function leftoverMarketingPath(pathname: string): boolean {
+  return pathname === "/self-host" || pathname === "/self-host/" || pathname === "/self-host.html"
+    || pathname === "/hosted" || pathname === "/hosted/" || pathname === "/hosted.html";
+}
+
+function Root() {
+  const selfhost = import.meta.env.VITE_SELFHOST_AUTH === "1";
+  const [path, setPath] = useState(() => window.location.pathname);
+
+  useEffect(() => {
+    const sync = () => setPath(window.location.pathname);
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+
+  useEffect(() => {
+    document.title = documentTitleFor(path);
+  }, [path]);
+
+  useEffect(() => {
+    if (!selfhost || !leftoverMarketingPath(path)) return;
+    const here = new URL(window.location.href);
+    history.replaceState(null, "", `/${here.search}${here.hash}`);
+    setPath("/");
+  }, [path, selfhost]);
+
+  useEffect(() => {
+    if (selfhost) return;
+    const here = new URL(window.location.href);
+    const params = here.searchParams;
+    const hash = new URLSearchParams(here.hash.replace(/^#/, ""));
+    const id = params.get("project") ?? "";
+    const code = params.get("code") ?? "";
+    const error = params.get("error_code") ?? params.get("error") ?? hash.get("error_code") ?? hash.get("error") ?? "";
+    const fromMarketing = path === "/" && (/^[0-9a-f-]{36}$/i.test(id) || code || error);
+    const fromLegacy = path === "/app" || path.startsWith("/app/");
+    if (!fromMarketing && !fromLegacy) return;
+    const next = new URL("/studio", here.origin);
+    if (/^[0-9a-f-]{36}$/i.test(id)) next.searchParams.set("project", id);
+    if (code) next.searchParams.set("code", code);
+    if (error) next.searchParams.set("error_code", error);
+    history.replaceState(null, "", `${next.pathname}${next.search}${here.hash}`);
+    setPath("/studio");
+  }, [path, selfhost]);
+
+  if (selfhost || studioPath(path)) return <App />;
+  return <MarketingApp path={path} />;
+}
+
+createRoot(document.getElementById("root")!).render(<StrictMode><Root /></StrictMode>);

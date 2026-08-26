@@ -52,7 +52,7 @@ async function expectRenderedProject(
 }
 
 async function signIn(page: import("@playwright/test").Page) {
-  await page.goto("/");
+  await page.goto("/studio");
   await page.getByRole("button", { name: "Email me a magic link" }).click();
   await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
 }
@@ -70,7 +70,7 @@ async function chooseConcept(page: Page, title: "Direct" | "Story" | "Rhythm"): 
 
 async function attachFixtureToScene(page: Page, sceneNumber: number): Promise<void> {
   await page.getByRole("button", { name: `Edit scene ${sceneNumber}` }).click();
-  const input = page.locator('input[type="file"]');
+  const input = page.locator("input.scene-upload");
   await input.setInputFiles([]);
   await input.setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("status").filter({ hasText: "Media attached to this scene" })).toBeVisible();
@@ -120,6 +120,16 @@ test("E2E worker rejects empty snapshots and missing fixture mappings", async ({
   expect(missing.status()).toBe(400);
 });
 
+test("marketing home offers studio and self-host", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Vertical reels from your own media." })).toBeVisible();
+  await expect(page.getByText("Write a short brief, pick a story, drop in your clips, download a 720p vertical preview.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open studio" }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Self-host" }).first()).toBeVisible();
+  await page.getByRole("link", { name: "Open studio" }).first().click();
+  await expect(page.getByRole("button", { name: "Email me a magic link" })).toBeVisible();
+});
+
 test("locked provider actions explain the blocker and next action", async ({ page }) => {
   await page.route("**/api/providers/pexels/credential", async (route) => {
     if (route.request().method() === "GET") {
@@ -133,10 +143,9 @@ test("locked provider actions explain the blocker and next action", async ({ pag
   await expect(page.getByRole("heading", { name: "Pexels stock is locked" })).toBeVisible();
   await expect(page.getByText("Connect your Pexels API key to search real stock video.")).toBeVisible();
   await page.getByRole("button", { name: "Open provider settings" }).click();
-  await expect(page.getByRole("heading", { name: "Choose your video sources" })).toBeVisible();
-  await page.getByRole("button", { name: "Why is this locked?" }).first().click();
-  await expect(page.getByRole("heading", { name: "Pexels stock is locked" })).toBeVisible();
-  await page.getByRole("button", { name: "Close" }).click();
+  await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pexels" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect Pexels" })).toBeVisible();
 });
 
 test("upload journey, natural conflict recovery, render, and download", async ({ page }) => {
@@ -144,11 +153,11 @@ test("upload journey, natural conflict recovery, render, and download", async ({
     route.fulfill({ status: 200, body: "" }));
   await page.setViewportSize({ width: 320, height: 900 });
   await signIn(page);
-  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByRole("button", { name: "Create new video" }).first().click();
   await page.getByLabel("Visual description").fill("Launch a product for small teams");
   await page.reload();
   await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
-  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByRole("button", { name: "Create new video" }).first().click();
   await expect(page.getByLabel("Visual description")).toHaveValue("Launch a product for small teams");
   await page.getByRole("button", { name: "Continue to video plan" }).click();
   await expect(page.getByLabel("Recommended video plan")).toContainText("Promote an idea or product");
@@ -158,7 +167,7 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await chooseConcept(page, "Direct");
 
   await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
-  await page.locator('input[type="file"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await page.locator("input.scene-upload").setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
   for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
@@ -229,11 +238,12 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   await continueToConcepts(page);
   expect(pexelsMediaPosts).toEqual([]);
   await page.getByRole("button", { name: "Choose Story concept" }).click();
-  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Building your draft" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your draft" })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
   await expect(page.getByText(/The story begins\.|Calm studio introduction/i).first()).toBeVisible();
   await expect(page.getByRole("status").filter({
-    hasText: /Licensed media attached for every scene|scenes have media/
+    hasText: /Draft ready|scenes have media/
   })).toBeVisible({ timeout: 60_000 });
 
   const attached = await page.evaluate(async () => {
@@ -250,6 +260,8 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   expect(attached.creators.every(Boolean)).toBeTruthy();
   expect(new Set(attached.creators).size).toBeGreaterThanOrEqual(1);
 
+  await page.getByRole("button", { name: "Edit storyboard" }).click();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible();
   await page.getByRole("button", { name: "Edit scene 1" }).click();
   await page.getByRole("button", { name: "Find another licensed video for scene 1" }).click();
   await expect(page.getByRole("button", { name: "Select for scene 1" })).toHaveCount(2);
@@ -270,7 +282,7 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   const editedCaption = page.getByLabel("Scene 1 caption");
   await editedCaption.fill("Updated after preview");
   await editedCaption.press("Tab");
-  await expect(page.getByText("Updated after preview")).toBeVisible();
+  await expect(page.getByText("Updated after preview").first()).toBeVisible();
   await page.getByRole("button", { name: "Back to drafts" }).click();
   await page.getByRole("button").filter({ hasText: "A calm studio introduction" }).click();
   await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
@@ -281,9 +293,9 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   await expect(page.locator("body")).not.toContainText(/local-demo-|access_token/i);
   await page.getByRole("button", { name: "Settings" }).first().click();
   await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page.getByRole("heading", { name: "Shape a vertical video" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Make a vertical preview" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Shape a vertical video" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Make a vertical preview" })).toBeVisible();
 });
 
 test("FAL still generation quotes, confirms, and attaches only after review", async ({ page }) => {
@@ -303,7 +315,7 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   await page.getByLabel("Where should visuals come from?").selectOption("own");
   await chooseConcept(page, "Direct");
   await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
-  await page.locator('input[type="file"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await page.locator("input.scene-upload").setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
   for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
@@ -316,7 +328,9 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   await expect(page.getByText(/estimated total USD 0\.003/i)).toBeVisible();
   await expect(page.getByRole("button", { name: "Generate one image" })).toBeEnabled();
   await page.getByRole("button", { name: "Generate one image" }).click();
-  await expect(page.getByRole("button", { name: "Use for scene 1" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "AI still ready — open Generate AI image to review it." })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Generate AI image for scene 1" }).click();
+  await expect(page.getByRole("button", { name: "Use for scene 1" })).toBeVisible();
   await expect(page.getByText("AI-generated with FAL").first()).toBeVisible();
   const mediaIdBefore = await page.evaluate(async () => {
     const projectId = localStorage.getItem("fengine-project");
@@ -356,7 +370,7 @@ test("FAL image-to-video quotes, confirms, and attaches only after review", asyn
   await page.getByLabel("Where should visuals come from?").selectOption("own");
   await chooseConcept(page, "Direct");
   await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
-  await page.locator('input[type="file"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await page.locator("input.scene-upload").setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
   for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
@@ -368,7 +382,9 @@ test("FAL image-to-video quotes, confirms, and attaches only after review", asyn
   await page.getByRole("button", { name: "Get FAL price" }).click();
   await expect(page.getByText(/estimated total USD 0\.19/i)).toBeVisible();
   await page.getByRole("button", { name: "Generate one 6-second video" }).click();
-  await expect(page.getByRole("button", { name: "Use video for scene 1" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "AI video ready — open Animate this image to review it." })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Animate this image for scene 1" }).click();
+  await expect(page.getByRole("button", { name: "Use video for scene 1" })).toBeVisible();
   await page.getByRole("button", { name: "Use video for scene 1" }).click();
   await expect(page.getByRole("status").filter({ hasText: /AI-generated FAL video/i })).toBeVisible();
 

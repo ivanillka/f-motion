@@ -1,13 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOrigin } from "../src/auth.ts";
 
 test("hosted magic links return to the F-Motion studio", () => {
-  assert.equal(studioOrigin("https://f-motion.com/app/?project=59af46af-b82d-5fda-a837-652b88dcb50f"), "https://f-motion.com/app/");
-  assert.equal(studioOrigin("https://f-motion.com/"), "https://f-motion.com/app/");
-  assert.equal(studioOrigin("https://www.f-motion.com/app/"), "https://f-motion.com/app/");
-  assert.equal(studioOrigin("https://8b24f3e9.f-motion.pages.dev/app/"), "https://f-motion.com/app/");
-  assert.equal(studioOrigin("http://localhost:5173/"), "http://localhost:5173/");
+  assert.equal(studioOrigin("https://f-motion.com/app/?project=59af46af-b82d-5fda-a837-652b88dcb50f"), "https://f-motion.com/studio");
+  assert.equal(studioOrigin("https://f-motion.com/"), "https://f-motion.com/studio");
+  assert.equal(studioOrigin("https://www.f-motion.com/app/"), "https://f-motion.com/studio");
+  assert.equal(studioOrigin("https://8b24f3e9.f-motion.pages.dev/app/"), "https://f-motion.com/studio");
+  assert.equal(studioOrigin("http://localhost:5173/"), "http://localhost:5173/studio");
 });
 
 test("authCallbackError reads expired OTP from query or hash", () => {
@@ -167,6 +168,95 @@ test("auth client errors are propagated", async () => {
     { createClient: () => fake.client }
   );
   await assert.rejects(gateway.sendMagicLink("person@example.com"), /rejected/);
+});
+
+function fakeSelfhostApi() {
+  const owners = [];
+  return async (url, init = {}) => {
+    const method = init.method ?? "GET";
+    if (url === "/api/setup" && method === "GET") {
+      return { ok: true, status: 200, json: async () => ({ needed: owners.length === 0 }) };
+    }
+    if ((url === "/api/setup" && method === "POST") || (url === "/api/auth/login" && method === "POST")) {
+      const body = JSON.parse(init.body);
+      if (url === "/api/setup") {
+        if (owners.length) return { ok: false, status: 409, json: async () => ({ message: "This install already has an owner." }) };
+        owners.push(body.email);
+      } else if (!owners.includes(body.email)) {
+        return { ok: false, status: 401, json: async () => ({ message: "authentication required" }) };
+      }
+      return { ok: true, status: url === "/api/setup" ? 201 : 200, json: async () => ({ access_token: "fms_session" }) };
+    }
+    if (url === "/api/auth/logout") return { ok: true, status: 204, json: async () => ({}) };
+    throw new Error(`unexpected ${method} ${url}`);
+  };
+}
+
+test("self-host auth wins even when dummy Supabase settings are present", async () => {
+  const storage = memoryStorage();
+  let created = false;
+  const gateway = createAuthGateway(
+    {
+      url: "https://example.supabase.co",
+      publicKey: "public-key",
+      origin: "http://127.0.0.1:8080/",
+      allowDemo: false,
+      allowSelfhost: true
+    },
+    {
+      demoStorage: storage,
+      fetchImpl: fakeSelfhostApi(),
+      createClient() {
+        created = true;
+        throw new Error("must not construct Supabase");
+      }
+    }
+  );
+  assert.equal(typeof gateway.setupAccount, "function");
+  assert.equal(typeof gateway.signInWithPassword, "function");
+  await assert.rejects(gateway.sendMagicLink("person@example.com"), /email and password/);
+  await assert.rejects(gateway.signInWithGoogle(), /email and password/);
+  assert.equal(created, false);
+  assert.equal(await gateway.setupNeeded(), true);
+  await gateway.setupAccount("owner@example.com", "secret-pass", "Ada");
+  assert.equal(storage.getItem("fengine-selfhost-token"), "fms_session");
+});
+
+test("self-host login maps the API 401 string to a password rejection", async () => {
+  const gateway = createAuthGateway(
+    { origin: "http://127.0.0.1:8080/", allowDemo: false, allowSelfhost: true },
+    { demoStorage: memoryStorage(), fetchImpl: fakeSelfhostApi() }
+  );
+  await assert.rejects(
+    gateway.signInWithPassword("owner@example.com", "secret-pass"),
+    { message: "Email or password was rejected." }
+  );
+});
+
+test("self-host fetch is a direct call so browsers do not see a detached window.fetch", async () => {
+  const source = await readFile(new URL("../src/auth.ts", import.meta.url), "utf8");
+  assert.match(source, /this\.fetchImpl \? this\.fetchImpl\(input, init\) : fetch\(input, init\)/);
+  assert.doesNotMatch(source, /fetchImpl \?\? fetch/);
+});
+
+test("self-host owner password stays in session storage and is the bearer", async () => {
+  const storage = memoryStorage();
+  const fetchImpl = fakeSelfhostApi();
+  const gateway = createAuthGateway(
+    { origin: "http://127.0.0.1:8080/", allowDemo: false, allowSelfhost: true },
+    { demoStorage: storage, fetchImpl }
+  );
+  const sessions = [];
+  const unsubscribe = gateway.subscribe((session) => sessions.push(session?.accessToken));
+  await new Promise(queueMicrotask);
+  assert.equal(sessions[0], undefined);
+  await gateway.setupAccount("owner@example.com", "secret-pass", "Ada");
+  assert.equal(sessions.at(-1), "fms_session");
+  assert.equal(storage.getItem("fengine-selfhost-token"), "fms_session");
+  await gateway.signOut();
+  assert.equal(storage.getItem("fengine-selfhost-token"), null);
+  assert.equal(sessions.at(-1), undefined);
+  unsubscribe();
 });
 
 test("demo sessions store only a marker and clear it on sign-out", async () => {
