@@ -49,23 +49,23 @@ void main() {
   });
 
   test('shared contracts fixtures parse identically in Dart', () {
-    final project = loadSharedFixture('project-v1.json') as JsonMap;
+    final project = loadSharedObject('project-v1.json');
     expect(ContractFixture.accepts(project), isTrue);
-    expect(ContractFixture.accepts(loadSharedFixture('project-v2-breaking.json') as JsonMap), isFalse);
+    expect(ContractFixture.accepts(loadSharedObject('project-v2-breaking.json')), isFalse);
 
-    final incomplete = loadSharedFixture('error-render-input-incomplete.json') as JsonMap;
+    final incomplete = loadSharedObject('error-render-input-incomplete.json');
     expect(incomplete['type'], 'render_input_incomplete');
     expect(incomplete['message'], isA<String>());
 
-    final media = loadSharedFixture('scene-media-ready.json') as JsonMap;
+    final media = loadSharedObject('scene-media-ready.json');
     expect(media['state'], 'ready');
     expect(media['additive_client_field'], isTrue);
 
-    final progress = loadSharedFixture('sse-progress.json') as JsonMap;
+    final progress = loadSharedObject('sse-progress.json');
     expect(progress['phase'], 'preparing');
     expect(progress['additive_field'], 'ok');
 
-    final plan = loadSharedFixture('storyboard-plan-v1.json') as List<dynamic>;
+    final plan = loadSharedList('storyboard-plan-v1.json');
     expect(plan, hasLength(4));
     expect((plan.first as Map)['visual_prompt'], isA<String>());
   });
