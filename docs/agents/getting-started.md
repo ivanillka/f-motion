@@ -112,6 +112,7 @@ Partner import + Edit-in-F-Motion + webhook contract:
 
 See [`docs/agents/openclaw/README.md`](./openclaw/README.md). Prefer HTTP tool wrappers with a per-user F-Motion API key; do not reuse the gateway operator bearer as F-Motion auth.
 
+Public page: [f-motion.com/agents.html](https://f-motion.com/agents.html).
 Skill listings (ClawHub, Cursor, MCP, and pending directories):
 [`skill-sources.md`](./skill-sources.md). After the first ClawHub publish:
 

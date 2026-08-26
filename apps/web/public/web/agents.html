@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111213">
+  <meta name="description" content="Ask an agent — with photos or chat only — and get an F-Motion preview plus a draft you can keep editing.">
+  <meta property="og:title" content="F-Motion — Ask an agent. Keep the draft.">
+  <meta property="og:description" content="Drop photos or just talk. A preview comes back, and the same project stays open to edit.">
+  <meta property="og:image" content="https://f-motion.com/assets/fmotion-og-compose.jpg">
+  <meta property="og:url" content="https://f-motion.com/agents.html">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <title>F-Motion — Agents</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./web.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="topnav">
+    <a class="brand glitch-logo" data-glitch="rgb-split" data-text="F-MOTION" href="./">F-MOTION</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="./">Web</a>
+      <a href="./agents.html" aria-current="page">Agents</a>
+      <a href="./integrate.html">Integrate</a>
+    </nav>
+    <div class="topnav-actions">
+      <a class="nav-compact" href="./integrate.html">Integrate</a>
+      <a class="btn btn-primary" href="/app/">Open studio</a>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="page-hero" aria-label="Agents hero">
+      <p class="live-pill"><i aria-hidden="true"></i> AGENT LOOP</p>
+      <h1>Ask an agent. Keep the draft.</h1>
+      <p>Drop photos or just talk. F-Motion asks only what it still needs, then returns a vertical preview and the same project — ready to edit in the skill or the studio.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="/app/">Open studio</a>
+        <a class="btn btn-ghost" href="./integrate.html">See the API</a>
+      </div>
+      <div class="hero-plane">
+        <picture>
+          <source type="image/webp" srcset="./assets/fmotion-agents-hero.webp">
+          <img
+            src="./assets/fmotion-agents-hero.jpg"
+            width="1536"
+            height="1024"
+            alt="Dark studio desk with a phone showing a vertical reel beside stills"
+            fetchpriority="high"
+            decoding="async"
+          >
+        </picture>
+      </div>
+    </section>
+
+    <section class="section story" aria-labelledby="media-heading">
+      <div class="section-inner update">
+        <div class="update-copy">
+          <p class="eyebrow">Update</p>
+          <h2 id="media-heading">Media first</h2>
+          <p>Hand an agent a few stills or clips. It reads what you have — count, still vs video, portrait vs landscape — then asks at most four missing questions. The preview uses your files. The draft stays yours.</p>
+        </div>
+        <div class="update-visual">
+          <picture>
+            <source type="image/webp" srcset="./assets/fmotion-media-first.webp">
+            <img
+              src="./assets/fmotion-media-first.jpg"
+              width="1536"
+              height="1024"
+              alt="Printed stills sliding toward a glowing vertical phone frame"
+              loading="lazy"
+              decoding="async"
+            >
+          </picture>
+        </div>
+      </div>
+    </section>
+
+    <section class="section story" aria-labelledby="chat-heading">
+      <div class="section-inner update update-flip">
+        <div class="update-copy">
+          <p class="eyebrow">Update</p>
+          <h2 id="chat-heading">Chat only</h2>
+          <p>No files yet? Same loop. Answer intent, audience, length, and where visuals come from. You get a draft immediately. A preview renders only after media or licensed stock is actually attached — never an empty storyboard.</p>
+        </div>
+        <div class="update-visual">
+          <picture>
+            <source type="image/webp" srcset="./assets/fmotion-chat-only.webp">
+            <img
+              src="./assets/fmotion-chat-only.jpg"
+              width="1536"
+              height="1024"
+              alt="Laptop chat light flowing into a vertical storyboard on a phone"
+              loading="lazy"
+              decoding="async"
+            >
+          </picture>
+        </div>
+      </div>
+    </section>
+
+    <section class="section story" aria-labelledby="draft-heading">
+      <div class="section-inner update">
+        <div class="update-copy">
+          <p class="eyebrow">Update</p>
+          <h2 id="draft-heading">Copy to draft is this project</h2>
+          <p>The preview is never a published post. “Keep editing” opens the same project in the studio. Change one caption, swap one clip, then render again. Host metering: preview costs 1 unit, final costs 2. Pexels and FAL stay BYOK.</p>
+        </div>
+        <div class="update-visual studio-frame">
+          <div class="studio-chrome" aria-hidden="true"><span></span><span></span><span></span></div>
+          <picture>
+            <source type="image/webp" srcset="./assets/studio-ui.webp">
+            <img
+              src="./assets/studio-ui.jpg"
+              width="1600"
+              height="893"
+              alt="F-Motion storyboard studio with a vertical preview"
+              loading="lazy"
+              decoding="async"
+            >
+          </picture>
+        </div>
+      </div>
+    </section>
+
+    <section class="section story" aria-labelledby="where-heading">
+      <div class="section-inner">
+        <h2 id="where-heading">Where the skill lives</h2>
+        <p class="lede">One skill folder. Listings stay on this page as they go live. Never put names, emails, or keys in posts or video copy.</p>
+        <div class="recipes">
+          <article class="recipe">
+            <h3>Studio</h3>
+            <p>Open f-motion.com, drop media or write a brief, and keep the draft.</p>
+            <a href="/app/">Open studio →</a>
+          </article>
+          <article class="recipe">
+            <h3>Cursor &amp; OpenClaw</h3>
+            <p>The in-repo skill is <code>skills/fmotion</code>. Ask for a reel; the agent follows the four-question loop.</p>
+            <a href="./integrate.html">MCP + HTTP →</a>
+          </article>
+          <article class="recipe">
+            <h3>ClawHub</h3>
+            <p>Slug <code>fmotion</code> is ready. After the first public release:</p>
+            <a class="cyan" href="https://clawhub.ai">clawhub install fmotion →</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section final-cta" aria-labelledby="ready-heading">
+      <h2 id="ready-heading">Try the alpha</h2>
+      <a class="btn btn-primary" href="/app/">Open studio</a>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <a class="brand glitch-logo" data-glitch="slice-tear" data-text="F-MOTION" href="./">F-MOTION</a>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="./">Product</a>
+      <a href="/app/">Studio</a>
+      <a href="./agents.html">Agents</a>
+      <a href="./integrate.html">Integrate</a>
+      <a href="./terms.html">Terms</a>
+      <a href="./privacy.html">Privacy</a>
+    </nav>
+    <p class="footer-copy">© 2026 F-MOTION. ALL RIGHTS RESERVED.</p>
+  </footer>
+  <script src="./vendor/gsap.min.js" defer></script>
+  <script src="./vendor/ScrollTrigger.min.js" defer></script>
+  <script src="./web-motion.js" defer></script>
+</body>
+</html>

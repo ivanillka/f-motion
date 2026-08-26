@@ -587,6 +587,43 @@ button, .btn {
   padding: 24px;
 }
 
+.section.story {
+  padding-block: clamp(36px, 6vw, 72px);
+}
+.page-hero .hero-plane {
+  width: min(100%, var(--max));
+  margin-top: 12px;
+}
+.page-hero .hero-plane img {
+  aspect-ratio: 16 / 9;
+}
+
+.update {
+  display: grid;
+  gap: 32px;
+  align-items: center;
+}
+@media (min-width: 860px) {
+  .update { grid-template-columns: 1fr 1.15fr; gap: 56px; }
+  .update-flip { grid-template-columns: 1.15fr 1fr; }
+  .update-flip .update-copy { order: 2; }
+}
+.update-copy h2 { text-align: left; }
+.update-copy p { margin: 0; color: var(--muted); font-size: 1.05rem; max-width: 36rem; }
+.update-copy .eyebrow { margin-bottom: 12px; }
+.update-copy .cta-row { justify-content: flex-start; }
+.update-visual {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
+}
+.update-visual img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
 .dx {
   display: grid;
   gap: 32px;

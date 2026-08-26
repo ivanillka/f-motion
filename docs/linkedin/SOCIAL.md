@@ -1,8 +1,8 @@
 # F-Motion LinkedIn social manager
 
 Company page only: [linkedin.com/company/f-motion](https://www.linkedin.com/company/f-motion)
-(organization id `144706944`). Not Ivan’s personal profile. Not the Kent marketing
-agency **FMotion**.
+(organization id `144706944`). Never a personal profile. Never name a person.
+Not the Kent marketing agency **FMotion**.
 
 This file is the voice and skip policy for the weekly Cursor automation.
 
@@ -25,7 +25,9 @@ the matching `plans/NNN-*.md`, `git log`, `DESIGN.md`, `README.md`).
 ## Always
 
 - Product is **live alpha**, not a commercial launch, GA, or v1.0 production-ready.
-- Canonical URL: https://f-motion.com (include it; n8n attaches the link preview).
+- Canonical URL: https://f-motion.com or a specific page such as
+  https://f-motion.com/agents.html (include it; n8n attaches the link preview,
+  which uses the page `og:image`).
 - Stack: React + Vite on web, Flutter on Android, Express API, FFmpeg workers.
 - FAL image/video is **BYOK only** — owner-scoped, never a platform/maintained key.
 - Gate 0 (legal / licensing / payments evidence) is still open. Do not imply paid
@@ -40,9 +42,10 @@ the matching `plans/NNN-*.md`, `git log`, `DESIGN.md`, `README.md`).
 - Say Next.js (this product is Vite + React).
 - Claim Gate 0, Beatoven, or generated music is done.
 - Attach or mention **FMotion** (Marketing Services, Ashford, Kent).
-- Post to Ivan’s personal LinkedIn or change his featured company (Expedia).
+- Post to a personal LinkedIn profile or mention private employers.
 - Invent metrics, customers, waitlists, or launch dates.
-- Post images or video in v1 (text + f-motion.com preview only).
+- Attach extra image files in the n8n v1 webhook (the page `og:image` is the visual).
+- Include names, emails, phones, account identifiers, or API keys.
 
 ## After posting
 

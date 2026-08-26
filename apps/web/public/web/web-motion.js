@@ -235,15 +235,15 @@
           .from(hero.querySelector(".hero-plane"), { autoAlpha: 0, y: 40, scale: 1.02, duration: 0.85 }, "-=0.2");
       }
       gsap.utils.toArray(".section").forEach((section) => {
-        gsap.from(section.querySelectorAll("h2, .lede, .step, .keys-visual, .keys-copy, .studio-frame, .recipe, .diagram, .dx > *"), {
+        gsap.from(section.querySelectorAll("h2, .lede, .step, .keys-copy, .recipe, .dx > *"), {
           autoAlpha: 0,
-          y: 32,
-          duration: 0.65,
-          stagger: 0.08,
+          y: 24,
+          duration: 0.55,
+          stagger: 0.06,
           ease: "power2.out",
           scrollTrigger: {
             trigger: section,
-            start: "top 78%",
+            start: "top 92%",
             once: true
           }
         });

@@ -90,6 +90,7 @@ your row when done.
 | 066 | Fotium queue Edit opens a prefilled `/app` draft | P1 | M | 053, 054 | DONE (branch `advisor/056-fotium-queue-edit`) |
 | 067 | Agent compose: media-first or chat-only → preview + draft | P1 | M | 061–064 | DONE (`cursor/agent-compose-flow-316e`) |
 | 068 | Publish F-Motion skill + track ClawHub/Cursor/MCP sources | P1 | S | 067 | DONE (`cursor/agent-compose-flow-316e`) |
+| 069 | Present agent loop on f-motion.com + LinkedIn post draft | P1 | S | 067, 068 | DONE (`cursor/agent-compose-flow-316e`) |
 
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (reason)

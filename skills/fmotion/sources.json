@@ -106,6 +106,25 @@
       "url": "https://www.npmjs.com/search?q=%40f-engine%2Ffmotion",
       "update": "Un-private the packages and publish when the public install path ships",
       "blocker": "Both packages are private in this repo"
+    },
+    {
+      "id": "website",
+      "name": "f-motion.com Agents",
+      "role": "public product page",
+      "status": "live",
+      "published_version": "1.0.0",
+      "url": "https://f-motion.com/agents.html",
+      "update": "Keep agents.html copy and visuals aligned with SKILL.md"
+    },
+    {
+      "id": "linkedin",
+      "name": "LinkedIn company page",
+      "role": "audience reach",
+      "status": "ready_to_publish",
+      "published_version": null,
+      "url": "https://www.linkedin.com/company/f-motion",
+      "update": "Post from docs/linkedin/posts/ on the company page only. Link the agents page so the OG image travels with the post.",
+      "blocker": "Company-page webhook or a manual post. Never a personal profile."
     }
   ]
 }

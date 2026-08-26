@@ -46,7 +46,9 @@ test("fmotion skill is ClawHub-shaped and sources stay in lockstep", async () =>
     "cursor-marketplace",
     "cursor-directory",
     "hermes-mcp",
-    "npm-packages"
+    "npm-packages",
+    "website",
+    "linkedin"
   ]) {
     assert.ok(ids.includes(required), `missing source ${required}`);
   }

@@ -24,6 +24,8 @@ runbook.
 | `cursor-directory` | cursor.directory/plugins/new | pending | Submit the GitHub repo URL; paste listing URL |
 | `hermes-mcp` | `@f-engine/fmotion-mcp` | live | Tool names must match the skill |
 | `npm-packages` | public npm CLI/MCP | pending | Packages are still private |
+| `website` | [f-motion.com/agents.html](https://f-motion.com/agents.html) | live | Keep copy + visuals with SKILL.md |
+| `linkedin` | Company page | ready to publish | `docs/linkedin/posts/` — company page only |
 
 Statuses: `live` · `ready_to_publish` · `follows_clawhub` · `pending`.
 

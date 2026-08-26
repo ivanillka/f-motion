@@ -275,7 +275,9 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
     "See integration",
     "Your media, your keys",
     "./assets/hero-reel.jpg",
-    "./assets/studio-ui.jpg"
+    "./assets/studio-ui.jpg",
+    "./agents.html",
+    "Ask Cursor or OpenClaw"
   ]) {
     assert.match(home, new RegExp(phrase.replace(/[→]/g, "\\$&")));
   }
@@ -286,9 +288,22 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
     "Integration Recipes",
     "api.f-motion.com",
     "./assets/host-diagram.jpg",
-    "MCP Agent Loop"
+    "MCP Agent Loop",
+    "./agents.html"
   ]) {
     assert.match(integrate, new RegExp(phrase));
+  }
+  const agents = await readFile(new URL("agents.html", root), "utf8");
+  for (const phrase of [
+    "Ask an agent. Keep the draft.",
+    "Media first",
+    "Chat only",
+    "./assets/fmotion-agents-hero.jpg",
+    "./assets/fmotion-media-first.jpg",
+    "./assets/fmotion-chat-only.jpg",
+    "og:image"
+  ]) {
+    assert.match(agents, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
   assert.doesNotMatch(home, /cdn\.tailwindcss\.com|fonts\.googleapis\.com|assets\/logo\.png/);
   assert.doesNotMatch(integrate, /cdn\.tailwindcss\.com|fonts\.googleapis\.com|assets\/logo\.png/);
@@ -329,6 +344,8 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.doesNotMatch(terms, /ScrollTrigger|ScrambleText/);
   assert.match(css, /\.nav-compact/);
   assert.match(css, /\.skip-link/);
+  assert.match(css, /\.update-visual/);
+  assert.match(css, /\.section\.story/);
   const headers = await readFile(new URL("../public/_headers", import.meta.url), "utf8");
   assert.match(headers, /Content-Security-Policy/);
   assert.match(headers, /connect-src[^;]*https:\/\/\*\.supabase\.co/);
@@ -343,7 +360,12 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
     "studio-ui.jpg",
     "studio-ui.webp",
     "host-diagram.jpg",
-    "host-diagram.webp"
+    "host-diagram.webp",
+    "fmotion-agents-hero.jpg",
+    "fmotion-agents-hero.webp",
+    "fmotion-media-first.jpg",
+    "fmotion-chat-only.jpg",
+    "fmotion-og-compose.jpg"
   ]) {
     await readFile(new URL(`assets/${asset}`, root));
   }
