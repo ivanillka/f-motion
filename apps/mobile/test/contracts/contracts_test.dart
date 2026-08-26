@@ -6,9 +6,22 @@ import 'package:f_motion/main.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-JsonMap loadSharedFixture(String name) {
-  final file = File('../../../../packages/contracts/fixtures/$name');
-  return Map<String, Object?>.from(jsonDecode(file.readAsStringSync()) as Map);
+File sharedFixture(String name) {
+  var dir = Directory.current;
+  for (var i = 0; i < 8; i++) {
+    final candidate = File('${dir.path}/packages/contracts/fixtures/$name');
+    if (candidate.existsSync()) return candidate;
+    final parent = dir.parent;
+    if (parent.path == dir.path) break;
+    dir = parent;
+  }
+  throw StateError('missing fixture $name (cwd ${Directory.current.path})');
+}
+
+Object? loadSharedFixture(String name) {
+  final decoded = jsonDecode(sharedFixture(name).readAsStringSync());
+  if (decoded is Map) return JsonMap.from(decoded);
+  return decoded;
 }
 
 void main() {
