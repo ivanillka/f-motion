@@ -306,7 +306,7 @@ export function plannedVoiceScript(
 const FAL_SPEECH_LOG: Record<string, string> = {
   quoted: "FAL priced this script.",
   queued: "Queued for generation.",
-  submitting: "Sending the script to FAL.",
+  submitting: "FAL is generating speech.",
   running: "FAL is synthesizing speech.",
   downloading: "Copying audio into private storage.",
   inspecting: "Checking the audio file.",
@@ -333,6 +333,7 @@ export function falSpeechProgress(state: string, elapsedMs = 0): { percent: numb
     submission_uncertain: 100
   };
   let percent = base[state] ?? 0;
+  if (state === "submitting") percent = Math.min(80, 32 + Math.floor(Math.max(0, elapsedMs) / 800));
   if (state === "running") percent = Math.min(84, 45 + Math.floor(Math.max(0, elapsedMs) / 3000));
   return { percent, line };
 }

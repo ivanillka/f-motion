@@ -89,7 +89,7 @@ function fakePool(initial, options = {}) {
       return { rowCount: 1 };
     }
     if (sql.includes("SET state = 'downloading'")) {
-      if (row.state === "running") row.state = "downloading";
+      if (row.state === "running" || row.state === "submitting") row.state = "downloading";
       return { rowCount: 1 };
     }
     if (sql.includes("SET state = 'ready'")) {
@@ -135,7 +135,7 @@ test("submitting without providerRequestId becomes submission_uncertain and neve
   assert.equal(submits, 0);
 });
 
-test("queued speech submits once, seals wav, skips inspect-media", async () => {
+test("queued speech runs Kokoro on fal.run, seals wav, skips inspect-media", async () => {
   const { credentialVaultFromEnv, encryptCredential } = await import("@f-engine/fal-host");
   const vault = credentialVaultFromEnv(env);
   const encrypted = encryptCredential("fal-test-key", {
@@ -151,27 +151,17 @@ test("queued speech submits once, seals wav, skips inspect-media", async () => {
     keyVersion: encrypted.keyVersion
   }), options);
   let posts = 0;
-  let phase = 0;
   const wav = wavBytes();
   const fetchImpl = async (url, init = {}) => {
     const method = String(init.method || "GET").toUpperCase();
-    if (method === "POST" && String(url).includes("queue.fal.run") && !String(url).includes("/requests/")) {
+    if (method === "POST" && String(url) === "https://fal.run/fal-ai/kokoro/american-english") {
       posts += 1;
-      assert.match(String(url), /kokoro\/american-english/);
-      return new Response(JSON.stringify({ request_id: "req-speech" }), {
-        status: 200, headers: { "content-type": "application/json" }
-      });
-    }
-    if (String(url).includes("/status")) {
-      phase += 1;
-      return new Response(JSON.stringify({ status: phase < 2 ? "IN_PROGRESS" : "COMPLETED" }), {
-        status: 200, headers: { "content-type": "application/json" }
-      });
-    }
-    if (String(url).includes("/requests/") && method === "GET" && !String(url).includes("/status")) {
       return new Response(JSON.stringify({
         audio: { url: "https://v3.fal.media/files/voice.wav" }
       }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).includes("queue.fal.run") || String(url).includes("/status")) {
+      throw new Error(`queue poll should not run for new speech ${method} ${url}`);
     }
     if (String(url).startsWith("https://") && String(url).includes("fal.media")) {
       return new Response(wav, {
@@ -199,13 +189,13 @@ test("queued speech submits once, seals wav, skips inspect-media", async () => {
   assert.equal(posts, 1);
   assert.equal(result.state, "ready");
   assert.equal(pool.row.state, "ready");
+  assert.equal(pool.row.providerRequestId, null);
   assert.equal(puts.length, 1);
   assert.match(puts[0].key, /media-sealed/);
   assert.equal(puts[0].contentType, "audio/wav");
   assert.equal(options.insertedMedia[8], "audio/wav");
   assert.equal(options.outbox, undefined);
   assert.equal(pool.queries.some(({ sql }) => sql.includes("inspect-media")), false);
-  assert.equal(pool.queries.some(({ sql }) => sql.includes("SET \"updatedAt\" = NOW()") && !sql.includes("SET state")), true);
 });
 
 test("a 404 FAL status after submit is retried until COMPLETED", async () => {
@@ -235,6 +225,7 @@ test("a 404 FAL status after submit is retried until COMPLETED", async () => {
       });
     }
     if (String(url).includes("/requests/")) {
+      if (phase < 2) return new Response("{}", { status: 404 });
       return new Response(JSON.stringify({
         audio: { url: "https://v3.fal.media/files/voice.wav" }
       }), { status: 200, headers: { "content-type": "application/json" } });

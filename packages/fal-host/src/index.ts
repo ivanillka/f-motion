@@ -508,6 +508,8 @@ export const FAL_SPEECH_MAX_BYTES = 25_000_000;
 const falSpeechPricingUrl =
   "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai%2Fkokoro%2Famerican-english";
 const falSpeechQueueBase = `https://queue.fal.run/${FAL_SPEECH_ENDPOINT_ID}`;
+const falSpeechRunUrl = `https://fal.run/${FAL_SPEECH_ENDPOINT_ID}`;
+const falSpeechRunTimeoutMs = 45_000;
 
 export type FalSpeechQuote = FalImageQuote;
 export type FalSpeechSubmitResult = FalImageSubmitResult;
@@ -644,6 +646,32 @@ function firstFalAudioUrl(value: unknown): string | undefined {
   if (record.audio) return firstFalAudioUrl(record.audio);
   if (typeof record.url === "string") return record.url;
   return undefined;
+}
+
+/** Blocking Kokoro TTS. Queue+poll is for long jobs; this model finishes in seconds. */
+export async function runSpeech(
+  credential: string,
+  input: { prompt: string },
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falSpeechRunTimeoutMs,
+  signal?: AbortSignal
+): Promise<FalSpeechResult> {
+  const payload = falSpeechInput(input.prompt);
+  const { status, body } = await falJson(credential, falSpeechRunUrl, {
+    method: "POST",
+    headers: {
+      "X-Fal-Store-IO": "0",
+      "X-Fal-Object-Lifecycle-Preference": JSON.stringify({ expiration_duration_seconds: 3600 })
+    },
+    body: JSON.stringify(payload)
+  }, fetchImpl, timeoutMs, signal);
+  if (status === 401 || status === 403) throw new FalImageError("credential");
+  if (status === 429) throw new FalImageError("rate_limited");
+  if (status < 200 || status >= 300) throw new FalImageError(classifyHttp(status));
+  const url = firstFalAudioUrl(body);
+  if (!url) throw new FalImageError("unsafe_output");
+  assertFalMediaUrl(url);
+  return { url };
 }
 
 export async function speechResult(

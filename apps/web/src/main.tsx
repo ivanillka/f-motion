@@ -2689,7 +2689,7 @@ function App() {
   const speechProgress = falSpeechJob ? falSpeechProgress(falSpeechJob.state, speechElapsedMs) : { percent: 0, line: "" };
   const speechLog = falSpeechJob
     ? falSpeechLogTrail(falSpeechJob.state).map((line, index, all) => (
-      index === all.length - 1 && falSpeechJob.state === "running" && speechElapsedMs
+      index === all.length - 1 && (falSpeechJob.state === "running" || falSpeechJob.state === "submitting") && speechElapsedMs
         ? `${line} · ${formatPlayTime(speechElapsedMs)}`
         : line
     ))

@@ -33,14 +33,22 @@ test("planned voice script prefers FAL caption over the visual description", () 
 
 test("FAL speech progress bar and log follow job state", () => {
   assert.equal(falSpeechProgress("quoted").percent, 8);
+  assert.equal(falSpeechProgress("submitting", 0).percent, 32);
+  assert.equal(falSpeechProgress("submitting", 8_000).percent, 42);
+  assert.equal(falSpeechProgress("submitting", 120_000).percent, 80);
   assert.equal(falSpeechProgress("running", 0).percent, 45);
   assert.equal(falSpeechProgress("running", 30_000).percent, 55);
   assert.equal(falSpeechProgress("running", 600_000).percent, 84);
   assert.equal(falSpeechProgress("ready").percent, 100);
+  assert.deepEqual(falSpeechLogTrail("submitting"), [
+    "FAL priced this script.",
+    "Queued for generation.",
+    "FAL is generating speech."
+  ]);
   assert.deepEqual(falSpeechLogTrail("running"), [
     "FAL priced this script.",
     "Queued for generation.",
-    "Sending the script to FAL.",
+    "FAL is generating speech.",
     "FAL is synthesizing speech."
   ]);
   assert.equal(falSpeechLogTrail("failed").at(-1), "Generation failed.");

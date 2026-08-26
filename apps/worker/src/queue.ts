@@ -76,7 +76,7 @@ export async function dispatchOutbox(pool: pg.Pool, boss: PgBoss): Promise<numbe
       retryBackoff: true,
       expireInSeconds: row.kind === renderQueue ? 300
         : (row.kind === falImageQueue || row.kind === falVideoQueue) ? 1200
-          : row.kind === falSpeechQueue ? 600
+          : row.kind === falSpeechQueue ? 90
             : 60
     });
     // A null id means pg-boss already has this immutable outbox UUID. The send
@@ -110,7 +110,7 @@ export async function reclaimActiveGenerationJobs(pool: pg.Pool, boss: PgBoss): 
       singletonKey: `${kind}:${row.id}`,
       retryLimit: 2,
       retryDelay: 1,
-      expireInSeconds: kind === falVideoQueue ? 1200 : 600
+      expireInSeconds: kind === falVideoQueue ? 1200 : kind === falSpeechQueue ? 90 : 600
     });
     sent += 1;
   }
@@ -153,7 +153,7 @@ export async function startQueueRuntime(
   await boss.createQueue(renderQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 300 });
   await boss.createQueue(falImageQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 600 });
   await boss.createQueue(falVideoQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 1200 });
-  await boss.createQueue(falSpeechQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 600 });
+  await boss.createQueue(falSpeechQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 90 });
   await boss.work<InspectionJob>(inspectionQueue, { pollingIntervalSeconds: 1 }, async (jobs: Job<InspectionJob>[]) => {
     const job = jobs[0];
     if (!job) return;

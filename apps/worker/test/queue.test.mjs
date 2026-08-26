@@ -114,4 +114,5 @@ test("reclaim re-queues an active speech job with the original singleton key", a
   assert.equal(sent.kind, "generate-fal-speech");
   assert.equal(sent.payload.generationJobId, "aa5eb9de-9fb9-4de8-b958-95eef574d290");
   assert.equal(sent.options.singletonKey, "generate-fal-speech:aa5eb9de-9fb9-4de8-b958-95eef574d290");
+  assert.equal(sent.options.expireInSeconds, 90);
 });

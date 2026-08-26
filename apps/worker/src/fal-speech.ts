@@ -14,14 +14,16 @@ import {
   cancelSpeech,
   credentialVaultFromEnv,
   decryptCredential,
+  runSpeech,
   speechResult,
   speechStatus,
-  submitSpeech,
   type EncryptedCredential
 } from "@f-engine/fal-host";
 import type { WorkerObjectStore } from "./runtime.js";
 
-const POLL_CEILING_MS = 10 * 60_000;
+/** Legacy queue jobs only. New Kokoro runs are blocking and skip this loop. */
+const POLL_CEILING_MS = 20_000;
+const SPEECH_RUN_TIMEOUT_MS = 45_000;
 
 export interface FalSpeechJob {
   generationJobId: string;
@@ -176,9 +178,8 @@ async function runFalSpeechJob(
   if (!hasCredential(row)) return failMissingCredential(pool, job);
 
   if (row.state === "submitting" && !row.providerRequestId) {
-    // ponytail: crash after provider accept / before ID persist. Ceiling is manual
-    // FAL dashboard check; never auto-resubmit (duplicate spend). Upgrade if FAL
-    // documents idempotent submit or client-selected request IDs.
+    // ponytail: crash during blocking fal.run or before WAV persist. Ceiling is
+    // a FAL dashboard check; never auto-resubmit (duplicate spend).
     await pool.query(
       `UPDATE "GenerationJob" SET state = 'submission_uncertain', "failureCode" = 'submission_uncertain', "updatedAt" = NOW()
         WHERE id = $1 AND "ownerId" = $2 AND state = 'submitting' AND "providerRequestId" IS NULL`,
@@ -206,29 +207,16 @@ async function runFalSpeechJob(
       return { state: "cancelled" };
     }
     if (!hasCredential(row)) return failMissingCredential(pool, job);
-    const key = apiKey(row, env);
-    const submitted = await submitSpeech(key, { prompt: row.prompt }, fetchImpl, 30_000, signal);
-    await pool.query(
-      `UPDATE "GenerationJob"
-          SET "providerRequestId" = $1, state = 'running', "updatedAt" = NOW()
-        WHERE id = $2 AND "ownerId" = $3 AND state = 'submitting'`,
-      [submitted.request_id, job.generationJobId, job.ownerId]
+    const generated = await runSpeech(
+      apiKey(row, env),
+      { prompt: row.prompt },
+      fetchImpl,
+      SPEECH_RUN_TIMEOUT_MS,
+      signal
     );
     row = (await loadJob(pool, job))!;
     if (!row) return { state: "ignored" };
-  }
-
-  if (!row.providerRequestId) return { state: row.state };
-  if (!hasCredential(row)) return failMissingCredential(pool, job);
-  const key = apiKey(row, env);
-  let completed = false;
-  const deadline = Date.now() + pollCeilingMs;
-  while (Date.now() < deadline) {
-    if (signal.aborted) throw new Error("aborted");
-    row = (await loadJob(pool, job))!;
-    if (!row) return { state: "ignored" };
     if (row.cancelRequested) {
-      await cancelSpeech(key, row.providerRequestId!, fetchImpl, 15_000, signal).catch(() => undefined);
       await pool.query(
         `UPDATE "GenerationJob" SET state = 'cancelled', "updatedAt" = NOW()
           WHERE id = $1 AND "ownerId" = $2 AND state IN ('running', 'submitting', 'downloading')`,
@@ -236,9 +224,72 @@ async function runFalSpeechJob(
       );
       return { state: "cancelled" };
     }
+    await pool.query(
+      `UPDATE "GenerationJob" SET state = 'downloading', "updatedAt" = NOW()
+        WHERE id = $1 AND "ownerId" = $2 AND state IN ('running', 'submitting')`,
+      [job.generationJobId, job.ownerId]
+    );
+    return persistSpeechWav(pool, store, job, generated.url, signal, fetchImpl);
+  }
+
+  if (!row.providerRequestId) return { state: row.state };
+  if (!hasCredential(row)) return failMissingCredential(pool, job);
+  const queuedUrl = await pollLegacySpeechUrl(
+    pool,
+    job,
+    apiKey(row, env),
+    row.providerRequestId,
+    signal,
+    fetchImpl,
+    pollCeilingMs
+  );
+  if (!queuedUrl) {
+    row = (await loadJob(pool, job))!;
+    return { state: row?.state ?? "ignored" };
+  }
+  await pool.query(
+    `UPDATE "GenerationJob" SET state = 'downloading', "updatedAt" = NOW()
+      WHERE id = $1 AND "ownerId" = $2 AND state IN ('running', 'submitting')`,
+    [job.generationJobId, job.ownerId]
+  );
+  return persistSpeechWav(pool, store, job, queuedUrl, signal, fetchImpl);
+}
+
+async function pollLegacySpeechUrl(
+  pool: pg.Pool,
+  job: FalSpeechJob,
+  key: string,
+  requestId: string,
+  signal: AbortSignal,
+  fetchImpl: typeof fetch,
+  pollCeilingMs: number
+): Promise<string | undefined> {
+  try {
+    const immediate = await speechResult(key, requestId, fetchImpl, 30_000, signal);
+    return immediate.url;
+  } catch (error) {
+    if (!(error instanceof FalImageError) || (error.code !== "provider_unavailable" && error.code !== "rate_limited")) {
+      throw error;
+    }
+  }
+  let completed = false;
+  const deadline = Date.now() + pollCeilingMs;
+  while (Date.now() < deadline) {
+    if (signal.aborted) throw new Error("aborted");
+    const current = await loadJob(pool, job);
+    if (!current) return undefined;
+    if (current.cancelRequested) {
+      await cancelSpeech(key, requestId, fetchImpl, 15_000, signal).catch(() => undefined);
+      await pool.query(
+        `UPDATE "GenerationJob" SET state = 'cancelled', "updatedAt" = NOW()
+          WHERE id = $1 AND "ownerId" = $2 AND state IN ('running', 'submitting', 'downloading')`,
+        [job.generationJobId, job.ownerId]
+      );
+      return undefined;
+    }
     let status;
     try {
-      status = await speechStatus(key, row.providerRequestId!, fetchImpl, 30_000, signal);
+      status = await speechStatus(key, requestId, fetchImpl, 30_000, signal);
     } catch (error) {
       if (!(error instanceof FalImageError) || (error.code !== "provider_unavailable" && error.code !== "rate_limited")) {
         throw error;
@@ -257,7 +308,7 @@ async function runFalSpeechJob(
           WHERE id = $2 AND "ownerId" = $3`,
         [status.failureCode, job.generationJobId, job.ownerId]
       );
-      return { state: "failed" };
+      return undefined;
     }
     if (status.status === "COMPLETED") {
       completed = true;
@@ -270,25 +321,27 @@ async function runFalSpeechJob(
     );
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
-
   if (!completed) {
     await pool.query(
       `UPDATE "GenerationJob" SET state = 'failed', "failureCode" = $1, "updatedAt" = NOW()
         WHERE id = $2 AND "ownerId" = $3 AND state IN ('running', 'submitting', 'downloading')`,
       ["poll_timeout", job.generationJobId, job.ownerId]
     );
-    return { state: "failed" };
+    return undefined;
   }
+  const result = await speechResult(key, requestId, fetchImpl, 30_000, signal);
+  return result.url;
+}
 
-  row = (await loadJob(pool, job))!;
-  if (!row?.providerRequestId) return { state: "ignored" };
-  await pool.query(
-    `UPDATE "GenerationJob" SET state = 'downloading', "updatedAt" = NOW()
-      WHERE id = $1 AND "ownerId" = $2 AND state = 'running'`,
-    [job.generationJobId, job.ownerId]
-  );
-  const result = await speechResult(key, row.providerRequestId, fetchImpl, 30_000, signal);
-  const wav = await downloadWav(result.url, signal, fetchImpl);
+async function persistSpeechWav(
+  pool: pg.Pool,
+  store: WorkerObjectStore,
+  job: FalSpeechJob,
+  url: string,
+  signal: AbortSignal,
+  fetchImpl: typeof fetch
+): Promise<Record<string, unknown>> {
+  const wav = await downloadWav(url, signal, fetchImpl);
   const bytes = await readFile(wav.path);
   if (!isWav(bytes.subarray(0, 12))) throw new Error("unsupported audio type");
   const sha256 = createHash("sha256").update(bytes).digest("hex");
