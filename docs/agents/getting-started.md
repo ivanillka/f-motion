@@ -3,6 +3,9 @@
 F-Motion’s machine surface is the versioned REST API. `/v1` and `/api` are aliases.
 Authenticate with an **owner API key** (`Authorization: Bearer fm_…`), not the OpenClaw gateway operator token and not a browser-only cookie.
 
+Never put a user's name, email, phone, account identifiers, or keys in chat,
+logs, commits, listings, or video copy. The skill spells this out under Privacy.
+
 Browser sign-in still uses Supabase PKCE/JWT. API keys are created in **Settings → Machine API keys** after you sign in on the web.
 
 ## Host metering (not FAL)

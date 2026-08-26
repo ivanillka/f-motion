@@ -35,7 +35,16 @@ the user can keep editing.
 - Header: `Authorization: Bearer fm_…`
 - Env: `FMOTION_API_KEY`, optional `FMOTION_API_ORIGIN`, optional `FMOTION_WEB_ORIGIN`
 - Never use an OpenClaw gateway operator token as F-Motion auth
-- Never echo API keys, emails, or other personal data in chat, logs, or video copy
+
+## Privacy
+
+Do not share the user's personal data. That includes name, email, phone,
+address, account identifiers, photos of people used as identity, API keys, and
+tokens.
+
+- Do not write those values into chat, logs, commits, issues, PRs, listings, or video copy.
+- Do not repeat them back “to confirm.”
+- If media includes people, describe the video task, not who they are.
 
 ## Metering
 

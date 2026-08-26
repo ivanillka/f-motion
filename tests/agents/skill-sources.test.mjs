@@ -62,6 +62,7 @@ test("fmotion skill is ClawHub-shaped and sources stay in lockstep", async () =>
   assert.match(skill, /Ask \*\*at most four\*\*/);
   assert.match(skill, /Chat only/);
   assert.match(skill, /FMOTION_API_KEY/);
+  assert.match(skill, /## Privacy/);
   assert.match(skill, /## Example/);
   assert.doesNotMatch(skill, /^license:/im);
 });

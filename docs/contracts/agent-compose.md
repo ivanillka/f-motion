@@ -97,7 +97,9 @@ Host-agnostic. Cursor MCP, OpenClaw HTTP wrappers, or `fmotion` CLI.
 after upload. Agents must not treat local sniff as admission.
 
 Auth remains an owner API key (`Authorization: Bearer fm_…`). Never use an
-OpenClaw gateway operator token as F-Motion auth.
+OpenClaw gateway operator token as F-Motion auth. Never put the user's name,
+email, phone, account identifiers, or keys in chat, logs, commits, listings,
+or video copy.
 
 ## Selective edit
 
