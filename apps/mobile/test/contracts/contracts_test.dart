@@ -18,9 +18,17 @@ File sharedFixture(String name) {
   throw StateError('missing fixture $name (cwd ${Directory.current.path})');
 }
 
-Object? loadSharedFixture(String name) {
+JsonMap loadSharedObject(String name) {
   final decoded = jsonDecode(sharedFixture(name).readAsStringSync());
-  if (decoded is Map) return JsonMap.from(decoded);
+  if (decoded is! Map) throw StateError('$name is not a JSON object');
+  return {
+    for (final entry in decoded.entries) entry.key.toString(): entry.value,
+  };
+}
+
+List<dynamic> loadSharedList(String name) {
+  final decoded = jsonDecode(sharedFixture(name).readAsStringSync());
+  if (decoded is! List) throw StateError('$name is not a JSON array');
   return decoded;
 }
 
@@ -41,19 +49,19 @@ void main() {
   });
 
   test('shared contracts fixtures parse identically in Dart', () {
-    final project = loadSharedFixture('project-v1.json');
+    final project = loadSharedFixture('project-v1.json') as JsonMap;
     expect(ContractFixture.accepts(project), isTrue);
-    expect(ContractFixture.accepts(loadSharedFixture('project-v2-breaking.json')), isFalse);
+    expect(ContractFixture.accepts(loadSharedFixture('project-v2-breaking.json') as JsonMap), isFalse);
 
-    final incomplete = loadSharedFixture('error-render-input-incomplete.json');
+    final incomplete = loadSharedFixture('error-render-input-incomplete.json') as JsonMap;
     expect(incomplete['type'], 'render_input_incomplete');
     expect(incomplete['message'], isA<String>());
 
-    final media = loadSharedFixture('scene-media-ready.json');
+    final media = loadSharedFixture('scene-media-ready.json') as JsonMap;
     expect(media['state'], 'ready');
     expect(media['additive_client_field'], isTrue);
 
-    final progress = loadSharedFixture('sse-progress.json');
+    final progress = loadSharedFixture('sse-progress.json') as JsonMap;
     expect(progress['phase'], 'preparing');
     expect(progress['additive_field'], 'ok');
 
