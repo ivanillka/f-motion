@@ -68,9 +68,13 @@ async function chooseConcept(page: Page, title: "Direct" | "Story" | "Rhythm"): 
   await page.getByRole("button", { name: `Choose ${title} concept` }).click();
 }
 
+function mediaFileInput(page: Page) {
+  return page.locator('input[type="file"][accept*="image/jpeg"]');
+}
+
 async function attachFixtureToScene(page: Page, sceneNumber: number): Promise<void> {
   await page.getByRole("button", { name: `Edit scene ${sceneNumber}` }).click();
-  const input = page.locator('input[type="file"]');
+  const input = mediaFileInput(page);
   await input.setInputFiles([]);
   await input.setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("status").filter({ hasText: "Media attached to this scene" })).toBeVisible();
@@ -155,7 +159,7 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await chooseConcept(page, "Direct");
 
   await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
-  await page.locator('input[type="file"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await mediaFileInput(page).setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
   for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
@@ -264,7 +268,8 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   const editedCaption = page.getByLabel("Scene 1 caption");
   await editedCaption.fill("Updated after preview");
   await editedCaption.press("Tab");
-  await expect(page.getByText("Updated after preview")).toBeVisible();
+  await expect(editedCaption).toHaveValue("Updated after preview");
+  await expect(page.getByLabel(/Live preview/).getByText("Updated after preview")).toBeVisible();
   await page.getByRole("button", { name: "Back to drafts" }).click();
   await page.getByRole("button").filter({ hasText: "A calm studio introduction" }).click();
   await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
@@ -295,7 +300,7 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   await page.getByLabel("Where should visuals come from?").selectOption("own");
   await chooseConcept(page, "Direct");
   await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
-  await page.locator('input[type="file"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await mediaFileInput(page).setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
   for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
@@ -346,7 +351,7 @@ test("FAL image-to-video quotes, confirms, and attaches only after review", asyn
   await page.getByLabel("Where should visuals come from?").selectOption("own");
   await chooseConcept(page, "Direct");
   await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
-  await page.locator('input[type="file"]').setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await mediaFileInput(page).setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
   for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);

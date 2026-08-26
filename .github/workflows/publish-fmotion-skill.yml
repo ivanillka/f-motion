@@ -1,6 +1,11 @@
 name: Publish F-Motion skill
 
 on:
+  pull_request:
+    paths:
+      - "skills/fmotion/**"
+      - "tests/agents/skill-sources.test.mjs"
+      - ".github/workflows/publish-fmotion-skill.yml"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -13,7 +18,7 @@ on:
         default: Compose loop: media or chat, preview plus draft.
 
 jobs:
-  publish:
+  check:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +27,16 @@ jobs:
           node-version: 24.15.0
       - name: Check skill frontmatter
         run: node --test tests/agents/skill-sources.test.mjs
+
+  publish:
+    if: github.event_name == 'workflow_dispatch'
+    needs: check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
       - name: Publish to ClawHub
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
