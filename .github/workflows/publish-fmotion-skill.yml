@@ -1,11 +1,8 @@
 name: Publish F-Motion skill
 
 on:
+  push:
   pull_request:
-    paths:
-      - "skills/fmotion/**"
-      - "tests/agents/skill-sources.test.mjs"
-      - ".github/workflows/publish-fmotion-skill.yml"
   workflow_dispatch:
     inputs:
       dry_run:
