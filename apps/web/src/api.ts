@@ -683,7 +683,7 @@ export async function loadSceneMediaViews(
   return next;
 }
 
-async function playableScenePreview(
+export async function playableScenePreview(
   api: Pick<ApiClient, "request"> & Partial<Pick<ApiClient, "requestBlob">>,
   projectId: string,
   view: SceneMediaView,

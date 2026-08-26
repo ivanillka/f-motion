@@ -89,7 +89,10 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Music ducks under the voice/);
   assert.match(source, /Kokoro American English/);
   assert.match(source, /openFalSpeech\(/);
-  assert.match(source, /useFalSpeechMedia\(/);
+    assert.match(source, /useFalSpeechMedia\(/);
+    assert.match(source, /loadSceneMediaViews\(api, saved, sceneMediaRef\.current\)/);
+    assert.match(source, /cueVoicePlayback\(/);
+    assert.match(source, /playableScenePreview\(/);
   assert.doesNotMatch(source, /ElevenLabs|elevenlabs/);
   assert.doesNotMatch(source, /<audio controls/);
   assert.match(source, /htmlFor=\{`caption-\$\{activeScene.id\}`\}/);
@@ -214,6 +217,19 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
       const reused = await loadSceneMediaViews(blobApi, project("two", "upload"), hydrated);
       assert.equal(reused.upload.previewUrl, "blob:test-selfhost");
       assert.equal(blobs.length, 1);
+      const voiced = await loadSceneMediaViews(blobApi, {
+        id: "vo",
+        revision: 1,
+        brief: {
+          purpose: "vo",
+          audience: "Viewers",
+          tone: "Warm",
+          voiceover: { media_id: "upload", offset_ms: 0, level: 1 }
+        },
+        scenes: [{ id: "scene-vo" }]
+      });
+      assert.equal(voiced.upload.previewUrl, "blob:test-selfhost");
+      assert.equal(blobs.at(-1), "/api/projects/vo/media/upload/content");
     } finally {
       URL.createObjectURL = originalCreate;
     }

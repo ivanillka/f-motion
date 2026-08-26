@@ -17,6 +17,7 @@ import {
   liveTimeline,
   loadSceneMediaViews,
   mergeConversationStoryboard,
+  playableScenePreview,
   musicLaneBeats,
   nextLiveSceneId,
   panFocus,
@@ -1015,7 +1016,7 @@ function App() {
       const updated = await api.command(project.id, project.revision, "update_voiceover", { voiceover });
       setProject(updated);
       setStatus("✓ All changes saved");
-      return true;
+      return updated;
     } catch (error) {
       if (error instanceof ApiResponseError && error.status === 409) {
         openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
@@ -1152,11 +1153,15 @@ function App() {
       );
       setSceneMedia((current) => ({ ...current, [ready.id]: ready }));
       if (purpose === "voiceover") {
-        await saveVoiceover({
+        const saved = await saveVoiceover({
           media_id: ready.id,
           offset_ms: project.brief.voiceover?.offset_ms ?? 0,
           level: project.brief.voiceover?.level ?? 1
         });
+        if (saved) {
+          setSceneMedia(await loadSceneMediaViews(api, saved, sceneMediaRef.current));
+          hearNewBed();
+        }
         setVoiceOpen(false);
         if (voiceScript.trim()) void applyVoiceCaptions();
       } else {
@@ -2499,7 +2504,10 @@ function App() {
               const media = await api.request<SceneMediaView>(
                 `/api/projects/${project.id}/media/${job.result_media.id}`
               );
-              setFalSpeechJob({ ...job, result_media: media });
+              setFalSpeechJob({
+                ...job,
+                result_media: await playableScenePreview(api, project.id, media)
+              });
             } catch {
               setFalSpeechJob(job);
             }
@@ -2549,16 +2557,17 @@ function App() {
       const media = await api.request<SceneMediaView>(
         `/api/projects/${project.id}/media/${falSpeechJob.result_media.id}`
       );
-      setSceneMedia((current) => ({ ...current, [media.id]: media }));
       const saved = await saveVoiceover({
         media_id: media.id,
         offset_ms: project.brief.voiceover?.offset_ms ?? 0,
         level: project.brief.voiceover?.level ?? 1
       });
       if (!saved) return;
+      setSceneMedia(await loadSceneMediaViews(api, saved, sceneMediaRef.current));
       localStorage.removeItem(falSpeechStorageKey(project.id));
       setFalSpeechOpen(false);
-      setStatus("Voice-over uses AI-generated FAL audio.");
+      setStatus("Voice-over uses AI-generated FAL audio. Press Play to hear it.");
+      hearNewBed();
     } catch {
       setStatus("Generated voice-over could not be attached.");
     } finally {
@@ -2685,6 +2694,22 @@ function App() {
       : soundtrackMedia?.attribution?.title ?? "Uploaded music";
   const voiceover = project?.brief.voiceover;
   const voiceoverUrl = voiceover?.media_id ? scenePreviewUrl(sceneMedia[voiceover.media_id]) : undefined;
+  function cueVoicePlayback(audio: HTMLAudioElement) {
+    if (!livePlaying || !voiceover) {
+      audio.pause();
+      return;
+    }
+    audio.volume = voiceover.level;
+    audio.loop = false;
+    const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
+    const at = (playhead.offsetMs + voiceover.offset_ms) / 1000;
+    if (duration && at >= duration) {
+      audio.pause();
+      return;
+    }
+    if (duration) audio.currentTime = at;
+    void audio.play().catch(() => undefined);
+  }
   const speechElapsedMs = falSpeechStartedAt ? Date.now() - falSpeechStartedAt : 0;
   const speechProgress = falSpeechJob ? falSpeechProgress(falSpeechJob.state, speechElapsedMs) : { percent: 0, line: "" };
   const speechLog = falSpeechJob
@@ -2915,20 +2940,11 @@ function App() {
   useEffect(() => {
     const audio = voiceAudio.current;
     if (!audio) return;
-    audio.volume = voiceover ? voiceover.level : 0;
-    audio.loop = false;
     if (!livePlaying || !voiceoverUrl) {
       audio.pause();
       return;
     }
-    const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
-    const at = (playhead.offsetMs + (voiceover?.offset_ms ?? 0)) / 1000;
-    if (!duration || at >= duration) {
-      audio.pause();
-      return;
-    }
-    audio.currentTime = at;
-    void audio.play().catch(() => undefined);
+    cueVoicePlayback(audio);
   }, [livePlaying, voiceoverUrl, voiceover?.level, voiceover?.offset_ms, bedSeek]);
   useEffect(() => {
     if (!recording) return;
@@ -3382,7 +3398,13 @@ function App() {
             </div>
             ) : null}
             {soundtrackUrl && <audio ref={bedAudio} src={soundtrackUrl} preload="auto" hidden />}
-            {voiceoverUrl && <audio ref={voiceAudio} src={voiceoverUrl} preload="auto" hidden />}
+            {voiceoverUrl && <audio
+              ref={voiceAudio}
+              src={voiceoverUrl}
+              preload="auto"
+              hidden
+              onLoadedMetadata={(event) => cueVoicePlayback(event.currentTarget)}
+            />}
           </div>
           <details
             className={`music-dock voice-dock${voiceover ? " has-bed" : ""}`}
