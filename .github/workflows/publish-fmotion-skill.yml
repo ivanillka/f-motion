@@ -1,0 +1,52 @@
+name: Publish F-Motion skill
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview without uploading
+        type: boolean
+        default: true
+      changelog:
+        description: Release notes
+        type: string
+        default: Compose loop: media or chat, preview plus draft.
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+      - name: Check skill frontmatter
+        run: node --test tests/agents/skill-sources.test.mjs
+      - name: Publish to ClawHub
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+          CLAWHUB_OWNER: ${{ secrets.CLAWHUB_OWNER }}
+        run: |
+          set -euo pipefail
+          args=(
+            skill publish ./skills/fmotion
+            --slug fmotion
+            --name "F-Motion"
+            --categories creative
+            --topics "video,reel,storyboard"
+            --source-repo ivanillka/f-motion
+            --source-path skills/fmotion
+            --source-commit "${GITHUB_SHA}"
+            --changelog "${{ inputs.changelog }}"
+          )
+          if [ "${{ inputs.dry_run }}" != "false" ]; then
+            args+=(--dry-run)
+          fi
+          if [ -n "${CLAWHUB_OWNER:-}" ]; then
+            args+=(--owner "$CLAWHUB_OWNER")
+          fi
+          if [ -z "${CLAWHUB_TOKEN:-}" ]; then
+            echo "CLAWHUB_TOKEN secret is not set; dry-run only is allowed."
+            args+=(--dry-run)
+          fi
+          npx --yes clawhub@latest "${args[@]}"

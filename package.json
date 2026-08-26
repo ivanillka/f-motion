@@ -15,7 +15,7 @@
   ],
   "scripts": {
     "lint": "tsc -b --pretty false",
-    "test": "node --test prisma/*.test.mjs && npm test --workspaces --if-present",
+    "test": "node --test prisma/*.test.mjs tests/agents/skill-sources.test.mjs && npm test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "build:pages": "npm run build --workspace apps/web && npm run verify:pages-artifact",
     "verify:pages-artifact": "node tools/deploy/verify-pages-artifact.mjs",

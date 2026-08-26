@@ -1,0 +1,111 @@
+{
+  "project": "fmotion-skill-distribution",
+  "skill": "fmotion",
+  "version": "1.0.0",
+  "canonical_path": "skills/fmotion",
+  "updated": "2026-08-25",
+  "review": "When SKILL.md changes, bump version here to match, then walk every source that is not pending.",
+  "sources": [
+    {
+      "id": "repo",
+      "name": "GitHub canonical",
+      "role": "source of truth",
+      "status": "live",
+      "published_version": "1.0.0",
+      "url": "https://github.com/ivanillka/f-motion/tree/advisor/133-design-contract/skills/fmotion",
+      "update": "Edit SKILL.md here; bump version; refresh this file"
+    },
+    {
+      "id": "clawhub",
+      "name": "ClawHub (OpenClaw registry)",
+      "role": "primary public install",
+      "status": "ready_to_publish",
+      "published_version": null,
+      "slug": "fmotion",
+      "url": "https://clawhub.ai/skills/fmotion",
+      "install": "npx clawhub@latest install fmotion",
+      "alt_install": "openclaw skills install fmotion",
+      "update": "npx clawhub@latest skill publish ./skills/fmotion --slug fmotion --name \"F-Motion\" --categories creative --topics \"video,reel,storyboard\" --source-repo ivanillka/f-motion --source-path skills/fmotion --source-commit \"$(git rev-parse HEAD)\" --changelog \"…\"",
+      "blocker": "CLAWHUB_TOKEN or `clawhub login`. Account must be able to publish.",
+      "notes": "Published copies are MIT-0 per ClawHub; this repo stays Apache-2.0."
+    },
+    {
+      "id": "skills-sh",
+      "name": "skills.sh / ClawHub search federation",
+      "role": "discovery mirror",
+      "status": "follows_clawhub",
+      "published_version": null,
+      "url": "https://skills.sh",
+      "install": "openclaw skills install skills-sh:ivanillka/f-motion/fmotion",
+      "update": "Re-index follows a successful ClawHub release; confirm search still hits slug fmotion"
+    },
+    {
+      "id": "clawhub-github-import",
+      "name": "ClawHub GitHub importer",
+      "role": "alternate first publish",
+      "status": "pending",
+      "published_version": null,
+      "url": "https://clawhub.ai/publish-skill",
+      "update": "Importer only sees public, non-fork repos owned by the signed-in GitHub account",
+      "blocker": "This repository is not a public listing the importer can scan yet"
+    },
+    {
+      "id": "openclaw-docs",
+      "name": "OpenClaw host recipe (this repo)",
+      "role": "HTTP fallback",
+      "status": "live",
+      "published_version": "1.0.0",
+      "url": "https://github.com/ivanillka/f-motion/blob/advisor/133-design-contract/docs/agents/openclaw/README.md",
+      "update": "Keep tool schemas aligned with SKILL.md compose loop"
+    },
+    {
+      "id": "cursor-repo",
+      "name": "Cursor / Agent Skills (repo path)",
+      "role": "in-repo skill",
+      "status": "live",
+      "published_version": "1.0.0",
+      "url": "skills/fmotion/SKILL.md",
+      "install": "Cursor discovers SKILL.md under skills/ when the repo is open",
+      "update": "Same file as ClawHub; keep name matching the folder"
+    },
+    {
+      "id": "cursor-marketplace",
+      "name": "Cursor Marketplace",
+      "role": "optional public plugin",
+      "status": "pending",
+      "published_version": null,
+      "url": "https://cursor.com/marketplace/publish",
+      "update": "Needs a plugin.json (Agent Plugins or .cursor-plugin). Submit after ClawHub slug is live; record listing URL here",
+      "blocker": "No plugin manifest yet; MCP packages are still private"
+    },
+    {
+      "id": "cursor-directory",
+      "name": "cursor.directory",
+      "role": "community discovery",
+      "status": "pending",
+      "published_version": null,
+      "url": "https://cursor.directory/plugins/new",
+      "update": "Paste the GitHub repo URL; auto-detects skills/*/SKILL.md. Record the listing URL here"
+    },
+    {
+      "id": "hermes-mcp",
+      "name": "Hermes / stdio MCP",
+      "role": "machine tools",
+      "status": "live",
+      "published_version": "0.1.0",
+      "url": "packages/fmotion-mcp",
+      "install": "npx fmotion-mcp with FMOTION_API_KEY (workspace package today)",
+      "update": "Bump MCP tools when SKILL.md tool names change"
+    },
+    {
+      "id": "npm-packages",
+      "name": "npm @f-engine/fmotion-cli and fmotion-mcp",
+      "role": "public install for CLI/MCP",
+      "status": "pending",
+      "published_version": null,
+      "url": "https://www.npmjs.com/search?q=%40f-engine%2Ffmotion",
+      "update": "Un-private the packages and publish when the public install path ships",
+      "blocker": "Both packages are private in this repo"
+    }
+  ]
+}

@@ -110,10 +110,13 @@ export const tools = {
   fmotion_request_render: ({ project_id, kind = "preview" }) =>
     fmotionRequest(`/v1/projects/${project_id}/render`, { method: "POST", body: { kind } })
 };
+```
 
 Prefer `fmotion-mcp` (`compose_reel`, `read_media`, `open_draft`) when the host
 can attach stdio MCP. The HTTP wrappers above are the thin fallback.
-```
+
+Public install (after the first ClawHub release): `npx clawhub@latest install fmotion`.
+Tracked listings: [`skill-sources.md`](./skill-sources.md).
 
 ## Alternatives
 
