@@ -294,6 +294,11 @@ test("studio shell brands F-Motion and keeps real destinations only", async () =
   assert.doesNotMatch(source, /Assets|Effects|Pro Studio|multitrack/i);
 });
 
+test("self-host vite build serves the studio at /", async () => {
+  const source = await readFile(new URL("../vite.config.ts", import.meta.url), "utf8");
+  assert.match(source, /VITE_SELFHOST_AUTH === "1" \? "\/"/);
+});
+
 test("build puts marketing at site root and studio under /app", async () => {
   const { readFile, access } = await import("node:fs/promises");
   const dist = new URL("../dist/", import.meta.url);
