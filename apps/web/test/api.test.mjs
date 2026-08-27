@@ -77,7 +77,8 @@ test("own-media glance notes adapt the next question without a VLM", () => {
   assert.match(notes, /sf alley/);
   assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nMy own media", 0), true);
   assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nMy own media", 2), false);
-  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nMix Pexels stock and my media", 0), false);
+  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nMix Pexels stock and my media", 0), true);
+  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nMix Pexels stock and my media", 2), false);
   assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nPexels real stock video", 0), false);
   assert.equal(briefNeedsMediaLook("I'll use my photos", 0), true);
   assert.equal(briefShouldGlance("mystery\nMy own media", 0), false);
@@ -91,6 +92,9 @@ test("own-media glance notes adapt the next question without a VLM", () => {
   assert.equal(intent?.id, "intent");
   assert.match(intent?.prompt ?? "", /dark, portrait/);
   assert.match(intent?.prompt ?? "", /story/);
+  const mixNext = nextBriefQuestion(`mystery murder in san francisco\nMix Pexels stock and my media\n${notes}`, true, []);
+  assert.equal(mixNext?.id, "audience");
+  assert.match(mixNext?.prompt ?? "", /San Francisco mystery/);
 });
 
 const ids = () => {

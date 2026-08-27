@@ -256,13 +256,13 @@ export function mediaNotesFromGlances(glances: readonly LocalMediaGlance[]): str
   ].filter(Boolean).join(" ");
 }
 
-/** Own-media answers without files: look at the photos before more questions. */
+/** Own-media or mix answers without files: look at the photos before more questions. */
 export function briefNeedsMediaLook(conversation: string, fileCount: number): boolean {
   if (fileCount > 0) return false;
   const text = conversation.normalize("NFKC").toLowerCase();
-  if (/\bmix pexels stock and my media\b/u.test(text)) return false;
-  if (/\bpexels real stock video\b/u.test(text) && !/\bmy own media\b/u.test(text)) return false;
+  if (/\bpexels real stock video\b/u.test(text) && !/\bmy own media\b/u.test(text) && !/\bmix pexels\b/u.test(text)) return false;
   return /\bmy own media\b/u.test(text)
+    || /\bmix pexels stock and my media\b/u.test(text)
     || (/\b(my|our)\s+(photos?|videos?|footage|clips?)\b/u.test(text) && !/\bpexels\b/u.test(text));
 }
 
