@@ -155,6 +155,15 @@ test("locked provider actions explain the blocker and next action", async ({ pag
   await page.getByRole("button", { name: "Close" }).click();
 });
 
+test("own media is glanced locally before remaining Create questions", async ({ page }) => {
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.locator("section.create-brief input[type=file]").setInputFiles("apps/worker/test/fixtures/still.jpg");
+  await expect(page.getByText(/I looked at 1 photo/i)).toBeVisible();
+  await expect(page.locator(".brief-chat-choices button").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue to story concepts" })).toBeDisabled();
+});
+
 test("upload journey, natural conflict recovery, render, and download", async ({ page }) => {
   await page.route("https://e2e-storage.invalid/**", (route) =>
     route.fulfill({ status: 200, body: "" }));
