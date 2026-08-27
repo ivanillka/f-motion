@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, buildStoryboardDraft, nextBriefQuestion, parseBriefChat, recommendVideoArchitecture, sceneDurationForMedia } from "../src/api.ts";
+import { ApiClient, ApiResponseError, briefReadyMessage, buildStoryboardDraft, nextBriefQuestion, parseBriefChat, recommendVideoArchitecture, sceneDurationForMedia } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
@@ -29,12 +29,25 @@ test("conversation recommendations prefill distinct, editable video architecture
 });
 
 test("create chat asks only missing brief questions, at most four", () => {
-  assert.equal(nextBriefQuestion("mystery murder in san francisco", false, [])?.id, "audience");
-  assert.equal(nextBriefQuestion("mystery murder in san francisco\nGeneral viewers", false, ["audience"])?.id, "length");
-  assert.equal(nextBriefQuestion("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds", false, ["audience", "length"])?.id, "visuals");
+  const audience = nextBriefQuestion("mystery murder in san francisco", false, []);
+  assert.equal(audience?.id, "audience");
+  assert.match(audience?.prompt ?? "", /San Francisco mystery/);
+  assert.doesNotMatch(audience?.prompt ?? "", /^Who is this for\?$/);
+  const afterSocial = nextBriefQuestion("mystery murder in san francisco\nSocial media audience", false, ["audience"]);
+  assert.equal(afterSocial?.id, "length");
+  assert.match(afterSocial?.prompt ?? "", /reel/);
+  assert.equal(afterSocial?.choices[0], "About 15 seconds");
+  const afterGeneral = nextBriefQuestion("mystery murder in san francisco\nGeneral viewers", false, ["audience"]);
+  assert.match(afterGeneral?.prompt ?? "", /San Francisco mystery/);
+  assert.equal(afterGeneral?.choices[0], "About 30 seconds");
+  const visuals = nextBriefQuestion("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds", false, ["audience", "length"]);
+  assert.equal(visuals?.id, "visuals");
+  assert.match(visuals?.prompt ?? "", /San Francisco/);
+  assert.doesNotMatch(visuals?.prompt ?? "", /^Where should the pictures come from\?$/);
   assert.equal(nextBriefQuestion("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds\nPexels real stock video", false, ["audience", "length", "visuals"]), undefined);
   assert.equal(nextBriefQuestion("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds", true, ["audience", "length"]), undefined);
   assert.equal(nextBriefQuestion("Launch a 15 second reel using stock to promote our product for customers", false, []), undefined);
+  assert.match(briefReadyMessage("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds\nPexels real stock video"), /mystery about mystery murder in san francisco/);
   const stored = parseBriefChat(JSON.stringify({
     messages: [{ role: "assistant", text: "What do you want to make?" }],
     asked: ["audience"],

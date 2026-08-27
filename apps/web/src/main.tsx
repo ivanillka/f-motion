@@ -15,7 +15,8 @@ import {
   nextBriefQuestion,
   parseBriefChat,
   BRIEF_OPENING,
-  BRIEF_READY,
+  briefReadyMessage,
+  isBriefReadyMessage,
   type BriefChatMessage,
   type BriefQuestionId,
   focusFromPoint,
@@ -428,7 +429,7 @@ function App() {
     if (!next) {
       setBriefChat((current) => {
         if (current[current.length - 1]?.questionId !== "visuals") return current;
-        return [...current, { role: "assistant", text: "I'll use the photos you added." }, { role: "assistant", text: BRIEF_READY }];
+        return [...current, { role: "assistant", text: "I'll use the photos you added." }, { role: "assistant", text: briefReadyMessage(draft) }];
       });
       return;
     }
@@ -574,8 +575,8 @@ function App() {
     if (!next) {
       setBriefChat((current) => {
         const last = current[current.length - 1];
-        if (last?.text === BRIEF_READY) return [...current, user];
-        return [...current, user, { role: "assistant", text: BRIEF_READY }];
+        if (last && isBriefReadyMessage(last.text)) return [...current, user];
+        return [...current, user, { role: "assistant", text: briefReadyMessage(conversation) }];
       });
       return;
     }

@@ -176,28 +176,110 @@ export const BRIEF_OPENING: BriefChatMessage = {
 
 export const BRIEF_READY = "That is enough for a video plan. Change anything under More settings, or continue to story concepts.";
 
-export const briefQuestions: Record<BriefQuestionId, BriefQuestion> = {
-  intent: {
-    id: "intent",
-    prompt: "Is this a story, an explanation, a promotion, or a lesson?",
-    choices: ["Tell a story", "Explain something", "Promote an idea or product", "Teach the viewer"]
-  },
-  audience: {
-    id: "audience",
-    prompt: "Who is this for?",
-    choices: ["General viewers", "Social media audience", "Customers", "Internal team"]
-  },
-  length: {
-    id: "length",
-    prompt: "About how long should it run?",
-    choices: ["About 15 seconds", "About 30 seconds", "About 45 seconds"]
-  },
-  visuals: {
-    id: "visuals",
-    prompt: "Where should the pictures come from?",
-    choices: ["Pexels real stock video", "My own media", "Mix Pexels stock and my media"]
-  }
+const briefChoiceSets: Record<BriefQuestionId, readonly string[]> = {
+  intent: ["Tell a story", "Explain something", "Promote an idea or product", "Teach the viewer"],
+  audience: ["General viewers", "Social media audience", "Customers", "Internal team"],
+  length: ["About 15 seconds", "About 30 seconds", "About 45 seconds"],
+  visuals: ["Pexels real stock video", "My own media", "Mix Pexels stock and my media"]
 };
+
+function titledPlace(place: string): string {
+  return place.replace(/\b\p{L}/gu, (letter) => letter.toLocaleUpperCase());
+}
+
+function clipSubject(value: string): string {
+  const text = value.replace(/[.!?]+$/u, "").trim();
+  if (!text) return "this video";
+  return text.length > 52 ? `${text.slice(0, 49).trim()}…` : text;
+}
+
+/** First user line plus the plan inferred from every answer so far. */
+export function briefTopic(conversation: string): {
+  subject: string;
+  place: string;
+  hook: string;
+  plan: VideoArchitecture;
+} {
+  const first = conversation.split(/\n+/u).map((line) => line.trim()).find(Boolean) ?? "";
+  const place = (first.match(/\bin\s+([^,.!?]+)$/iu)?.[1] ?? "").trim();
+  const subject = clipSubject(first);
+  return {
+    subject,
+    place,
+    hook: place ? titledPlace(place) : subject,
+    plan: recommendVideoArchitecture(conversation)
+  };
+}
+
+export function isBriefReadyMessage(text: string): boolean {
+  return text.startsWith("That is enough for");
+}
+
+export function briefReadyMessage(conversation: string): string {
+  if (!conversation.trim()) return BRIEF_READY;
+  const { subject, place, hook, plan } = briefTopic(conversation);
+  const shape = plan.structure === "mystery"
+    ? "mystery"
+    : plan.goal === "promote"
+      ? "promo"
+      : plan.goal === "educate"
+        ? "lesson"
+        : "story";
+  const where = plan.media === "own"
+    ? "your media"
+    : plan.media === "mixed"
+      ? "your media mixed with Pexels"
+      : place
+        ? `moody ${hook} Pexels stock`
+        : "Pexels stock";
+  return `That is enough for a ${plan.tone} ${shape} about ${subject} — about ${plan.durationSeconds} seconds, ${where}. Change anything under More settings, or continue to story concepts.`;
+}
+
+export function briefQuestionFor(
+  id: BriefQuestionId,
+  conversation: string,
+  hasOwnMedia: boolean
+): BriefQuestion {
+  const { subject, place, hook, plan } = briefTopic(conversation);
+  if (id === "intent") {
+    return {
+      id,
+      prompt: `Should ${subject} be a story, an explanation, a promotion, or a lesson?`,
+      choices: briefChoiceSets.intent
+    };
+  }
+  if (id === "audience") {
+    const prompt = plan.structure === "mystery"
+      ? (place ? `Who is this ${hook} mystery for?` : `Who is this mystery for?`)
+      : plan.goal === "promote"
+        ? `Who should see ${subject}?`
+        : plan.goal === "educate"
+          ? `Who are you teaching with ${subject}?`
+          : `Who is ${subject} for?`;
+    return { id, prompt, choices: briefChoiceSets.audience };
+  }
+  if (id === "length") {
+    const preferred = `About ${plan.durationSeconds} seconds`;
+    const choices = [preferred, ...briefChoiceSets.length.filter((choice) => choice !== preferred)];
+    const prompt = plan.audience === "social"
+      ? `For a reel of ${subject}, about 15, 30, or 45 seconds?`
+      : plan.structure === "mystery"
+        ? (place
+          ? `Should the ${hook} mystery be a 15-second hook, a 30-second slow reveal, or 45 seconds?`
+          : `Should this mystery be a 15-second hook, a 30-second slow reveal, or 45 seconds?`)
+        : plan.goal === "promote"
+          ? `How long should ${subject} run — about 15, 30, or 45 seconds?`
+          : `About how long should ${subject} run?`;
+    return { id, prompt, choices };
+  }
+  const stock = place ? `moody ${hook} stock from Pexels` : "Pexels stock";
+  const prompt = hasOwnMedia
+    ? `Use the photos you added for ${subject}, mix in Pexels, or switch to stock only?`
+    : plan.structure === "mystery"
+      ? `Do you have footage, or should we use ${stock}?`
+      : `Where should pictures for ${subject} come from?`;
+  return { id, prompt, choices: briefChoiceSets.visuals };
+}
 
 export function answeredBriefQuestions(conversation: string, hasOwnMedia: boolean): Set<BriefQuestionId> {
   const text = conversation.normalize("NFKC").toLowerCase();
@@ -232,7 +314,7 @@ export function nextBriefQuestion(
   const answered = answeredBriefQuestions(conversation, hasOwnMedia);
   for (const id of briefQuestionIds) {
     if (answered.has(id) || asked.includes(id)) continue;
-    return briefQuestions[id];
+    return briefQuestionFor(id, conversation, hasOwnMedia);
   }
   return undefined;
 }
