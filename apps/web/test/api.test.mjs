@@ -55,6 +55,18 @@ test("one sentence uses visible four-role prompts without repeating captions", (
   assert.match(scenes[3].visual_prompt, /closing wide shot$/);
 });
 
+test("a short cinematic phrase stays one speakable caption, not one word per scene", () => {
+  const scenes = buildStoryboardDraft("cosmic dust space travel", ids());
+  assert.equal(scenes.length, 4);
+  assert.deepEqual(scenes.map(({ caption }) => caption), ["cosmic dust space travel", "", "", ""]);
+  const planned = buildStoryboardDraft("cosmic dust space travel", ids(), {
+    goal: "story", audience: "general", structure: "story_arc", tone: "cinematic",
+    pace: "balanced", durationSeconds: 15, media: "stock"
+  });
+  assert.equal(planned[0].caption, "Cosmic dust space travel.");
+  assert.deepEqual(planned.slice(1).map(({ caption }) => caption), ["", "", ""]);
+});
+
 test("Unicode, excess clauses, and very short text stay bounded", () => {
   const unicode = buildStoryboardDraft("Mlžný ostrov čeká tiše, světlo protíná noc; лодка дрейфует без людей", ids());
   assert.equal(unicode.length, 3);

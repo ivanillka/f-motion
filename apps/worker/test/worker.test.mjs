@@ -748,6 +748,46 @@ test("worker renders image-only scene with a silent audio pad", async () => {
   assert.ok(audio, "expected a silent audio pad on still-only scenes");
   assert.equal(audio.codec_name, "aac");
 });
+test("worker mixdown burns a 24kHz mono voice-over into the concat", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fengine-vo-mixdown-"));
+  const vo = join(directory, "vo.wav");
+  await new Promise((resolve, reject) => {
+    const child = spawn("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=24000:duration=2",
+      "-ac", "1", "-c:a", "pcm_s16le", vo
+    ], { stdio: "ignore" });
+    child.once("error", reject);
+    child.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`)));
+  });
+  const output = join(directory, "preview.mp4");
+  const withVo = {
+    ...snapshot,
+    brief: {
+      ...snapshot.brief,
+      voiceover: { media_id: "vo", offset_ms: 0, level: 1 }
+    },
+    scenes: [{ ...snapshot.scenes[0], media_id: "asset-1", duration_ms: 500, caption: "" }]
+  };
+  await renderPreview(output, withVo, undefined, {
+    "asset-1": { path: join(fixtures, "still.jpg"), type: "image/jpeg" },
+    vo: { path: vo, type: "audio/wav" }
+  });
+  const meanVolume = await new Promise((resolve, reject) => {
+    const child = spawn("ffmpeg", ["-i", output, "-af", "volumedetect", "-f", "null", "-"], {
+      stdio: ["ignore", "ignore", "pipe"]
+    });
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      const match = stderr.match(/mean_volume:\s*(-?[\d.]+)/);
+      if (code === 0 && match) resolve(Number(match[1]));
+      else reject(new Error(`volumedetect failed (${code}): ${stderr.slice(-400)}`));
+    });
+  });
+  assert.ok(meanVolume > -60, `expected audible voice-over, mean_volume ${meanVolume} dB`);
+});
 test("worker mixdown burns the soundtrack into the concat", async () => {
   const directory = await mkdtemp(join(tmpdir(), "fengine-mixdown-"));
   const bed = join(directory, "bed.wav");

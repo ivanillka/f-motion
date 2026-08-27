@@ -240,12 +240,18 @@ export function buildStoryboardDraft(
   return visualPrompts.map((visual_prompt, order) => {
     const count = base + (remainder-- > 0 ? 1 : 0);
     const isLast = order === visualPrompts.length - 1;
-    const caption = architecture
-      ? overlayCaptions[order] ?? ""
-      : isLast && source.callToAction?.trim()
-        ? (tailoredCallToAction(source.callToAction, brief) ?? source.callToAction.trim().slice(0, 180))
-        : words.slice(cursor, cursor + count).join(" ").slice(0, 180);
-    cursor += count;
+    let caption: string;
+    if (architecture) {
+      caption = overlayCaptions[order] ?? "";
+    } else if (isLast && source.callToAction?.trim()) {
+      caption = tailoredCallToAction(source.callToAction, brief) ?? source.callToAction.trim().slice(0, 180);
+    } else if (base < 2) {
+      // Fewer than two words per beat: keep the phrase speakable on scene 1.
+      caption = order === 0 ? words.join(" ").slice(0, 180) : "";
+    } else {
+      caption = words.slice(cursor, cursor + count).join(" ").slice(0, 180);
+      cursor += count;
+    }
     const titled = Boolean(headline && order === 0);
     return {
       id: makeId(),

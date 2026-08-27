@@ -290,6 +290,18 @@ export function liveTimeline(scenes: readonly Pick<Scene, "id" | "duration_ms">[
   return { totalMs, offsets, durations };
 }
 
+/** Clock for the voice-over element. Unknown duration is still loading, not finished. */
+export function voiceoverPlayback(
+  timelineMs: number,
+  trimMs: number,
+  durationSec: number | undefined
+): { play: true; currentTime?: number } | { play: false } {
+  const at = (Math.max(0, timelineMs) + Math.max(0, trimMs)) / 1000;
+  if (durationSec == null || !(durationSec > 0)) return { play: true };
+  if (at >= durationSec) return { play: false };
+  return { play: true, currentTime: at };
+}
+
 export function livePlayhead(
   scenes: readonly Pick<Scene, "id" | "duration_ms">[],
   playSceneId: string,

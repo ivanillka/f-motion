@@ -12,6 +12,7 @@ import {
   focusFromPoint,
   formatPlayTime,
   livePlayhead,
+  voiceoverPlayback,
   liveTimeline,
   loadSceneMediaViews,
   musicLaneBeats,
@@ -200,6 +201,7 @@ function App() {
   const previewPan = useRef<PreviewPanState | null>(null);
   const userPausedPreview = useRef(false);
   const sceneClock = useRef({ startedAt: 0, elapsedAtPause: 0 });
+  const playheadOffsetRef = useRef(0);
   const [drafts, setDrafts] = useState<ProjectSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [sceneMedia, setSceneMedia] = useState<Record<string, SceneMediaView>>({});
@@ -2102,6 +2104,7 @@ function App() {
     ? sceneClock.current.elapsedAtPause + Math.max(0, playTick - sceneClock.current.startedAt)
     : sceneClock.current.elapsedAtPause;
   const playhead = livePlayhead(project?.scenes ?? [], playSceneId || previewScene?.id || "", sceneElapsedMs);
+  playheadOffsetRef.current = playhead.offsetMs;
   const timeline = liveTimeline(project?.scenes ?? []);
   const soundtrack = project?.brief.soundtrack;
   const soundtrackMedia = soundtrack?.kind === "upload" && soundtrack.media_id
@@ -2346,14 +2349,19 @@ function App() {
       audio.pause();
       return;
     }
-    const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
-    const at = (playhead.offsetMs + (voiceover?.offset_ms ?? 0)) / 1000;
-    if (!duration || at >= duration) {
-      audio.pause();
-      return;
-    }
-    audio.currentTime = at;
-    void audio.play().catch(() => undefined);
+    const apply = () => {
+      const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : undefined;
+      const next = voiceoverPlayback(playheadOffsetRef.current, voiceover?.offset_ms ?? 0, duration);
+      if (!next.play) {
+        audio.pause();
+        return;
+      }
+      if (next.currentTime != null) audio.currentTime = next.currentTime;
+      void audio.play().catch(() => undefined);
+    };
+    apply();
+    audio.addEventListener("loadedmetadata", apply);
+    return () => audio.removeEventListener("loadedmetadata", apply);
   }, [livePlaying, voiceoverUrl, voiceover?.level, voiceover?.offset_ms, bedSeek]);
   useEffect(() => {
     if (!recording) return;

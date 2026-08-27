@@ -67,6 +67,9 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Kokoro American English/);
   assert.match(source, /openFalSpeech\(/);
   assert.match(source, /useFalSpeechMedia\(/);
+  assert.match(source, /voiceoverPlayback\(/);
+  assert.match(source, /loadedmetadata/);
+  assert.doesNotMatch(source, /if \(!duration \|\| at >= duration\)/);
   assert.doesNotMatch(source, /ElevenLabs|elevenlabs/);
   assert.doesNotMatch(source, /<audio controls/);
   assert.match(source, /htmlFor=\{`caption-\$\{activeScene.id\}`\}/);
@@ -114,7 +117,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { clampBpm, clampFocus, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, stockBedUrl } = await vite.ssrLoadModule("/src/api.ts");
+    const { clampBpm, clampFocus, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, stockBedUrl, voiceoverPlayback } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -165,6 +168,11 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.deepEqual(seekLivePlayhead(scenes, 3500), { sceneId: "b", sceneElapsedMs: 2500 });
     assert.equal(livePlayhead(scenes, "b", 500).offsetMs, 1500);
     assert.equal(livePlayhead(scenes, "b", 500).totalMs, 6000);
+    assert.deepEqual(voiceoverPlayback(0, 0, undefined), { play: true });
+    assert.deepEqual(voiceoverPlayback(0, 0, 0), { play: true });
+    assert.deepEqual(voiceoverPlayback(1500, 0, 8), { play: true, currentTime: 1.5 });
+    assert.deepEqual(voiceoverPlayback(8000, 0, 8), { play: false });
+    assert.deepEqual(voiceoverPlayback(0, 250, 8), { play: true, currentTime: 0.25 });
 
     const uploaded = await loadSceneMediaViews(api, project("two", "upload"));
     assert.deepEqual(uploaded, { upload: views.upload });
