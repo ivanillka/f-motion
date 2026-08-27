@@ -870,13 +870,35 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .architecture-editor { padding: 14px; border: 1px solid var(--border); border-radius: 8px; }
 .architecture-editor summary { cursor: pointer; font-weight: 700; }
 .architecture-editor[open] summary { margin-bottom: 14px; }
-.create-brief { display: grid; gap: 16px; }
+.app-shell-brief .app-stage {
+  max-width: 720px;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+}
+.app-shell-brief .app-stage > header { display: none; }
+.create-brief {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+.brief-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
 .brief-chat {
   display: grid;
   gap: 10px;
-  max-height: min(52vh, 420px);
+  flex: 1;
+  min-height: 180px;
   overflow: auto;
-  padding: 4px 2px;
+  padding: 4px 2px 8px;
+  align-content: start;
 }
 .brief-chat-msg {
   display: grid;
@@ -896,14 +918,29 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .brief-chat-choices button { width: auto; min-height: 36px; padding: 6px 10px; font-size: 0.82rem; }
 .brief-composer {
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "attach message send"
+    "continue continue continue";
+  align-items: end;
   gap: 8px;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
+  position: sticky;
+  bottom: 0;
 }
-.brief-composer textarea { min-height: 44px; max-height: 120px; }
+.brief-composer button.secondary { grid-area: attach; }
+.brief-composer textarea {
+  grid-area: message;
+  min-height: 44px;
+  max-height: 120px;
+}
+.brief-composer button[type="submit"] { grid-area: send; }
+.brief-composer > button[type="button"]:not(.secondary) { grid-area: continue; }
 .brief-composer button { width: auto; }
+.brief-composer > button[type="button"]:not(.secondary) { width: 100%; }
 .create-media-drop {
   display: grid;
   gap: 10px;
@@ -924,21 +961,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   border-radius: 6px;
 }
 .create-pending-files button { width: auto; min-height: 36px; }
-.create-more-settings {
-  display: grid;
-  gap: 16px;
-  padding-top: 32px;
-  margin-top: 8px;
-  border-top: 1px solid var(--border);
-}
-.create-more-eyebrow {
-  margin: 0;
-  color: var(--accent-soft);
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
 
 .settings-card {
   display: grid;

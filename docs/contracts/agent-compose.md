@@ -58,8 +58,7 @@ Prefer this order:
 4. **Visuals** — use the attached files, mix with Pexels, or Pexels only.
 
 Do not interview for overlay look, motion preset, crop, music, voice-over, or
-FAL. Those stay in **more settings** (below the fold in the app, or a later
-selective edit in the skill).
+FAL. Those stay in the storyboard editor, not on Create.
 
 Suggested plan fields (existing architecture, not a new schema):
 
@@ -73,15 +72,12 @@ Suggested plan fields (existing architecture, not a new schema):
 | `duration_seconds` | `15` `30` `45` |
 | `media` | `own` `stock` `mixed` |
 
-## More settings (scrolled, not hidden)
+## Create is the chat
 
-The Create surface shows media drop + short brief first. The existing style
-and plan controls stay **visible** under a “More settings” / “Plan the video”
-heading so they sit below the fold by default. Do not lock them inside a
-closed disclosure.
-
-Agents mention that those controls exist in the draft. They do not dump the
-full grid unless the user asks to change one.
+The studio Create page is the chat: opening line, answers, chips, composer.
+Plan fields are inferred from that conversation. Overlay, motion, crop, music,
+and voice-over stay in the storyboard. Agents mention those exist in the draft.
+They do not dump the architecture grid unless the user asks to change one.
 
 ## Tools
 

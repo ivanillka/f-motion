@@ -6,7 +6,7 @@ import { createServer } from "vite";
 
 test("required recovery, accessibility, and preview language is present", async () => {
   const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
-  for (const phrase of ["Drafts", "Add photos or clips", "More settings", "Plan the video", "prepared this recommendation from your conversation", "Recommended video plan", "What should this video achieve", "Who is it for", "How should the story unfold", "What tone fits best", "How fast should it feel", "Target length", "Where should visuals come from", "Pexels real stock video", "Continue to story concepts", "Choose a story approach", "Licensed visuals are matched only after you choose", "Storyboard", "Live preview", "Play progress", "Restart", "Previous scene", "Next scene", "Find licensed media", "Find another licensed video", "Generate AI image for scene", "Animate this image", "Generate one 6-second video", "Use video for scene", "Keep image", "Generate one image", "Get FAL price", "Use for scene", "Keep current media", "Generate another", "AI-generated with FAL", "Charged directly to your FAL account", "Select for scene", "Move scene", "Add scene", "Remove scene", "Play preview", "Pause preview", "Export final", "Final export", "Download export", "playsInline", "Older preview", "Reload latest", "Save as new project", "media not copied", "pending", "was not merged", "Reconnecting", "magic link", "Google", "Pexels", "Cancel render", "Download preview", "Accurate preview failed", "Retry", "Choose video sources", "Choose your video sources", "Real stock video", "AI stills", "More providers", "More ways to create", "Locked", "Why is this locked", "Pexels stock is locked", "Connect your Pexels API key to search real stock video", "FAL generation is locked", "Open provider settings", "Settings", "Sign out", "Waiting for media inspection", "Media is still inspecting", "Connect your own Pexels API key", "F-Motion does not supply or share a Pexels key", "Connect Pexels", "Test Pexels", "Disconnect Pexels", "Connect your own FAL API-scope key", "charged directly to your FAL account", "F-Motion does not supply or share a FAL key", "Connect FAL", "Test connection", "Disconnect", "Sign in to open the imported draft from Fotium.", "Open the email link to finish sign-in."]) assert.match(source, new RegExp(phrase));
+  for (const phrase of ["Drafts", "Add photos or clips", "Continue to story concepts", "Choose a story approach", "Licensed visuals are matched only after you choose", "Storyboard", "Live preview", "Play progress", "Restart", "Previous scene", "Next scene", "Find licensed media", "Find another licensed video", "Generate AI image for scene", "Animate this image", "Generate one 6-second video", "Use video for scene", "Keep image", "Generate one image", "Get FAL price", "Use for scene", "Keep current media", "Generate another", "AI-generated with FAL", "Charged directly to your FAL account", "Select for scene", "Move scene", "Add scene", "Remove scene", "Play preview", "Pause preview", "Export final", "Final export", "Download export", "playsInline", "Older preview", "Reload latest", "Save as new project", "media not copied", "pending", "was not merged", "Reconnecting", "magic link", "Google", "Pexels", "Cancel render", "Download preview", "Accurate preview failed", "Retry", "Choose video sources", "Choose your video sources", "Real stock video", "AI stills", "More providers", "More ways to create", "Locked", "Why is this locked", "Pexels stock is locked", "Connect your Pexels API key to search real stock video", "FAL generation is locked", "Open provider settings", "Settings", "Sign out", "Waiting for media inspection", "Media is still inspecting", "Connect your own Pexels API key", "F-Motion does not supply or share a Pexels key", "Connect Pexels", "Test Pexels", "Disconnect Pexels", "Connect your own FAL API-scope key", "charged directly to your FAL account", "F-Motion does not supply or share a FAL key", "Connect FAL", "Test connection", "Disconnect", "Sign in to open the imported draft from Fotium.", "Open the email link to finish sign-in."]) assert.match(source, new RegExp(phrase));
   assert.match(source, /activeSceneId/);
   assert.match(source, /build-rev/);
   assert.match(source, /VITE_GIT_SHA/);
@@ -82,7 +82,10 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /sendBrief\(/);
   assert.match(source, /Create chat/);
   assert.match(source, /Suggested answers/);
-  assert.match(source, /asks at most four missing questions/);
+  assert.doesNotMatch(source, /asks at most four missing questions/);
+  assert.doesNotMatch(source, /Plan the video/);
+  assert.doesNotMatch(source, /More settings/);
+  assert.doesNotMatch(source, /architecture-summary/);
   assert.match(source, /BRIEF_OPENING/);
   assert.match(source, /LOOKING_AT_MEDIA/);
   assert.match(source, /DROP_OWN_MEDIA/);
@@ -253,7 +256,8 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /preview-zoom \{\s*from \{ transform: scale\(1\.08\)/);
   assert.match(css, /\.preview img\.is-frozen, \.preview video\.is-frozen \{\s*animation-play-state: paused/);
   assert.match(css, /\.brief-chat/);
-  assert.match(css, /\.brief-composer textarea \{ min-height: 44px/);
+  assert.match(css, /\.app-shell-brief/);
+  assert.match(css, /\.brief-composer textarea \{[\s\S]*min-height: 44px/);
   assert.match(css, /\.preview-grade/);
   assert.match(css, /\.caption-burn/);
   assert.match(css, /\.look-title/);

@@ -167,15 +167,6 @@ interface FeatureLock {
   action?: "settings";
 }
 
-const architectureLabels = {
-  goal: { story: "Tell a story", explain: "Explain something", promote: "Promote an idea or product", educate: "Teach the viewer" },
-  audience: { general: "General viewers", social: "Social media audience", customers: "Customers", internal: "Internal team" },
-  structure: { story_arc: "Beginning → turn → resolution", mystery: "Clues → tension → reveal", problem_solution: "Problem → solution → result", chronological: "Chronological journey" },
-  tone: { cinematic: "Cinematic", documentary: "Documentary", energetic: "Energetic", calm: "Calm" },
-  pace: { slow: "Slow and atmospheric", balanced: "Balanced", fast: "Fast and punchy" },
-  media: { stock: "Pexels real stock video", own: "My own media", mixed: "Pexels stock + my media" }
-} as const;
-
 function App() {
   const authSetup = useMemo(() => {
     try {
@@ -211,10 +202,10 @@ function App() {
   const [composer, setComposer] = useState(() => parseBriefChat(localStorage.getItem("fengine-brief-chat")).composer
     || ((localStorage.getItem("fengine-brief-chat") ? "" : localStorage.getItem("fengine-draft")) ?? ""));
   const [architecture, setArchitecture] = useState<VideoArchitecture>(defaultVideoArchitecture);
-  const [architectureTouched, setArchitectureTouched] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [mediaLooking, setMediaLooking] = useState(false);
   const createUpload = useRef<HTMLInputElement>(null);
+  const briefChatPane = useRef<HTMLDivElement>(null);
   const briefDraftRef = useRef(draft);
   const briefAskedRef = useRef(briefAsked);
   const mediaLookLock = useRef(false);
@@ -454,12 +445,14 @@ function App() {
     localStorage.setItem("fengine-brief-chat", JSON.stringify({ messages: briefChat, asked: briefAsked, composer }));
   }, [briefChat, briefAsked, composer]);
   useEffect(() => {
-    if (architectureTouched) return;
     const conversation = briefChat.some((message) => message.role === "user") ? draft : composer;
     const next = recommendVideoArchitecture([conversation, ...pendingFiles.map((file) => file.name)].filter(Boolean).join(" "));
     if (pendingFiles.length && next.media === "stock") next.media = "own";
     setArchitecture(next);
-  }, [draft, composer, briefChat, pendingFiles, architectureTouched]);
+  }, [draft, composer, briefChat, pendingFiles]);
+  useEffect(() => {
+    briefChatPane.current?.scrollTo({ top: briefChatPane.current.scrollHeight });
+  }, [briefChat, mediaLooking]);
   useEffect(() => {
     if (step !== "brief" || !pendingFiles.length || mediaLookLock.current) return;
     const last = briefChat[briefChat.length - 1];
@@ -834,11 +827,6 @@ function App() {
     setDraft(localStorage.getItem("fengine-draft") ?? "");
     setStatus("");
     setStep("brief");
-  }
-
-  function patchArchitecture(patch: Partial<VideoArchitecture>) {
-    setArchitectureTouched(true);
-    setArchitecture({ ...architecture, ...patch });
   }
 
   function addPendingFiles(list: FileList | File[]) {
@@ -2566,6 +2554,12 @@ function App() {
   const inApp = authReady && Boolean(token) && step !== "sign-in";
   const partnerBrands = showsPartnerBrands(token ?? "", String(import.meta.env.VITE_PARTNER_BRAND_EMAIL ?? ""));
   const createFlow = step === "brief" || step === "concepts" || step === "media" || step === "editor" || step === "render";
+  const lastBrief = briefChat[briefChat.length - 1];
+  const briefCanContinue = !busy && !mediaLooking
+    && !briefNeedsMediaLook(draft, pendingFiles.length)
+    && lastBrief?.text !== DROP_OWN_MEDIA
+    && briefChat.some((message) => message.role === "user")
+    && !lastBrief?.questionId;
   const projectTitle = project?.brief.purpose?.trim() || "Untitled draft";
   const saveBusy = busy || status === "Saving…";
   const saveLabel = saveBusy ? "Saving…" : (status.startsWith("✓") || !status ? "Saved" : status);
@@ -2580,7 +2574,7 @@ function App() {
     <button type="button" aria-current={step === "settings" ? "page" : undefined} onClick={() => setStep("settings")}>Settings</button>
   </> : null;
 
-  return <div className={`app-shell${inApp ? " app-shell-signed" : ""}${step === "editor" ? " app-shell-editor" : ""}`}>
+  return <div className={`app-shell${inApp ? " app-shell-signed" : ""}${step === "editor" ? " app-shell-editor" : ""}${step === "brief" ? " app-shell-brief" : ""}`}>
     {inApp && <nav className="app-rail" aria-label="Primary">
       <a className="rail-brand" href="/">F-MOTION</a>
       {appNav}
@@ -2683,9 +2677,8 @@ function App() {
       <p role="status">{status}</p>
     </section>}
     {authReady && step === "brief" && <section className="create-brief">
-      <h1>What do you want to make?</h1>
-      <p>Chat with F-Motion. It asks at most four missing questions, then recommends a video plan you can still change.</p>
-      <div className="brief-chat" aria-label="Create chat" aria-live="polite" aria-busy={mediaLooking || undefined}>
+      <h1 className="brief-title">Create</h1>
+      <div ref={briefChatPane} className="brief-chat" aria-label="Create chat" aria-live="polite" aria-busy={mediaLooking || undefined}>
         {briefChat.map((message, index) =>
           <div key={`${message.role}:${index}:${message.text.slice(0, 24)}`} className={`brief-chat-msg is-${message.role}`}>
             <p>{message.text}</p>
@@ -2697,6 +2690,11 @@ function App() {
             ) : null}
           </div>)}
       </div>
+      {pendingFiles.length > 0 && <ul className="create-pending-files">{pendingFiles.map((file, index) =>
+        <li key={`${file.name}-${index}`}>
+          <span>{file.name}</span>
+          <button type="button" className="secondary" onClick={() => setPendingFiles((current) => current.filter((_, item) => item !== index))}>Remove</button>
+        </li>)}</ul>}
       <form
         className="brief-composer"
         onSubmit={(event) => {
@@ -2705,72 +2703,29 @@ function App() {
         }}
       >
         <button type="button" className="secondary" disabled={busy || mediaLooking} onClick={() => createUpload.current?.click()}>Add photos or clips</button>
-        <label htmlFor="brief-message">Message F-Motion
-          <textarea
-            id="brief-message"
-            value={composer}
-            maxLength={500}
-            rows={2}
-            placeholder="mystery murder in san francisco"
-            onChange={(event) => setComposer(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                sendBrief(composer);
-              }
-            }}
-          />
-        </label>
+        <textarea
+          id="brief-message"
+          aria-label="Message F-Motion"
+          value={composer}
+          maxLength={500}
+          rows={1}
+          placeholder="What do you want to make?"
+          onChange={(event) => setComposer(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              sendBrief(composer);
+            }
+          }}
+        />
         <button type="submit" disabled={busy || mediaLooking || (!composer.trim() && !pendingFiles.length)}>Send</button>
+        <button type="button" disabled={!briefCanContinue} onClick={() => void continueToConcepts()}>{busy ? "Preparing concepts…" : mediaLooking ? "Looking at your media…" : "Continue to story concepts"}</button>
       </form>
       <input ref={createUpload} hidden type="file" multiple accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
         if (event.target.files) addPendingFiles(event.target.files);
         event.target.value = "";
       }} />
-      {pendingFiles.length > 0 && <ul className="create-pending-files">{pendingFiles.map((file, index) =>
-        <li key={`${file.name}-${index}`}>
-          <span>{file.name}</span>
-          <button type="button" className="secondary" onClick={() => setPendingFiles((current) => current.filter((_, item) => item !== index))}>Remove</button>
-        </li>)}</ul>}
-      <button disabled={busy || mediaLooking || briefNeedsMediaLook(draft, pendingFiles.length) || briefChat[briefChat.length - 1]?.text === DROP_OWN_MEDIA || !briefChat.some((message) => message.role === "user") || Boolean(briefChat[briefChat.length - 1]?.questionId)} onClick={() => void continueToConcepts()}>{busy ? "Preparing concepts…" : mediaLooking ? "Looking at your media…" : "Continue to story concepts"}</button>
       <p role="status" aria-live="polite">{status}</p>
-      <button className="secondary" disabled={busy} onClick={() => setStep("drafts")}>Back to drafts</button>
-      <div className="create-more-settings">
-        <p className="create-more-eyebrow">More settings</p>
-        <h2>Plan the video</h2>
-        <p>F-Motion prepared this recommendation from your conversation. Scroll to change any decision before building the storyboard.</p>
-        <dl className="architecture-summary" aria-label="Recommended video plan">
-          <div><dt>Goal</dt><dd>{architectureLabels.goal[architecture.goal]}</dd></div>
-          <div><dt>Audience</dt><dd>{architectureLabels.audience[architecture.audience]}</dd></div>
-          <div><dt>Story</dt><dd>{architectureLabels.structure[architecture.structure]}</dd></div>
-          <div><dt>Style</dt><dd>{architectureLabels.tone[architecture.tone]} · {architectureLabels.pace[architecture.pace]}</dd></div>
-          <div><dt>Length</dt><dd>About {architecture.durationSeconds} seconds</dd></div>
-          <div><dt>Visuals</dt><dd>{architectureLabels.media[architecture.media]}</dd></div>
-        </dl>
-        <div className="architecture-grid">
-        <label>What should this video achieve?<select value={architecture.goal} onChange={(event) => patchArchitecture({ goal: event.target.value as VideoArchitecture["goal"] })}>
-          <option value="story">Tell a story</option><option value="explain">Explain something</option><option value="promote">Promote an idea or product</option><option value="educate">Teach the viewer</option>
-        </select></label>
-        <label>Who is it for?<select value={architecture.audience} onChange={(event) => patchArchitecture({ audience: event.target.value as VideoArchitecture["audience"] })}>
-          <option value="general">General viewers</option><option value="social">Social media audience</option><option value="customers">Customers</option><option value="internal">Internal team</option>
-        </select></label>
-        <label>How should the story unfold?<select value={architecture.structure} onChange={(event) => patchArchitecture({ structure: event.target.value as VideoArchitecture["structure"] })}>
-          <option value="story_arc">Beginning → turn → resolution</option><option value="mystery">Clues → tension → reveal</option><option value="problem_solution">Problem → solution → result</option><option value="chronological">Chronological journey</option>
-        </select></label>
-        <label>What tone fits best?<select value={architecture.tone} onChange={(event) => patchArchitecture({ tone: event.target.value as VideoArchitecture["tone"] })}>
-          <option value="cinematic">Cinematic</option><option value="documentary">Documentary</option><option value="energetic">Energetic</option><option value="calm">Calm</option>
-        </select></label>
-        <label>How fast should it feel?<select value={architecture.pace} onChange={(event) => patchArchitecture({ pace: event.target.value as VideoArchitecture["pace"] })}>
-          <option value="slow">Slow and atmospheric</option><option value="balanced">Balanced</option><option value="fast">Fast and punchy</option>
-        </select></label>
-        <label>Target length<select value={architecture.durationSeconds} onChange={(event) => patchArchitecture({ durationSeconds: Number(event.target.value) as VideoArchitecture["durationSeconds"] })}>
-          <option value="15">About 15 seconds · 4 scenes</option><option value="30">About 30 seconds · 5 scenes</option><option value="45">About 45 seconds · 6 scenes</option>
-        </select></label>
-        <label>Where should visuals come from?<select value={architecture.media} onChange={(event) => patchArchitecture({ media: event.target.value as VideoArchitecture["media"] })}>
-          <option value="stock">Pexels real stock video</option><option value="own">My own media</option><option value="mixed">Mix Pexels stock and my media</option>
-        </select></label>
-        </div>
-      </div>
     </section>}
     {authReady && step === "concepts" && project && <section>
       <h1>Choose a story approach</h1>
@@ -2790,7 +2745,7 @@ function App() {
           <span>{concept.media_direction}</span>
         </button>)}</div>
       <p role="status" aria-live="polite">{status}</p>
-      <button className="secondary" disabled={busy} onClick={() => setStep("brief")}>Back to video plan</button>
+      <button className="secondary" disabled={busy} onClick={() => setStep("brief")}>Back to chat</button>
     </section>}
     {authReady && step === "media" && project && <section>
       <h1>Upload your media</h1>
