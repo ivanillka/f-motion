@@ -71,6 +71,11 @@ import {
 } from "./external-import.js";
 import { ApiKeyValidationError, type ApiKeyService } from "./api-keys.js";
 import { QuotaExceededError, type PostgresHostUsageService } from "./host-usage.js";
+import {
+  SetupClosedError,
+  SelfhostValidationError,
+  type SelfhostOwnerAuth
+} from "./selfhost-auth.js";
 
 export interface MediaDependencies {
   repository: PostgresMediaRepository;
@@ -96,6 +101,7 @@ interface AppBaseOptions {
   pexelsCredentials?: PexelsCredentialService;
   apiKeys?: ApiKeyService;
   hostUsage?: HostUsageService;
+  ownerAuth?: SelfhostOwnerAuth;
 }
 
 export interface AppOptions extends AppBaseOptions {
@@ -113,6 +119,16 @@ export interface TestAppOptions extends Omit<AppBaseOptions, "projects"> {
 }
 
 type Identify = (authorization: string | undefined) => Promise<string>;
+
+function isAnonymousOwnerRoute(request: express.Request): boolean {
+  const candidates = [request.originalUrl, request.url, `${request.baseUrl ?? ""}${request.url}`];
+  return candidates.some((value) => {
+    const path = String(value).split("?")[0];
+    return path === "/api/setup" || path === "/api/auth/login"
+      || path === "/setup" || path === "/auth/login"
+      || path === "/v1/setup" || path === "/v1/auth/login";
+  });
+}
 
 async function assertReadySceneMedia(
   ownerId: string,
@@ -392,7 +408,38 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       }
     }
   });
+  const ownerAuth = options.ownerAuth;
+  if (ownerAuth) {
+    const ownerAuthError = (response: express.Response, error: unknown, next: express.NextFunction) => {
+      if (error instanceof SelfhostValidationError) {
+        return response.status(400).json({ type: "validation", message: error.message });
+      }
+      if (error instanceof SetupClosedError) {
+        return response.status(409).json({ type: "conflict", message: error.message });
+      }
+      if (error instanceof UnauthorizedError) {
+        return response.status(401).json({ type: "unauthorized", message: error.message });
+      }
+      next(error);
+    };
+    app.get("/api/setup", async (_request, response, next) => {
+      try {
+        response.json({ needed: await ownerAuth.setupNeeded() });
+      } catch (error) { next(error); }
+    });
+    app.post("/api/setup", async (request, response, next) => {
+      try {
+        response.status(201).json(await ownerAuth.setup(request.body));
+      } catch (error) { ownerAuthError(response, error, next); }
+    });
+    app.post("/api/auth/login", async (request, response, next) => {
+      try {
+        response.json(await ownerAuth.login(request.body));
+      } catch (error) { ownerAuthError(response, error, next); }
+    });
+  }
   app.use("/api", async (request, response, next) => {
+    if (isAnonymousOwnerRoute(request)) return next();
     try {
       response.locals.ownerId = await identify(request.header("authorization"));
       next();
@@ -402,6 +449,14 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       next(error);
     }
   });
+  if (ownerAuth) {
+    app.post("/api/auth/logout", async (request, response, next) => {
+      try {
+        await ownerAuth.logout(request.header("authorization"));
+        response.status(204).end();
+      } catch (error) { next(error); }
+    });
+  }
   const falUnavailable = (response: express.Response) => response.status(503).json({
     type: "provider_unavailable",
     message: "FAL connection is not enabled on this deployment."
@@ -1188,7 +1243,8 @@ export function createApp(options: AppOptions) {
 export function createTestApp(options: TestAppOptions = {}) {
   const ownerId = options.ownerId ?? "authenticated-user";
   const accountState = options.accountState ?? "active";
-  return buildApp({ ...options, projects: options.projects ?? new ProjectService() }, async () => {
+  return buildApp({ ...options, projects: options.projects ?? new ProjectService() }, async (authorization) => {
+    if (options.ownerAuth) return options.ownerAuth.ownerIdForAuthorization(authorization);
     assertAccountActive(accountState);
     return ownerId;
   });

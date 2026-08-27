@@ -184,7 +184,8 @@ function App() {
           url: import.meta.env.VITE_SUPABASE_URL,
           publicKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
           origin: studioOrigin(location.href),
-          allowDemo: Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1"
+          allowDemo: Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1",
+          allowSelfhost: import.meta.env.VITE_SELFHOST_AUTH === "1"
         })
       };
     } catch (error) {
@@ -199,6 +200,10 @@ function App() {
   const [authBusy, setAuthBusy] = useState(false);
   const [step, setStep] = useState<Step>("sign-in");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [selfhostGate, setSelfhostGate] = useState<"checking" | "setup" | "login">("checking");
   const [awaitingEmail, setAwaitingEmail] = useState(false);
   const [draft, setDraft] = useState(() => localStorage.getItem("fengine-draft") ?? "");
   const [briefChat, setBriefChat] = useState<BriefChatMessage[]>(() => parseBriefChat(localStorage.getItem("fengine-brief-chat")).messages);
@@ -372,6 +377,10 @@ function App() {
     setMusicOpen(false);
     setPreviewingId(undefined);
     setOverlayCaption("");
+    setPassword("");
+    setConfirmPassword("");
+    setDisplayName("");
+    setSelfhostGate("checking");
     setStep("sign-in");
   }
 
@@ -412,6 +421,23 @@ function App() {
       setStep((current) => current === "sign-in" ? "drafts" : current);
     });
   }, [authSetup.error, authSetup.gateway]);
+
+  useEffect(() => {
+    if (import.meta.env.VITE_SELFHOST_AUTH !== "1") return;
+    if (!authReady || token || !authSetup.gateway?.setupNeeded) return;
+    let cancelled = false;
+    void authSetup.gateway.setupNeeded().then((needed) => {
+      if (!cancelled) setSelfhostGate(needed ? "setup" : "login");
+    }).catch(() => {
+      if (!cancelled) {
+        setSelfhostGate("login");
+        setStatus("Could not check this install.");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, token, authSetup.gateway]);
 
   useEffect(() => {
     const up = () => setOnline(true);
@@ -557,6 +583,36 @@ function App() {
       await authSetup.gateway.signInWithGoogle();
     } catch {
       setStatus("Google sign-in could not be started.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function setupOwner() {
+    if (!authSetup.gateway?.setupAccount) return;
+    if (password !== confirmPassword) {
+      setStatus("Passwords do not match.");
+      return;
+    }
+    setAuthBusy(true);
+    try {
+      await authSetup.gateway.setupAccount(email, password, displayName);
+      setStatus("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not create the owner account.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function passwordSignIn() {
+    if (!authSetup.gateway?.signInWithPassword) return;
+    setAuthBusy(true);
+    try {
+      await authSetup.gateway.signInWithPassword(email, password);
+      setStatus("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Email or password was rejected.");
     } finally {
       setAuthBusy(false);
     }
@@ -2554,18 +2610,40 @@ function App() {
     </header>
     {!authReady && <section><p role="status">Checking session…</p></section>}
     {authReady && step === "sign-in" && <section>
-      <h1>Shape a vertical video</h1>
+      <h1>{import.meta.env.VITE_SELFHOST_AUTH === "1"
+        ? selfhostGate === "setup" ? "Create your studio" : "Open your studio"
+        : "Shape a vertical video"}</h1>
       <p>{pendingImportId
         ? "Sign in to open the imported draft from Fotium."
-        : "Sign in to keep projects private."}</p>
-      <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-      <button disabled={authBusy || !authSetup.gateway || (Boolean(import.meta.env.VITE_SUPABASE_URL) && !email.trim())} onClick={() => void magicLink()}>Email me a magic link</button>
-      {Boolean(import.meta.env.VITE_SUPABASE_URL) && <p>{awaitingEmail
-        ? "Email sent. Open the link to finish sign-in on this studio."
-        : "Open the email link to finish sign-in."}</p>}
-      {import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "1"
-        ? <button className="secondary" disabled={authBusy || !authSetup.gateway} onClick={() => void googleSignIn()}>Continue with Google</button>
-        : null}
+        : import.meta.env.VITE_SELFHOST_AUTH === "1"
+          ? selfhostGate === "setup"
+            ? "Create the single owner for this install. No one else can join later."
+            : selfhostGate === "checking"
+              ? "Checking this install…"
+              : "Sign in with the owner email and password you created on first open."
+          : "Sign in to keep projects private."}</p>
+      {import.meta.env.VITE_SELFHOST_AUTH === "1" ? (
+        selfhostGate === "checking" ? null : selfhostGate === "setup" ? <>
+          <label>Name<input type="text" autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
+          <label>Email<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+          <label>Password<input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+          <label>Confirm password<input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
+          <button disabled={authBusy || !authSetup.gateway?.setupAccount || !email.trim() || password.length < 8} onClick={() => void setupOwner()}>Create owner and continue</button>
+        </> : <>
+          <label>Email<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+          <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+          <button disabled={authBusy || !authSetup.gateway?.signInWithPassword || !email.trim() || password.length < 8} onClick={() => void passwordSignIn()}>Open studio</button>
+        </>
+      ) : <>
+        <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+        <button disabled={authBusy || !authSetup.gateway || (Boolean(import.meta.env.VITE_SUPABASE_URL) && !email.trim())} onClick={() => void magicLink()}>Email me a magic link</button>
+        {Boolean(import.meta.env.VITE_SUPABASE_URL) && <p>{awaitingEmail
+          ? "Email sent. Open the link to finish sign-in on this studio."
+          : "Open the email link to finish sign-in."}</p>}
+        {import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "1"
+          ? <button className="secondary" disabled={authBusy || !authSetup.gateway} onClick={() => void googleSignIn()}>Continue with Google</button>
+          : null}
+      </>}
       <p role="status">{status}</p>
     </section>}
     {authReady && step === "drafts" && <section>

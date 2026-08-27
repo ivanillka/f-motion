@@ -9,6 +9,9 @@ export interface AuthGateway {
   sendMagicLink(email: string): Promise<void>;
   signInWithGoogle(): Promise<void>;
   signOut(): Promise<void>;
+  setupNeeded?(): Promise<boolean>;
+  setupAccount?(email: string, password: string, displayName: string): Promise<void>;
+  signInWithPassword?(email: string, password: string): Promise<void>;
 }
 
 export interface AuthConfiguration {
@@ -16,6 +19,7 @@ export interface AuthConfiguration {
   publicKey?: string;
   origin: string;
   allowDemo: boolean;
+  allowSelfhost?: boolean;
 }
 
 interface AuthSessionLike {
@@ -42,6 +46,7 @@ interface AuthClientLike {
 export interface AuthDependencies {
   createClient?: (url: string, publicKey: string, options: unknown) => AuthClientLike;
   demoStorage?: Pick<Storage, "getItem" | "setItem" | "removeItem">;
+  fetchImpl?: typeof fetch;
 }
 
 export class AuthConfigurationError extends Error {
@@ -131,6 +136,112 @@ class SupabaseAuthGateway implements AuthGateway {
   }
 }
 
+class SelfhostAuthGateway implements AuthGateway {
+  private readonly marker = "fengine-selfhost-session";
+  private readonly tokenKey = "fengine-selfhost-token";
+  private readonly listeners = new Set<(session?: WebAuthSession) => void>();
+  private readonly storage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
+  private readonly fetchImpl?: typeof fetch;
+
+  constructor(
+    storage: Pick<Storage, "getItem" | "setItem" | "removeItem">,
+    fetchImpl?: typeof fetch
+  ) {
+    this.storage = storage;
+    this.fetchImpl = fetchImpl;
+  }
+
+  private request(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    return this.fetchImpl ? this.fetchImpl(input, init) : fetch(input, init);
+  }
+
+  private current(): WebAuthSession | undefined {
+    const token = this.storage.getItem(this.tokenKey);
+    return this.storage.getItem(this.marker) === "1" && token ? { accessToken: token } : undefined;
+  }
+
+  private remember(token: string): void {
+    this.storage.setItem(this.marker, "1");
+    this.storage.setItem(this.tokenKey, token);
+    for (const listener of this.listeners) listener({ accessToken: token });
+  }
+
+  private async readError(response: Response, fallback: string): Promise<string> {
+    try {
+      const body = await response.json() as { message?: unknown };
+      if (typeof body.message === "string" && body.message) {
+        if (body.message === "authentication required") return "Email or password was rejected.";
+        return body.message;
+      }
+    } catch {
+      // keep fallback
+    }
+    return fallback;
+  }
+
+  private async postAccount(path: string, email: string, password: string, displayName?: string): Promise<void> {
+    const response = await this.request(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: email.trim(),
+        password,
+        ...(displayName !== undefined ? { display_name: displayName.trim() } : {})
+      })
+    });
+    if (!response.ok) throw new Error(await this.readError(response, "Sign-in failed."));
+    const body = await response.json() as { access_token?: unknown };
+    if (typeof body.access_token !== "string" || !body.access_token) throw new Error("Sign-in failed.");
+    this.remember(body.access_token);
+  }
+
+  subscribe(listener: (session?: WebAuthSession) => void): () => void {
+    this.listeners.add(listener);
+    queueMicrotask(() => {
+      if (this.listeners.has(listener)) listener(this.current());
+    });
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  async setupNeeded(): Promise<boolean> {
+    const response = await this.request("/api/setup");
+    if (!response.ok) throw new Error("Could not check this install.");
+    const body = await response.json() as { needed?: unknown };
+    return body.needed === true;
+  }
+
+  async setupAccount(email: string, password: string, displayName: string): Promise<void> {
+    await this.postAccount("/api/setup", email, password, displayName);
+  }
+
+  async signInWithPassword(email: string, password: string): Promise<void> {
+    await this.postAccount("/api/auth/login", email, password);
+  }
+
+  async sendMagicLink(): Promise<void> {
+    throw new Error("Self-host sign-in uses your email and password.");
+  }
+
+  async signInWithGoogle(): Promise<void> {
+    throw new Error("Self-host sign-in uses your email and password.");
+  }
+
+  async signOut(): Promise<void> {
+    const token = this.storage.getItem(this.tokenKey);
+    this.storage.removeItem(this.marker);
+    this.storage.removeItem(this.tokenKey);
+    if (token) {
+      await this.request("/api/auth/logout", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` }
+      }).catch(() => undefined);
+    }
+    for (const listener of this.listeners) listener(undefined);
+  }
+}
+
 class DemoAuthGateway implements AuthGateway {
   private readonly marker = "fengine-demo-session";
   private readonly listeners = new Set<(session?: WebAuthSession) => void>();
@@ -172,12 +283,24 @@ class DemoAuthGateway implements AuthGateway {
   }
 }
 
+function sessionStorageOr(dependencies: AuthDependencies): Pick<Storage, "getItem" | "setItem" | "removeItem"> | undefined {
+  return dependencies.demoStorage
+    ?? (typeof sessionStorage === "undefined" ? undefined : sessionStorage);
+}
+
 export function createAuthGateway(
   config: AuthConfiguration,
   dependencies: AuthDependencies = {}
 ): AuthGateway {
   const url = config.url?.trim();
   const publicKey = config.publicKey?.trim();
+
+  if (config.allowSelfhost) {
+    const storage = sessionStorageOr(dependencies);
+    if (!storage) throw new AuthConfigurationError();
+    return new SelfhostAuthGateway(storage, dependencies.fetchImpl);
+  }
+
   if (Boolean(url) !== Boolean(publicKey)) throw new AuthConfigurationError();
 
   if (url && publicKey) {

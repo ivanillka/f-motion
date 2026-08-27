@@ -6,6 +6,7 @@ import { externalImportConfigFromEnv } from "./external-import.js";
 import { PostgresProjectRepository } from "./domain.js";
 import { freeRenderUnitsFromEnv, PostgresHostUsageService } from "./host-usage.js";
 import { assertLocalAuthAllowed } from "./local-auth.js";
+import { assertSelfhostConfig, engineEnv, PostgresSelfhostOwner } from "./selfhost-auth.js";
 import { PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
 import { PostgresRenderRepository, renderProfilesFromEnv } from "./render-repository.js";
 import { createApp, createTestApp } from "./server.js";
@@ -92,7 +93,21 @@ const ready = async () => {
   return true;
 };
 
-if (process.env.FENGINE_LOCAL_AUTH === "1") {
+if (engineEnv(process.env) === "selfhost") {
+  assertSelfhostConfig(process.env);
+  createTestApp({
+    ownerAuth: new PostgresSelfhostOwner(pool, hostUsage),
+    projects,
+    renders,
+    media,
+    ready,
+    falCredentials,
+    falGeneration,
+    pexelsCredentials,
+    apiKeys,
+    hostUsage
+  }).listen(port);
+} else if (process.env.FENGINE_LOCAL_AUTH === "1") {
   // ponytail: local-only identity inject. Ceiling: single fixed owner. Upgrade: real Supabase JWT.
   const ownerId = "local-dev";
   await pool.query(
