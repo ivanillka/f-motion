@@ -178,7 +178,7 @@ export const BRIEF_OPENING: BriefChatMessage = {
 
 export const LOOKING_AT_MEDIA = "Looking at your media…";
 export const DROP_OWN_MEDIA = "Drop the photos or clips. I will look at them first, then ask only what is still missing.";
-export const BRIEF_READY = "That is enough for a video plan. Continue when you are ready."
+export const BRIEF_READY = "That is enough for a video plan."
 
 const briefChoiceSets: Record<BriefQuestionId, readonly string[]> = {
   intent: ["Tell a story", "Explain something", "Promote an idea or product", "Teach the viewer"],
@@ -335,7 +335,7 @@ export function briefReadyMessage(conversation: string): string {
       : place
         ? `moody ${hook} Pexels stock`
         : "Pexels stock";
-  return `That is enough for a ${plan.tone} ${shape} about ${subject} — about ${plan.durationSeconds} seconds, ${where}. Continue when you are ready.`;
+  return `That is enough for a ${plan.tone} ${shape} about ${subject} — about ${plan.durationSeconds} seconds, ${where}.`;
 }
 
 export function briefQuestionFor(

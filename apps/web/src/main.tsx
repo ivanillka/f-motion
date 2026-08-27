@@ -211,6 +211,7 @@ function App() {
   const briefAskedRef = useRef(briefAsked);
   const mediaLookLock = useRef(false);
   const mediaLookKey = useRef("");
+  const storyboardLock = useRef(false);
   briefDraftRef.current = draft;
   briefAskedRef.current = briefAsked;
   const [project, setProject] = useState<ProjectSnapshot>();
@@ -611,12 +612,19 @@ function App() {
     }
   }
 
+  function planFromChat(): VideoArchitecture {
+    const conversation = briefDraftRef.current;
+    const plan = recommendVideoArchitecture([conversation, ...pendingFiles.map((file) => file.name)].filter(Boolean).join(" "));
+    if (pendingFiles.length && plan.media === "stock") plan.media = "own";
+    return plan;
+  }
+
   function briefForStoryboard(): ProjectSnapshot["brief"] {
-    const purpose = briefPurposeFromChat(draft, pendingFiles.length);
+    const plan = planFromChat();
     return {
-      purpose,
-      audience: architecture.audience,
-      tone: `${architecture.tone}, ${architecture.pace}`
+      purpose: briefPurposeFromChat(briefDraftRef.current, pendingFiles.length),
+      audience: plan.audience,
+      tone: `${plan.tone}, ${plan.pace}`
     };
   }
 
@@ -653,6 +661,7 @@ function App() {
         return [...withNotes, { role: "assistant", text: next.prompt, questionId: next.id, choices: next.choices }];
       });
       if (next) setBriefAsked((current) => current.includes(next.id) ? current : [...current, next.id]);
+      else void continueToStoryboard();
     } finally {
       mediaLookLock.current = false;
       setMediaLooking(false);
@@ -684,6 +693,7 @@ function App() {
         if (last && isBriefReadyMessage(last.text)) return [...current, user];
         return [...current, user, { role: "assistant", text: briefReadyMessage(conversation) }];
       });
+      void continueToStoryboard();
       return;
     }
     setBriefAsked((asked) => asked.includes(next.id) ? asked : [...asked, next.id]);
@@ -691,14 +701,16 @@ function App() {
   }
 
   async function continueToStoryboard() {
-    if (busy) return;
+    if (busy || storyboardLock.current) return;
     const brief = briefForStoryboard();
     if (!brief.purpose) return;
-    if (!draft.trim()) setDraft(brief.purpose);
+    const plan = planFromChat();
+    storyboardLock.current = true;
     mediaTransition.current += 1;
     setSceneMedia({});
     setSceneProgress({});
     setBusy(true);
+    setArchitecture(plan);
     setStatus("Building the storyboard…");
     try {
       let current = project;
@@ -710,10 +722,11 @@ function App() {
         current = body.project;
         localStorage.setItem("fengine-project", current.id);
       }
-      await buildStoryboard(current, architecture);
+      await buildStoryboard(current, plan);
     } catch {
       setStatus("Your storyboard could not be created. Please try again.");
     } finally {
+      storyboardLock.current = false;
       setBusy(false);
     }
   }
@@ -2541,12 +2554,6 @@ function App() {
   const inApp = authReady && Boolean(token) && step !== "sign-in";
   const partnerBrands = showsPartnerBrands(token ?? "", String(import.meta.env.VITE_PARTNER_BRAND_EMAIL ?? ""));
   const createFlow = step === "brief" || step === "media" || step === "editor" || step === "render";
-  const lastBrief = briefChat[briefChat.length - 1];
-  const briefCanContinue = !busy && !mediaLooking
-    && !briefNeedsMediaLook(draft, pendingFiles.length)
-    && lastBrief?.text !== DROP_OWN_MEDIA
-    && briefChat.some((message) => message.role === "user")
-    && !lastBrief?.questionId;
   const projectTitle = project?.brief.purpose?.trim() || "Untitled draft";
   const saveBusy = busy || status === "Saving…";
   const saveLabel = saveBusy ? "Saving…" : (status.startsWith("✓") || !status ? "Saved" : status);
@@ -2706,7 +2713,9 @@ function App() {
           }}
         />
         <button type="submit" disabled={busy || mediaLooking || (!composer.trim() && !pendingFiles.length)}>Send</button>
-        <button type="button" disabled={!briefCanContinue} onClick={() => void continueToStoryboard()}>{busy ? "Creating storyboard…" : mediaLooking ? "Looking at your media…" : "Create storyboard"}</button>
+        {status.startsWith("Your storyboard could not") && (
+          <button type="button" disabled={busy} onClick={() => void continueToStoryboard()}>Try again</button>
+        )}
       </form>
       <input ref={createUpload} hidden type="file" multiple accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
         if (event.target.files) addPendingFiles(event.target.files);

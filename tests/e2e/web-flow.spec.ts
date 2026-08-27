@@ -62,12 +62,12 @@ async function describeVideo(page: Page, text: string): Promise<void> {
   await page.getByLabel("Message F-Motion").fill(text);
   await page.getByRole("button", { name: "Send" }).click();
   for (let step = 0; step < 4; step += 1) {
-    if (await page.getByRole("button", { name: "Create storyboard" }).isEnabled()) return;
+    if (await page.getByRole("heading", { name: "Storyboard" }).isVisible()) return;
     const choice = page.locator(".brief-chat-choices button").first();
-    await expect(choice).toBeVisible();
+    if (!await choice.isVisible()) break;
     await choice.click();
   }
-  await expect(page.getByRole("button", { name: "Create storyboard" })).toBeEnabled();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
 }
 
 async function sayOwnMedia(page: Page): Promise<void> {
@@ -81,14 +81,33 @@ async function sayOwnMedia(page: Page): Promise<void> {
 }
 
 async function briefWithOwnStill(page: Page, text: string): Promise<void> {
-  await describeVideo(page, text);
-  await sayOwnMedia(page);
+  await page.getByLabel("Message F-Motion").fill(text);
+  await page.getByRole("button", { name: "Send" }).click();
+  let pickedOwn = false;
+  for (let step = 0; step < 4; step += 1) {
+    if (await page.getByRole("heading", { name: "Storyboard" }).isVisible()) return;
+    const own = page.getByRole("button", { name: "My own media", exact: true });
+    if (await own.isVisible()) {
+      await own.click();
+      pickedOwn = true;
+      break;
+    }
+    const choice = page.locator(".brief-chat-choices button").first();
+    if (!await choice.isVisible()) break;
+    await choice.click();
+  }
+  if (!pickedOwn) await sayOwnMedia(page);
   await page.locator("section.create-brief input[type=file]").setInputFiles("apps/worker/test/fixtures/still.jpg");
-  await expect(page.getByRole("button", { name: "Create storyboard" })).toBeEnabled({ timeout: 15_000 });
+  for (let step = 0; step < 4; step += 1) {
+    if (await page.getByRole("heading", { name: "Storyboard" }).isVisible()) return;
+    const choice = page.locator(".brief-chat-choices button").first();
+    if (!await choice.isVisible()) break;
+    await choice.click();
+  }
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
 }
 
 async function createStoryboard(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Create storyboard" }).click();
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
 }
 
@@ -173,7 +192,7 @@ test("own media is glanced locally before remaining Create questions", async ({ 
   await page.locator("section.create-brief input[type=file]").setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByText(/I looked at 1 photo/i)).toBeVisible();
   await expect(page.locator(".brief-chat-choices button").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create storyboard" })).toBeDisabled();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toHaveCount(0);
 });
 
 test("upload journey, natural conflict recovery, render, and download", async ({ page }) => {
@@ -244,14 +263,6 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   await signIn(page);
   await page.getByRole("button", { name: "Create new video" }).click();
   await describeVideo(page, "A calm studio introduction");
-  const pexelsMediaPosts: string[] = [];
-  page.on("request", (request) => {
-    if (request.method() === "POST" && /\/media\/pexels(\/|$)/.test(request.url())) {
-      pexelsMediaPosts.push(request.url());
-    }
-  });
-  expect(pexelsMediaPosts).toEqual([]);
-  await page.getByRole("button", { name: "Create storyboard" }).click();
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
   await expect(page.getByText(/The story begins\.|Calm studio introduction/i).first()).toBeVisible();
