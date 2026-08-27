@@ -817,7 +817,6 @@ function App() {
     setSceneProgress({});
     setCandidates([]);
     setArchitecture(defaultVideoArchitecture);
-    setArchitectureTouched(false);
     setPendingFiles([]);
     const stored = parseBriefChat(localStorage.getItem("fengine-brief-chat"));
     setBriefChat(stored.messages.length ? stored.messages : [BRIEF_OPENING]);
