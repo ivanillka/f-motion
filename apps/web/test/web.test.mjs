@@ -62,7 +62,10 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Generate with FAL/);
   assert.match(source, /Generate voice-over/);
   assert.match(source, /Use as voice-over/);
-  assert.match(source, /spoken subtitles/);
+  assert.match(source, /spoken-word/);
+  assert.match(source, /is-current/);
+  assert.match(source, /highlight each word/);
+  assert.doesNotMatch(source, /spokenCue/);
   assert.match(source, /Music ducks under the voice/);
   assert.match(source, /Kokoro American English/);
   assert.match(source, /openFalSpeech\(/);
@@ -219,6 +222,8 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.look-poster\.overlay-bottom \{\s*align-self: end;\s*margin-bottom: 0;/);
   assert.match(css, /\.overlay-look-tile/);
   assert.match(css, /\.caption-burn \{\s*z-index: 4;/);
+  assert.match(css, /\.spoken-word\.is-current/);
+  assert.match(css, /#d989a0/);
   assert.match(css, /font-family: Inter/);
   assert.match(css, /Inter-SemiBold\.ttf/);
   assert.match(css, /InterDisplay-ExtraBold\.ttf/);

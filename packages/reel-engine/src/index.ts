@@ -469,6 +469,64 @@ export function cueAtElapsed(cues: CaptionCue[], elapsedMs: number): CaptionCue 
   return cues.find((cue) => t >= cue.start_ms && t < cue.end_ms) ?? (last && t >= last.start_ms ? last : undefined);
 }
 
+export interface SpokenWord {
+  text: string;
+  start_ms: number;
+  end_ms: number;
+}
+
+/** Word timings inside one caption. The phrase stays intact; only the clock moves. */
+export function spokenWords(caption: string, duration_ms: number): SpokenWord[] {
+  const tokens = caption.trim().split(/\s+/u).filter(Boolean);
+  if (!tokens.length || duration_ms <= 0) return [];
+  if (tokens.length === 1) {
+    return [{ text: tokens[0]!, start_ms: 0, end_ms: duration_ms }];
+  }
+  const weights = tokens.map((token) => Math.max(1, [...token].length));
+  const durations = proportionalDurations(weights, duration_ms);
+  const words: SpokenWord[] = [];
+  let cursor = 0;
+  tokens.forEach((text, index) => {
+    const duration = durations[index] ?? 0;
+    const previous = words[words.length - 1];
+    if (duration <= 0 && previous) {
+      previous.text += ` ${text}`;
+      return;
+    }
+    const start = cursor;
+    const end = Math.min(duration_ms, start + Math.max(duration, 1));
+    words.push({ text, start_ms: start, end_ms: end });
+    cursor = end;
+  });
+  const last = words[words.length - 1];
+  if (last) last.end_ms = duration_ms;
+  return words;
+}
+
+/** Word timings across sentence cues, still one on-screen phrase. */
+export function spokenWordsForCues(cues: CaptionCue[]): SpokenWord[] {
+  const words: SpokenWord[] = [];
+  for (const cue of cues) {
+    const inner = spokenWords(cue.text, Math.max(0, cue.end_ms - cue.start_ms));
+    for (const word of inner) {
+      words.push({
+        text: word.text,
+        start_ms: cue.start_ms + word.start_ms,
+        end_ms: cue.start_ms + word.end_ms
+      });
+    }
+  }
+  return words;
+}
+
+export function spokenWordIndex(words: SpokenWord[], elapsedMs: number): number {
+  if (!words.length) return -1;
+  const t = Math.max(0, elapsedMs);
+  const index = words.findIndex((word) => t >= word.start_ms && t < word.end_ms);
+  if (index >= 0) return index;
+  return t >= (words[words.length - 1]?.end_ms ?? 0) ? words.length - 1 : 0;
+}
+
 /** Music-bed gain while a voice-over is attached. ponytail: constant duck; upgrade to sidechain. */
 export const VOICEOVER_DUCK = 0.22;
 

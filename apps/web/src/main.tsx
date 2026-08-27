@@ -27,8 +27,9 @@ import {
   stockBedUrl,
   stockBeds,
   showsPartnerBrands,
-  cueAtElapsed,
   cuesForScene,
+  spokenWordIndex,
+  spokenWordsForCues,
   VOICEOVER_DUCK,
   type Concept,
   type ProjectSnapshot,
@@ -2130,15 +2131,14 @@ function App() {
       : soundtrackMedia?.attribution?.title ?? "Uploaded music";
   const voiceover = project?.brief.voiceover;
   const voiceoverUrl = voiceover?.media_id ? scenePreviewUrl(sceneMedia[voiceover.media_id]) : undefined;
-  const spokenCue = previewScene && livePlaying
-    ? (cueAtElapsed(cuesForScene(previewScene), playhead.sceneElapsedMs)?.text ?? "")
-    : shownCaption;
+  const spoken = previewScene ? spokenWordsForCues(cuesForScene(previewScene)) : [];
+  const spokenIndex = livePlaying ? spokenWordIndex(spoken, playhead.sceneElapsedMs) : -1;
   const overlayHeadline = overlayLook === "title"
     ? (shownCaption || (overlayGhost ? "Title" : ""))
     : "";
   const overlayLine = overlayLook === "title"
     ? ""
-    : spokenCue || (overlayGhost ? "Your caption" : "");
+    : shownCaption || (overlayGhost ? "Your caption" : "");
 
   function readSceneElapsed(now = performance.now()) {
     return livePlaying
@@ -2659,7 +2659,17 @@ function App() {
             {(overlayHeadline || overlayLine) ? (
               <div className={`caption-burn look-${overlayLook} overlay-${overlayPlace}${overlayGhost ? " is-ghost" : ""}`}>
                 {overlayHeadline ? <strong className="overlay-title">{overlayHeadline}</strong> : null}
-                {overlayLine ? <span className="overlay-caption">{overlayLine}</span> : null}
+                {overlayLine ? (
+                  livePlaying && spoken.length
+                    ? <span className="overlay-caption" aria-label={overlayLine}>
+                        {spoken.map((word, index) =>
+                          <span
+                            key={`${word.start_ms}:${word.text}`}
+                            className={`spoken-word${index < spokenIndex ? " is-spoken" : index === spokenIndex ? " is-current" : " is-upcoming"}`}
+                          >{index ? " " : ""}{word.text}</span>)}
+                      </span>
+                    : <span className="overlay-caption">{overlayLine}</span>
+                ) : null}
               </div>
             ) : null}
             {!livePlaying && <span
@@ -2722,7 +2732,7 @@ function App() {
             onToggle={(event) => setVoiceOpen(event.currentTarget.open)}
           >
             <summary>{recording ? "Recording voice-over" : voiceover ? "Voice-over" : "Add voice-over"}</summary>
-            <p className="crop-hint">Record, upload, or generate with FAL. Captions time as spoken subtitles on Play and Export. Music ducks under the voice.</p>
+            <p className="crop-hint">Record, upload, or generate with FAL. The full caption stays on screen; words highlight as they are spoken. Music ducks under the voice.</p>
             <div className="scene-actions">
               <button
                 type="button"
@@ -2898,7 +2908,7 @@ function App() {
           <label htmlFor={`caption-${activeScene.id}`}>Caption
             <input id={`caption-${activeScene.id}`} aria-label={`Scene ${activeSceneNumber} caption`} maxLength={180} value={overlayCaption} onChange={(event) => setOverlayCaption(event.target.value)} onBlur={(event) => void saveScenePatch(activeScene.id, { caption: event.currentTarget.value })} />
           </label>
-          <p className="crop-hint">Play and Export time this caption as spoken subtitles.</p>
+          <p className="crop-hint">Play and Export keep this caption intact and highlight each word as it is spoken.</p>
           <div className="overlay-places" role="group" aria-label="Overlay place">
             {([["Top", "top"], ["Middle", "center"], ["Bottom", "bottom"]] as const).map(([label, place]) =>
               <button

@@ -299,7 +299,7 @@ test("render job builds one deterministic-plan clip per scene", () => {
   assert.match(args, /subtitles=/);
   assert.match(args, /fontsdir=/);
   assert.match(job.clips[0].assContents ?? "", /Inter SemiBold/);
-  assert.match(job.clips[0].assContents ?? "", /Project caption/);
+  assert.match(job.clips[0].assContents ?? "", /\\k\d+\}Project \{\\k\d+\}caption/);
   const concat = job.concatArgs.join(" ");
   assert.match(concat, /Reference preview/);
   assert.match(concat, /project project revision 3/);
@@ -353,7 +353,7 @@ test("caption ass builder freezes the safe-area layout", () => {
   assert.match(ass, /Style: Caption,Inter SemiBold,/);
   assert.match(ass, /Style: Caption,.*,40,40,140,1$/m, "40px side inset, 140px bottom margin clears the watermark band");
   assert.match(ass, /&H61000000/, "pill BackColour alpha 0x61 is ~62% opaque, matching the editor overlay");
-  assert.match(ass, /^Dialogue: 0,0:00:00\.00,0:00:00\.50,Caption,,0,0,0,,Project caption$/m);
+  assert.match(ass, /^Dialogue: 0,0:00:00\.00,0:00:00\.50,Caption,,0,0,0,,\{\\k\d+\}Project \{\\k\d+\}caption$/m);
 });
 test("title overlay burns above the caption and honors place", () => {
   const stacked = buildCaptionAss(
@@ -363,7 +363,7 @@ test("title overlay burns above the caption and honors place", () => {
   const lines = stacked.split("\n").filter((line) => line.startsWith("Dialogue:"));
   assert.equal(lines.length, 2);
   assert.match(lines[0], /Title,,0,0,228,,Naplavka$/);
-  assert.match(lines[1], /Caption,,0,0,0,,Open the full gallery\.$/);
+  assert.match(lines[1], /Caption,,0,0,0,,\{\\k\d+\}Open \{\\k\d+\}the \{\\k\d+\}full \{\\k\d+\}gallery\.$/);
   const centered = buildCaptionAss([], { title: "Naplavka", place: "center", durationMs: 1000 });
   assert.match(centered, /\{\\an8\}Naplavka/);
   assert.doesNotMatch(centered, /^Dialogue:.*Caption,/m);
@@ -382,8 +382,7 @@ test("poster overlay drops the caption pill and left-aligns", () => {
   assert.match(ass, /Style: Title,Inter Display ExtraBold,/);
   assert.match(ass, /Style: Caption,Inter SemiBold,/);
   assert.doesNotMatch(ass, /Style: Caption,.*&H61000000/);
-  assert.match(ass, /\{\\an1\}Naplavka/);
-  assert.match(ass, /\{\\an1\}Lower line/);
+  assert.match(ass, /\{\\an1\\k\d+\}Lower \{\\k\d+\}line/);
 });
 test("title-only scene still gets a subtitle filter", () => {
   const job = buildRenderJob({
@@ -393,15 +392,15 @@ test("title-only scene still gets a subtitle filter", () => {
   assert.match(job.clips[0].args.join(" "), /subtitles=/);
   assert.match(job.clips[0].assContents ?? "", /Title,,0,0,0,,Naplavka/);
 });
-test("caption ass builder emits one Dialogue line per timed cue", () => {
+test("caption ass builder burns one karaoke line so the full caption stays on screen", () => {
   const ass = buildCaptionAss([
     { text: "First phrase", start_ms: 0, end_ms: 1500 },
     { text: "Second phrase", start_ms: 1500, end_ms: 4000 }
   ]);
   const dialogues = ass.split("\n").filter((line) => line.startsWith("Dialogue:"));
-  assert.equal(dialogues.length, 2);
-  assert.match(dialogues[0], /^Dialogue: 0,0:00:00\.00,0:00:01\.50,Caption,,0,0,0,,First phrase$/);
-  assert.match(dialogues[1], /^Dialogue: 0,0:00:01\.50,0:00:04\.00,Caption,,0,0,0,,Second phrase$/);
+  assert.equal(dialogues.length, 1);
+  assert.match(dialogues[0], /^Dialogue: 0,0:00:00\.00,0:00:04\.00,Caption,,0,0,0,,/);
+  assert.match(dialogues[0], /\\k\d+\}First \{\\k\d+\}phrase \{\\k\d+\}Second \{\\k\d+\}phrase/);
 });
 test("caption ass builder neutralizes characters that would corrupt the ASS document", () => {
   const ass = buildCaptionAss([{ text: "100% {ok} [x], don't", start_ms: 0, end_ms: 500 }]);
@@ -419,7 +418,7 @@ test("caption ass builder neutralizes backslashes and hard newlines", () => {
   const dialogue = ass.split("\n").find((line) => line.startsWith("Dialogue:"));
   assert.doesNotMatch(dialogue, /back\\slash/, "raw backslash could start a \\N/\\n/\\h override code");
   assert.match(dialogue, /back\/slash/);
-  assert.match(dialogue, /\\Nline two/, "real newlines become the ASS forced-break code");
+  assert.match(dialogue, /\\k\d+\}line \{\\k\d+\}two/);
 });
 test("caption near the 180-char limit still produces a non-empty dialogue line", () => {
   const long = "x".repeat(179);
@@ -650,21 +649,20 @@ test("renderPreview does not throw for captions with filtergraph-hostile charact
   assert.ok(bytes.length > 1000);
   assert.match(bytes.subarray(4, 12).toString("ascii"), /ftyp/);
 });
-test("renderPlan cues feed multiple timed Dialogue lines with distinct, contiguous time ranges", () => {
+test("renderPlan cues burn as one karaoke caption with the full phrase visible", () => {
   const multiSentence = {
     ...snapshot,
     scenes: [{ ...snapshot.scenes[0], caption: "First part happens now. Second part happens later.", duration_ms: 4000 }]
   };
   const plan = renderPlan(multiSentence, referenceProfile);
   const cues = plan.scenes[0].caption_cues;
-  assert.ok(cues.length >= 2, "multi-sentence caption yields multiple cues");
+  assert.ok(cues.length >= 2, "multi-sentence caption still yields timing cues");
   const ass = buildCaptionAss(cues);
   const dialogues = ass.split("\n").filter((line) => line.startsWith("Dialogue:"));
-  assert.equal(dialogues.length, cues.length);
-  const timeRanges = new Set(dialogues.map((line) => line.split(",").slice(1, 3).join(",")));
-  assert.equal(timeRanges.size, cues.length, "each Dialogue line has a distinct time range");
-  assert.match(ass, /First part happens now\./);
-  assert.match(ass, /Second part happens later\./);
+  assert.equal(dialogues.length, 1, "karaoke keeps the whole caption on one line");
+  assert.match(dialogues[0], /\\k\d+/);
+  assert.match(ass, /First \{\\k\d+\}part \{\\k\d+\}happens \{\\k\d+\}now\./);
+  assert.match(ass, /Second \{\\k\d+\}part \{\\k\d+\}happens \{\\k\d+\}later\./);
 });
 test("worker renders a preview with multiple timed caption cues burned in", async () => {
   const directory = await mkdtemp(join(tmpdir(), "fengine-multi-cue-"));

@@ -7,9 +7,11 @@ import { stockBeds, type CaptionCue, type OverlayLook, type OverlayPlace, type P
 import {
   coverCropFilter,
   renderPlan,
+  spokenWordsForCues,
   VOICEOVER_DUCK,
   type RenderPlan,
-  type RenderProfile
+  type RenderProfile,
+  type SpokenWord
 } from "@f-engine/reel-engine";
 
 export const renderPhases = ["queued", "preparing", "rendering", "uploading", "complete"] as const;
@@ -313,9 +315,10 @@ function assStyle(
   spacing: number,
   borderStyle: 1 | 3,
   outline: number,
-  shadow: number
+  shadow: number,
+  secondary = "&H00AAAAAA"
 ): string {
-  return `Style: ${name},${font},${size},${ASS_WHITE},&H000000FF,${ASS_BLACK},${back},0,0,0,0,100,100,${spacing},0,${borderStyle},${outline},${shadow},2,40,40,140,1`;
+  return `Style: ${name},${font},${size},${ASS_WHITE},${secondary},${ASS_BLACK},${back},0,0,0,0,100,100,${spacing},0,${borderStyle},${outline},${shadow},2,40,40,140,1`;
 }
 
 function overlayAssStyles(look: OverlayLook): { title: string; caption: string } {
@@ -365,6 +368,23 @@ function assDialogue(
   return `Dialogue: 0,${assTimestamp(startMs)},${assTimestamp(endMs)},${style},,0,0,${marginV},,${tag}${escapeAssText(text)}`;
 }
 
+function assKaraokeDialogue(
+  style: string,
+  words: SpokenWord[],
+  marginV: number,
+  an: number
+): string {
+  const startMs = words[0]?.start_ms ?? 0;
+  const endMs = words[words.length - 1]?.end_ms ?? 0;
+  const align = an !== 2 ? `\\an${an}` : "";
+  const text = words.map((word, index) => {
+    const cs = Math.max(1, Math.round((word.end_ms - word.start_ms) / 10));
+    const open = index === 0 && align ? `{${align}\\k${cs}}` : `{\\k${cs}}`;
+    return `${open}${escapeAssText(word.text)}`;
+  }).join(" ");
+  return `Dialogue: 0,${assTimestamp(startMs)},${assTimestamp(endMs)},${style},,0,0,${marginV},,${text}`;
+}
+
 /** Formats milliseconds as an ASS timestamp: `h:mm:ss.cc` (centiseconds). */
 function assTimestamp(ms: number): string {
   const centiseconds = Math.round(ms / 10);
@@ -405,9 +425,10 @@ export function buildCaptionAss(
   const layout = overlayLayout(place, Boolean(title), captionCues.length > 0, look);
   const styles = overlayAssStyles(look);
   const titleEnd = overlay.durationMs ?? captionCues.at(-1)?.end_ms ?? 0;
+  const captionWords = spokenWordsForCues(captionCues);
   const dialogues = [
     ...(title && titleEnd > 0 ? [assDialogue("Title", 0, titleEnd, title, layout.titleV, layout.an)] : []),
-    ...captionCues.map((cue) => assDialogue("Caption", cue.start_ms, cue.end_ms, cue.text, layout.captionV, layout.an))
+    ...(captionWords.length ? [assKaraokeDialogue("Caption", captionWords, layout.captionV, layout.an)] : [])
   ];
   return [
     "[Script Info]",

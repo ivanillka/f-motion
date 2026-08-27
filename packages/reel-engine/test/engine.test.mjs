@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, validateCues, coverCropFilter } from "../dist/index.js";
+import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter } from "../dist/index.js";
 
 const snapshot = {
   schema_version: 1, id: "p1", owner_id: "u1", revision: 0,
@@ -257,6 +257,22 @@ test("render profile rejects unsafe dimensions and watermark values", () => {
   }
 });
 
+test("spoken words keep the full phrase and highlight by clock", () => {
+  const words = spokenWords("cosmic dust space travel", 2000);
+  assert.equal(words.map(({ text }) => text).join(" "), "cosmic dust space travel");
+  assert.equal(words[0].start_ms, 0);
+  assert.equal(words[words.length - 1].end_ms, 2000);
+  assert.equal(spokenWordIndex(words, 0), 0);
+  assert.equal(spokenWordIndex(words, 1999), words.length - 1);
+  const cues = cuesForScene({
+    ...snapshot.scenes[0],
+    caption: "cosmic dust space travel",
+    duration_ms: 2000
+  });
+  const timed = spokenWordsForCues(cues);
+  assert.equal(timed.length, 4);
+  assert.equal(timed.map(({ text }) => text).join(" "), "cosmic dust space travel");
+});
 test("a short single-sentence caption derives one cue spanning the full duration", () => {
   const cues = cuesForScene(snapshot.scenes[0]);
   assert.deepEqual(cues, [{ text: "Hello", start_ms: 0, end_ms: 1000 }]);

@@ -543,6 +543,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   line-height: 1.25;
   text-shadow: 0 1px 2px #000;
 }
+.preview .spoken-word { color: inherit; }
+.preview .spoken-word.is-upcoming { color: rgba(255, 255, 255, 0.55); }
+.preview .spoken-word.is-spoken { color: #fff; }
+.preview .spoken-word.is-current {
+  color: #1a1214;
+  background: #d989a0;
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px #d989a0;
+  text-shadow: none;
+}
 .preview .look-title {
   max-width: 92%;
 }

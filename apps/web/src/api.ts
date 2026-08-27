@@ -4,6 +4,8 @@ import {
   cueAtElapsed,
   cuesForScene,
   defaultVideoArchitecture,
+  spokenWordIndex,
+  spokenWordsForCues,
   VOICEOVER_DUCK,
   type Concept,
   type VideoArchitecture
@@ -86,6 +88,8 @@ export {
   conceptsFor,
   cueAtElapsed,
   cuesForScene,
+  spokenWordIndex,
+  spokenWordsForCues,
   defaultVideoArchitecture,
   VOICEOVER_DUCK,
   type Concept,
