@@ -67,6 +67,14 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /highlight each word/);
   assert.doesNotMatch(source, /spokenCue/);
   assert.match(source, /Music ducks under the voice/);
+  assert.match(source, /Start offset/);
+  assert.match(source, /htmlFor="voice-offset"/);
+  assert.match(source, /Mute voice-over/);
+  assert.match(source, /Unmute voice-over/);
+  assert.match(source, /Voice-over never loops/);
+  assert.match(source, /previewMediaShouldLoop\(/);
+  assert.match(source, /previewVideoRef\.current\?\.pause\(\)/);
+  assert.doesNotMatch(source, /loop=\{!livePlaying\}/);
   assert.match(source, /Kokoro American English/);
   assert.match(source, /openFalSpeech\(/);
   assert.match(source, /useFalSpeechMedia\(/);
@@ -120,7 +128,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { clampBpm, clampFocus, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, stockBedUrl, voiceoverPlayback } = await vite.ssrLoadModule("/src/api.ts");
+    const { clampBpm, clampFocus, clampOffsetMs, defaultVoiceoverPrompt, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, previewMediaShouldLoop, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, stockBedUrl, voiceoverPlayback } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -150,6 +158,16 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.deepEqual(panFocus({ x: 0.5, y: 0.5 }, { x: 0.25, y: -0.1 }), { x: 0.25, y: 0.6 });
     assert.deepEqual(focusFromPoint({ x: 20, y: 80 }, { width: 100, height: 100 }), { x: 0.2, y: 0.8 });
     assert.equal(clampBpm(40), 60);
+    assert.equal(clampOffsetMs(-20), 0);
+    assert.equal(clampOffsetMs(250.4), 250);
+    assert.equal(clampOffsetMs(900_000), 600_000);
+    assert.equal(previewMediaShouldLoop(true, false), false);
+    assert.equal(previewMediaShouldLoop(false, true), false);
+    assert.equal(previewMediaShouldLoop(false, false), true);
+    assert.equal(defaultVoiceoverPrompt({
+      brief: { purpose: "mystery murder in san francisco" },
+      scenes: [{ caption: "Mystery murder in san francisco." }, { caption: "" }]
+    }), "Mystery murder in san francisco.");
     assert.equal(snapDurationToBeat(3750, 120), 4000);
     assert.equal(musicLaneBeats(2000, 120).length, 5);
     assert.equal(stockBedUrl("pulse"), "/music/pulse.mp3");
@@ -215,6 +233,7 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.scene-card\.is-preparing/);
   assert.match(css, /transform-origin: 50% 50%/);
   assert.match(css, /preview-zoom \{\s*from \{ transform: scale\(1\.08\)/);
+  assert.match(css, /\.preview img\.is-frozen, \.preview video\.is-frozen \{\s*animation-play-state: paused/);
   assert.match(css, /\.preview-grade/);
   assert.match(css, /\.caption-burn/);
   assert.match(css, /\.look-title/);

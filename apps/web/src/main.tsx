@@ -7,8 +7,11 @@ import {
   conceptsFor,
   clampFocus,
   clampBpm,
+  clampOffsetMs,
   isWideMedia,
   defaultVideoArchitecture,
+  defaultVoiceoverPrompt,
+  previewMediaShouldLoop,
   focusFromPoint,
   formatPlayTime,
   livePlayhead,
@@ -194,12 +197,14 @@ function App() {
   const [activeSceneId, setActiveSceneId] = useState("");
   const [cropFocus, setCropFocus] = useState({ x: 0.5, y: 0.5 });
   const [livePlaying, setLivePlaying] = useState(false);
+  const [previewFrozen, setPreviewFrozen] = useState(false);
   const [playSceneId, setPlaySceneId] = useState("");
   const [playTick, setPlayTick] = useState(0);
   const [bedSeek, setBedSeek] = useState(0);
   const [previewPanning, setPreviewPanning] = useState(false);
   const [previewSize, setPreviewSize] = useState<{ url: string; width: number; height: number }>();
   const previewPan = useRef<PreviewPanState | null>(null);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const userPausedPreview = useRef(false);
   const sceneClock = useRef({ startedAt: 0, elapsedAtPause: 0 });
   const playheadOffsetRef = useRef(0);
@@ -301,6 +306,7 @@ function App() {
     setProject(undefined);
     setActiveSceneId("");
     setLivePlaying(false);
+    setPreviewFrozen(false);
     setPlaySceneId("");
     setPlayTick(0);
     userPausedPreview.current = false;
@@ -1848,17 +1854,13 @@ function App() {
     return `fengine-fal-speech:${projectId}`;
   }
 
-  function defaultVoicePrompt(snapshot: ProjectSnapshot): string {
-    return snapshot.scenes.map((scene) => scene.caption.trim()).filter(Boolean).join("\n").slice(0, 2000);
-  }
-
   function openFalSpeech() {
     if (!project) return;
     if (!falCredential?.connected || falUnavailable) {
       showFalLock();
       return;
     }
-    setFalSpeechPrompt(defaultVoicePrompt(project));
+    setFalSpeechPrompt(defaultVoiceoverPrompt(project));
     setFalSpeechJob(undefined);
     setFalSpeechOpen(true);
     setVoiceOpen(true);
@@ -2069,7 +2071,8 @@ function App() {
     media_id && sceneMedia[media_id]?.state === "ready"));
   const allScenesHavePreview = Boolean(project?.scenes.length && project.scenes.every((scene) =>
     scenePreviewUrl(scene.media_id ? sceneMedia[scene.media_id] : undefined)));
-  const previewScene = livePlaying
+  const previewHeld = livePlaying || previewFrozen;
+  const previewScene = previewHeld
     ? (project?.scenes.find(({ id }) => id === playSceneId) ?? activeScene)
     : activeScene;
   const overlayLook = previewScene?.overlay_look === "title" || previewScene?.overlay_look === "poster"
@@ -2085,8 +2088,8 @@ function App() {
   const previewUrl = scenePreviewUrl(previewMedia);
   const measuredPreview = previewSize?.url === previewUrl ? previewSize : undefined;
   const previewFocus = {
-    x: clampFocus(livePlaying ? previewScene?.focal_x ?? cropFocus.x : cropFocus.x),
-    y: clampFocus(livePlaying ? previewScene?.focal_y ?? cropFocus.y : cropFocus.y)
+    x: clampFocus(previewHeld ? previewScene?.focal_x ?? cropFocus.x : cropFocus.x),
+    y: clampFocus(previewHeld ? previewScene?.focal_y ?? cropFocus.y : cropFocus.y)
   };
   const previewPosition = {
     objectPosition: `${previewFocus.x * 100}% ${previewFocus.y * 100}%`,
@@ -2096,9 +2099,10 @@ function App() {
   };
   const previewWide = isWideMedia(previewMedia?.detected?.width, previewMedia?.detected?.height)
     || isWideMedia(measuredPreview?.width, measuredPreview?.height);
-  const previewMotion = livePlaying && previewScene && previewScene.motion !== "none" ? previewScene.motion : undefined;
+  const previewMotion = previewHeld && previewScene && previewScene.motion !== "none" ? previewScene.motion : undefined;
   const previewMotionClass = [
     previewMotion ? `motion-${previewMotion}` : "",
+    previewFrozen ? "is-frozen" : "",
     previewWide ? "is-wide" : ""
   ].filter(Boolean).join(" ") || undefined;
   const sceneElapsedMs = livePlaying
@@ -2132,7 +2136,7 @@ function App() {
   const voiceover = project?.brief.voiceover;
   const voiceoverUrl = voiceover?.media_id ? scenePreviewUrl(sceneMedia[voiceover.media_id]) : undefined;
   const spoken = previewScene ? spokenWordsForCues(cuesForScene(previewScene)) : [];
-  const spokenIndex = livePlaying ? spokenWordIndex(spoken, playhead.sceneElapsedMs) : -1;
+  const spokenIndex = previewHeld ? spokenWordIndex(spoken, playhead.sceneElapsedMs) : -1;
   const overlayHeadline = overlayLook === "title"
     ? (shownCaption || (overlayGhost ? "Title" : ""))
     : "";
@@ -2155,15 +2159,19 @@ function App() {
     userPausedPreview.current = false;
     const id = playSceneId || activeSceneId;
     setPlaySceneId(id);
+    setPreviewFrozen(false);
     armSceneClock(sceneClock.current.elapsedAtPause, true);
     setLivePlaying(true);
     setPlayTick(performance.now());
+    void previewVideoRef.current?.play().catch(() => undefined);
   }
 
   function pauseLivePreview() {
     userPausedPreview.current = true;
     armSceneClock(readSceneElapsed(), false);
+    setPreviewFrozen(true);
     setLivePlaying(false);
+    previewVideoRef.current?.pause();
   }
 
   function notePreviewPixels(url: string | undefined, width: number, height: number) {
@@ -2262,6 +2270,7 @@ function App() {
     const first = project?.scenes[0];
     if (!first) return;
     userPausedPreview.current = false;
+    setPreviewFrozen(false);
     seekLivePreview(first.id, 0, true);
     setLivePlaying(true);
   }
@@ -2276,6 +2285,7 @@ function App() {
   useEffect(() => {
     userPausedPreview.current = false;
     sceneClock.current = { startedAt: 0, elapsedAtPause: 0 };
+    setPreviewFrozen(false);
     setPlaySceneId(activeSceneId || project?.scenes[0]?.id || "");
     setPlayTick(0);
   }, [project?.id]);
@@ -2330,7 +2340,7 @@ function App() {
   useEffect(() => {
     const audio = bedAudio.current;
     if (!audio) return;
-    audio.volume = soundtrack ? soundtrack.level * (voiceover ? VOICEOVER_DUCK : 1) : 0;
+    audio.volume = soundtrack ? soundtrack.level * (voiceover && voiceover.level > 0 ? VOICEOVER_DUCK : 1) : 0;
     audio.loop = true;
     if (!livePlaying || !soundtrackUrl) {
       audio.pause();
@@ -2374,6 +2384,12 @@ function App() {
   useEffect(() => {
     if (livePlaying) stopMusicPreview();
   }, [livePlaying]);
+  useEffect(() => {
+    const video = previewVideoRef.current;
+    if (!video) return;
+    if (livePlaying) void video.play().catch(() => undefined);
+    else video.pause();
+  }, [livePlaying, previewUrl, previewScene?.id]);
   const inApp = authReady && Boolean(token) && step !== "sign-in";
   const partnerBrands = showsPartnerBrands(token ?? "", String(import.meta.env.VITE_PARTNER_BRAND_EMAIL ?? ""));
   const createFlow = step === "brief" || step === "concepts" || step === "media" || step === "editor" || step === "render";
@@ -2636,8 +2652,8 @@ function App() {
       <div className="editor-grid" key={`${activeScene.id}:${project.revision}`}>
         <div className="preview-panel">
           <div
-            className={`preview${livePlaying ? " is-live" : ""}${previewPanning ? " is-panning" : ""}${previewUrl ? " is-frameable" : ""}${activePreparing && !livePlaying ? " is-preparing" : ""}`}
-            aria-label={livePlaying
+            className={`preview${previewHeld ? " is-live" : ""}${previewPanning ? " is-panning" : ""}${previewUrl ? " is-frameable" : ""}${activePreparing && !previewHeld ? " is-preparing" : ""}`}
+            aria-label={previewHeld
               ? `Live preview · scene ${(previewScene?.order ?? 0) + 1}`
               : `Live preview for scene ${activeSceneNumber}`}
             onPointerDown={beginPreviewPan}
@@ -2646,7 +2662,7 @@ function App() {
             onPointerCancel={endPreviewPan}
           >
         {previewUrl && (previewMedia?.detected?.type === "video/mp4"
-          ? <video key={previewScene?.id} src={previewUrl} muted playsInline autoPlay={livePlaying} loop={!livePlaying} controls={false} preload="metadata" draggable={false} className={previewMotionClass} style={previewPosition} onLoadedMetadata={(event) => notePreviewPixels(previewUrl, event.currentTarget.videoWidth, event.currentTarget.videoHeight)} />
+          ? <video ref={previewVideoRef} key={previewScene?.id} src={previewUrl} muted playsInline autoPlay={livePlaying} loop={previewMediaShouldLoop(livePlaying, previewFrozen)} controls={false} preload="metadata" draggable={false} className={previewMotionClass} style={previewPosition} onLoadedMetadata={(event) => notePreviewPixels(previewUrl, event.currentTarget.videoWidth, event.currentTarget.videoHeight)} />
           : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} draggable={false} className={previewMotionClass} style={previewPosition} onLoad={(event) => notePreviewPixels(previewUrl, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />)}
         {previewMedia && !previewUrl && <span className="media-placeholder">{previewMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
             {!previewMedia && <span className="media-placeholder">Choose stock or upload media</span>}
@@ -2660,7 +2676,7 @@ function App() {
               <div className={`caption-burn look-${overlayLook} overlay-${overlayPlace}${overlayGhost ? " is-ghost" : ""}`}>
                 {overlayHeadline ? <strong className="overlay-title">{overlayHeadline}</strong> : null}
                 {overlayLine ? (
-                  livePlaying && spoken.length
+                  previewHeld && spoken.length
                     ? <span className="overlay-caption" aria-label={overlayLine}>
                         {spoken.map((word, index) =>
                           <span
@@ -2732,7 +2748,7 @@ function App() {
             onToggle={(event) => setVoiceOpen(event.currentTarget.open)}
           >
             <summary>{recording ? "Recording voice-over" : voiceover ? "Voice-over" : "Add voice-over"}</summary>
-            <p className="crop-hint">Record, upload, or generate with FAL. The full caption stays on screen; words highlight as they are spoken. Music ducks under the voice.</p>
+            <p className="crop-hint">Record, upload, or generate with FAL. Trim into the take with start offset. Mute or set level. Voice-over never loops. The full caption stays on screen; words highlight as they are spoken. Music ducks under the voice.</p>
             <div className="scene-actions">
               <button
                 type="button"
@@ -2752,13 +2768,26 @@ function App() {
             }} />
             {voiceover ? (
               <>
-                <label htmlFor="voice-level">Level · {Math.round(voiceover.level * 100)}%
-                  <input id="voice-level" type="range" min="0" max="1" step="0.05" defaultValue={voiceover.level}
-                    onBlur={(event) => {
-                      void saveVoiceover({ ...voiceover, level: event.currentTarget.valueAsNumber });
-                    }} />
-                </label>
-                <button className="secondary" type="button" disabled={busy} onClick={() => void saveVoiceover(null)}>Remove voice-over</button>
+                <div className="inspector-pair">
+                  <label htmlFor="voice-offset">Start offset
+                    <input id="voice-offset" type="number" min="0" max="600" step="0.1" defaultValue={(voiceover.offset_ms / 1000).toFixed(1)}
+                      onBlur={(event) => {
+                        const offset_ms = clampOffsetMs(event.currentTarget.valueAsNumber * 1000);
+                        event.currentTarget.value = (offset_ms / 1000).toFixed(1);
+                        void saveVoiceover({ ...voiceover, offset_ms });
+                      }} />
+                  </label>
+                  <label htmlFor="voice-level">Level · {Math.round(voiceover.level * 100)}%
+                    <input id="voice-level" type="range" min="0" max="1" step="0.05" defaultValue={voiceover.level}
+                      onBlur={(event) => {
+                        void saveVoiceover({ ...voiceover, level: event.currentTarget.valueAsNumber });
+                      }} />
+                  </label>
+                </div>
+                <div className="scene-actions">
+                  <button className="secondary" type="button" disabled={busy} onClick={() => void saveVoiceover({ ...voiceover, level: voiceover.level === 0 ? 1 : 0 })}>{voiceover.level === 0 ? "Unmute voice-over" : "Mute voice-over"}</button>
+                  <button className="secondary" type="button" disabled={busy} onClick={() => void saveVoiceover(null)}>Remove voice-over</button>
+                </div>
               </>
             ) : null}
           </details>

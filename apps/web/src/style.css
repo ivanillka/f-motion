@@ -501,6 +501,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   from { transform: scale(1.08); }
   to { transform: scale(1.16); }
 }
+.preview img.is-frozen, .preview video.is-frozen {
+  animation-play-state: paused;
+}
 .preview .caption-burn {
   z-index: 4;
   display: grid;

@@ -550,6 +550,23 @@ test("concat mixdown amixes a voice-over without looping and ducks the bed", () 
   assert.match(concat, /-ss 0\.250/);
   assert.doesNotMatch(concat, /-stream_loop -1 -i \/tmp\/vo\.wav/);
 });
+test("muted voice-over does not duck the music bed", () => {
+  const muted = {
+    ...snapshot,
+    brief: {
+      ...snapshot.brief,
+      soundtrack: { kind: "upload", media_id: "bed", bpm: 120, offset_ms: 0, level: 0.4 },
+      voiceover: { media_id: "vo", offset_ms: 0, level: 0 }
+    }
+  };
+  const job = buildRenderJob(muted, "preview.mp4", {
+    bed: { path: "/tmp/bed.mp3", type: "audio/mpeg" },
+    vo: { path: "/tmp/vo.wav", type: "audio/wav" }
+  }, "/tmp/job");
+  const concat = job.concatArgs.join(" ");
+  assert.match(concat, /volume=0\.4\[bed\]/);
+  assert.match(concat, /volume=0\[vo\]/);
+});
 test("concat mixdown amixes a voice-over without a music bed", () => {
   const withVo = {
     ...snapshot,

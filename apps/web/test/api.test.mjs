@@ -22,6 +22,10 @@ test("conversation recommendations prefill distinct, editable video architecture
     goal: "educate", audience: "internal", structure: "story_arc", tone: "documentary",
     pace: "balanced", durationSeconds: 45, media: "own"
   });
+  assert.deepEqual(recommendVideoArchitecture("mystery murder in san francisco"), {
+    goal: "story", audience: "general", structure: "mystery", tone: "cinematic",
+    pace: "slow", durationSeconds: 30, media: "stock"
+  });
 });
 
 const ids = () => {
@@ -103,6 +107,21 @@ test("video architecture creates concrete, bounded Pexels searches and complete 
     ""
   ]);
   assert.deepEqual(scenes.map(({ duration_ms }) => duration_ms), Array(5).fill(6000));
+});
+
+test("mystery murder in san francisco stays one speakable caption on a cinematic mystery plan", () => {
+  const brief = "mystery murder in san francisco";
+  const scenes = buildStoryboardDraft(brief, ids(), recommendVideoArchitecture(brief));
+  assert.equal(scenes.length, 5);
+  assert.deepEqual(scenes.map(({ caption }) => caption), [
+    "Mystery murder in san francisco.",
+    "",
+    "",
+    "",
+    ""
+  ]);
+  assert.match(scenes[0].visual_prompt, /mysterious murder san francisco/);
+  assert.match(scenes[0].visual_prompt, /fog wide aerial establishing cinematic$/);
 });
 
 test("short vague input is not split into one-word scenes or sent to Pexels as editorial prose", () => {

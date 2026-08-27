@@ -116,7 +116,7 @@ export function recommendVideoArchitecture(conversation: string): VideoArchitect
       : matches(/\b(internal|employees?|colleagues?|our team|staff training)\b/u)
         ? "internal"
         : "general";
-  const structure: VideoArchitecture["structure"] = matches(/\b(mystery|mysterious|secret|clues?|unknown|unsolved|abandoned|disappear|lonely island)\b/u)
+  const structure: VideoArchitecture["structure"] = matches(/\b(mystery|mysterious|secret|clues?|unknown|unsolved|abandoned|disappear|lonely island|murder)\b/u)
     ? "mystery"
     : goal === "promote" || matches(/\b(problem|solution|challenge|before and after|result)\b/u)
       ? "problem_solution"
@@ -340,6 +340,25 @@ export function clampBpm(value: unknown): number {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return 120;
   return Math.min(200, Math.max(60, Math.round(n)));
+}
+
+export function clampOffsetMs(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(600_000, Math.max(0, Math.round(n)));
+}
+
+/** Idle browsing may loop a clip; a live pause must freeze the frame. */
+export function previewMediaShouldLoop(livePlaying: boolean, frozen: boolean): boolean {
+  return !livePlaying && !frozen;
+}
+
+export function defaultVoiceoverPrompt(snapshot: {
+  brief: { purpose: string };
+  scenes: readonly { caption: string }[];
+}): string {
+  const spoken = snapshot.scenes.map((scene) => scene.caption.trim()).filter(Boolean).join("\n").trim();
+  return (spoken || snapshot.brief.purpose.trim() || "Tell this story in one clear line.").slice(0, 2000);
 }
 
 export function beatMs(bpm: unknown): number {

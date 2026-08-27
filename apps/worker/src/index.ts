@@ -630,7 +630,8 @@ export function concatArguments(
   const mixInputs = ["[0:a]"];
   let next = 1;
   if (soundtrack) {
-    const level = Math.round(Math.min(1, Math.max(0, soundtrack.level)) * (voiceover ? VOICEOVER_DUCK : 1) * 1000) / 1000;
+    const duck = voiceover && voiceover.level > 0 ? VOICEOVER_DUCK : 1;
+    const level = Math.round(Math.min(1, Math.max(0, soundtrack.level)) * duck * 1000) / 1000;
     if (soundtrack.offsetMs > 0) extras.push("-ss", (soundtrack.offsetMs / 1000).toFixed(3));
     extras.push("-stream_loop", "-1", "-i", soundtrack.path);
     chains.push(`[${next}:a]volume=${level}[bed]`);
