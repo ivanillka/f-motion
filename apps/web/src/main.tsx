@@ -57,6 +57,7 @@ import {
   type Voiceover
 } from "./api";
 import { glanceLocalMedia } from "./local-media";
+import { APP_VERSION, RELEASE_NOTES } from "./release";
 import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOrigin } from "./auth";
 import { clearImportedProject, isImportedProjectId, rememberImportedProject } from "./imported-project";
 import "./style.css";
@@ -2593,6 +2594,7 @@ function App() {
         )}
         {authReady && token && step !== "sign-in" && !inApp && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
         <span role="status">{online ? "● Connected" : "○ Reconnecting — draft kept locally"}</span>
+        <span className="build-rev" title={`F-Motion ${APP_VERSION}`}>{APP_VERSION}</span>
         <span className="build-rev" title="Git revision">{String(import.meta.env.VITE_GIT_SHA ?? "dev").slice(0, 7)}</span>
       </div>
     </header>
@@ -3378,6 +3380,17 @@ function App() {
     {authReady && step === "settings" && <section>
       <h1>Choose your video sources</h1>
       <p>Connect only the services you want to use. Each provider stays under your account and uses your own API key.</p>
+      <article className="settings-card" aria-labelledby="whats-new-title">
+        <h2 id="whats-new-title">What’s new</h2>
+        <p>F-Motion {APP_VERSION} · same notes as the GitHub changelog.</p>
+        {RELEASE_NOTES.slice(0, 2).map((release) =>
+          <div key={release.version} className="release-note">
+            <strong>{release.version} · {release.title}</strong>
+            <span>{release.date}</span>
+            <ul>{release.items.map((item) => <li key={item}>{item}</li>)}</ul>
+          </div>)}
+        <a href="https://github.com/ivanillka/f-motion/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Full changelog on GitHub</a>
+      </article>
       <div className="provider-onboarding" aria-label="Video source options">
         <article className={`provider-card ${pexelsCredential?.connected ? "provider-live" : "provider-locked"}`}>
           <span className={`provider-status ${pexelsCredential?.connected ? "" : "provider-soon"}`}>{pexelsCredential?.connected ? "Unlocked" : "Locked"}</span>
