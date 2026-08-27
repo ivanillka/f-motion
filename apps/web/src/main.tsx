@@ -15,8 +15,13 @@ import {
   nextBriefQuestion,
   parseBriefChat,
   BRIEF_OPENING,
+  DROP_OWN_MEDIA,
+  LOOKING_AT_MEDIA,
+  briefNeedsMediaLook,
   briefReadyMessage,
+  briefShouldGlance,
   isBriefReadyMessage,
+  mediaNotesFromGlances,
   type BriefChatMessage,
   type BriefQuestionId,
   focusFromPoint,
@@ -50,6 +55,7 @@ import {
   type VideoArchitecture,
   type Voiceover
 } from "./api";
+import { glanceLocalMedia } from "./local-media";
 import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOrigin } from "./auth";
 import { clearImportedProject, isImportedProjectId, rememberImportedProject } from "./imported-project";
 import "./style.css";
@@ -202,7 +208,14 @@ function App() {
   const [architecture, setArchitecture] = useState<VideoArchitecture>(defaultVideoArchitecture);
   const [architectureTouched, setArchitectureTouched] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [mediaLooking, setMediaLooking] = useState(false);
   const createUpload = useRef<HTMLInputElement>(null);
+  const briefDraftRef = useRef(draft);
+  const briefAskedRef = useRef(briefAsked);
+  const mediaLookLock = useRef(false);
+  const mediaLookKey = useRef("");
+  briefDraftRef.current = draft;
+  briefAskedRef.current = briefAsked;
   const [conceptChoices, setConceptChoices] = useState<Concept[]>([]);
   const [project, setProject] = useState<ProjectSnapshot>();
   const [activeSceneId, setActiveSceneId] = useState("");
@@ -422,23 +435,19 @@ function App() {
     setArchitecture(next);
   }, [draft, composer, briefChat, pendingFiles, architectureTouched]);
   useEffect(() => {
-    if (step !== "brief" || !pendingFiles.length) return;
+    if (step !== "brief" || !pendingFiles.length || mediaLookLock.current) return;
     const last = briefChat[briefChat.length - 1];
-    if (last?.questionId !== "visuals") return;
-    const next = nextBriefQuestion(draft, true, briefAsked);
-    if (!next) {
-      setBriefChat((current) => {
-        if (current[current.length - 1]?.questionId !== "visuals") return current;
-        return [...current, { role: "assistant", text: "I'll use the photos you added." }, { role: "assistant", text: briefReadyMessage(draft) }];
-      });
-      return;
-    }
-    setBriefAsked((asked) => asked.includes(next.id) ? asked : [...asked, next.id]);
-    setBriefChat((current) => {
-      if (current[current.length - 1]?.questionId !== "visuals") return current;
-      return [...current, { role: "assistant", text: "I'll use the photos you added." }, { role: "assistant", text: next.prompt, questionId: next.id, choices: next.choices }];
-    });
-  }, [pendingFiles.length, step]);
+    const waitingDrop = last?.text === DROP_OWN_MEDIA || briefNeedsMediaLook(briefDraftRef.current, 0);
+    const mediaFirst = !briefChat.some((message) => message.role === "user");
+    const onVisuals = last?.questionId === "visuals";
+    if (!waitingDrop && !mediaFirst && !onVisuals) return;
+    const userLine = onVisuals
+      ? "My own media"
+      : mediaFirst
+        ? `I added ${pendingFiles.length} photo${pendingFiles.length === 1 ? "" : "s"}.`
+        : undefined;
+    void lookAtOwnMedia(userLine);
+  }, [pendingFiles, step]);
 
   useEffect(() => {
     if (!token) return;
@@ -563,15 +572,64 @@ function App() {
     };
   }
 
+  async function lookAtOwnMedia(userLine?: string) {
+    const files = pendingFiles;
+    if (mediaLookLock.current || files.length === 0) return;
+    const key = files.map((file) => `${file.name}:${file.size}:${file.lastModified}`).join("|");
+    if (mediaLookKey.current === key && /\bI looked at\b/i.test(briefDraftRef.current)) return;
+    mediaLookLock.current = true;
+    mediaLookKey.current = key;
+    setMediaLooking(true);
+    if (userLine) {
+      const conversation = [briefDraftRef.current, userLine].filter(Boolean).join("\n").slice(0, 2000);
+      briefDraftRef.current = conversation;
+      setDraft(conversation);
+    }
+    setBriefChat((chat) => {
+      const withUser: BriefChatMessage[] = userLine ? [...chat, { role: "user", text: userLine }] : chat;
+      if (withUser[withUser.length - 1]?.text === LOOKING_AT_MEDIA) return withUser;
+      return [...withUser, { role: "assistant", text: LOOKING_AT_MEDIA }];
+    });
+    try {
+      const glances = await Promise.all(files.slice(0, 8).map((file) => glanceLocalMedia(file)));
+      const notes = mediaNotesFromGlances(glances);
+      const asked = briefAskedRef.current;
+      const nextDraft = [briefDraftRef.current, notes].filter(Boolean).join("\n").slice(0, 2000);
+      briefDraftRef.current = nextDraft;
+      setDraft(nextDraft);
+      const next = nextBriefQuestion(nextDraft, true, asked);
+      setBriefChat((chat) => {
+        const stripped = chat.filter((message) => message.text !== LOOKING_AT_MEDIA);
+        const withNotes: BriefChatMessage[] = [...stripped, { role: "assistant", text: notes }];
+        if (!next) return [...withNotes, { role: "assistant", text: briefReadyMessage(nextDraft) }];
+        return [...withNotes, { role: "assistant", text: next.prompt, questionId: next.id, choices: next.choices }];
+      });
+      if (next) setBriefAsked((current) => current.includes(next.id) ? current : [...current, next.id]);
+    } finally {
+      mediaLookLock.current = false;
+      setMediaLooking(false);
+    }
+  }
+
   function sendBrief(text: string) {
     const trimmed = text.trim();
     if (!trimmed && !pendingFiles.length) return;
     const said = trimmed || `I added ${pendingFiles.length} photo${pendingFiles.length === 1 ? "" : "s"}.`;
     const conversation = [draft, said].filter(Boolean).join("\n").slice(0, 2000);
-    setDraft(conversation);
-    setComposer("");
-    const next = nextBriefQuestion(conversation, pendingFiles.length > 0, briefAsked);
     const user = { role: "user" as const, text: said };
+    setComposer("");
+    briefDraftRef.current = conversation;
+    setDraft(conversation);
+    if (briefNeedsMediaLook(conversation, pendingFiles.length)) {
+      setBriefChat((current) => [...current, user, { role: "assistant", text: DROP_OWN_MEDIA }]);
+      return;
+    }
+    if (briefShouldGlance(conversation, pendingFiles.length)) {
+      setBriefChat((current) => [...current, user]);
+      void lookAtOwnMedia();
+      return;
+    }
+    const next = nextBriefQuestion(conversation, pendingFiles.length > 0, briefAsked);
     if (!next) {
       setBriefChat((current) => {
         const last = current[current.length - 1];
@@ -2548,7 +2606,7 @@ function App() {
     {authReady && step === "brief" && <section className="create-brief">
       <h1>What do you want to make?</h1>
       <p>Chat with F-Motion. It asks at most four missing questions, then recommends a video plan you can still change.</p>
-      <div className="brief-chat" aria-label="Create chat" aria-live="polite">
+      <div className="brief-chat" aria-label="Create chat" aria-live="polite" aria-busy={mediaLooking || undefined}>
         {briefChat.map((message, index) =>
           <div key={`${message.role}:${index}:${message.text.slice(0, 24)}`} className={`brief-chat-msg is-${message.role}`}>
             <p>{message.text}</p>
@@ -2567,7 +2625,7 @@ function App() {
           sendBrief(composer);
         }}
       >
-        <button type="button" className="secondary" disabled={busy} onClick={() => createUpload.current?.click()}>Add photos or clips</button>
+        <button type="button" className="secondary" disabled={busy || mediaLooking} onClick={() => createUpload.current?.click()}>Add photos or clips</button>
         <label htmlFor="brief-message">Message F-Motion
           <textarea
             id="brief-message"
@@ -2584,7 +2642,7 @@ function App() {
             }}
           />
         </label>
-        <button type="submit" disabled={busy || (!composer.trim() && !pendingFiles.length)}>Send</button>
+        <button type="submit" disabled={busy || mediaLooking || (!composer.trim() && !pendingFiles.length)}>Send</button>
       </form>
       <input ref={createUpload} hidden type="file" multiple accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
         if (event.target.files) addPendingFiles(event.target.files);
@@ -2595,7 +2653,7 @@ function App() {
           <span>{file.name}</span>
           <button type="button" className="secondary" onClick={() => setPendingFiles((current) => current.filter((_, item) => item !== index))}>Remove</button>
         </li>)}</ul>}
-      <button disabled={busy || !briefChat.some((message) => message.role === "user") || Boolean(briefChat[briefChat.length - 1]?.questionId)} onClick={() => void continueToConcepts()}>{busy ? "Preparing concepts…" : "Continue to story concepts"}</button>
+      <button disabled={busy || mediaLooking || briefNeedsMediaLook(draft, pendingFiles.length) || briefChat[briefChat.length - 1]?.text === DROP_OWN_MEDIA || !briefChat.some((message) => message.role === "user") || Boolean(briefChat[briefChat.length - 1]?.questionId)} onClick={() => void continueToConcepts()}>{busy ? "Preparing concepts…" : mediaLooking ? "Looking at your media…" : "Continue to story concepts"}</button>
       <p role="status" aria-live="polite">{status}</p>
       <button className="secondary" disabled={busy} onClick={() => setStep("drafts")}>Back to drafts</button>
       <div className="create-more-settings">

@@ -81,6 +81,11 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Suggested answers/);
   assert.match(source, /asks at most four missing questions/);
   assert.match(source, /BRIEF_OPENING/);
+  assert.match(source, /LOOKING_AT_MEDIA/);
+  assert.match(source, /DROP_OWN_MEDIA/);
+  assert.match(source, /glanceLocalMedia/);
+  assert.match(source, /briefNeedsMediaLook/);
+  assert.match(source, /lookAtOwnMedia/);
   assert.doesNotMatch(source, /Visual description/);
   assert.match(source, /Kokoro American English/);
   assert.match(source, /openFalSpeech\(/);
@@ -105,6 +110,9 @@ test("required recovery, accessibility, and preview language is present", async 
   const apiSource = await readFile(new URL("../src/api.ts", import.meta.url), "utf8");
   assert.match(apiSource, /Funkorama/);
   assert.match(apiSource, /stockBedUrl/);
+  assert.match(apiSource, /Looking at your media/);
+  assert.match(apiSource, /Drop the photos or clips/);
+  assert.match(apiSource, /I looked at/);
   assert.doesNotMatch(source, /horizontal focus/);
   assert.doesNotMatch(source, /focus sliders/);
   assert.doesNotMatch(source, /cropFocus\.x\.toFixed/);

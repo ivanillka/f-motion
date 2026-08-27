@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, briefReadyMessage, buildStoryboardDraft, nextBriefQuestion, parseBriefChat, recommendVideoArchitecture, sceneDurationForMedia } from "../src/api.ts";
+import { ApiClient, ApiResponseError, briefNeedsMediaLook, briefReadyMessage, briefShouldGlance, buildStoryboardDraft, mediaNotesFromGlances, nextBriefQuestion, parseBriefChat, recommendVideoArchitecture, sceneDurationForMedia, sampleCanvasStats, toneFromSample } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
@@ -55,6 +55,42 @@ test("create chat asks only missing brief questions, at most four", () => {
   }));
   assert.equal(stored.composer, "mystery murder in san francisco");
   assert.deepEqual(stored.asked, ["audience"]);
+});
+
+test("own-media glance notes adapt the next question without a VLM", () => {
+  const dark = sampleCanvasStats(Uint8ClampedArray.from([8, 10, 40, 255, 12, 14, 48, 255]));
+  assert.ok(dark.luminance < 0.35);
+  assert.equal(toneFromSample(0.2, -0.1).mood, "dark");
+  const notes = mediaNotesFromGlances([{
+    name: "sf-alley.jpg",
+    kind: "image",
+    bytes: 1200,
+    width: 1080,
+    height: 1920,
+    orientation: "portrait",
+    luminance: 0.2,
+    warmth: -0.1
+  }]);
+  assert.match(notes, /I looked at 1 photo/);
+  assert.match(notes, /portrait/);
+  assert.match(notes, /dark/);
+  assert.match(notes, /sf alley/);
+  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nMy own media", 0), true);
+  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nMy own media", 2), false);
+  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nMix Pexels stock and my media", 0), false);
+  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nPexels real stock video", 0), false);
+  assert.equal(briefNeedsMediaLook("I'll use my photos", 0), true);
+  assert.equal(briefShouldGlance("mystery\nMy own media", 0), false);
+  assert.equal(briefShouldGlance("mystery\nMy own media", 2), true);
+  assert.equal(briefShouldGlance(`mystery\n${notes}`, 2), false);
+  assert.equal(briefShouldGlance("mystery\nPexels real stock video", 2), false);
+  assert.equal(briefShouldGlance("mystery\nMix Pexels stock and my media", 1), true);
+  assert.equal(briefShouldGlance("mystery\nGeneral viewers", 2), false);
+  assert.equal(briefShouldGlance("I added 2 photos.", 2), true);
+  const intent = nextBriefQuestion(notes, true, []);
+  assert.equal(intent?.id, "intent");
+  assert.match(intent?.prompt ?? "", /dark, portrait/);
+  assert.match(intent?.prompt ?? "", /story/);
 });
 
 const ids = () => {

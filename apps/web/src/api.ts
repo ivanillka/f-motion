@@ -132,7 +132,7 @@ export function recommendVideoArchitecture(conversation: string): VideoArchitect
         : "cinematic";
   const pace: VideoArchitecture["pace"] = matches(/\b(fast|quick|punchy|rapid|high energy)\b/u) || tone === "energetic"
     ? "fast"
-    : matches(/\b(slow|atmospheric|quiet|suspense|lonely|fog)\b/u) || tone === "calm" || structure === "mystery"
+    : matches(/\b(slow|atmospheric|quiet|suspense|lonely|fog|dark|night|noir)\b/u) || tone === "calm" || structure === "mystery"
       ? "slow"
       : "balanced";
   const explicitDuration = text.match(/\b(15|30|45)[\s-]*(?:seconds?|secs?|s)\b/u)?.[1];
@@ -174,6 +174,8 @@ export const BRIEF_OPENING: BriefChatMessage = {
   text: "What do you want to make? Drop photos or describe the video. I will ask only what I still need."
 };
 
+export const LOOKING_AT_MEDIA = "Looking at your media…";
+export const DROP_OWN_MEDIA = "Drop the photos or clips. I will look at them first, then ask only what is still missing.";
 export const BRIEF_READY = "That is enough for a video plan. Change anything under More settings, or continue to story concepts.";
 
 const briefChoiceSets: Record<BriefQuestionId, readonly string[]> = {
@@ -193,6 +195,88 @@ function clipSubject(value: string): string {
   return text.length > 52 ? `${text.slice(0, 49).trim()}…` : text;
 }
 
+export interface LocalMediaGlance {
+  name: string;
+  kind: "image" | "video";
+  bytes: number;
+  width?: number;
+  height?: number;
+  orientation?: "portrait" | "landscape" | "square";
+  duration_ms?: number;
+  luminance?: number;
+  warmth?: number;
+}
+
+export function sampleCanvasStats(data: Uint8ClampedArray | Uint8Array): { luminance: number; warmth: number } {
+  let lum = 0;
+  let warm = 0;
+  let count = 0;
+  for (let i = 0; i + 2 < data.length; i += 4) {
+    const r = (data[i] ?? 0) / 255;
+    const g = (data[i + 1] ?? 0) / 255;
+    const b = (data[i + 2] ?? 0) / 255;
+    lum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    warm += r - b;
+    count += 1;
+  }
+  return { luminance: count ? lum / count : 0.5, warmth: count ? warm / count : 0 };
+}
+
+export function toneFromSample(luminance: number, warmth: number): { mood: "dark" | "bright" | "balanced"; temp: "cool" | "warm" | "neutral" } {
+  return {
+    mood: luminance < 0.35 ? "dark" : luminance > 0.65 ? "bright" : "balanced",
+    temp: warmth < -0.08 ? "cool" : warmth > 0.08 ? "warm" : "neutral"
+  };
+}
+
+export function mediaNotesFromGlances(glances: readonly LocalMediaGlance[]): string {
+  if (!glances.length) return "";
+  const stills = glances.filter((item) => item.kind === "image").length;
+  const clips = glances.filter((item) => item.kind === "video").length;
+  const portraits = glances.filter((item) => item.orientation === "portrait").length;
+  const landscapes = glances.filter((item) => item.orientation === "landscape").length;
+  const lumValues = glances.map((item) => item.luminance).filter((value): value is number => value != null);
+  const warmValues = glances.map((item) => item.warmth).filter((value): value is number => value != null);
+  const luminance = lumValues.length ? lumValues.reduce((sum, value) => sum + value, 0) / lumValues.length : 0.5;
+  const warmth = warmValues.length ? warmValues.reduce((sum, value) => sum + value, 0) / warmValues.length : 0;
+  const { mood, temp } = toneFromSample(luminance, warmth);
+  const frame = portraits >= glances.length / 2 ? "portrait" : landscapes >= glances.length / 2 ? "wide" : "mixed framing";
+  const label = stills && clips
+    ? `${stills} photos and ${clips} clips`
+    : stills
+      ? `${stills} photo${stills === 1 ? "" : "s"}`
+      : `${clips} clip${clips === 1 ? "" : "s"}`;
+  const clipMs = glances.reduce((sum, item) => sum + (item.duration_ms ?? 0), 0);
+  const names = glances.map((item) => item.name.replace(/\.[^.]+$/u, "").replace(/[_-]+/gu, " ")).join(", ");
+  return [
+    `I looked at ${label}.`,
+    `${frame}, ${mood} ${temp} tones.`,
+    clipMs >= 500 ? `Clips run about ${Math.round(clipMs / 1000)} seconds.` : "",
+    names ? `File names: ${names.slice(0, 160)}.` : ""
+  ].filter(Boolean).join(" ");
+}
+
+/** Own-media answers without files: look at the photos before more questions. */
+export function briefNeedsMediaLook(conversation: string, fileCount: number): boolean {
+  if (fileCount > 0) return false;
+  const text = conversation.normalize("NFKC").toLowerCase();
+  if (/\bmix pexels stock and my media\b/u.test(text)) return false;
+  if (/\bpexels real stock video\b/u.test(text) && !/\bmy own media\b/u.test(text)) return false;
+  return /\bmy own media\b/u.test(text)
+    || (/\b(my|our)\s+(photos?|videos?|footage|clips?)\b/u.test(text) && !/\bpexels\b/u.test(text));
+}
+
+/** Files are present and we have not glanced yet — skip Pexels-only chats. */
+export function briefShouldGlance(conversation: string, fileCount: number): boolean {
+  if (fileCount <= 0 || /\bI looked at\b/iu.test(conversation)) return false;
+  const text = conversation.normalize("NFKC").toLowerCase();
+  if (/\bmix pexels stock and my media\b/u.test(text)) return true;
+  if (/\bpexels real stock video\b/u.test(text) && !/\bmy own media\b/u.test(text)) return false;
+  return /\bmy own media\b/u.test(text)
+    || /\bi added \d+ photos?\./u.test(text)
+    || (/\b(my|our)\s+(photos?|videos?|footage|clips?)\b/u.test(text) && !/\bpexels\b/u.test(text));
+}
+
 /** First user line plus the plan inferred from every answer so far. */
 export function briefTopic(conversation: string): {
   subject: string;
@@ -200,9 +284,12 @@ export function briefTopic(conversation: string): {
   hook: string;
   plan: VideoArchitecture;
 } {
-  const first = conversation.split(/\n+/u).map((line) => line.trim()).find(Boolean) ?? "";
+  const first = conversation.split(/\n+/u).map((line) => line.trim()).find((line) =>
+    line && !/^(I looked at|I added |File names:|Looking at your media)/iu.test(line)
+  ) ?? "";
   const place = (first.match(/\bin\s+([^,.!?]+)$/iu)?.[1] ?? "").trim();
-  const subject = clipSubject(first);
+  const looked = /\bI looked at\b/iu.test(conversation);
+  const subject = clipSubject(first) === "this video" && looked ? "your media" : clipSubject(first);
   return {
     subject,
     place,
@@ -241,43 +328,54 @@ export function briefQuestionFor(
   hasOwnMedia: boolean
 ): BriefQuestion {
   const { subject, place, hook, plan } = briefTopic(conversation);
+  const looked = /\bI looked at\b/iu.test(conversation);
+  const dark = /\bdark\b/iu.test(conversation);
+  const portrait = /\bportrait\b/iu.test(conversation);
+  const lookHint = [dark ? "dark" : "", portrait ? "portrait" : ""].filter(Boolean).join(", ");
+  const about = looked && (subject === "this video" || subject === "your media") ? "your media" : subject;
   if (id === "intent") {
     return {
       id,
-      prompt: `Should ${subject} be a story, an explanation, a promotion, or a lesson?`,
+      prompt: lookHint
+        ? `Your media looks ${lookHint}. Is this a story, an explanation, a promotion, or a lesson?`
+        : `Should ${about} be a story, an explanation, a promotion, or a lesson?`,
       choices: briefChoiceSets.intent
     };
   }
   if (id === "audience") {
     const prompt = plan.structure === "mystery"
       ? (place ? `Who is this ${hook} mystery for?` : `Who is this mystery for?`)
-      : plan.goal === "promote"
-        ? `Who should see ${subject}?`
-        : plan.goal === "educate"
-          ? `Who are you teaching with ${subject}?`
-          : `Who is ${subject} for?`;
+      : looked
+        ? `Who should see this cut of ${about}?`
+        : plan.goal === "promote"
+          ? `Who should see ${about}?`
+          : plan.goal === "educate"
+            ? `Who are you teaching with ${about}?`
+            : `Who is ${about} for?`;
     return { id, prompt, choices: briefChoiceSets.audience };
   }
   if (id === "length") {
     const preferred = `About ${plan.durationSeconds} seconds`;
     const choices = [preferred, ...briefChoiceSets.length.filter((choice) => choice !== preferred)];
     const prompt = plan.audience === "social"
-      ? `For a reel of ${subject}, about 15, 30, or 45 seconds?`
-      : plan.structure === "mystery"
-        ? (place
-          ? `Should the ${hook} mystery be a 15-second hook, a 30-second slow reveal, or 45 seconds?`
-          : `Should this mystery be a 15-second hook, a 30-second slow reveal, or 45 seconds?`)
-        : plan.goal === "promote"
-          ? `How long should ${subject} run — about 15, 30, or 45 seconds?`
-          : `About how long should ${subject} run?`;
+      ? `For a reel of ${about}, about 15, 30, or 45 seconds?`
+      : looked && portrait
+        ? `These are mostly portrait frames. About 15, 30, or 45 seconds?`
+        : plan.structure === "mystery"
+          ? (place
+            ? `Should the ${hook} mystery be a 15-second hook, a 30-second slow reveal, or 45 seconds?`
+            : `Should this mystery be a 15-second hook, a 30-second slow reveal, or 45 seconds?`)
+          : plan.goal === "promote"
+            ? `How long should ${about} run — about 15, 30, or 45 seconds?`
+            : `About how long should ${about} run?`;
     return { id, prompt, choices };
   }
   const stock = place ? `moody ${hook} stock from Pexels` : "Pexels stock";
   const prompt = hasOwnMedia
-    ? `Use the photos you added for ${subject}, mix in Pexels, or switch to stock only?`
+    ? `Use the photos you added for ${about}, mix in Pexels, or switch to stock only?`
     : plan.structure === "mystery"
       ? `Do you have footage, or should we use ${stock}?`
-      : `Where should pictures for ${subject} come from?`;
+      : `Where should pictures for ${about} come from?`;
   return { id, prompt, choices: briefChoiceSets.visuals };
 }
 

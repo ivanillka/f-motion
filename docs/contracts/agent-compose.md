@@ -30,7 +30,8 @@ The user may start either way. Same question budget and same exit.
 
 1. User drops images or short clips (host chat attachments or local paths).
 2. Agent calls `read_media` (or uses host vision **plus** `read_media` for
-   type, count, and orientation).
+   type, count, and orientation). The studio Create chat glances locally
+   (dimensions + 64px color) before its remaining questions — no VLM.
 3. Agent asks at most **four** questions (see below).
 4. `compose_reel` uploads, builds a storyboard, preview-renders when ready.
 5. Agent returns the file (or download URL) **and** the draft URL.
