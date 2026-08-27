@@ -75,6 +75,13 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /previewMediaShouldLoop\(/);
   assert.match(source, /previewVideoRef\.current\?\.pause\(\)/);
   assert.doesNotMatch(source, /loop=\{!livePlaying\}/);
+  assert.match(source, /Message F-Motion/);
+  assert.match(source, /sendBrief\(/);
+  assert.match(source, /Create chat/);
+  assert.match(source, /Suggested answers/);
+  assert.match(source, /asks at most four missing questions/);
+  assert.match(source, /BRIEF_OPENING/);
+  assert.doesNotMatch(source, /Visual description/);
   assert.match(source, /Kokoro American English/);
   assert.match(source, /openFalSpeech\(/);
   assert.match(source, /useFalSpeechMedia\(/);
@@ -234,6 +241,8 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /transform-origin: 50% 50%/);
   assert.match(css, /preview-zoom \{\s*from \{ transform: scale\(1\.08\)/);
   assert.match(css, /\.preview img\.is-frozen, \.preview video\.is-frozen \{\s*animation-play-state: paused/);
+  assert.match(css, /\.brief-chat/);
+  assert.match(css, /\.brief-composer textarea \{ min-height: 44px/);
   assert.match(css, /\.preview-grade/);
   assert.match(css, /\.caption-burn/);
   assert.match(css, /\.look-title/);

@@ -871,6 +871,39 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .architecture-editor summary { cursor: pointer; font-weight: 700; }
 .architecture-editor[open] summary { margin-bottom: 14px; }
 .create-brief { display: grid; gap: 16px; }
+.brief-chat {
+  display: grid;
+  gap: 10px;
+  max-height: min(52vh, 420px);
+  overflow: auto;
+  padding: 4px 2px;
+}
+.brief-chat-msg {
+  display: grid;
+  gap: 8px;
+  max-width: 92%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.brief-chat-msg.is-user {
+  justify-self: end;
+  background: var(--raised);
+}
+.brief-chat-msg p { margin: 0; color: var(--text); }
+.brief-chat-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.brief-chat-choices button { width: auto; min-height: 36px; padding: 6px 10px; font-size: 0.82rem; }
+.brief-composer {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.brief-composer textarea { min-height: 44px; max-height: 120px; }
+.brief-composer button { width: auto; }
 .create-media-drop {
   display: grid;
   gap: 10px;

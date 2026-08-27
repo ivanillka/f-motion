@@ -58,6 +58,18 @@ async function signIn(page: import("@playwright/test").Page) {
 }
 
 
+async function describeVideo(page: Page, text: string): Promise<void> {
+  await page.getByLabel("Message F-Motion").fill(text);
+  await page.getByRole("button", { name: "Send" }).click();
+  for (let step = 0; step < 4; step += 1) {
+    if (await page.getByRole("button", { name: "Continue to story concepts" }).isEnabled()) return;
+    const choice = page.locator(".brief-chat-choices button").first();
+    await expect(choice).toBeVisible();
+    await choice.click();
+  }
+  await expect(page.getByRole("button", { name: "Continue to story concepts" })).toBeEnabled();
+}
+
 async function continueToConcepts(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Continue to story concepts" }).click();
   await expect(page.getByRole("heading", { name: "Choose a story approach" })).toBeVisible();
@@ -149,11 +161,12 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await page.setViewportSize({ width: 320, height: 900 });
   await signIn(page);
   await page.getByRole("button", { name: "Create new video" }).click();
-  await page.getByLabel("Visual description").fill("Launch a product for small teams");
+  await page.getByLabel("Message F-Motion").fill("Launch a product for small teams");
   await page.reload();
   await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
   await page.getByRole("button", { name: "Create new video" }).click();
-  await expect(page.getByLabel("Visual description")).toHaveValue("Launch a product for small teams");
+  await expect(page.getByLabel("Message F-Motion")).toHaveValue("Launch a product for small teams");
+  await describeVideo(page, "Launch a product for small teams");
   await expect(page.getByLabel("Recommended video plan")).toContainText("Promote an idea or product");
   await page.getByLabel("Where should visuals come from?").selectOption("own");
   await chooseConcept(page, "Direct");
@@ -214,7 +227,7 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   }));
   await signIn(page);
   await page.getByRole("button", { name: "Create new video" }).click();
-  await page.getByLabel("Visual description").fill("A calm studio introduction");
+  await describeVideo(page, "A calm studio introduction");
   await expect(page.getByLabel("Recommended video plan")).toContainText("About 30 seconds");
   await page.getByLabel("How should the story unfold?").selectOption("mystery");
   await page.getByLabel("What tone fits best?").selectOption("documentary");
@@ -296,7 +309,7 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
     }));
   await signIn(page);
   await page.getByRole("button", { name: "Create new video" }).click();
-  await page.getByLabel("Visual description").fill("A fictional lighthouse that does not exist on stock");
+  await describeVideo(page, "A fictional lighthouse that does not exist on stock");
   await page.getByLabel("Where should visuals come from?").selectOption("own");
   await chooseConcept(page, "Direct");
   await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();
@@ -349,7 +362,7 @@ test("FAL image-to-video quotes, confirms, and attaches only after review", asyn
     }));
   await signIn(page);
   await page.getByRole("button", { name: "Create new video" }).click();
-  await page.getByLabel("Visual description").fill("Animate a portrait still of a quiet harbor");
+  await describeVideo(page, "Animate a portrait still of a quiet harbor");
   await page.getByLabel("Where should visuals come from?").selectOption("own");
   await chooseConcept(page, "Direct");
   await expect(page.getByRole("heading", { name: "Upload your media" })).toBeVisible();

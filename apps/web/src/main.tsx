@@ -12,6 +12,12 @@ import {
   defaultVideoArchitecture,
   defaultVoiceoverPrompt,
   previewMediaShouldLoop,
+  nextBriefQuestion,
+  parseBriefChat,
+  BRIEF_OPENING,
+  BRIEF_READY,
+  type BriefChatMessage,
+  type BriefQuestionId,
   focusFromPoint,
   formatPlayTime,
   livePlayhead,
@@ -188,6 +194,10 @@ function App() {
   const [email, setEmail] = useState("");
   const [awaitingEmail, setAwaitingEmail] = useState(false);
   const [draft, setDraft] = useState(() => localStorage.getItem("fengine-draft") ?? "");
+  const [briefChat, setBriefChat] = useState<BriefChatMessage[]>(() => parseBriefChat(localStorage.getItem("fengine-brief-chat")).messages);
+  const [briefAsked, setBriefAsked] = useState<BriefQuestionId[]>(() => parseBriefChat(localStorage.getItem("fengine-brief-chat")).asked);
+  const [composer, setComposer] = useState(() => parseBriefChat(localStorage.getItem("fengine-brief-chat")).composer
+    || ((localStorage.getItem("fengine-brief-chat") ? "" : localStorage.getItem("fengine-draft")) ?? ""));
   const [architecture, setArchitecture] = useState<VideoArchitecture>(defaultVideoArchitecture);
   const [architectureTouched, setArchitectureTouched] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -401,11 +411,33 @@ function App() {
   }, []);
   useEffect(() => localStorage.setItem("fengine-draft", draft), [draft]);
   useEffect(() => {
+    localStorage.setItem("fengine-brief-chat", JSON.stringify({ messages: briefChat, asked: briefAsked, composer }));
+  }, [briefChat, briefAsked, composer]);
+  useEffect(() => {
     if (architectureTouched) return;
-    const next = recommendVideoArchitecture([draft, ...pendingFiles.map((file) => file.name)].filter(Boolean).join(" "));
+    const conversation = briefChat.some((message) => message.role === "user") ? draft : composer;
+    const next = recommendVideoArchitecture([conversation, ...pendingFiles.map((file) => file.name)].filter(Boolean).join(" "));
     if (pendingFiles.length && next.media === "stock") next.media = "own";
     setArchitecture(next);
-  }, [draft, pendingFiles, architectureTouched]);
+  }, [draft, composer, briefChat, pendingFiles, architectureTouched]);
+  useEffect(() => {
+    if (step !== "brief" || !pendingFiles.length) return;
+    const last = briefChat[briefChat.length - 1];
+    if (last?.questionId !== "visuals") return;
+    const next = nextBriefQuestion(draft, true, briefAsked);
+    if (!next) {
+      setBriefChat((current) => {
+        if (current[current.length - 1]?.questionId !== "visuals") return current;
+        return [...current, { role: "assistant", text: "I'll use the photos you added." }, { role: "assistant", text: BRIEF_READY }];
+      });
+      return;
+    }
+    setBriefAsked((asked) => asked.includes(next.id) ? asked : [...asked, next.id]);
+    setBriefChat((current) => {
+      if (current[current.length - 1]?.questionId !== "visuals") return current;
+      return [...current, { role: "assistant", text: "I'll use the photos you added." }, { role: "assistant", text: next.prompt, questionId: next.id, choices: next.choices }];
+    });
+  }, [pendingFiles.length, step]);
 
   useEffect(() => {
     if (!token) return;
@@ -528,6 +560,27 @@ function App() {
       audience: architecture.audience,
       tone: `${architecture.tone}, ${architecture.pace}`
     };
+  }
+
+  function sendBrief(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed && !pendingFiles.length) return;
+    const said = trimmed || `I added ${pendingFiles.length} photo${pendingFiles.length === 1 ? "" : "s"}.`;
+    const conversation = [draft, said].filter(Boolean).join("\n").slice(0, 2000);
+    setDraft(conversation);
+    setComposer("");
+    const next = nextBriefQuestion(conversation, pendingFiles.length > 0, briefAsked);
+    const user = { role: "user" as const, text: said };
+    if (!next) {
+      setBriefChat((current) => {
+        const last = current[current.length - 1];
+        if (last?.text === BRIEF_READY) return [...current, user];
+        return [...current, user, { role: "assistant", text: BRIEF_READY }];
+      });
+      return;
+    }
+    setBriefAsked((asked) => asked.includes(next.id) ? asked : [...asked, next.id]);
+    setBriefChat((current) => [...current, user, { role: "assistant", text: next.prompt, questionId: next.id, choices: next.choices }]);
   }
 
   async function continueToConcepts() {
@@ -658,6 +711,11 @@ function App() {
     setArchitecture(defaultVideoArchitecture);
     setArchitectureTouched(false);
     setPendingFiles([]);
+    const stored = parseBriefChat(localStorage.getItem("fengine-brief-chat"));
+    setBriefChat(stored.messages.length ? stored.messages : [BRIEF_OPENING]);
+    setBriefAsked(stored.asked);
+    const hasUser = stored.messages.some((message) => message.role === "user");
+    setComposer(stored.composer || (hasUser ? "" : (localStorage.getItem("fengine-draft") ?? "")));
     setDraft(localStorage.getItem("fengine-draft") ?? "");
     setStatus("");
     setStep("brief");
@@ -2488,22 +2546,55 @@ function App() {
     </section>}
     {authReady && step === "brief" && <section className="create-brief">
       <h1>What do you want to make?</h1>
-      <p>Drop photos or clips, or just answer in your own words. F-Motion asks only what it still needs, then builds a preview you can keep editing in this draft.</p>
-      <div className="create-media-drop">
-        <input ref={createUpload} hidden type="file" multiple accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
-          if (event.target.files) addPendingFiles(event.target.files);
-          event.target.value = "";
-        }} />
-        <button type="button" className="secondary" disabled={busy} onClick={() => createUpload.current?.click()}>Add photos or clips</button>
-        <p>Optional. JPEG, PNG, WebP, or MP4. You can also skip this and describe the video below.</p>
-        {pendingFiles.length > 0 && <ul className="create-pending-files">{pendingFiles.map((file, index) =>
-          <li key={`${file.name}-${index}`}>
-            <span>{file.name}</span>
-            <button type="button" className="secondary" onClick={() => setPendingFiles((current) => current.filter((_, item) => item !== index))}>Remove</button>
-          </li>)}</ul>}
+      <p>Chat with F-Motion. It asks at most four missing questions, then recommends a video plan you can still change.</p>
+      <div className="brief-chat" aria-label="Create chat" aria-live="polite">
+        {briefChat.map((message, index) =>
+          <div key={`${message.role}:${index}:${message.text.slice(0, 24)}`} className={`brief-chat-msg is-${message.role}`}>
+            <p>{message.text}</p>
+            {message.choices && index === briefChat.length - 1 ? (
+              <div className="brief-chat-choices" role="group" aria-label="Suggested answers">
+                {message.choices.map((choice) =>
+                  <button key={choice} type="button" className="secondary" onClick={() => sendBrief(choice)}>{choice}</button>)}
+              </div>
+            ) : null}
+          </div>)}
       </div>
-      <label>Visual description<textarea value={draft} maxLength={500} onChange={(event) => setDraft(event.target.value)} placeholder="A remote island in dark ocean fog, an abandoned lighthouse, cinematic aerial shot…" /></label>
-      <button disabled={busy || (!draft.trim() && !pendingFiles.length)} onClick={() => void continueToConcepts()}>{busy ? "Preparing concepts…" : "Continue to story concepts"}</button>
+      <form
+        className="brief-composer"
+        onSubmit={(event) => {
+          event.preventDefault();
+          sendBrief(composer);
+        }}
+      >
+        <button type="button" className="secondary" disabled={busy} onClick={() => createUpload.current?.click()}>Add photos or clips</button>
+        <label htmlFor="brief-message">Message F-Motion
+          <textarea
+            id="brief-message"
+            value={composer}
+            maxLength={500}
+            rows={2}
+            placeholder="mystery murder in san francisco"
+            onChange={(event) => setComposer(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                sendBrief(composer);
+              }
+            }}
+          />
+        </label>
+        <button type="submit" disabled={busy || (!composer.trim() && !pendingFiles.length)}>Send</button>
+      </form>
+      <input ref={createUpload} hidden type="file" multiple accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
+        if (event.target.files) addPendingFiles(event.target.files);
+        event.target.value = "";
+      }} />
+      {pendingFiles.length > 0 && <ul className="create-pending-files">{pendingFiles.map((file, index) =>
+        <li key={`${file.name}-${index}`}>
+          <span>{file.name}</span>
+          <button type="button" className="secondary" onClick={() => setPendingFiles((current) => current.filter((_, item) => item !== index))}>Remove</button>
+        </li>)}</ul>}
+      <button disabled={busy || !briefChat.some((message) => message.role === "user") || Boolean(briefChat[briefChat.length - 1]?.questionId)} onClick={() => void continueToConcepts()}>{busy ? "Preparing concepts…" : "Continue to story concepts"}</button>
       <p role="status" aria-live="polite">{status}</p>
       <button className="secondary" disabled={busy} onClick={() => setStep("drafts")}>Back to drafts</button>
       <div className="create-more-settings">

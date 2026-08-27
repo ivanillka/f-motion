@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, buildStoryboardDraft, recommendVideoArchitecture, sceneDurationForMedia } from "../src/api.ts";
+import { ApiClient, ApiResponseError, buildStoryboardDraft, nextBriefQuestion, parseBriefChat, recommendVideoArchitecture, sceneDurationForMedia } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
@@ -26,6 +26,22 @@ test("conversation recommendations prefill distinct, editable video architecture
     goal: "story", audience: "general", structure: "mystery", tone: "cinematic",
     pace: "slow", durationSeconds: 30, media: "stock"
   });
+});
+
+test("create chat asks only missing brief questions, at most four", () => {
+  assert.equal(nextBriefQuestion("mystery murder in san francisco", false, [])?.id, "audience");
+  assert.equal(nextBriefQuestion("mystery murder in san francisco\nGeneral viewers", false, ["audience"])?.id, "length");
+  assert.equal(nextBriefQuestion("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds", false, ["audience", "length"])?.id, "visuals");
+  assert.equal(nextBriefQuestion("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds\nPexels real stock video", false, ["audience", "length", "visuals"]), undefined);
+  assert.equal(nextBriefQuestion("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds", true, ["audience", "length"]), undefined);
+  assert.equal(nextBriefQuestion("Launch a 15 second reel using stock to promote our product for customers", false, []), undefined);
+  const stored = parseBriefChat(JSON.stringify({
+    messages: [{ role: "assistant", text: "What do you want to make?" }],
+    asked: ["audience"],
+    composer: "mystery murder in san francisco"
+  }));
+  assert.equal(stored.composer, "mystery murder in san francisco");
+  assert.deepEqual(stored.asked, ["audience"]);
 });
 
 const ids = () => {

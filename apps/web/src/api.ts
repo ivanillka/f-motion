@@ -153,6 +153,117 @@ export function recommendVideoArchitecture(conversation: string): VideoArchitect
   return { goal, audience, structure, tone, pace, durationSeconds, media };
 }
 
+export const briefQuestionIds = ["intent", "audience", "length", "visuals"] as const;
+export type BriefQuestionId = (typeof briefQuestionIds)[number];
+
+export interface BriefQuestion {
+  id: BriefQuestionId;
+  prompt: string;
+  choices: readonly string[];
+}
+
+export interface BriefChatMessage {
+  role: "assistant" | "user";
+  text: string;
+  questionId?: BriefQuestionId;
+  choices?: readonly string[];
+}
+
+export const BRIEF_OPENING: BriefChatMessage = {
+  role: "assistant",
+  text: "What do you want to make? Drop photos or describe the video. I will ask only what I still need."
+};
+
+export const BRIEF_READY = "That is enough for a video plan. Change anything under More settings, or continue to story concepts.";
+
+export const briefQuestions: Record<BriefQuestionId, BriefQuestion> = {
+  intent: {
+    id: "intent",
+    prompt: "Is this a story, an explanation, a promotion, or a lesson?",
+    choices: ["Tell a story", "Explain something", "Promote an idea or product", "Teach the viewer"]
+  },
+  audience: {
+    id: "audience",
+    prompt: "Who is this for?",
+    choices: ["General viewers", "Social media audience", "Customers", "Internal team"]
+  },
+  length: {
+    id: "length",
+    prompt: "About how long should it run?",
+    choices: ["About 15 seconds", "About 30 seconds", "About 45 seconds"]
+  },
+  visuals: {
+    id: "visuals",
+    prompt: "Where should the pictures come from?",
+    choices: ["Pexels real stock video", "My own media", "Mix Pexels stock and my media"]
+  }
+};
+
+export function answeredBriefQuestions(conversation: string, hasOwnMedia: boolean): Set<BriefQuestionId> {
+  const text = conversation.normalize("NFKC").toLowerCase();
+  const matches = (pattern: RegExp) => pattern.test(text);
+  const answered = new Set<BriefQuestionId>();
+  if (matches(/\b(how to|tutorial|teach|lesson|guide|learn|explain|overview|demonstrate|process|why does|how does|promote|launch|campaign|advertise|advertising|advertisement|product|service|sale|event|story|mystery|murder|tale|narrative)\b/u)) {
+    answered.add("intent");
+  }
+  if (matches(/\b(reel|tiktok|instagram|social media|shorts?|customers?|internal|employees?|colleagues?|our team|staff training|general viewers?)\b/u)) {
+    answered.add("audience");
+  }
+  if (matches(/\b(15|30|45)[\s-]*(?:seconds?|secs?|s)\b/u)) {
+    answered.add("length");
+  }
+  if (
+    hasOwnMedia
+    || matches(/\b(stock|pexels|open source|generated|ai visuals?)\b/u)
+    || matches(/\b(my|our)\s+(photos?|videos?|footage|media|gallery|assets?|images?)\b/u)
+    || matches(/\bmy own media\b/u)
+  ) {
+    answered.add("visuals");
+  }
+  return answered;
+}
+
+export function nextBriefQuestion(
+  conversation: string,
+  hasOwnMedia: boolean,
+  asked: readonly BriefQuestionId[]
+): BriefQuestion | undefined {
+  if (asked.length >= 4) return undefined;
+  const answered = answeredBriefQuestions(conversation, hasOwnMedia);
+  for (const id of briefQuestionIds) {
+    if (answered.has(id) || asked.includes(id)) continue;
+    return briefQuestions[id];
+  }
+  return undefined;
+}
+
+export function parseBriefChat(raw: string | null): {
+  messages: BriefChatMessage[];
+  asked: BriefQuestionId[];
+  composer: string;
+} {
+  const opening = { messages: [BRIEF_OPENING], asked: [] as BriefQuestionId[], composer: "" };
+  if (!raw) return opening;
+  try {
+    const value = JSON.parse(raw) as {
+      messages?: unknown;
+      asked?: unknown;
+      composer?: unknown;
+    };
+    const messages = Array.isArray(value.messages)
+      ? value.messages.filter((item): item is BriefChatMessage =>
+        !!item && typeof item === "object" && (item.role === "assistant" || item.role === "user") && typeof item.text === "string")
+      : [];
+    const asked = Array.isArray(value.asked)
+      ? value.asked.filter((item): item is BriefQuestionId => briefQuestionIds.includes(item as BriefQuestionId))
+      : [];
+    const composer = typeof value.composer === "string" ? value.composer.slice(0, 500) : "";
+    return { messages: messages.length ? messages : opening.messages, asked, composer };
+  } catch {
+    return opening;
+  }
+}
+
 /** Uses the inspected clip length while keeping it inside the engine's scene bounds. */
 export function sceneDurationForMedia(detectedDurationMs: unknown, fallbackMs: number): number {
   if (typeof detectedDurationMs !== "number" || !Number.isFinite(detectedDurationMs)) return fallbackMs;
