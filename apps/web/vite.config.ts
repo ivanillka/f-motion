@@ -1,9 +1,21 @@
 import { defineConfig, searchForWorkspaceRoot } from "vite";
 import react from "@vitejs/plugin-react";
+import { execSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const webRoot = dirname(fileURLToPath(import.meta.url));
+
+function gitSha(): string {
+  if (process.env.VITE_GIT_SHA) return process.env.VITE_GIT_SHA;
+  try {
+    return execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
+  } catch {
+    return "dev";
+  }
+}
+
+process.env.VITE_GIT_SHA ??= gitSha();
 
 export default defineConfig(({ command }) => ({
   plugins: [react()],

@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!deploy/vps/.env.example
 # Production workspaces
 node_modules/
 dist/
@@ -16,6 +17,7 @@ apps/mobile/android/.gradle/
 *.apk
 .env*
 !.env.example
+!deploy/vps/.env.example
 *.db
 uploads/
 .worktrees/

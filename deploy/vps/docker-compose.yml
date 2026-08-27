@@ -1,0 +1,147 @@
+# One-box F-Motion on a VPS (Postgres + MinIO + API + worker + web).
+# Open-source = single seat. Multi-user is the paid corporate product.
+# No Fly.io. No Fotium. The operator brings Supabase + BYOK Pexels/FAL keys.
+#
+# From the repository root:
+#   cp deploy/vps/.env.example deploy/vps/.env
+#   # edit deploy/vps/.env
+#   bash scripts/vps-up.sh
+
+name: fmotion-vps
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: fengine
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fengine}
+      POSTGRES_DB: fengine
+    volumes:
+      - fmotion_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fengine -d fengine"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-fengine}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-fengine-local-secret}
+    ports:
+      - "${MINIO_PUBLISH_PORT:-9000}:9000"
+    volumes:
+      - fmotion_minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/init/minio-init.sh"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-fengine}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-fengine-local-secret}
+      R2_BUCKET: ${R2_BUCKET:-fengine}
+      FENGINE_WEB_ORIGIN: ${FENGINE_WEB_ORIGIN:-http://127.0.0.1:8090}
+    volumes:
+      - ./minio-init.sh:/init/minio-init.sh:ro
+    restart: "no"
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://fengine:${POSTGRES_PASSWORD:-fengine}@postgres:5432/fengine
+    entrypoint: ["npx", "prisma", "migrate", "deploy"]
+    restart: "no"
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgresql://fengine:${POSTGRES_PASSWORD:-fengine}@postgres:5432/fengine
+      QUEUE_DATABASE_URL: postgresql://fengine:${POSTGRES_PASSWORD:-fengine}@postgres:5432/fengine
+      R2_ENDPOINT: http://minio:9000
+      R2_PUBLIC_ENDPOINT: ${R2_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
+      R2_BUCKET: ${R2_BUCKET:-fengine}
+      R2_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-fengine}
+      R2_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-fengine-local-secret}
+      R2_REGION: auto
+      FENGINE_LOCAL_AUTH: "0"
+      FENGINE_ENV: ${FENGINE_ENV:-selfhost}
+      FENGINE_ACCESS_MODE: ${FENGINE_ACCESS_MODE:-single_user}
+      FENGINE_PEXELS_BYOK_ENABLED: ${FENGINE_PEXELS_BYOK_ENABLED:-1}
+      FENGINE_FAL_BYOK_ENABLED: ${FENGINE_FAL_BYOK_ENABLED:-1}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    command: ["node", "apps/worker/dist/start.js"]
+    depends_on:
+      api:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://fengine:${POSTGRES_PASSWORD:-fengine}@postgres:5432/fengine
+      QUEUE_DATABASE_URL: postgresql://fengine:${POSTGRES_PASSWORD:-fengine}@postgres:5432/fengine
+      R2_ENDPOINT: http://minio:9000
+      R2_BUCKET: ${R2_BUCKET:-fengine}
+      R2_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-fengine}
+      R2_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-fengine-local-secret}
+      R2_REGION: auto
+      FENGINE_PEXELS_BYOK_ENABLED: ${FENGINE_PEXELS_BYOK_ENABLED:-1}
+      FENGINE_FAL_BYOK_ENABLED: ${FENGINE_FAL_BYOK_ENABLED:-1}
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+        VITE_ENABLE_GOOGLE_AUTH: ${VITE_ENABLE_GOOGLE_AUTH:-}
+        VITE_GIT_SHA: ${VITE_GIT_SHA:-dev}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PUBLISH_PORT:-8090}:80"
+    restart: unless-stopped
+
+volumes:
+  fmotion_pg:
+  fmotion_minio:

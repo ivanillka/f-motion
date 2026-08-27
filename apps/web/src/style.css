@@ -175,11 +175,11 @@ header strong {
   border: 1px solid color-mix(in srgb, var(--success) 28%, var(--border));
 }
 .save-pill[data-busy="true"] { color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, transparent); border-color: color-mix(in srgb, var(--warning) 30%, var(--border)); }
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
+.header-actions .build-rev {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--muted, #9aa0a6) 90%, white);
+  font-variant-numeric: tabular-nums;
 }
 .partner-brands {
   display: flex;

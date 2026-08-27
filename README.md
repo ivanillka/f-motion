@@ -31,6 +31,15 @@ Choose one path:
    quote and confirm a Flux Schnell still, or animate one approved portrait still into a six-second video, charged directly to that FAL account.
    The host never supplies a shared provider key.
 
+3. **One-box VPS (same git SHA as this checkout)**
+
+   ```sh
+   ./install.sh
+   ```
+
+   Details: [VPS self-host](docs/runbooks/vps-self-host.md). Rebuilds the
+   studio on `:8090` from this commit. The header shows the baked SHA.
+
 Never paste database, storage, or service-role credentials into the browser.
 The provider credentials accepted by the reference web client are a user's own
 Pexels and FAL keys in authenticated Settings. They are sent over HTTPS,

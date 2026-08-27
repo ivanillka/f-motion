@@ -8,6 +8,13 @@ If you only want to evaluate the workflow, use `npm run demo` from the root.
 That path requires no accounts and does not contact Supabase, Pexels, cloud
 storage, or a hosted database.
 
+For a one-box VPS (Docker Compose, studio on `:8090`), see
+[`docs/runbooks/vps-self-host.md`](runbooks/vps-self-host.md) and run:
+
+```sh
+./install.sh
+```
+
 ## 1. Prepare the local toolchain
 
 - Node 24.15.0 and npm 11.12.1
