@@ -1,5 +1,6 @@
 import {
   buildStoryboardDraft,
+  conceptIdForArchitecture,
   conceptsFor,
   cueAtElapsed,
   cuesForScene,
@@ -85,6 +86,7 @@ export interface SceneMediaView {
 
 export {
   buildStoryboardDraft,
+  conceptIdForArchitecture,
   conceptsFor,
   cueAtElapsed,
   cuesForScene,
@@ -275,6 +277,20 @@ export function briefShouldGlance(conversation: string, fileCount: number): bool
   return /\bmy own media\b/u.test(text)
     || /\bi added \d+ photos?\./u.test(text)
     || (/\b(my|our)\s+(photos?|videos?|footage|clips?)\b/u.test(text) && !/\bpexels\b/u.test(text));
+}
+
+const briefMetaLine = /^(I looked at|I added |File names:|Looking at your media|That is enough for)/iu;
+
+/** First user topic, not the later chip answers or glance notes. */
+export function briefPurposeFromChat(conversation: string, fileCount = 0): string {
+  const chips = new Set(Object.values(briefChoiceSets).flat().map((choice) => choice.toLowerCase()));
+  const first = conversation.split(/\n+/u).map((line) => line.trim()).find((line) =>
+    line && !briefMetaLine.test(line) && !chips.has(line.toLowerCase())
+  ) ?? "";
+  const purpose = first.slice(0, 500).trim();
+  if (purpose) return purpose;
+  if (fileCount > 0) return `Video from ${fileCount} photo${fileCount === 1 ? "" : "s"}`;
+  return "";
 }
 
 /** First user line plus the plan inferred from every answer so far. */

@@ -75,9 +75,11 @@ Suggested plan fields (existing architecture, not a new schema):
 ## Create is the chat
 
 The studio Create page is the chat: opening line, answers, chips, composer.
-Plan fields are inferred from that conversation. Overlay, motion, crop, music,
-and voice-over stay in the storyboard. Agents mention those exist in the draft.
-They do not dump the architecture grid unless the user asks to change one.
+Plan fields are inferred from that conversation. Continue builds the
+storyboard from the chat — length picks the 4/5/6-beat plan. Overlay, motion,
+crop, music, and voice-over stay in the storyboard. Agents mention those exist
+in the draft. They do not dump the architecture grid or a second concept
+picker unless the user asks to change one.
 
 ## Tools
 

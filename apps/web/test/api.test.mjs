@@ -1,12 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, briefNeedsMediaLook, briefReadyMessage, briefShouldGlance, buildStoryboardDraft, mediaNotesFromGlances, nextBriefQuestion, parseBriefChat, recommendVideoArchitecture, sceneDurationForMedia, sampleCanvasStats, toneFromSample } from "../src/api.ts";
+import { ApiClient, ApiResponseError, briefNeedsMediaLook, briefPurposeFromChat, briefReadyMessage, briefShouldGlance, buildStoryboardDraft, conceptIdForArchitecture, mediaNotesFromGlances, nextBriefQuestion, parseBriefChat, recommendVideoArchitecture, sceneDurationForMedia, sampleCanvasStats, toneFromSample } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
   assert.equal(sceneDurationForMedia(40_000, 3000), 15_000);
   assert.equal(sceneDurationForMedia(200, 3000), 500);
   assert.equal(sceneDurationForMedia(undefined, 3000), 3000);
+});
+
+test("brief purpose stays the first user line, not later chip answers", () => {
+  assert.equal(
+    briefPurposeFromChat("mystery murder in san francisco\nmystery murder i\nGeneral viewers\nAbout 30 seconds\nPexels real stock video"),
+    "mystery murder in san francisco"
+  );
+  assert.equal(briefPurposeFromChat("", 2), "Video from 2 photos");
+  assert.equal(conceptIdForArchitecture({ durationSeconds: 15 }), "direct");
+  assert.equal(conceptIdForArchitecture({ durationSeconds: 30 }), "story");
+  assert.equal(conceptIdForArchitecture({ durationSeconds: 45 }), "rhythm");
 });
 
 test("conversation recommendations prefill distinct, editable video architectures", () => {

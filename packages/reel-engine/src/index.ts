@@ -269,8 +269,24 @@ export function buildStoryboardDraft(
   });
 }
 
+export function conceptIdForArchitecture(architecture: Pick<VideoArchitecture, "durationSeconds">): "direct" | "story" | "rhythm" {
+  return architecture.durationSeconds === 15 ? "direct" : architecture.durationSeconds === 45 ? "rhythm" : "story";
+}
+
+export function isVideoArchitecture(value: unknown): value is VideoArchitecture {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return (["story", "explain", "promote", "educate"] as const).includes(item.goal as VideoArchitecture["goal"])
+    && (["general", "social", "customers", "internal"] as const).includes(item.audience as VideoArchitecture["audience"])
+    && (["story_arc", "mystery", "problem_solution", "chronological"] as const).includes(item.structure as VideoArchitecture["structure"])
+    && (["cinematic", "documentary", "energetic", "calm"] as const).includes(item.tone as VideoArchitecture["tone"])
+    && (["slow", "balanced", "fast"] as const).includes(item.pace as VideoArchitecture["pace"])
+    && (item.durationSeconds === 15 || item.durationSeconds === 30 || item.durationSeconds === 45)
+    && (["stock", "own", "mixed"] as const).includes(item.media as VideoArchitecture["media"]);
+}
+
 export function conceptsFor(brief: ProjectSnapshot["brief"]): [Concept, Concept, Concept] {
-  const subject = brief.purpose.trim().slice(0, 80) || "your subject";
+  const subject = (brief.purpose.trim().split(/\n+/u)[0] ?? "").slice(0, 80) || "your subject";
   const short = subject.slice(0, 48);
   return [
     {
@@ -314,20 +330,21 @@ export function conceptsFor(brief: ProjectSnapshot["brief"]): [Concept, Concept,
 export function planStoryboardScenes(
   brief: ProjectSnapshot["brief"],
   conceptId: string,
-  makeId: () => string
+  makeId: () => string,
+  architecture?: VideoArchitecture
 ): Scene[] {
   const concept = conceptsFor(brief).find(({ id }) => id === conceptId);
   if (!concept) throw new Error("unknown concept");
-  const architecture: VideoArchitecture = {
+  const resolved = architecture ?? {
     goal: conceptId === "direct" ? "promote" : "story",
-    audience: "general",
-    structure: conceptId === "story" ? "story_arc" : conceptId === "rhythm" ? "chronological" : "problem_solution",
-    tone: "cinematic",
-    pace: conceptId === "rhythm" ? "fast" : "balanced",
+    audience: "general" as const,
+    structure: conceptId === "story" ? "story_arc" as const : conceptId === "rhythm" ? "chronological" as const : "problem_solution" as const,
+    tone: "cinematic" as const,
+    pace: conceptId === "rhythm" ? "fast" as const : "balanced" as const,
     durationSeconds: concept.duration_seconds,
-    media: "stock"
+    media: "stock" as const
   };
-  return buildStoryboardDraft(brief.purpose, makeId, architecture);
+  return buildStoryboardDraft(brief.purpose, makeId, resolved);
 }
 
 function boundedScene(scene: Scene): Scene {
@@ -589,10 +606,11 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
   if (command.kind === "select_concept") {
     const conceptId = String(command.payload.concept_id ?? "");
     if (!conceptsFor(snapshot.brief).some(({ id }) => id === conceptId)) throw new Error("unknown concept");
+    const architecture = isVideoArchitecture(command.payload.architecture) ? command.payload.architecture : undefined;
     let sceneSerial = 0;
     const scenes = snapshot.scenes.length
       ? snapshot.scenes
-      : planStoryboardScenes(snapshot.brief, conceptId, () => `${snapshot.id}-scene-${++sceneSerial}`);
+      : planStoryboardScenes(snapshot.brief, conceptId, () => `${snapshot.id}-scene-${++sceneSerial}`, architecture);
     return { ...snapshot, selected_concept_id: conceptId, scenes, revision: snapshot.revision + 1 };
   }
   if (command.kind === "update_scene") {

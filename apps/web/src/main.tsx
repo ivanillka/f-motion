@@ -3,7 +3,9 @@ import { createRoot } from "react-dom/client";
 import {
   ApiClient,
   ApiResponseError,
+  briefPurposeFromChat,
   buildStoryboardDraft,
+  conceptIdForArchitecture,
   conceptsFor,
   clampFocus,
   clampBpm,
@@ -46,7 +48,6 @@ import {
   spokenWordIndex,
   spokenWordsForCues,
   VOICEOVER_DUCK,
-  type Concept,
   type ProjectSnapshot,
   type ProjectSummary,
   type Scene,
@@ -60,7 +61,7 @@ import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOri
 import { clearImportedProject, isImportedProjectId, rememberImportedProject } from "./imported-project";
 import "./style.css";
 
-type Step = "sign-in" | "drafts" | "brief" | "concepts" | "media" | "editor" | "render" | "settings";
+type Step = "sign-in" | "drafts" | "brief" | "media" | "editor" | "render" | "settings";
 interface PreviewPanState {
   pointerId: number;
   startX: number;
@@ -212,7 +213,6 @@ function App() {
   const mediaLookKey = useRef("");
   briefDraftRef.current = draft;
   briefAskedRef.current = briefAsked;
-  const [conceptChoices, setConceptChoices] = useState<Concept[]>([]);
   const [project, setProject] = useState<ProjectSnapshot>();
   const [activeSceneId, setActiveSceneId] = useState("");
   const [cropFocus, setCropFocus] = useState({ x: 0.5, y: 0.5 });
@@ -611,9 +611,8 @@ function App() {
     }
   }
 
-  function briefForConcepts(): ProjectSnapshot["brief"] {
-    const purpose = draft.trim()
-      || (pendingFiles.length ? `Video from ${pendingFiles.length} photo${pendingFiles.length === 1 ? "" : "s"}` : "");
+  function briefForStoryboard(): ProjectSnapshot["brief"] {
+    const purpose = briefPurposeFromChat(draft, pendingFiles.length);
     return {
       purpose,
       audience: architecture.audience,
@@ -691,85 +690,67 @@ function App() {
     setBriefChat((current) => [...current, user, { role: "assistant", text: next.prompt, questionId: next.id, choices: next.choices }]);
   }
 
-  async function continueToConcepts() {
+  async function continueToStoryboard() {
     if (busy) return;
-    const brief = briefForConcepts();
+    const brief = briefForStoryboard();
     if (!brief.purpose) return;
     if (!draft.trim()) setDraft(brief.purpose);
     mediaTransition.current += 1;
     setSceneMedia({});
     setSceneProgress({});
     setBusy(true);
-    setStatus("Preparing story concepts…");
+    setStatus("Building the storyboard…");
     try {
       let current = project;
-      if (!current) {
-        const body = await api.request<{ project: ProjectSnapshot; concepts?: Concept[] }>("/api/projects", {
+      if (!current || current.scenes.length || current.brief.purpose !== brief.purpose) {
+        const body = await api.request<{ project: ProjectSnapshot }>("/api/projects", {
           method: "POST",
-          body: JSON.stringify(briefForConcepts())
+          body: JSON.stringify(brief)
         });
         current = body.project;
         localStorage.setItem("fengine-project", current.id);
-        setProject(current);
-        setConceptChoices(body.concepts?.length ? body.concepts : [...conceptsFor(briefForConcepts())]);
-      } else {
-        setConceptChoices([...conceptsFor(current.brief.purpose ? current.brief : briefForConcepts())]);
       }
-      setActiveSceneId("");
-      setStep("concepts");
-      setStatus("Licensed visuals are matched only after you choose a story approach.");
+      await buildStoryboard(current, architecture);
     } catch {
-      setStatus("Story concepts could not be prepared. Please try again.");
+      setStatus("Your storyboard could not be created. Please try again.");
     } finally {
       setBusy(false);
     }
   }
 
-  async function chooseConcept(conceptId: string) {
-    if (busy || !project) return;
-    mediaTransition.current += 1;
-    setSceneMedia({});
-    setSceneProgress({});
-    setBusy(true);
-    setStatus("Building the selected storyboard…");
+  async function buildStoryboard(snapshot: ProjectSnapshot, plan: VideoArchitecture) {
+    let current = snapshot;
+    if (!current.scenes.length) {
+      current = await api.command(current.id, current.revision, "select_concept", {
+        concept_id: conceptIdForArchitecture(plan),
+        architecture: plan
+      });
+    }
+    setProject(current);
+    setActiveSceneId(current.scenes[0]?.id ?? "");
+    setStep("editor");
+    if (pendingFiles.length) {
+      setStatus("Uploading your media…");
+      const files = pendingFiles;
+      setPendingFiles([]);
+      for (const [index, file] of files.entries()) {
+        const scene = current.scenes[index];
+        if (!scene) break;
+        await admitFile(file, scene.id, current);
+      }
+      return;
+    }
+    if (plan.media === "own") {
+      setStatus("Storyboard ready. Upload media for each scene.");
+      return;
+    }
     try {
-      let current = project;
-      if (!current.scenes.length || current.selected_concept_id !== conceptId) {
-        if (current.scenes.length) {
-          // ponytail: empty projects are the concept gate; non-empty reselection stays replace-free.
-          setStatus("This draft already has scenes. Open it from Drafts to keep editing.");
-          return;
-        }
-        current = await api.command(current.id, current.revision, "select_concept", { concept_id: conceptId });
-      }
-      setProject(current);
-      setActiveSceneId(current.scenes[0]?.id ?? "");
-      if (pendingFiles.length) {
-        setStatus("Uploading your media…");
-        setStep("editor");
-        const files = pendingFiles;
-        setPendingFiles([]);
-        for (const [index, file] of files.entries()) {
-          const scene = current.scenes[index];
-          if (!scene) break;
-          await admitFile(file, scene.id, current);
-        }
-        return;
-      }
-      if (architecture.media === "own") {
-        setStatus("Storyboard ready. Upload media for each scene.");
-        setStep("media");
-        return;
-      }
-      setStep("editor");
       await fillStockStoryboard(current);
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.type : undefined;
       setStatus(type === "pexels_not_connected"
-        ? "Connect your Pexels API key in Settings, or upload your own media."
-        : "Your storyboard could not be created. Please try again.");
-    } finally {
-      setBusy(false);
+        ? "Storyboard ready. Connect your Pexels API key in Settings, or upload your own media."
+        : "Storyboard ready. Licensed media could not be matched yet — upload your own or try Settings.");
     }
   }
 
@@ -786,9 +767,16 @@ function App() {
       localStorage.setItem("fengine-project", opened.id);
       setDraft(opened.brief.purpose);
       if (!opened.scenes.length) {
-        setConceptChoices(found.concepts?.length ? found.concepts : [...conceptsFor(opened.brief)]);
-        setStep("concepts");
-        setStatus("Licensed visuals are matched only after you choose a story approach.");
+        const plan = recommendVideoArchitecture(opened.brief.purpose);
+        setArchitecture(plan);
+        setBusy(true);
+        try {
+          await buildStoryboard(opened, plan);
+        } catch {
+          setStatus("Your storyboard could not be created. Please try again.");
+        } finally {
+          setBusy(false);
+        }
         return true;
       }
       let hydrationFailed = false;
@@ -2552,7 +2540,7 @@ function App() {
   }, [livePlaying, previewUrl, previewScene?.id]);
   const inApp = authReady && Boolean(token) && step !== "sign-in";
   const partnerBrands = showsPartnerBrands(token ?? "", String(import.meta.env.VITE_PARTNER_BRAND_EMAIL ?? ""));
-  const createFlow = step === "brief" || step === "concepts" || step === "media" || step === "editor" || step === "render";
+  const createFlow = step === "brief" || step === "media" || step === "editor" || step === "render";
   const lastBrief = briefChat[briefChat.length - 1];
   const briefCanContinue = !busy && !mediaLooking
     && !briefNeedsMediaLook(draft, pendingFiles.length)
@@ -2718,33 +2706,13 @@ function App() {
           }}
         />
         <button type="submit" disabled={busy || mediaLooking || (!composer.trim() && !pendingFiles.length)}>Send</button>
-        <button type="button" disabled={!briefCanContinue} onClick={() => void continueToConcepts()}>{busy ? "Preparing concepts…" : mediaLooking ? "Looking at your media…" : "Continue to story concepts"}</button>
+        <button type="button" disabled={!briefCanContinue} onClick={() => void continueToStoryboard()}>{busy ? "Creating storyboard…" : mediaLooking ? "Looking at your media…" : "Create storyboard"}</button>
       </form>
       <input ref={createUpload} hidden type="file" multiple accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
         if (event.target.files) addPendingFiles(event.target.files);
         event.target.value = "";
       }} />
       <p role="status" aria-live="polite">{status}</p>
-    </section>}
-    {authReady && step === "concepts" && project && <section>
-      <h1>Choose a story approach</h1>
-      <p>Each option builds a different multi-scene plan. Licensed stock is matched only after you choose.</p>
-      <div className="concept-choices" aria-label="Story concepts">{conceptChoices.map((concept) =>
-        <button
-          key={concept.id}
-          className="card"
-          disabled={busy}
-          aria-label={`Choose ${concept.title} concept`}
-          onClick={() => void chooseConcept(concept.id)}
-        >
-          <strong>{concept.title}</strong>
-          <span>{concept.hook}</span>
-          <span>{concept.beat_summary}</span>
-          <span>About {concept.duration_seconds} seconds · {concept.scene_count} scenes</span>
-          <span>{concept.media_direction}</span>
-        </button>)}</div>
-      <p role="status" aria-live="polite">{status}</p>
-      <button className="secondary" disabled={busy} onClick={() => setStep("brief")}>Back to chat</button>
     </section>}
     {authReady && step === "media" && project && <section>
       <h1>Upload your media</h1>

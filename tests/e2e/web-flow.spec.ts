@@ -62,12 +62,12 @@ async function describeVideo(page: Page, text: string): Promise<void> {
   await page.getByLabel("Message F-Motion").fill(text);
   await page.getByRole("button", { name: "Send" }).click();
   for (let step = 0; step < 4; step += 1) {
-    if (await page.getByRole("button", { name: "Continue to story concepts" }).isEnabled()) return;
+    if (await page.getByRole("button", { name: "Create storyboard" }).isEnabled()) return;
     const choice = page.locator(".brief-chat-choices button").first();
     await expect(choice).toBeVisible();
     await choice.click();
   }
-  await expect(page.getByRole("button", { name: "Continue to story concepts" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Create storyboard" })).toBeEnabled();
 }
 
 async function sayOwnMedia(page: Page): Promise<void> {
@@ -84,17 +84,12 @@ async function briefWithOwnStill(page: Page, text: string): Promise<void> {
   await describeVideo(page, text);
   await sayOwnMedia(page);
   await page.locator("section.create-brief input[type=file]").setInputFiles("apps/worker/test/fixtures/still.jpg");
-  await expect(page.getByRole("button", { name: "Continue to story concepts" })).toBeEnabled({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "Create storyboard" })).toBeEnabled({ timeout: 15_000 });
 }
 
-async function continueToConcepts(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Continue to story concepts" }).click();
-  await expect(page.getByRole("heading", { name: "Choose a story approach" })).toBeVisible();
-}
-
-async function chooseConcept(page: Page, title: "Direct" | "Story" | "Rhythm"): Promise<void> {
-  await continueToConcepts(page);
-  await page.getByRole("button", { name: `Choose ${title} concept` }).click();
+async function createStoryboard(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Create storyboard" }).click();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
 }
 
 function mediaFileInput(page: Page) {
@@ -178,7 +173,7 @@ test("own media is glanced locally before remaining Create questions", async ({ 
   await page.locator("section.create-brief input[type=file]").setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByText(/I looked at 1 photo/i)).toBeVisible();
   await expect(page.locator(".brief-chat-choices button").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Continue to story concepts" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Create storyboard" })).toBeDisabled();
 });
 
 test("upload journey, natural conflict recovery, render, and download", async ({ page }) => {
@@ -193,7 +188,7 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await page.getByRole("button", { name: "Create new video" }).click();
   await expect(page.getByLabel("Message F-Motion")).toHaveValue("Launch a product for small teams");
   await briefWithOwnStill(page, "Launch a product for small teams");
-  await chooseConcept(page, "Direct");
+  await createStoryboard(page);
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
   for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
@@ -255,9 +250,8 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
       pexelsMediaPosts.push(request.url());
     }
   });
-  await continueToConcepts(page);
   expect(pexelsMediaPosts).toEqual([]);
-  await page.getByRole("button", { name: "Choose Story concept" }).click();
+  await page.getByRole("button", { name: "Create storyboard" }).click();
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(5);
   await expect(page.getByText(/The story begins\.|Calm studio introduction/i).first()).toBeVisible();
@@ -328,7 +322,7 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   await signIn(page);
   await page.getByRole("button", { name: "Create new video" }).click();
   await briefWithOwnStill(page, "A fictional lighthouse that does not exist on stock");
-  await chooseConcept(page, "Direct");
+  await createStoryboard(page);
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
   for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
@@ -378,7 +372,7 @@ test("FAL image-to-video quotes, confirms, and attaches only after review", asyn
   await signIn(page);
   await page.getByRole("button", { name: "Create new video" }).click();
   await briefWithOwnStill(page, "Animate a portrait still of a quiet harbor");
-  await chooseConcept(page, "Direct");
+  await createStoryboard(page);
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
   for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);

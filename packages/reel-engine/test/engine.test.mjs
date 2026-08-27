@@ -33,9 +33,17 @@ test("concept construction is deterministic and exactly three", () => {
     assert.ok(concept.hook.length > 8);
     assert.ok(concept.beat_summary.length > 8);
     assert.ok(concept.media_direction.length > 8);
+    assert.equal(concept.hook.includes("\n"), false);
     assert.ok([15, 30, 45].includes(concept.duration_seconds));
     assert.ok([4, 5, 6].includes(concept.scene_count));
   }
+  const messy = conceptsFor({
+    purpose: "mystery murder in san francisco\nmystery murder i\nGeneral viewers",
+    audience: "general",
+    tone: "cinematic"
+  });
+  assert.match(messy[1].hook, /mystery murder in san francisco/);
+  assert.doesNotMatch(messy[1].hook, /General viewers/);
 });
 test("shared storyboard planning separates footage intent from copy and closes with the CTA", () => {
   let id = 0;
@@ -139,6 +147,29 @@ test("select_concept seeds a multi-scene plan when the project is empty", () => 
   assert.equal(result.selected_concept_id, "story");
   assert.ok(result.scenes.length >= 4 && result.scenes.length <= 6);
   assert.ok(result.scenes.every((scene) => scene.visual_prompt));
+});
+test("select_concept uses payload architecture for mystery footage", () => {
+  const empty = {
+    ...snapshot,
+    scenes: [],
+    brief: { purpose: "mystery murder in san francisco", audience: "general", tone: "cinematic, slow" }
+  };
+  const result = applyCommand(empty, {
+    command_id: "mystery",
+    project_id: "p1",
+    base_revision: 0,
+    client_timestamp: "diagnostic",
+    kind: "select_concept",
+    payload: {
+      concept_id: "story",
+      architecture: {
+        goal: "story", audience: "general", structure: "mystery", tone: "cinematic",
+        pace: "slow", durationSeconds: 30, media: "stock"
+      }
+    }
+  });
+  assert.equal(result.scenes.length, 5);
+  assert.match(result.scenes[0].visual_prompt, /fog wide aerial establishing cinematic/);
 });
 test("command increments revision exactly once", () => {
   const result = applyCommand(snapshot, { command_id: "c1", project_id: "p1", base_revision: 0, client_timestamp: "diagnostic", kind: "select_concept", payload: { concept_id: "direct" } });
