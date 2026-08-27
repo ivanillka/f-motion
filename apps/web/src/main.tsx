@@ -1156,7 +1156,7 @@ function App() {
     const readyCount = refreshed.scenes.filter((scene) => scene.media_id).length;
     setStatus(readyCount === refreshed.scenes.length
       ? "Licensed media attached for every scene. Review attribution, then render."
-      : `${readyCount} of ${refreshed.scenes.length} scenes have media. Find or upload the rest before rendering.`);
+      : `${readyCount} of ${refreshed.scenes.length} scenes have media.`);
   }
 
   async function moveScene(sceneId: string, to: number) {
@@ -2781,13 +2781,8 @@ function App() {
             <span className="scene-progress scene-preparing">{videoPreparing ? "Animating…" : "Generating…"}</span>
           ) : reviewReady ? (
             <span className="scene-progress">Ready — review</span>
-          ) : sceneProgress[scene.id] && !previewUrl ? (
-            <span className="scene-progress">
-              {sceneProgress[scene.id] === "finding" ? "finding"
-                : sceneProgress[scene.id] === "inspecting" ? "inspecting"
-                  : sceneProgress[scene.id] === "ready" ? "ready"
-                    : "needs media"}
-            </span>
+          ) : sceneProgress[scene.id] === "finding" || sceneProgress[scene.id] === "inspecting" ? (
+            <span className="scene-progress">{sceneProgress[scene.id] === "finding" ? "finding" : "inspecting"}</span>
           ) : null}
         </button>;
       })}
@@ -2848,7 +2843,7 @@ function App() {
             <div className="play-transport-row">
               <button className="secondary" type="button" disabled={!project.scenes.length} onClick={() => restartLivePreview()}>Restart</button>
               <button className="secondary" type="button" aria-label="Previous scene" disabled={!project.scenes.length} onClick={() => stepLivePreview(-1)}>Prev</button>
-              <button type="button" disabled={!allScenesHavePreview} onClick={() => livePlaying ? pauseLivePreview() : playLivePreview()}>{livePlaying ? "Pause preview" : "Play preview"}</button>
+              <button type="button" disabled={!project.scenes.length} onClick={() => livePlaying ? pauseLivePreview() : playLivePreview()}>{livePlaying ? "Pause preview" : "Play preview"}</button>
               <button className="secondary" type="button" aria-label="Next scene" disabled={!project.scenes.length} onClick={() => stepLivePreview(1)}>Next</button>
               <span className="play-time">{formatPlayTime(playhead.offsetMs)} / {formatPlayTime(playhead.totalMs)}</span>
             </div>
@@ -2898,7 +2893,7 @@ function App() {
             onToggle={(event) => setVoiceOpen(event.currentTarget.open)}
           >
             <summary>{recording ? "Recording voice-over" : voiceover ? "Voice-over" : "Add voice-over"}</summary>
-            <p className="crop-hint">Record, upload, or generate with FAL. Trim into the take with start offset. Mute or set level. Voice-over never loops. The full caption stays on screen; words highlight as they are spoken. Music ducks under the voice.</p>
+            <p className="crop-hint">Music ducks under the voice. Voice-over never loops.</p>
             <div className="scene-actions">
               <button
                 type="button"
@@ -3152,9 +3147,9 @@ function App() {
           }} />
           <button className="secondary" disabled={busy} aria-label={`Upload media for scene ${activeSceneNumber}`} onClick={() => upload.current?.click()}>Upload media</button>
           <p role="status">{status || "✓ All changes saved"}</p>
-          {!allScenesHavePreview && <p>{project.scenes.every(({ media_id }) => media_id)
-            ? "Media is processing. Live preview starts when every scene is ready."
-            : "Add media to every scene to play the live preview."}</p>}
+          {!allScenesHavePreview && project.scenes.every(({ media_id }) => media_id) ? (
+            <p>Media is processing.</p>
+          ) : null}
           </div>
         </div>
       </div>
