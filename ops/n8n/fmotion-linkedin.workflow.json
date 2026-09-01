@@ -57,7 +57,7 @@
       "parameters": {
         "authentication": "communityManagement",
         "postAs": "organization",
-        "organization": "144706944",
+        "organization": "",
         "text": "={{$json.text}}",
         "shareMediaCategory": "ARTICLE",
         "additionalFields": {

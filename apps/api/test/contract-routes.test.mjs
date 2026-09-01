@@ -20,6 +20,7 @@ async function listen(server) {
 function samplePath(template) {
   return template
     .replaceAll("{project_id}", "project")
+    .replaceAll("{scene_id}", "scene")
     .replaceAll("{asset_id}", "asset")
     .replaceAll("{job_id}", "job");
 }

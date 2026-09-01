@@ -1,4 +1,46 @@
-import { isSoundtrack, isVoiceover, isStoryboardScenes, type CaptionCue, type CommandEnvelope, type ProjectSnapshot, type Scene } from "@f-engine/contracts";
+import {
+  isMediaGlanceHints,
+  isSoundtrack,
+  isVideoArchitecture,
+  isVoiceover,
+  isStoryboardScenes,
+  type CaptionCue,
+  type CommandEnvelope,
+  type MediaGlanceHints,
+  type ProjectSnapshot,
+  type Scene,
+  type VideoArchitecture
+} from "@f-engine/contracts";
+import { defaultVideoArchitecture, recommendVideoArchitecture } from "./brief-architecture.js";
+import {
+  glanceMoodWords,
+  resolveSceneMediaIntent,
+  sceneMediaIntent,
+  setMediaIntentAdapter,
+  stockIntentFitScore,
+  stockQueriesFromText,
+  type MediaIntentAdapter,
+  type SceneMediaIntent,
+  type SceneMediaIntentInput
+} from "./media-intent.js";
+
+export {
+  defaultVideoArchitecture,
+  recommendVideoArchitecture
+} from "./brief-architecture.js";
+export {
+  glanceMoodWords,
+  isSceneMediaIntent,
+  resolveSceneMediaIntent,
+  sceneMediaIntent,
+  setMediaIntentAdapter,
+  stockIntentFitScore,
+  stockQueriesFromText,
+  type MediaIntentAdapter,
+  type SceneMediaIntent,
+  type SceneMediaIntentInput
+} from "./media-intent.js";
+export type { MediaGlanceHints, VideoArchitecture } from "@f-engine/contracts";
 
 const MAX_STORYBOARD_SCENES = 8;
 
@@ -27,31 +69,12 @@ export interface RenderPlan {
   scenes: Array<Scene & { caption_cues: CaptionCue[] }>;
 }
 
-export interface VideoArchitecture {
-  goal: "story" | "explain" | "promote" | "educate";
-  audience: "general" | "social" | "customers" | "internal";
-  structure: "story_arc" | "mystery" | "problem_solution" | "chronological";
-  tone: "cinematic" | "documentary" | "energetic" | "calm";
-  pace: "slow" | "balanced" | "fast";
-  durationSeconds: 15 | 30 | 45;
-  media: "stock" | "own" | "mixed";
-}
-
 export interface StoryboardSource {
   caption?: string;
   callToAction?: string;
   visualHint?: string;
+  glance?: MediaGlanceHints;
 }
-
-export const defaultVideoArchitecture: VideoArchitecture = {
-  goal: "story",
-  audience: "general",
-  structure: "story_arc",
-  tone: "cinematic",
-  pace: "balanced",
-  durationSeconds: 15,
-  media: "stock"
-};
 
 const STORY_ROLES = [
   "wide establishing view",
@@ -108,10 +131,16 @@ function footageSubject(brief: string): string {
   return result.join(" ") || "cinematic subject";
 }
 
-function footagePrompt(brief: string, cue: string, tone: VideoArchitecture["tone"]): string {
-  const words = `${footageSubject(brief)} ${cue} ${TONE_FOOTAGE_WORD[tone]}`.split(" ");
-  const unique = words.filter((word, index) => words.indexOf(word) === index);
-  const query = unique.join(" ");
+function footagePrompt(
+  brief: string,
+  cue: string,
+  tone: VideoArchitecture["tone"],
+  glance?: MediaGlanceHints
+): string {
+  const mood = glanceMoodWords(glance).slice(0, 2).join(" ");
+  const words = `${footageSubject(brief)} ${cue} ${TONE_FOOTAGE_WORD[tone]} ${mood}`.split(" ");
+  const unique = words.filter((word, index) => word && words.indexOf(word) === index);
+  const query = unique.join(" ").trim();
   if (query.length <= 100) return query;
   return query.slice(0, 101).replace(/\s+\S*$/u, "").trim();
 }
@@ -220,11 +249,13 @@ export function buildStoryboardDraft(
     .slice(0, 6);
   const sceneCount = architecture ? (architecture.durationSeconds === 15 ? 4 : architecture.durationSeconds === 30 ? 5 : 6) : 0;
   const architectureSceneIndexes = architecture ? architectureIndexes(sceneCount) : [];
+  const glance = source.glance;
   const visualPrompts = architecture
     ? architectureSceneIndexes.map((roleIndex, index) => footagePrompt(
       `${source.visualHint?.trim() || fragments[index] || visualSubject}`,
       ARCHITECTURE_FOOTAGE[architecture.structure][roleIndex] ?? "cinematic scene",
-      architecture.tone
+      architecture.tone,
+      glance
     ))
     : fragments.length >= 3
       ? fragments.map((fragment) => fragment.slice(0, 240).trim())
@@ -273,17 +304,7 @@ export function conceptIdForArchitecture(architecture: Pick<VideoArchitecture, "
   return architecture.durationSeconds === 15 ? "direct" : architecture.durationSeconds === 45 ? "rhythm" : "story";
 }
 
-export function isVideoArchitecture(value: unknown): value is VideoArchitecture {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const item = value as Record<string, unknown>;
-  return (["story", "explain", "promote", "educate"] as const).includes(item.goal as VideoArchitecture["goal"])
-    && (["general", "social", "customers", "internal"] as const).includes(item.audience as VideoArchitecture["audience"])
-    && (["story_arc", "mystery", "problem_solution", "chronological"] as const).includes(item.structure as VideoArchitecture["structure"])
-    && (["cinematic", "documentary", "energetic", "calm"] as const).includes(item.tone as VideoArchitecture["tone"])
-    && (["slow", "balanced", "fast"] as const).includes(item.pace as VideoArchitecture["pace"])
-    && (item.durationSeconds === 15 || item.durationSeconds === 30 || item.durationSeconds === 45)
-    && (["stock", "own", "mixed"] as const).includes(item.media as VideoArchitecture["media"]);
-}
+export { isVideoArchitecture } from "@f-engine/contracts";
 
 export function conceptsFor(brief: ProjectSnapshot["brief"]): [Concept, Concept, Concept] {
   const subject = (brief.purpose.trim().split(/\n+/u)[0] ?? "").slice(0, 80) || "your subject";
@@ -331,11 +352,12 @@ export function planStoryboardScenes(
   brief: ProjectSnapshot["brief"],
   conceptId: string,
   makeId: () => string,
-  architecture?: VideoArchitecture
+  architecture?: VideoArchitecture,
+  source: StoryboardSource = {}
 ): Scene[] {
   const concept = conceptsFor(brief).find(({ id }) => id === conceptId);
   if (!concept) throw new Error("unknown concept");
-  const resolved = architecture ?? {
+  const resolved = architecture ?? brief.architecture ?? {
     goal: conceptId === "direct" ? "promote" : "story",
     audience: "general" as const,
     structure: conceptId === "story" ? "story_arc" as const : conceptId === "rhythm" ? "chronological" as const : "problem_solution" as const,
@@ -344,7 +366,10 @@ export function planStoryboardScenes(
     durationSeconds: concept.duration_seconds,
     media: "stock" as const
   };
-  return buildStoryboardDraft(brief.purpose, makeId, resolved);
+  return buildStoryboardDraft(brief.purpose, makeId, resolved, {
+    ...source,
+    glance: source.glance ?? brief.media_glance
+  });
 }
 
 function boundedScene(scene: Scene): Scene {
@@ -606,12 +631,28 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
   if (command.kind === "select_concept") {
     const conceptId = String(command.payload.concept_id ?? "");
     if (!conceptsFor(snapshot.brief).some(({ id }) => id === conceptId)) throw new Error("unknown concept");
-    const architecture = isVideoArchitecture(command.payload.architecture) ? command.payload.architecture : undefined;
+    const architecture = isVideoArchitecture(command.payload.architecture)
+      ? command.payload.architecture
+      : snapshot.brief.architecture;
+    const media_glance = isMediaGlanceHints(command.payload.media_glance)
+      ? command.payload.media_glance
+      : snapshot.brief.media_glance;
     let sceneSerial = 0;
     const scenes = snapshot.scenes.length
       ? snapshot.scenes
-      : planStoryboardScenes(snapshot.brief, conceptId, () => `${snapshot.id}-scene-${++sceneSerial}`, architecture);
-    return { ...snapshot, selected_concept_id: conceptId, scenes, revision: snapshot.revision + 1 };
+      : planStoryboardScenes(
+        snapshot.brief,
+        conceptId,
+        () => `${snapshot.id}-scene-${++sceneSerial}`,
+        architecture,
+        { glance: media_glance }
+      );
+    const brief = {
+      ...snapshot.brief,
+      ...(architecture ? { architecture } : {}),
+      ...(media_glance ? { media_glance } : {})
+    };
+    return { ...snapshot, selected_concept_id: conceptId, brief, scenes, revision: snapshot.revision + 1 };
   }
   if (command.kind === "update_scene") {
     const scene = validatedScene(command.payload.scene);

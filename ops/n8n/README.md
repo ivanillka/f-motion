@@ -1,16 +1,16 @@
 # F-Motion LinkedIn (n8n)
 
-Dedicated workflow. Do **not** add LinkedIn to Fotium Social Share.
+Dedicated workflow. Do **not** add LinkedIn to other social-share stacks.
 
-## Public webhook (already live)
+## Public webhook
 
-Tailscale Funnel on the n8n host exposes **only** this path:
+Expose **only** the webhook path on your n8n host, for example:
 
-`https://ubuntu-8gb-hel1-2.tailf28d35.ts.net:9452/webhook/fmotion-linkedin`
+`https://YOUR_N8N_HOST:9452/webhook/fmotion-linkedin`
 
-Root of that port returns 404. The rest of n8n stays tailnet-only on `:9443`.
+Keep the rest of n8n on a private port or tailnet.
 
-To turn Funnel off later (on the VPS):
+To turn a Tailscale Funnel off later:
 
 ```sh
 tailscale funnel --https=9452 off
@@ -29,8 +29,8 @@ tailscale funnel --https=9452 off
 
 3. In n8n, create **LinkedIn Community Management OAuth2** credentials.
    Enable organization posting (`w_organization_social`). LinkedIn may require
-   Community Management App Review before org posts succeed. Post as
-   organization `144706944` only.
+   Community Management App Review before org posts succeed. Set your company
+   organization id on the LinkedIn node after import.
 
 4. From this repo (with `N8N_API_URL` and `N8N_API_KEY` in the environment):
 
@@ -39,13 +39,13 @@ tailscale funnel --https=9452 off
    ```
 
 5. Open the **F-Motion LinkedIn** workflow, select the LinkedIn credential on
-   the LinkedIn node, activate the workflow.
+   the LinkedIn node, set the organization id, activate the workflow.
 
-6. Store the same webhook secret in Cursor Cloud secrets as
-   `FMOTION_LINKEDIN_WEBHOOK_SECRET`. The weekly automation POSTs:
+6. Store the same webhook secret in your automation host as
+   `FMOTION_LINKEDIN_WEBHOOK_SECRET`. Example POST:
 
    ```http
-   POST https://ubuntu-8gb-hel1-2.tailf28d35.ts.net:9452/webhook/fmotion-linkedin
+   POST https://YOUR_N8N_HOST:9452/webhook/fmotion-linkedin
    Content-Type: application/json
    x-fmotion-linkedin-secret: <secret>
    ```
@@ -54,7 +54,7 @@ tailscale funnel --https=9452 off
    {
      "text": "…post body…",
      "url": "https://f-motion.com",
-     "source": "plan-054",
+     "source": "weekly-post",
      "skip": false
    }
    ```

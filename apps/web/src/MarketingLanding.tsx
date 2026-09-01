@@ -1,5 +1,6 @@
 import { useState } from "react";
 import "./marketing.css";
+import { githubBlobUrl } from "./repo";
 
 export type MarketingTab = "web" | "integrate";
 
@@ -10,7 +11,7 @@ interface MarketingLandingProps {
 
 export function MarketingLanding({
   onOpenStudio,
-  docsHref = "https://github.com/ivanillka/f-motion/blob/advisor/133-design-contract/docs/agents/host-recipes.md"
+  docsHref = githubBlobUrl("docs/agents/host-recipes.md")
 }: MarketingLandingProps) {
   const [tab, setTab] = useState<MarketingTab>("web");
 
@@ -151,7 +152,7 @@ export function MarketingLanding({
     "title": "Weekend portraits",
     "caption": "Quiet frames from the session.",
     "call_to_action": "Open the full gallery.",
-    "media_urls": ["https://media.fotium.vip/galleries/weekend/1.jpg"]
+    "media_urls": ["https://media.example.com/galleries/weekend/1.jpg"]
   }'`}</code></pre>
               </div>
             </section>

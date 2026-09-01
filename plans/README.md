@@ -81,7 +81,7 @@ your row when done.
 | 052 | Unblock FAL credential disconnect after generation jobs exist | P1 | M | 048–050; 051 preferred | DONE (branch `advisor/052-unblock-fal-credential-disconnect` @ `40c9a7c`) |
 | 053 | Promote product tip `6287cce` as the sole ship tip | P1 | M | 6287cce; 051–052 preferred | DONE (branch `advisor/053-product-tip`; gate green) |
 | 054 | Wire `final` export and honest download UX | P1 | M | 053 | DONE (branch `advisor/054-wire-final-export`) |
-| 055 | Sync docs and generation routes in the contract inventory | P2 | S | 053 preferred | TODO |
+| 055 | Sync docs and generation routes in the contract inventory | P2 | S | 053 preferred | DONE |
 | 061 | Owner API keys + free→paid host usage ledger + `quota_exceeded` | P0 | M | — | DONE (`cursor/agent-api-cli-190c`) |
 | 062 | Thin `fmotion` CLI with `--json` over `/v1` | P1 | M | 061 | DONE (`cursor/agent-api-cli-190c`) |
 | 063 | `fmotion-mcp` stdio MCP for Hermes/Cursor | P0 | M | 061, 062 | DONE (`cursor/agent-api-cli-190c`) |

@@ -66,11 +66,14 @@ chmod +x "$compose_dir/minio-init.sh"
 cd "$compose_dir"
 VITE_GIT_SHA="$(git -C "$root" rev-parse HEAD 2>/dev/null || echo dev)"
 export VITE_GIT_SHA
+VITE_APP_VERSION="$(node -e "console.log(require('$root/package.json').version)" 2>/dev/null || echo unknown)"
+export VITE_APP_VERSION
 docker compose --env-file .env up -d --build
 
 echo
-echo "F-Motion single-seat VPS stack is starting."
+echo "F-Motion ${VITE_APP_VERSION} single-seat VPS stack is starting."
 echo "  Studio:  ${FENGINE_WEB_ORIGIN:-http://127.0.0.1:8090}/app/"
+echo "  Version: ${VITE_APP_VERSION}"
 echo "  Build:   ${VITE_GIT_SHA}"
 echo "  MinIO:   ${R2_PUBLIC_ENDPOINT:-http://127.0.0.1:9000} (browser uploads)"
 echo "Add your Supabase redirect URL: ${FENGINE_WEB_ORIGIN:-http://127.0.0.1:8090}/app/"

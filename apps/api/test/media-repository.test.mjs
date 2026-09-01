@@ -10,7 +10,11 @@ import {
   PexelsRequestError,
   PostgresMediaRepository,
   PrivateObjectStore,
-  pexelsQueriesForBrief
+  pexelsQueriesForBrief,
+  pexelsOrientation,
+  rankPexelsResults,
+  resolveSceneStockIntent,
+  sceneStockIntent
 } from "../dist/media-storage.js";
 
 /** Fake pool that answers only the queries `completeAdmission` issues. */
@@ -352,4 +356,33 @@ test("Pexels brief queries prefer concrete visual language over narrative prose"
     pexelsQueriesForBrief("Make a video"),
     ["cinematic"]
   );
+});
+
+test("rankPexelsResults scores slug overlap and sorts by fit", async () => {
+  const intent = await resolveSceneStockIntent("lonely island fog lighthouse", "Abandoned lighthouse in fog", "fog wide aerial establishing");
+  const ranked = rankPexelsResults([
+    {
+      id: 2,
+      creator: "B",
+      attributionUrl: "https://www.pexels.com/video/city-traffic-night-2/",
+      previewUrl: "https://images.pexels.com/videos/2/preview.jpg",
+      sourceUrl: "https://media.pexels.test/2.mp4",
+      contentType: "video/mp4"
+    },
+    {
+      id: 1,
+      creator: "A",
+      attributionUrl: "https://www.pexels.com/video/lonely-island-lighthouse-fog-1/",
+      previewUrl: "https://images.pexels.com/videos/1/preview.jpg",
+      sourceUrl: "https://media.pexels.test/1.mp4",
+      contentType: "video/mp4"
+    }
+  ], intent.intent_tokens, "lonely island fog lighthouse");
+  assert.equal(ranked[0].id, 1);
+  assert.ok(ranked[0].fit > ranked[1].fit);
+});
+
+test("pexelsOrientation follows delivery platform", () => {
+  assert.equal(pexelsOrientation({ goal: "promote", audience: "social", structure: "story_arc", tone: "cinematic", pace: "balanced", durationSeconds: 15, media: "stock", delivery: "youtube" }), "landscape");
+  assert.equal(pexelsOrientation({ goal: "promote", audience: "social", structure: "story_arc", tone: "cinematic", pace: "balanced", durationSeconds: 15, media: "stock", delivery: "reel" }), "portrait");
 });

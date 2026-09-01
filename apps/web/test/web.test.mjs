@@ -6,7 +6,7 @@ import { createServer } from "vite";
 
 test("required recovery, accessibility, and preview language is present", async () => {
   const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
-  for (const phrase of ["Drafts", "Add photos or clips", "Try again", "Storyboard", "What’s new", "Full changelog on GitHub", "Live preview", "Play progress", "Restart", "Previous scene", "Next scene", "Find licensed media", "Find another licensed video", "Generate AI image for scene", "Animate this image", "Generate one 6-second video", "Use video for scene", "Keep image", "Generate one image", "Get FAL price", "Use for scene", "Keep current media", "Generate another", "AI-generated with FAL", "Charged directly to your FAL account", "Select for scene", "Move scene", "Add scene", "Remove scene", "Play preview", "Pause preview", "Export final", "Final export", "Download export", "playsInline", "Older preview", "Reload latest", "Save as new project", "media not copied", "pending", "was not merged", "Reconnecting", "magic link", "Google", "Pexels", "Cancel render", "Download preview", "Accurate preview failed", "Retry", "Choose video sources", "Choose your video sources", "Real stock video", "AI stills", "More providers", "More ways to create", "Locked", "Why is this locked", "Pexels stock is locked", "Connect your Pexels API key to search real stock video", "FAL generation is locked", "Open provider settings", "Settings", "Sign out", "Waiting for media inspection", "Media is still inspecting", "Connect your own Pexels API key", "F-Motion does not supply or share a Pexels key", "Connect Pexels", "Test Pexels", "Disconnect Pexels", "Connect your own FAL API-scope key", "charged directly to your FAL account", "F-Motion does not supply or share a FAL key", "Connect FAL", "Test connection", "Disconnect", "Sign in to open the imported draft from Fotium.", "Open the email link to finish sign-in."]) assert.match(source, new RegExp(phrase));
+  for (const phrase of ["Drafts", "Add photos or clips", "Try again", "Storyboard", "What’s new", "Full changelog on GitHub", "Live preview", "Play progress", "Restart", "Previous scene", "Next scene", "Find licensed media", "Find another licensed video", "Generate AI image for scene", "Animate this image", "Generate one 6-second video", "Use video for scene", "Keep image", "Generate one image", "Get FAL price", "Use for scene", "Keep current media", "Generate another", "AI-generated with FAL", "Charged directly to your FAL account", "Select for scene", "Move scene", "Add scene", "Remove scene", "Play preview", "Pause preview", "Export final", "Final export", "Download export", "playsInline", "Older preview", "Reload latest", "Save as new project", "media not copied", "pending", "was not merged", "Reconnecting", "magic link", "Google", "Pexels", "Cancel render", "Download preview", "Accurate preview failed", "Retry", "Choose video sources", "Choose your video sources", "Real stock video", "AI stills", "More providers", "More ways to create", "Locked", "Why is this locked", "Pexels stock is locked", "Connect your Pexels API key to search real stock video", "FAL generation is locked", "Open provider settings", "Settings", "Sign out", "Waiting for media inspection", "Media is still inspecting", "Connect your own Pexels API key", "F-Motion does not supply or share a Pexels key", "Connect Pexels", "Test Pexels", "Disconnect Pexels", "Connect your own FAL API-scope key", "charged directly to your FAL account", "F-Motion does not supply or share a FAL key", "Connect FAL", "Test connection", "Disconnect", "Sign in to open the imported draft.", "Open the email link to finish sign-in."]) assert.match(source, new RegExp(phrase));
   assert.match(source, /activeSceneId/);
   assert.match(source, /build-rev/);
   assert.match(source, /VITE_GIT_SHA/);
@@ -54,7 +54,8 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /VITE_PARTNER_BRAND_EMAIL/);
   assert.match(source, /partner-brands/);
   assert.match(source, /Your galleries/);
-  assert.match(source, /fotium\.vip/);
+  assert.doesNotMatch(source, /100\.121\.204|tailf28d35|ubuntu-8gb-hel1/);
+  assert.match(source, /VITE_PARTNER_GALLERY_URL/);
   assert.doesNotMatch(source, /Fotium Motion|Fotium Studio/);
   assert.match(source, /Search licensed music/);
   assert.match(source, /Export final mixes this bed/);
@@ -303,26 +304,20 @@ test("studio shell brands F-Motion and keeps real destinations only", async () =
 
 test("self-host vite build serves the studio at /", async () => {
   const source = await readFile(new URL("../vite.config.ts", import.meta.url), "utf8");
-  assert.match(source, /VITE_SELFHOST_AUTH === "1" \? "\/"/);
+  assert.match(source, /VITE_SELFHOST_AUTH === "1" \|\| process\.env\.VITE_SITE_AT_ROOT === "1"/);
 });
 
-test("build puts marketing at site root and studio under /app", async () => {
+test("build puts SPA at site root with studio under /studio", async () => {
   const { readFile, access } = await import("node:fs/promises");
   const dist = new URL("../dist/", import.meta.url);
   await access(new URL("index.html", dist));
-  await access(new URL("app/index.html", dist));
   await access(new URL("_redirects", dist));
   await access(new URL("music/pulse.mp3", dist));
   const home = await readFile(new URL("index.html", dist), "utf8");
   const redirects = await readFile(new URL("_redirects", dist), "utf8");
-  const app = await readFile(new URL("app/index.html", dist), "utf8");
-  assert.match(home, /Vertical reels from your own media/);
-  assert.match(home, /glitch-logo/);
-  assert.match(home, /new URL\("\/app\/"/);
-  assert.match(home, /searchParams\.set\("project"/);
-  assert.match(home, /params\.get\("code"\)/);
-  assert.match(home, /error_code/);
-  assert.match(app, /\/app\/assets\//);
+  assert.match(home, /\/assets\/index-/);
+  assert.doesNotMatch(home, /\/app\/assets\//);
+  assert.match(redirects, /\/app\/ \/\s*studio\s*301/);
   assert.match(redirects, /\/web\/ \/\s*301/);
 });
 

@@ -7,6 +7,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { finished, pipeline } from "node:stream/promises";
+import {
+  resolveSceneMediaIntent,
+  sceneMediaIntent,
+  stockIntentFitScore,
+  stockQueriesFromText,
+  type VideoArchitecture,
+  type MediaGlanceHints
+} from "@f-engine/reel-engine";
 import type { Pool } from "pg";
 
 export const allowedMediaTypes = new Set(["video/mp4", "image/jpeg", "image/png", "image/webp"]);
@@ -543,55 +551,72 @@ export interface PexelsResult {
   contentType: string;
 }
 
-const pexelsIgnoredWords = new Set([
-  "a", "an", "and", "are", "as", "at", "be", "by", "create", "every", "for",
-  "from", "have", "in", "into", "is", "it", "its", "make", "no", "of", "on", "or",
-  "our", "return", "shines", "show", "story", "that", "the", "their", "this",
-  "through", "to", "video", "we", "with", "without", "you", "your", "appears",
-  "record", "records"
-]);
-
-const pexelsWordAliases = new Map([
-  ["foggy", "fog"],
-  ["islands", "island"],
-  ["lighthouses", "lighthouse"],
-  ["mist", "fog"],
-  ["misty", "fog"],
-  ["mystery", "mysterious"],
-  ["oceanic", "ocean"],
-  ["sea", "ocean"],
-  ["seas", "ocean"]
-]);
-
-const pexelsLowSignalWords = new Set([
-  "clip", "life", "light", "lights", "map", "maps", "night", "quick"
-]);
-
-/**
- * Turns narrative copy into short, concrete visual searches. Pexels already
- * ranks by relevance; the application supplies imageable subjects and mood
- * instead of sending prose, calls to action, or production instructions.
- */
+/** @deprecated name — use `stockQueriesFromText` from `@f-engine/reel-engine`. */
 export function pexelsQueriesForBrief(brief: string): string[] {
-  const words = brief.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
-  const unique: string[] = [];
-  const seen = new Set<string>();
-  for (const word of words) {
-    const candidate = pexelsWordAliases.get(word) ?? word;
-    if (candidate.length < 2 || pexelsIgnoredWords.has(candidate) || seen.has(candidate)) continue;
-    seen.add(candidate);
-    unique.push(candidate);
-  }
-  const preferred = unique.filter((word) => !pexelsLowSignalWords.has(word));
-  const ranked = [
-    ...preferred,
-    ...unique.filter((word) => pexelsLowSignalWords.has(word))
-  ];
-  const searches = [
-    ranked.slice(0, 7).join(" "),
-    ranked.slice(0, 4).join(" ")
-  ].filter(Boolean);
-  return [...new Set(searches.length ? searches : ["cinematic"])];
+  return stockQueriesFromText(brief);
+}
+
+export function rankPexelsResults(
+  results: readonly PexelsResult[],
+  intent_tokens: readonly string[],
+  query: string
+): Array<PexelsResult & { fit: number }> {
+  return [...results]
+    .map((result) => ({
+      ...result,
+      fit: stockIntentFitScore(intent_tokens, query, result.attributionUrl)
+    }))
+    .sort((left, right) => right.fit - left.fit || left.id - right.id);
+}
+
+export async function resolveSceneStockIntent(
+  brief: string,
+  caption?: string,
+  visual_prompt?: string,
+  architecture?: VideoArchitecture,
+  glance?: MediaGlanceHints
+): Promise<Awaited<ReturnType<typeof resolveSceneMediaIntent>>> {
+  return resolveSceneMediaIntent({
+    brief,
+    ...(caption ? { caption } : {}),
+    ...(visual_prompt ? { visual_prompt } : {}),
+    ...(architecture ? { architecture } : {}),
+    ...(glance ? { glance } : {})
+  }, sceneMediaIntent);
+}
+
+/** @deprecated — prefer `resolveSceneStockIntent`. */
+export function sceneStockIntent(
+  brief: string,
+  caption?: string,
+  visual_prompt?: string
+): ReturnType<typeof sceneMediaIntent> {
+  return sceneMediaIntent({
+    brief,
+    ...(caption ? { caption } : {}),
+    ...(visual_prompt ? { visual_prompt } : {})
+  });
+}
+
+/** Portrait for Reels/Stories; landscape for YouTube-style delivery. */
+export function pexelsOrientation(architecture?: VideoArchitecture): "portrait" | "landscape" {
+  return architecture?.delivery === "youtube" ? "landscape" : "portrait";
+}
+
+export interface StockPickFeedback {
+  scene_id: string;
+  query: string;
+  chosen_pexels_id: number;
+  fit?: number;
+  candidates?: Array<{ id: number; fit?: number }>;
+}
+
+export function logStockPickFeedback(ownerId: string, projectId: string, feedback: StockPickFeedback): void {
+  console.error("stock_pick_feedback", JSON.stringify({
+    owner_id: ownerId,
+    project_id: projectId,
+    ...feedback
+  }));
 }
 
 export class PexelsClient {
@@ -602,10 +627,11 @@ export class PexelsClient {
     readonly temporaryRoot = tmpdir()
   ) {}
 
-  async search(query: string): Promise<PexelsResult[]> {
-    const response = await this.request(`https://api.pexels.com/v1/videos/search?query=${encodeURIComponent(query)}&orientation=portrait&per_page=12`, {
-      headers: { authorization: this.apiKey }
-    });
+  async search(query: string, orientation: "portrait" | "landscape" = "portrait"): Promise<PexelsResult[]> {
+    const response = await this.request(
+      `https://api.pexels.com/v1/videos/search?query=${encodeURIComponent(query)}&orientation=${orientation}&per_page=12`,
+      { headers: { authorization: this.apiKey } }
+    );
     if (!response.ok) throw new PexelsRequestError();
     let body: {
       videos?: Array<{

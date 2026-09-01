@@ -140,6 +140,11 @@ export function parseExternalDraft(value: unknown): ExternalDraft {
       architectureBody.media,
       ["stock", "own", "mixed"],
       parsedMediaUrls.length ? "own" : "stock"
+    ),
+    delivery: enumValue(
+      architectureBody.delivery,
+      ["reel", "story", "youtube"] as const,
+      "reel"
     )
   };
   const audience = optionalText(body.audience, 80) ?? "Social audience";

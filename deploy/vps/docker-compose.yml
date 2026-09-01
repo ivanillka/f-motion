@@ -135,6 +135,7 @@ services:
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
         VITE_ENABLE_GOOGLE_AUTH: ${VITE_ENABLE_GOOGLE_AUTH:-}
         VITE_GIT_SHA: ${VITE_GIT_SHA:-dev}
+        VITE_APP_VERSION: ${VITE_APP_VERSION}
     depends_on:
       api:
         condition: service_healthy

@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { conceptIdForArchitecture, recommendVideoArchitecture } from "@f-engine/reel-engine";
 import { FmotionClient, type ProjectView } from "./client.js";
 import { draftUrl } from "./draft.js";
 import { purposeFromMedia, readMedia, type MediaRead } from "./media.js";
@@ -84,15 +85,16 @@ export async function composeReel(client: FmotionClient, options: ComposeOptions
     ...(options.tone ? { tone: options.tone } : {})
   });
   let project = created.project;
-  const concepts = created.concepts ?? [];
   if (!project.scenes.length) {
+    const architecture = recommendVideoArchitecture(purpose);
     const conceptId = options.conceptId
-      || concepts.find((item) => item.id === "story")?.id
-      || concepts[0]?.id
-      || "story";
+      || conceptIdForArchitecture(architecture);
     project = await client.command(
       project.id,
-      client.commandEnvelope(project.id, project.revision, "select_concept", { concept_id: conceptId })
+      client.commandEnvelope(project.id, project.revision, "select_concept", {
+        concept_id: conceptId,
+        architecture
+      })
     );
   }
 

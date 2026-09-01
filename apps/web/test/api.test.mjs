@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, briefNeedsMediaLook, briefPurposeFromChat, briefReadyMessage, briefShouldGlance, buildStoryboardDraft, conceptIdForArchitecture, mediaNotesFromGlances, nextBriefQuestion, parseBriefChat, recommendVideoArchitecture, sceneDurationForMedia, sampleCanvasStats, toneFromSample } from "../src/api.ts";
+import { ApiClient, ApiResponseError, briefNeedsMediaLook, briefPurposeFromChat, briefReadyMessage, briefShouldGlance, buildStoryboardDraft, conceptIdForArchitecture, mediaNotesFromGlances, newCommandId, nextBriefQuestion, parseBriefChat, recommendVideoArchitecture, sceneDurationForMedia, sampleCanvasStats, toneFromSample } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
@@ -23,20 +23,44 @@ test("brief purpose stays the first user line, not later chip answers", () => {
 test("conversation recommendations prefill distinct, editable video architectures", () => {
   assert.deepEqual(recommendVideoArchitecture("Mystery of a lonely island in ocean fog"), {
     goal: "story", audience: "general", structure: "mystery", tone: "cinematic",
-    pace: "slow", durationSeconds: 30, media: "stock"
+    pace: "slow", durationSeconds: 30, media: "stock", delivery: "reel"
   });
   assert.deepEqual(recommendVideoArchitecture("Launch our product to customers as a fast 15 second reel using my videos and stock"), {
     goal: "promote", audience: "social", structure: "problem_solution", tone: "energetic",
-    pace: "fast", durationSeconds: 15, media: "mixed"
+    pace: "fast", durationSeconds: 15, media: "mixed", delivery: "reel"
   });
   assert.deepEqual(recommendVideoArchitecture("Documentary tutorial for employees using our footage"), {
     goal: "educate", audience: "internal", structure: "story_arc", tone: "documentary",
-    pace: "balanced", durationSeconds: 45, media: "own"
+    pace: "balanced", durationSeconds: 45, media: "own", delivery: "reel"
   });
   assert.deepEqual(recommendVideoArchitecture("mystery murder in san francisco"), {
     goal: "story", audience: "general", structure: "mystery", tone: "cinematic",
-    pace: "slow", durationSeconds: 30, media: "stock"
+    pace: "slow", durationSeconds: 30, media: "stock", delivery: "reel"
   });
+  assert.equal(recommendVideoArchitecture("YouTube widescreen product demo").delivery, "youtube");
+});
+
+test("first brief line is not polluted by a stale saved draft", () => {
+  const stale = "top dog breads\naliens in modern history";
+  const intent = nextBriefQuestion(stale, false, []);
+  assert.match(intent?.prompt ?? "", /aliens in modern history/i);
+  assert.doesNotMatch(intent?.prompt ?? "", /top dog breads/i);
+  assert.equal(briefPurposeFromChat("top dog breads\naliens in modern history\nTell a story"), "top dog breads");
+});
+
+test("brief questions strip i need a story about prefixes from the subject", () => {
+  const audience = nextBriefQuestion("i need a story about aliens on earth", false, []);
+  assert.match(audience?.prompt ?? "", /aliens on earth/i);
+  assert.doesNotMatch(audience?.prompt ?? "", /i need a story about/i);
+});
+
+test("newCommandId works when randomUUID is blocked on insecure http", () => {
+  const original = crypto.randomUUID;
+  crypto.randomUUID = () => {
+    throw new DOMException("insecure", "SecurityError");
+  };
+  assert.match(newCommandId(), /^[a-z0-9]+-[a-z0-9]+$/);
+  crypto.randomUUID = original;
 });
 
 test("create chat asks only missing brief questions, at most four", () => {

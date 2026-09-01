@@ -46,7 +46,7 @@ jobs:
             --name "F-Motion"
             --categories creative
             --topics "video,reel,storyboard"
-            --source-repo ivanillka/f-motion
+            --source-repo ${{ github.repository }}
             --source-path skills/fmotion
             --source-commit "${GITHUB_SHA}"
             --changelog "${{ inputs.changelog }}"

@@ -48,7 +48,7 @@ Auth: `Authorization: Bearer <FENGINE_IMPORT_TOKEN>` (not user JWT / `fm_` keys)
     "media": "own"
   },
   "media_urls": [
-    "https://media.fotium.vip/galleries/…/full/1.jpg"
+    "https://media.example.com/galleries/…/full/1.jpg"
   ]
 }
 ```
@@ -92,7 +92,7 @@ Host passes a notify URL when starting a render (next API slice):
 POST /v1/projects/{id}/render
 {
   "kind": "preview",
-  "notify_url": "https://fotium.vip/api/integrations/fmotion/notify"
+  "notify_url": "https://gallery.example.com/api/integrations/fmotion/notify"
 }
 ```
 

@@ -242,6 +242,7 @@ export class PostgresProjectRepository implements ProjectRepository {
           [scene.id, command.project_id, scene.order, scene]
         );
       }
+      await client.query(`UPDATE "Project" SET brief = $1 WHERE id = $2`, [updated.brief, command.project_id]);
       return;
     }
     if (command.kind === "update_scene") {

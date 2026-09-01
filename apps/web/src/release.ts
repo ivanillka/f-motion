@@ -2,7 +2,9 @@
  * Product version and release notes shown in Settings.
  * Keep CHANGELOG.md in sync when you cut a release.
  */
-export const APP_VERSION = "0.2.0";
+import pkg from "../../../package.json" with { type: "json" };
+
+export const APP_VERSION = pkg.version;
 
 export interface ReleaseNote {
   version: string;
@@ -13,6 +15,17 @@ export interface ReleaseNote {
 
 /** Newest first. Settings shows the current version plus one prior note. */
 export const RELEASE_NOTES: readonly ReleaseNote[] = [
+  {
+    version: "0.3.0",
+    date: "2026-09-01",
+    title: "Context-aware media",
+    items: [
+      "Licensed stock search ranks candidates with a fit score from your brief, scene, and optional media glance.",
+      "Video architecture and media glance persist when the storyboard is created — not only after concept selection.",
+      "YouTube-style delivery searches landscape Pexels; Reels and Stories stay portrait.",
+      "FAL image and motion dialogs open prefilled from scene intent; stock picks log feedback for tuning."
+    ]
+  },
   {
     version: "0.2.0",
     date: "2026-08-28",

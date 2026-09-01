@@ -1,7 +1,7 @@
 # F-Motion LinkedIn social manager
 
-Company page only: [linkedin.com/company/f-motion](https://www.linkedin.com/company/f-motion)
-(organization id `144706944`). Never a personal profile. Never name a person.
+Company page only: [linkedin.com/company/f-motion](https://www.linkedin.com/company/f-motion).
+Never a personal profile. Never name a person.
 Not the Kent marketing agency **FMotion**.
 
 This file is the voice and skip policy for the weekly Cursor automation.

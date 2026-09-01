@@ -64,6 +64,35 @@ export interface Voiceover {
   level: number;
 }
 
+export interface VideoArchitecture {
+  goal: "story" | "explain" | "promote" | "educate";
+  audience: "general" | "social" | "customers" | "internal";
+  structure: "story_arc" | "mystery" | "problem_solution" | "chronological";
+  tone: "cinematic" | "documentary" | "energetic" | "calm";
+  pace: "slow" | "balanced" | "fast";
+  durationSeconds: 15 | 30 | 45;
+  media: "stock" | "own" | "mixed";
+  /** Vertical social vs YouTube-style landscape stock search. */
+  delivery?: "reel" | "story" | "youtube";
+}
+
+/** Aggregate glance from local media sampling; host supplies, engine never reads files. */
+export interface MediaGlanceHints {
+  luminance?: number;
+  warmth?: number;
+  orientation?: "portrait" | "landscape" | "square";
+}
+
+export interface ProjectBrief {
+  purpose: string;
+  audience: string;
+  tone: string;
+  soundtrack?: Soundtrack;
+  voiceover?: Voiceover;
+  architecture?: VideoArchitecture;
+  media_glance?: MediaGlanceHints;
+}
+
 export type CommandKind =
   | "select_concept"
   | "update_scene"
@@ -79,7 +108,7 @@ export interface ProjectSnapshot {
   id: string;
   owner_id: string;
   revision: number;
-  brief: { purpose: string; audience: string; tone: string; soundtrack?: Soundtrack; voiceover?: Voiceover };
+  brief: ProjectBrief;
   selected_concept_id?: string;
   scenes: Scene[];
 }
@@ -282,6 +311,41 @@ export function isStoryboardScenes(value: unknown, requireVisualPrompt = false):
   });
 }
 
+export function isMediaGlanceHints(value: unknown): value is MediaGlanceHints {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return (!("luminance" in item) || (isFiniteNumber(item.luminance) && item.luminance >= 0 && item.luminance <= 1))
+    && (!("warmth" in item) || isFiniteNumber(item.warmth))
+    && (!("orientation" in item) || item.orientation === "portrait" || item.orientation === "landscape" || item.orientation === "square");
+}
+
+export function isVideoArchitecture(value: unknown): value is VideoArchitecture {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return (["story", "explain", "promote", "educate"] as const).includes(item.goal as VideoArchitecture["goal"])
+    && (["general", "social", "customers", "internal"] as const).includes(item.audience as VideoArchitecture["audience"])
+    && (["story_arc", "mystery", "problem_solution", "chronological"] as const).includes(item.structure as VideoArchitecture["structure"])
+    && (["cinematic", "documentary", "energetic", "calm"] as const).includes(item.tone as VideoArchitecture["tone"])
+    && (["slow", "balanced", "fast"] as const).includes(item.pace as VideoArchitecture["pace"])
+    && ([15, 30, 45] as const).includes(item.durationSeconds as VideoArchitecture["durationSeconds"])
+    && (["stock", "own", "mixed"] as const).includes(item.media as VideoArchitecture["media"])
+    && (!("delivery" in item) || item.delivery === "reel" || item.delivery === "story" || item.delivery === "youtube");
+}
+
+export function isProjectBrief(value: unknown): value is ProjectBrief {
+  if (!isRecord(value)
+    || typeof value.purpose !== "string"
+    || typeof value.audience !== "string"
+    || typeof value.tone !== "string"
+    || ("soundtrack" in value && value.soundtrack != null && !isSoundtrack(value.soundtrack))
+    || ("voiceover" in value && value.voiceover != null && !isVoiceover(value.voiceover))
+    || ("architecture" in value && value.architecture != null && !isVideoArchitecture(value.architecture))
+    || ("media_glance" in value && value.media_glance != null && !isMediaGlanceHints(value.media_glance))) {
+    return false;
+  }
+  return true;
+}
+
 /** Validates persisted render input at the API/worker trust boundary. */
 export function isProjectSnapshot(value: unknown): value is ProjectSnapshot {
   if (!isRecord(value)
@@ -292,16 +356,7 @@ export function isProjectSnapshot(value: unknown): value is ProjectSnapshot {
     || !value.owner_id
     || !Number.isInteger(value.revision)
     || (value.revision as number) < 0
-    || !isRecord(value.brief)
-    || typeof value.brief.purpose !== "string"
-    || typeof value.brief.audience !== "string"
-    || typeof value.brief.tone !== "string"
-    || ("soundtrack" in value.brief
-      && value.brief.soundtrack != null
-      && !isSoundtrack(value.brief.soundtrack))
-    || ("voiceover" in value.brief
-      && value.brief.voiceover != null
-      && !isVoiceover(value.brief.voiceover))
+    || !isProjectBrief(value.brief)
     || ("selected_concept_id" in value
       && (typeof value.selected_concept_id !== "string" || !value.selected_concept_id))
     || !Array.isArray(value.scenes)) {

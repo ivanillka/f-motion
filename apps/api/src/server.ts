@@ -1,7 +1,11 @@
 import express from "express";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildStoryboardDraft, conceptsFor } from "@f-engine/reel-engine";
 import type { CommandEnvelope } from "@f-engine/contracts";
+import { isMediaGlanceHints, isVideoArchitecture, type MediaGlanceHints, type VideoArchitecture } from "@f-engine/contracts";
 import {
   AccountUnavailableError,
   UnauthorizedError,
@@ -25,7 +29,10 @@ import {
   importExternalMedia,
   reserveExternalMedia,
   maximumMediaBytes,
-  pexelsQueriesForBrief,
+  logStockPickFeedback,
+  pexelsOrientation,
+  rankPexelsResults,
+  resolveSceneStockIntent,
   sceneMediaView,
   sealUploadedAudio,
   PexelsRequestError,
@@ -211,10 +218,14 @@ function projectBrief(value: unknown) {
     if (!result || result.length > 80) throw new ValidationError("invalid brief");
     return result;
   };
+  const architecture = body.architecture;
+  const media_glance = body.media_glance;
   return {
     purpose,
     audience: field("audience", "Customers"),
-    tone: field("tone", "Warm")
+    tone: field("tone", "Warm"),
+    ...(architecture !== undefined && isVideoArchitecture(architecture) ? { architecture } : {}),
+    ...(media_glance !== undefined && isMediaGlanceHints(media_glance) ? { media_glance } : {})
   };
 }
 
@@ -237,6 +248,15 @@ async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) 
     }
   }));
   return out;
+}
+
+function productVersion(): string {
+  try {
+    const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
+    return JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version as string;
+  } catch {
+    return "unknown";
+  }
 }
 
 function buildApp(options: AppBaseOptions, identify: Identify) {
@@ -264,11 +284,12 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     }
     next();
   });
-  app.get("/healthz", (_request, response) => response.json({ status: "ok" }));
+  app.get("/healthz", (_request, response) => response.json({ status: "ok", version: productVersion() }));
   app.get("/readyz", async (_request, response) => {
     const isReady = await Promise.resolve(ready()).catch(() => false);
-    if (isReady) return response.json({ status: "ready" });
-    response.status(503).json({ status: "unavailable" });
+    const body = { status: isReady ? "ready" : "unavailable", version: productVersion() };
+    if (isReady) return response.json(body);
+    response.status(503).json(body);
   });
   const integration = options.externalImports;
   if (integration) app.post("/api/integrations/project-imports", async (request, response, next) => {
@@ -900,9 +921,18 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         });
       }
       const ownerId = String(response.locals.ownerId);
-      const results = await (await pexelsForOwner(options.media, ownerId)).search(query);
+      const orientation = request.query.orientation === "landscape" ? "landscape" : "portrait";
+      const intent = await resolveSceneStockIntent(query);
+      const results = rankPexelsResults(
+        await (await pexelsForOwner(options.media, ownerId)).search(query, orientation),
+        intent.intent_tokens,
+        query
+      );
       response.json({
-        results: results.map(({ sourceUrl: _sourceUrl, contentType: _contentType, ...result }) => result)
+        results: results.map(({ sourceUrl: _sourceUrl, contentType: _contentType, fit, ...result }) => ({
+          ...result,
+          fit
+        }))
       });
     } catch (error) {
       const mapped = pexelsHttpError(error);
@@ -955,14 +985,27 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         : projectBrief({ purpose: request.body.description }).purpose;
 
       const pexels = await pexelsForOwner(options.media, ownerId);
-      let selected: Awaited<ReturnType<PexelsClient["search"]>>[number] | undefined;
+      const orientation = pexelsOrientation(project.brief.architecture);
+      const intent = await resolveSceneStockIntent(
+        description,
+        undefined,
+        undefined,
+        project.brief.architecture,
+        project.brief.media_glance
+      );
+      let selected: Awaited<ReturnType<PexelsClient["search"]>>[number] & { fit?: number } | undefined;
       let matchedQuery = "";
-      for (const query of pexelsQueriesForBrief(description)) {
-        const [result] = await pexels.search(query);
-        if (!result) continue;
-        selected = result;
-        matchedQuery = query;
-        break;
+      let bestFit = -1;
+      for (const query of intent.stock_queries) {
+        const hits = rankPexelsResults(await pexels.search(query, orientation), intent.intent_tokens, query);
+        for (const hit of hits) {
+          if (hit.fit > bestFit) {
+            selected = hit;
+            matchedQuery = query;
+            bestFit = hit.fit;
+          }
+        }
+        if (bestFit >= 60) break;
       }
       if (!selected) {
         return response.status(404).json({
@@ -979,7 +1022,12 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         options.media.store
       );
       const { sourceUrl: _sourceUrl, contentType: _contentType, ...match } = selected;
-      response.status(201).json({ asset: sceneMediaView(asset), match, query: matchedQuery });
+      response.status(201).json({
+        asset: sceneMediaView(asset),
+        match,
+        query: matchedQuery,
+        fit: selected.fit
+      });
     } catch (error) {
       const mapped = pexelsHttpError(error);
       if (mapped) return response.status(mapped.status).json(mapped.body);
@@ -1008,10 +1056,12 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         scene_id: string;
         state: "matched" | "no_result" | "skipped";
         asset?: ReturnType<typeof sceneMediaView>;
-        match?: Omit<Awaited<ReturnType<PexelsClient["search"]>>[number], "sourceUrl" | "contentType">;
+        match?: Omit<Awaited<ReturnType<PexelsClient["search"]>>[number], "sourceUrl" | "contentType"> & { fit?: number };
         query?: string;
+        fit?: number;
         message?: string;
       }> = [];
+      const orientation = pexelsOrientation(project.brief.architecture);
       // Sequential on purpose: uniqueness across scenes depends on prior picks.
       for (const scene of [...project.scenes].sort((a, b) => a.order - b.order)) {
         if (scene.media_id) {
@@ -1019,22 +1069,33 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           continue;
         }
         const description = scene.visual_prompt?.trim() || scene.caption.trim() || project.brief.purpose;
-        let selected: Awaited<ReturnType<PexelsClient["search"]>>[number] | undefined;
+        const intent = await resolveSceneStockIntent(
+          project.brief.purpose,
+          scene.caption,
+          scene.visual_prompt,
+          project.brief.architecture,
+          project.brief.media_glance
+        );
+        let selected: Awaited<ReturnType<PexelsClient["search"]>>[number] & { fit?: number } | undefined;
         let matchedQuery = "";
-        let fallback: Awaited<ReturnType<PexelsClient["search"]>>[number] | undefined;
+        let bestFit = -1;
+        let fallback: Awaited<ReturnType<PexelsClient["search"]>>[number] & { fit?: number } | undefined;
         let fallbackQuery = "";
-        for (const query of pexelsQueriesForBrief(description)) {
-          const hits = await pexels.search(query);
-          const unused = hits.find((hit) => !usedPexelsIds.has(hit.id));
-          if (unused) {
-            selected = unused;
-            matchedQuery = query;
-            break;
+        for (const query of intent.stock_queries) {
+          const hits = rankPexelsResults(await pexels.search(query, orientation), intent.intent_tokens, query);
+          for (const hit of hits) {
+            if (usedPexelsIds.has(hit.id)) continue;
+            if (!fallback) {
+              fallback = hit;
+              fallbackQuery = query;
+            }
+            if (hit.fit > bestFit) {
+              selected = hit;
+              matchedQuery = query;
+              bestFit = hit.fit;
+            }
           }
-          if (!fallback && hits[0]) {
-            fallback = hits[0];
-            fallbackQuery = query;
-          }
+          if (bestFit >= 60) break;
         }
         selected ??= fallback;
         matchedQuery ||= fallbackQuery;
@@ -1060,13 +1121,57 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           state: "matched",
           asset: sceneMediaView(asset),
           match,
-          query: matchedQuery
+          query: matchedQuery,
+          fit: selected.fit
         });
       }
       response.status(200).json({ results });
     } catch (error) {
       const mapped = pexelsHttpError(error);
       if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/projects/:projectId/scenes/:sceneId/media/pexels/feedback", async (request, response, next) => {
+    try {
+      const ownerId = String(response.locals.ownerId);
+      const project = await projects.get(ownerId, request.params.projectId);
+      if (!project) return response.status(404).json({ type: "not_found", message: "not found" });
+      if (!project.scenes.some(({ id }) => id === request.params.sceneId)) {
+        return response.status(404).json({ type: "not_found", message: "not found" });
+      }
+      const body = request.body;
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return response.status(422).json({ type: "validation", message: "invalid stock feedback" });
+      }
+      const query = typeof body.query === "string" ? body.query.trim() : "";
+      const chosen = Number(body.pexels_id);
+      if (!query || query.length > 100 || !Number.isInteger(chosen) || chosen <= 0) {
+        return response.status(422).json({ type: "validation", message: "invalid stock feedback" });
+      }
+      const fit = Number(body.fit);
+      const candidates = Array.isArray(body.candidates)
+        ? body.candidates.flatMap((item: unknown) => {
+            if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+            const row = item as Record<string, unknown>;
+            const id = Number(row.id);
+            if (!Number.isInteger(id) || id <= 0) return [];
+            const candidateFit = Number(row.fit);
+            return [{
+              id,
+              ...(Number.isFinite(candidateFit) ? { fit: Math.min(100, Math.max(0, Math.round(candidateFit))) } : {})
+            }];
+          }).slice(0, 12)
+        : undefined;
+      logStockPickFeedback(ownerId, project.id, {
+        scene_id: request.params.sceneId,
+        query,
+        chosen_pexels_id: chosen,
+        ...(Number.isFinite(fit) ? { fit: Math.min(100, Math.max(0, Math.round(fit))) } : {}),
+        ...(candidates?.length ? { candidates } : {})
+      });
+      response.status(204).end();
+    } catch (error) {
       next(error);
     }
   });

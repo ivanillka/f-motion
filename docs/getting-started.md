@@ -136,6 +136,8 @@ Also verify:
 - sign-out invalidates the browser session;
 - no real secret appears in the web bundle or repository.
 
-AI generation, payments, and third-party paid-provider integrations are not
-included. Add them only in a host after separately reviewing credentials,
+AI generation is not a managed product feature: when the host enables BYOK FAL,
+each user connects their own API-scope key, reviews quotes, and confirms before
+charges hit their FAL account. Payments and other third-party paid integrations
+are not included. Add them only in a host after separately reviewing credentials,
 licensing, cost controls, retention, and abuse limits.

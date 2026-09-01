@@ -12,7 +12,7 @@
       "role": "source of truth",
       "status": "live",
       "published_version": "1.0.0",
-      "url": "https://github.com/ivanillka/f-motion/tree/advisor/133-design-contract/skills/fmotion",
+      "url": "https://github.com/OWNER/f-motion/tree/main/skills/fmotion",
       "update": "Edit SKILL.md here; bump version; refresh this file"
     },
     {
@@ -25,7 +25,7 @@
       "url": "https://clawhub.ai/skills/fmotion",
       "install": "npx clawhub@latest install fmotion",
       "alt_install": "openclaw skills install fmotion",
-      "update": "npx clawhub@latest skill publish ./skills/fmotion --slug fmotion --name \"F-Motion\" --categories creative --topics \"video,reel,storyboard\" --source-repo ivanillka/f-motion --source-path skills/fmotion --source-commit \"$(git rev-parse HEAD)\" --changelog \"…\"",
+      "update": "npx clawhub@latest skill publish ./skills/fmotion --slug fmotion --name \"F-Motion\" --categories creative --topics \"video,reel,storyboard\" --source-repo OWNER/f-motion --source-path skills/fmotion --source-commit \"$(git rev-parse HEAD)\" --changelog \"…\"",
       "blocker": "CLAWHUB_TOKEN or `clawhub login`. Account must be able to publish.",
       "notes": "Published copies are MIT-0 per ClawHub; this repo stays Apache-2.0."
     },
@@ -36,7 +36,7 @@
       "status": "follows_clawhub",
       "published_version": null,
       "url": "https://skills.sh",
-      "install": "openclaw skills install skills-sh:ivanillka/f-motion/fmotion",
+      "install": "openclaw skills install skills-sh:OWNER/f-motion/fmotion",
       "update": "Re-index follows a successful ClawHub release; confirm search still hits slug fmotion"
     },
     {
@@ -55,7 +55,7 @@
       "role": "HTTP fallback",
       "status": "live",
       "published_version": "1.0.0",
-      "url": "https://github.com/ivanillka/f-motion/blob/advisor/133-design-contract/docs/agents/openclaw/README.md",
+      "url": "https://github.com/OWNER/f-motion/blob/main/docs/agents/openclaw/README.md",
       "update": "Keep tool schemas aligned with SKILL.md compose loop"
     },
     {

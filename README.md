@@ -76,7 +76,9 @@ boundary. They do not edit a vendored fork.
 The reference journey accepts dropped media or a short brief, then either
 user-owned media or licensed Pexels footage from the user's account, and
 produces an accurate vertical preview. Agents (Cursor, OpenClaw, Hermes) use
-the same loop and always return a draft URL for selective edits. AI generation is deliberately not implemented. Settings
+the same loop and always return a draft URL for selective edits. Optional BYOK
+FAL still and image-to-video generation is available when the host enables it;
+each quote is confirmed before the owner's FAL account is charged. Settings
 connects and validates user-owned Pexels and optional FAL credentials; it never
 returns their values to the browser.
 

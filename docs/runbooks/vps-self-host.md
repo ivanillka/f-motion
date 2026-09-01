@@ -49,6 +49,8 @@ Edit that file:
 
 Open `http://YOUR_HOST:8090/app/` and sign in as that single user.
 
+The studio header shows the product version (from root `package.json`) and the git SHA baked at build time. After `./install.sh`, the script prints both version and SHA.
+
 ## Credentials (BYOK)
 
 In the app: **Settings → Credentials**. Store your own Pexels and/or FAL keys. They are encrypted with `FENGINE_CREDENTIAL_KEY_V1`. Do not put provider keys in `deploy/vps/.env`.

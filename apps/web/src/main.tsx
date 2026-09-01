@@ -1,9 +1,10 @@
-import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { registerMediaIntentAdapter } from "./media-intent-adapter";
 import {
   ApiClient,
   ApiResponseError,
   briefPurposeFromChat,
+  newCommandId,
   buildStoryboardDraft,
   conceptIdForArchitecture,
   conceptsFor,
@@ -36,7 +37,9 @@ import {
   nextLiveSceneId,
   panFocus,
   previousLiveSceneId,
+  aggregateMediaGlance,
   recommendVideoArchitecture,
+  sceneMediaIntentForScene,
   sceneDurationForMedia,
   scenePreviewUrl,
   seekLivePlayhead,
@@ -53,6 +56,7 @@ import {
   type Scene,
   type SceneMediaView,
   type Soundtrack,
+  type MediaGlanceHints,
   type VideoArchitecture,
   type Voiceover
 } from "./api";
@@ -60,6 +64,7 @@ import { glanceLocalMedia } from "./local-media";
 import { APP_VERSION, RELEASE_NOTES } from "./release";
 import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOrigin } from "./auth";
 import { clearImportedProject, isImportedProjectId, rememberImportedProject } from "./imported-project";
+import { githubBlobUrl } from "./repo";
 import "./style.css";
 
 type Step = "sign-in" | "drafts" | "brief" | "media" | "editor" | "render" | "settings";
@@ -77,6 +82,7 @@ interface PexelsMatch {
   creator: string;
   attributionUrl: string;
   previewUrl: string;
+  fit?: number;
 }
 interface MixkitMatch {
   id: number;
@@ -169,7 +175,7 @@ interface FeatureLock {
   action?: "settings";
 }
 
-function App() {
+export function App() {
   const authSetup = useMemo(() => {
     try {
       return {
@@ -204,6 +210,7 @@ function App() {
   const [composer, setComposer] = useState(() => parseBriefChat(localStorage.getItem("fengine-brief-chat")).composer
     || ((localStorage.getItem("fengine-brief-chat") ? "" : localStorage.getItem("fengine-draft")) ?? ""));
   const [architecture, setArchitecture] = useState<VideoArchitecture>(defaultVideoArchitecture);
+  const [mediaGlance, setMediaGlance] = useState<MediaGlanceHints | undefined>(undefined);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [mediaLooking, setMediaLooking] = useState(false);
   const createUpload = useRef<HTMLInputElement>(null);
@@ -238,6 +245,7 @@ function App() {
   const searchTransition = useRef(0);
   const searchAbort = useRef<AbortController | null>(null);
   const [candidates, setCandidates] = useState<PexelsMatch[]>([]);
+  const stockSearchQueryRef = useRef("");
   const [musicHits, setMusicHits] = useState<MixkitMatch[]>([]);
   const [musicQuery, setMusicQuery] = useState("trendy");
   const [musicOpen, setMusicOpen] = useState(false);
@@ -301,7 +309,8 @@ function App() {
     if (typeof sessionStorage === "undefined") return "";
     return rememberImportedProject(location.href, sessionStorage);
   });
-  const previewRenderLabel = import.meta.env.VITE_RENDER_LABEL?.trim() || "720p preview";
+  const partnerGalleryUrl = import.meta.env.VITE_PARTNER_GALLERY_URL?.trim();
+  const partnerGalleryName = import.meta.env.VITE_PARTNER_GALLERY_NAME?.trim() || "Partner gallery";
   const renderLabel = renderKind === "final" ? "final export" : previewRenderLabel;
   const renderHeading = renderKind === "final" ? "Final export" : "Accurate preview";
   const downloadLabel = renderKind === "final" ? "Download export" : "Download preview";
@@ -488,7 +497,7 @@ function App() {
     setPendingImportId(pendingId);
     if (!token) {
       if (pendingId && authReady) {
-        setStatus("Sign in to open the imported draft from Fotium.");
+        setStatus("Sign in to open the imported draft.");
       }
       return;
     }
@@ -625,7 +634,9 @@ function App() {
     return {
       purpose: briefPurposeFromChat(briefDraftRef.current, pendingFiles.length),
       audience: plan.audience,
-      tone: `${plan.tone}, ${plan.pace}`
+      tone: `${plan.tone}, ${plan.pace}`,
+      architecture: plan,
+      ...(mediaGlance ? { media_glance: mediaGlance } : {})
     };
   }
 
@@ -649,6 +660,7 @@ function App() {
     });
     try {
       const glances = await Promise.all(files.slice(0, 8).map((file) => glanceLocalMedia(file)));
+      setMediaGlance(aggregateMediaGlance(glances));
       const notes = mediaNotesFromGlances(glances);
       const asked = briefAskedRef.current;
       const nextDraft = [briefDraftRef.current, notes].filter(Boolean).join("\n").slice(0, 2000);
@@ -673,7 +685,8 @@ function App() {
     const trimmed = text.trim();
     if (!trimmed && !pendingFiles.length) return;
     const said = trimmed || `I added ${pendingFiles.length} photo${pendingFiles.length === 1 ? "" : "s"}.`;
-    const conversation = [draft, said].filter(Boolean).join("\n").slice(0, 2000);
+    const continuing = briefChat.some((message) => message.role === "user");
+    const conversation = (continuing ? [draft, said] : [said]).filter(Boolean).join("\n").slice(0, 2000);
     const user = { role: "user" as const, text: said };
     setComposer("");
     briefDraftRef.current = conversation;
@@ -715,6 +728,15 @@ function App() {
     setStatus("Building the storyboard…");
     try {
       let current = project;
+      const storedId = localStorage.getItem("fengine-project");
+      if (!current && storedId) {
+        try {
+          const { project: opened } = await api.getProject(storedId);
+          current = opened;
+        } catch {
+          localStorage.removeItem("fengine-project");
+        }
+      }
       if (!current || current.scenes.length || current.brief.purpose !== brief.purpose) {
         const body = await api.request<{ project: ProjectSnapshot }>("/api/projects", {
           method: "POST",
@@ -723,9 +745,15 @@ function App() {
         current = body.project;
         localStorage.setItem("fengine-project", current.id);
       }
+      setProject(current);
       await buildStoryboard(current, plan);
-    } catch {
-      setStatus("Your storyboard could not be created. Please try again.");
+    } catch (error) {
+      const detail = error instanceof ApiResponseError
+        ? (typeof error.body.message === "string" ? error.body.message : error.type)
+        : undefined;
+      setStatus(detail
+        ? `Your storyboard could not be created (${detail}). Please try again.`
+        : "Your storyboard could not be created. Please try again.");
     } finally {
       storyboardLock.current = false;
       setBusy(false);
@@ -737,7 +765,8 @@ function App() {
     if (!current.scenes.length) {
       current = await api.command(current.id, current.revision, "select_concept", {
         concept_id: conceptIdForArchitecture(plan),
-        architecture: plan
+        architecture: plan,
+        ...(mediaGlance ? { media_glance: mediaGlance } : {})
       });
     }
     setProject(current);
@@ -780,8 +809,10 @@ function App() {
       setActiveSceneId(opened.scenes[0]?.id ?? "");
       localStorage.setItem("fengine-project", opened.id);
       setDraft(opened.brief.purpose);
+      if (opened.brief.architecture) setArchitecture(opened.brief.architecture);
+      if (opened.brief.media_glance) setMediaGlance(opened.brief.media_glance);
       if (!opened.scenes.length) {
-        const plan = recommendVideoArchitecture(opened.brief.purpose);
+        const plan = opened.brief.architecture ?? recommendVideoArchitecture(opened.brief.purpose);
         setArchitecture(plan);
         setBusy(true);
         try {
@@ -821,11 +852,22 @@ function App() {
     setArchitecture(defaultVideoArchitecture);
     setPendingFiles([]);
     const stored = parseBriefChat(localStorage.getItem("fengine-brief-chat"));
-    setBriefChat(stored.messages.length ? stored.messages : [BRIEF_OPENING]);
-    setBriefAsked(stored.asked);
     const hasUser = stored.messages.some((message) => message.role === "user");
-    setComposer(stored.composer || (hasUser ? "" : (localStorage.getItem("fengine-draft") ?? "")));
-    setDraft(localStorage.getItem("fengine-draft") ?? "");
+    if (!hasUser) {
+      localStorage.removeItem("fengine-draft");
+      localStorage.removeItem("fengine-brief-chat");
+      briefDraftRef.current = "";
+      setDraft("");
+      setBriefChat([BRIEF_OPENING]);
+      setBriefAsked([]);
+      setComposer("");
+    } else {
+      setBriefChat(stored.messages.length ? stored.messages : [BRIEF_OPENING]);
+      setBriefAsked(stored.asked);
+      setComposer(stored.composer || "");
+      setDraft(localStorage.getItem("fengine-draft") ?? "");
+      briefDraftRef.current = localStorage.getItem("fengine-draft") ?? "";
+    }
     setStatus("");
     setStep("brief");
   }
@@ -1226,7 +1268,7 @@ function App() {
     if (!project || project.scenes.length >= 8) return;
     const activeIndex = Math.max(0, project.scenes.findIndex(({ id }) => id === activeSceneId));
     const scene: Scene = {
-      id: crypto.randomUUID(), order: activeIndex + 1, caption: "",
+      id: newCommandId(), order: activeIndex + 1, caption: "",
       visual_prompt: `${project.brief.purpose.slice(0, 210).trim()} — additional visual beat`,
       duration_ms: 3000, focal_x: 0.5, focal_y: 0.5, motion: "zoom", audio_level: 1, ducking: false
     };
@@ -1262,8 +1304,12 @@ function App() {
 
   async function searchStock(sceneId: string) {
     const scene = project?.scenes.find(({ id }) => id === sceneId);
-    const query = scene?.visual_prompt?.trim().slice(0, 100);
+    if (!scene || !project) return;
+    const intent = await sceneMediaIntentForScene(project, scene, architecture);
+    const query = intent.stock_queries[0]?.slice(0, 100);
     if (!query) return;
+    stockSearchQueryRef.current = query;
+    const orientation = architecture.delivery === "youtube" ? "landscape" : "portrait";
     searchAbort.current?.abort();
     const controller = new AbortController();
     searchAbort.current = controller;
@@ -1271,7 +1317,10 @@ function App() {
     setCandidates([]);
     setStatus("Finding licensed options for this scene…");
     try {
-      const body = await api.request<{ results: PexelsMatch[] }>(`/api/pexels/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+      const body = await api.request<{ results: PexelsMatch[] }>(
+        `/api/pexels/search?q=${encodeURIComponent(query)}&orientation=${orientation}`,
+        { signal: controller.signal }
+      );
       if (transition !== searchTransition.current || activeSceneId !== sceneId) return;
       setCandidates(body.results.slice(0, 3));
       setStatus(body.results.length ? "Choose the footage that fits this scene." : "No licensed options found. Refine the footage search.");
@@ -1288,11 +1337,22 @@ function App() {
   async function selectStock(sceneId: string, candidate: PexelsMatch) {
     if (!project) return;
     const scene = project.scenes.find(({ id }) => id === sceneId);
-    const query = scene?.visual_prompt?.trim().slice(0, 100);
+    const query = stockSearchQueryRef.current || scene?.visual_prompt?.trim().slice(0, 100);
     if (!scene || !query) return;
     setBusy(true);
     setStatus(`Copying video by ${candidate.creator} for inspection…`);
     try {
+      void api.request(`/api/projects/${project.id}/scenes/${sceneId}/media/pexels/feedback`, {
+        method: "POST",
+        body: JSON.stringify({
+          query,
+          pexels_id: candidate.id,
+          ...(candidate.fit != null ? { fit: candidate.fit } : {}),
+          ...(candidates.length
+            ? { candidates: candidates.map(({ id, fit }) => ({ id, ...(fit != null ? { fit } : {}) })) }
+            : {})
+        })
+      }).catch(() => undefined);
       const body = await api.request<{ asset: { id: string } }>(`/api/projects/${project.id}/media/pexels`, {
         method: "POST",
         body: JSON.stringify({ query, pexels_id: candidate.id })
@@ -1357,11 +1417,11 @@ function App() {
       ?? conceptsFor(brief).find(({ id }) => id === "story")?.id
       ?? conceptsFor(brief)[0].id;
     updated = await api.command(updated.id, updated.revision, "select_concept", { concept_id: conceptId });
-    const scenes = (source.scenes.length ? source.scenes : buildStoryboardDraft(brief.purpose, () => crypto.randomUUID())).map((scene, order) => {
+    const scenes = (source.scenes.length ? source.scenes : buildStoryboardDraft(brief.purpose, newCommandId)).map((scene, order) => {
       const { media_id: _mediaId, ...withoutMedia } = scene;
       return {
         ...withoutMedia,
-        id: crypto.randomUUID(),
+        id: newCommandId(),
         order,
         visual_prompt: scene.visual_prompt || `${brief.purpose.slice(0, 210).trim()} — scene ${order + 1}`
       };
@@ -1666,14 +1726,18 @@ function App() {
       }
       return;
     }
-    setFalGenPrompt(scene.visual_prompt?.trim() || "");
     setFalGenJob(undefined);
     setFalGenOpen(true);
-    const projectId = project?.id;
-    if (!projectId) return;
-    const stored = localStorage.getItem(falJobStorageKey(projectId, scene.id));
-    if (!stored) return;
     void (async () => {
+      setFalGenPrompt(
+        project
+          ? (await sceneMediaIntentForScene(project, scene, architecture)).image_prompt
+          : scene.visual_prompt?.trim() || ""
+      );
+      const projectId = project?.id;
+      if (!projectId) return;
+      const stored = localStorage.getItem(falJobStorageKey(projectId, scene.id));
+      if (!stored) return;
       try {
         const job = await api.request<GenerationJobView>(`/api/generation-jobs/${stored}`);
         setFalGenJob(job);
@@ -1726,7 +1790,7 @@ function App() {
     try {
       const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falGenJob.id}/confirm`, {
         method: "POST",
-        body: JSON.stringify({ idempotency_key: crypto.randomUUID() })
+        body: JSON.stringify({ idempotency_key: newCommandId() })
       });
       setFalGenJob(job);
       localStorage.setItem(falJobStorageKey(project.id, activeScene.id), job.id);
@@ -1849,14 +1913,18 @@ function App() {
       }
       return;
     }
-    setFalVideoPrompt("gentle camera drift, subtle motion");
     setFalVideoJob(undefined);
     setFalVideoOpen(true);
-    const projectId = project?.id;
-    if (!projectId) return;
-    const stored = localStorage.getItem(falVideoStorageKey(projectId, scene.id));
-    if (!stored) return;
     void (async () => {
+      setFalVideoPrompt(
+        project
+          ? (await sceneMediaIntentForScene(project, scene, architecture)).video_motion_prompt
+          : "gentle camera drift, subtle motion"
+      );
+      const projectId = project?.id;
+      if (!projectId) return;
+      const stored = localStorage.getItem(falVideoStorageKey(projectId, scene.id));
+      if (!stored) return;
       try {
         const job = await api.request<GenerationJobView>(`/api/generation-jobs/${stored}`);
         setFalVideoJob(job);
@@ -1917,7 +1985,7 @@ function App() {
     try {
       const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falVideoJob.id}/confirm`, {
         method: "POST",
-        body: JSON.stringify({ idempotency_key: crypto.randomUUID() })
+        body: JSON.stringify({ idempotency_key: newCommandId() })
       });
       setFalVideoJob(job);
       localStorage.setItem(falVideoStorageKey(project.id, activeScene.id), job.id);
@@ -2085,7 +2153,7 @@ function App() {
     try {
       const job = await api.request<GenerationJobView>(`/api/generation-jobs/${falSpeechJob.id}/confirm`, {
         method: "POST",
-        body: JSON.stringify({ idempotency_key: crypto.randomUUID() })
+        body: JSON.stringify({ idempotency_key: newCommandId() })
       });
       setFalSpeechJob(job);
       localStorage.setItem(falSpeechStorageKey(project.id), job.id);
@@ -2179,9 +2247,17 @@ function App() {
   }
 
   function showFalLock() {
+    if (falUnavailable) {
+      setFeatureLock({
+        title: "FAL generation unavailable",
+        message: "AI still and video generation is not available in this environment. Upload your own media or use licensed Pexels stock from Settings.",
+        action: "settings"
+      });
+      return;
+    }
     setFeatureLock(falCredential?.connected
       ? { title: "Generate AI stills from a scene", message: "Open a scene in the storyboard and choose Generate AI image. Each still is quoted and confirmed before FAL charges your account." }
-      : { title: "FAL generation is locked", message: "Connect your FAL API key now. AI still generation unlocks in the storyboard after you connect.", action: "settings" });
+      : { title: "FAL generation is locked", message: "Connect your FAL API key in Settings. AI still generation unlocks in the storyboard after you connect.", action: "settings" });
   }
 
   function showFutureLock() {
@@ -2589,7 +2665,9 @@ function App() {
           <span className="partner-brands" aria-label="Your source brands">
             <button type="button" className={`brand-mark pexels${pexelsCredential?.connected ? " is-on" : ""}`} onClick={() => setStep("settings")}>Pexels</button>
             <button type="button" className={`brand-mark fal${falCredential?.connected && !falUnavailable ? " is-on" : ""}`} onClick={() => setStep("settings")}>FAL</button>
-            <a className="brand-mark fotium is-on" href="https://fotium.vip" target="_blank" rel="noreferrer">Fotium</a>
+            {partnerGalleryUrl ? (
+              <a className="brand-mark fotium is-on" href={partnerGalleryUrl} target="_blank" rel="noreferrer">{partnerGalleryName}</a>
+            ) : null}
           </span>
         )}
         {authReady && token && step !== "sign-in" && !inApp && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
@@ -2604,7 +2682,7 @@ function App() {
         ? selfhostGate === "setup" ? "Create your studio" : "Open your studio"
         : "Shape a vertical video"}</h1>
       <p>{pendingImportId
-        ? "Sign in to open the imported draft from Fotium."
+        ? "Sign in to open the imported draft."
         : import.meta.env.VITE_SELFHOST_AUTH === "1"
           ? selfhostGate === "setup"
             ? "Create the single owner for this install. No one else can join later."
@@ -2648,11 +2726,11 @@ function App() {
         <button className="provider-preview-item" data-locked={!falCredential?.connected || falUnavailable} onClick={showFalLock}>
           <strong>FAL</strong><span>{falCredential?.connected && !falUnavailable ? "AI stills in storyboard" : "AI stills · locked"}</span>
         </button>
-        {partnerBrands ? (
+        {partnerBrands && partnerGalleryUrl ? (
           <button className="provider-preview-item" type="button" onClick={() => setStep("settings")}>
-            <strong>Fotium</strong><span>Galleries · unlocked</span>
+            <strong>{partnerGalleryName}</strong><span>Galleries · unlocked</span>
           </button>
-        ) : (
+        ) : partnerBrands ? null : (
           <button className="provider-preview-item" data-locked onClick={showFutureLock}>
             <strong>More</strong><span>New providers · locked</span>
           </button>
@@ -3167,7 +3245,10 @@ function App() {
       </div>
 
       {candidates.length > 0 && <div className="candidates" aria-label={`Licensed media options for scene ${activeSceneNumber}`}>{candidates.map((candidate) => <article key={candidate.id} className="candidate">
-        <img src={candidate.previewUrl} alt={`Pexels preview by ${candidate.creator}`} />
+        <div className="candidate-preview">
+          <img src={candidate.previewUrl} alt={`Pexels preview by ${candidate.creator}`} />
+          {candidate.fit != null && <span className="fit-badge">{candidate.fit}% match</span>}
+        </div>
         <a href={candidate.attributionUrl} target="_blank" rel="noreferrer">{candidate.creator} on Pexels</a>
         <button disabled={busy} onClick={() => void selectStock(activeScene.id, candidate)}>Select for scene {activeSceneNumber}</button>
       </article>)}</div>}
@@ -3389,7 +3470,7 @@ function App() {
             <span>{release.date}</span>
             <ul>{release.items.map((item) => <li key={item}>{item}</li>)}</ul>
           </div>)}
-        <a href="https://github.com/ivanillka/f-motion/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Full changelog on GitHub</a>
+        <a href={githubBlobUrl("CHANGELOG.md")} target="_blank" rel="noreferrer">Full changelog on GitHub</a>
       </article>
       <div className="provider-onboarding" aria-label="Video source options">
         <article className={`provider-card ${pexelsCredential?.connected ? "provider-live" : "provider-locked"}`}>
@@ -3410,15 +3491,15 @@ function App() {
             ? <a href="#fal-settings-title">Manage FAL</a>
             : <button className="lock-trigger" onClick={showFalLock}>Why is this locked?</button>}
         </article>
-        {partnerBrands ? (
+        {partnerBrands && partnerGalleryUrl ? (
           <article className="provider-card provider-live">
             <span className="provider-status">Unlocked</span>
-            <h2>Fotium</h2>
+            <h2>{partnerGalleryName}</h2>
             <strong>Your galleries</strong>
-            <p>Imported stills from Fotium open as F-Motion drafts. Other accounts do not see this source.</p>
-            <a href="https://fotium.vip" target="_blank" rel="noreferrer">Open Fotium</a>
+            <p>Imported stills from your gallery host open as F-Motion drafts.</p>
+            <a href={partnerGalleryUrl} target="_blank" rel="noreferrer">Open {partnerGalleryName}</a>
           </article>
-        ) : (
+        ) : partnerBrands ? null : (
           <article className="provider-card provider-future">
             <span className="provider-status provider-soon">Coming soon</span>
             <h2>More providers</h2>
@@ -3493,4 +3574,4 @@ function App() {
   </div>;
 }
 
-createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);
+registerMediaIntentAdapter();

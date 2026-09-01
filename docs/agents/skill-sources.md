@@ -45,7 +45,7 @@ npx clawhub@latest skill publish ./skills/fmotion \
   --name "F-Motion" \
   --categories creative \
   --topics "video,reel,storyboard" \
-  --source-repo ivanillka/f-motion \
+  --source-repo OWNER/f-motion \
   --source-path skills/fmotion \
   --source-commit "$(git rev-parse HEAD)" \
   --changelog "Compose loop: media or chat, preview + draft." \

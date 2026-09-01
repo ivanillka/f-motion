@@ -5,10 +5,16 @@ import {
   cueAtElapsed,
   cuesForScene,
   defaultVideoArchitecture,
+  recommendVideoArchitecture,
+  resolveSceneMediaIntent,
+  sceneMediaIntent,
+  setMediaIntentAdapter,
   spokenWordIndex,
   spokenWordsForCues,
   VOICEOVER_DUCK,
   type Concept,
+  type MediaGlanceHints,
+  type MediaIntentAdapter,
   type VideoArchitecture
 } from "@f-engine/reel-engine";
 
@@ -47,7 +53,15 @@ export interface Voiceover {
 export interface ProjectSnapshot {
   id: string;
   revision: number;
-  brief: { purpose: string; audience: string; tone: string; soundtrack?: Soundtrack; voiceover?: Voiceover };
+  brief: {
+    purpose: string;
+    audience: string;
+    tone: string;
+    soundtrack?: Soundtrack;
+    voiceover?: Voiceover;
+    architecture?: VideoArchitecture;
+    media_glance?: MediaGlanceHints;
+  };
   selected_concept_id?: string;
   scenes: Scene[];
 }
@@ -93,67 +107,14 @@ export {
   spokenWordIndex,
   spokenWordsForCues,
   defaultVideoArchitecture,
+  recommendVideoArchitecture,
+  setMediaIntentAdapter,
   VOICEOVER_DUCK,
   type Concept,
+  type MediaGlanceHints,
+  type MediaIntentAdapter,
   type VideoArchitecture
 };
-
-/** Prefills the reference UI until a host supplies a reviewed conversation-model adapter. */
-export function recommendVideoArchitecture(conversation: string): VideoArchitecture {
-  // ponytail: deterministic semantic signals are the ceiling; replace this
-  // host-only function with a structured model decision when that adapter exists.
-  const text = conversation.normalize("NFKC").toLowerCase();
-  const matches = (pattern: RegExp) => pattern.test(text);
-  const goal: VideoArchitecture["goal"] = matches(/\b(how to|tutorial|teach|lesson|guide|learn)\b/u)
-    ? "educate"
-    : matches(/\b(explain|overview|demonstrate|process|why does|how does)\b/u)
-      ? "explain"
-      : matches(/\b(promote|launch|campaign|advertise|advertising|advertisement|product|service|sale|event)\b/u)
-        ? "promote"
-        : "story";
-  const audience: VideoArchitecture["audience"] = matches(/\b(reel|tiktok|instagram|social media|shorts?)\b/u)
-    ? "social"
-    : goal === "promote"
-      ? "customers"
-      : matches(/\b(internal|employees?|colleagues?|our team|staff training)\b/u)
-        ? "internal"
-        : "general";
-  const structure: VideoArchitecture["structure"] = matches(/\b(mystery|mysterious|secret|clues?|unknown|unsolved|abandoned|disappear|lonely island|murder)\b/u)
-    ? "mystery"
-    : goal === "promote" || matches(/\b(problem|solution|challenge|before and after|result)\b/u)
-      ? "problem_solution"
-      : matches(/\b(history|timeline|chronological|journey|evolution|life story)\b/u)
-        ? "chronological"
-        : "story_arc";
-  const tone: VideoArchitecture["tone"] = matches(/\b(documentary|facts?|historical|investigation|interview|real story)\b/u)
-    ? "documentary"
-    : matches(/\b(calm|gentle|soft|peaceful|meditative|serene)\b/u)
-      ? "calm"
-      : matches(/\b(energetic|dynamic|fast|exciting|bold|action|sport|launch)\b/u)
-        ? "energetic"
-        : "cinematic";
-  const pace: VideoArchitecture["pace"] = matches(/\b(fast|quick|punchy|rapid|high energy)\b/u) || tone === "energetic"
-    ? "fast"
-    : matches(/\b(slow|atmospheric|quiet|suspense|lonely|fog|dark|night|noir)\b/u) || tone === "calm" || structure === "mystery"
-      ? "slow"
-      : "balanced";
-  const explicitDuration = text.match(/\b(15|30|45)[\s-]*(?:seconds?|secs?|s)\b/u)?.[1];
-  const durationSeconds: VideoArchitecture["durationSeconds"] = explicitDuration
-    ? Number(explicitDuration) as VideoArchitecture["durationSeconds"]
-    : goal === "promote" || audience === "social"
-      ? 15
-      : goal === "educate" || goal === "explain" || tone === "documentary"
-        ? 45
-        : 30;
-  const ownMedia = matches(/\b(my|our)\s+(photos?|videos?|footage|media|gallery|assets?|images?)\b/u);
-  const externalMedia = matches(/\b(stock|pexels|open source|generated|ai visuals?)\b/u);
-  const media: VideoArchitecture["media"] = matches(/\b(mix|mixed|both|combine)\b/u) || (ownMedia && externalMedia)
-    ? "mixed"
-    : ownMedia
-      ? "own"
-      : "stock";
-  return { goal, audience, structure, tone, pace, durationSeconds, media };
-}
 
 export const briefQuestionIds = ["intent", "audience", "length", "visuals"] as const;
 export type BriefQuestionId = (typeof briefQuestionIds)[number];
@@ -191,10 +152,29 @@ function titledPlace(place: string): string {
   return place.replace(/\b\p{L}/gu, (letter) => letter.toLocaleUpperCase());
 }
 
+function topicPhrase(value: string): string {
+  return value
+    .replace(/^(?:i\s+)?(?:need|want)\s+(?:a\s+)?(?:story|video)\s+(?:about|on)\s+/iu, "")
+    .replace(/^(?:make|create)\s+(?:a\s+)?(?:story|video)\s+(?:about|on)\s+/iu, "")
+    .trim();
+}
+
 function clipSubject(value: string): string {
-  const text = value.replace(/[.!?]+$/u, "").trim();
+  const text = topicPhrase(value.replace(/[.!?]+$/u, "").trim());
   if (!text) return "this video";
   return text.length > 52 ? `${text.slice(0, 49).trim()}…` : text;
+}
+
+/** ponytail: LAN http installs block crypto.randomUUID outside a secure context; HTTPS fixes it. */
+export function newCommandId(): string {
+  if (typeof crypto?.randomUUID === "function") {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      // insecure http context (non-localhost)
+    }
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
 export interface LocalMediaGlance {
@@ -258,6 +238,24 @@ export function mediaNotesFromGlances(glances: readonly LocalMediaGlance[]): str
   ].filter(Boolean).join(" ");
 }
 
+/** Collapses local glances into engine hints for storyboard and media intent. */
+export function aggregateMediaGlance(glances: readonly LocalMediaGlance[]): MediaGlanceHints | undefined {
+  if (!glances.length) return undefined;
+  const portraits = glances.filter((item) => item.orientation === "portrait").length;
+  const landscapes = glances.filter((item) => item.orientation === "landscape").length;
+  const lumValues = glances.map((item) => item.luminance).filter((value): value is number => value != null);
+  const warmValues = glances.map((item) => item.warmth).filter((value): value is number => value != null);
+  return {
+    ...(lumValues.length ? { luminance: lumValues.reduce((sum, value) => sum + value, 0) / lumValues.length } : {}),
+    ...(warmValues.length ? { warmth: warmValues.reduce((sum, value) => sum + value, 0) / warmValues.length } : {}),
+    orientation: portraits >= glances.length / 2
+      ? "portrait"
+      : landscapes >= glances.length / 2
+        ? "landscape"
+        : undefined
+  };
+}
+
 /** Own-media or mix answers without files: look at the photos before more questions. */
 export function briefNeedsMediaLook(conversation: string, fileCount: number): boolean {
   if (fileCount > 0) return false;
@@ -293,6 +291,17 @@ export function briefPurposeFromChat(conversation: string, fileCount = 0): strin
   return "";
 }
 
+function briefTopicLine(conversation: string): string {
+  const chips = new Set(Object.values(briefChoiceSets).flat().map((choice) => choice.toLowerCase()));
+  const topics: string[] = [];
+  for (const line of conversation.split(/\n+/u).map((row) => row.trim())) {
+    if (!line || briefMetaLine.test(line)) continue;
+    if (chips.has(line.toLowerCase())) break;
+    topics.push(line);
+  }
+  return topics[topics.length - 1] ?? "";
+}
+
 /** First user line plus the plan inferred from every answer so far. */
 export function briefTopic(conversation: string): {
   subject: string;
@@ -300,9 +309,7 @@ export function briefTopic(conversation: string): {
   hook: string;
   plan: VideoArchitecture;
 } {
-  const first = conversation.split(/\n+/u).map((line) => line.trim()).find((line) =>
-    line && !/^(I looked at|I added |File names:|Looking at your media)/iu.test(line)
-  ) ?? "";
+  const first = briefTopicLine(conversation);
   const place = (first.match(/\bin\s+([^,.!?]+)$/iu)?.[1] ?? "").trim();
   const looked = /\bI looked at\b/iu.test(conversation);
   const subject = clipSubject(first) === "this video" && looked ? "your media" : clipSubject(first);
@@ -404,6 +411,9 @@ export function answeredBriefQuestions(conversation: string, hasOwnMedia: boolea
   }
   if (matches(/\b(reel|tiktok|instagram|social media|shorts?|customers?|internal|employees?|colleagues?|our team|staff training|general viewers?)\b/u)) {
     answered.add("audience");
+  }
+  for (const choice of briefChoiceSets.audience) {
+    if (text.includes(choice.toLowerCase())) answered.add("audience");
   }
   if (matches(/\b(15|30|45)[\s-]*(?:seconds?|secs?|s)\b/u)) {
     answered.add("length");
@@ -511,7 +521,7 @@ export class ApiClient {
     return this.request<ProjectSnapshot>(`/api/projects/${projectId}/commands`, {
       method: "POST",
       body: JSON.stringify({
-        command_id: crypto.randomUUID(),
+        command_id: newCommandId(),
         base_revision: revision,
         client_timestamp: new Date().toISOString(),
         kind,
@@ -666,6 +676,21 @@ export function defaultVoiceoverPrompt(snapshot: {
 }): string {
   const spoken = snapshot.scenes.map((scene) => scene.caption.trim()).filter(Boolean).join("\n").trim();
   return (spoken || snapshot.brief.purpose.trim() || "Tell this story in one clear line.").slice(0, 2000);
+}
+
+export async function sceneMediaIntentForScene(
+  snapshot: ProjectSnapshot,
+  scene: Scene,
+  architecture?: VideoArchitecture,
+  glance?: MediaGlanceHints
+): Promise<Awaited<ReturnType<typeof resolveSceneMediaIntent>>> {
+  return resolveSceneMediaIntent({
+    brief: snapshot.brief.purpose,
+    caption: scene.caption,
+    ...(scene.visual_prompt ? { visual_prompt: scene.visual_prompt } : {}),
+    architecture: architecture ?? snapshot.brief.architecture,
+    glance: glance ?? snapshot.brief.media_glance
+  }, sceneMediaIntent);
 }
 
 export function beatMs(bpm: unknown): number {

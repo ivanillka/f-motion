@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build && node scripts/promote-marketing-root.mjs",
+    "build": "vite build && node scripts/finish-web-build.mjs",
     "dev": "vite",
-    "test": "npm run build && node --test test/*.test.mjs"
+    "test": "VITE_SITE_AT_ROOT=1 npm run build && node --test test/*.test.mjs"
   },
   "dependencies": {
     "@f-engine/reel-engine": "^0.1.0",

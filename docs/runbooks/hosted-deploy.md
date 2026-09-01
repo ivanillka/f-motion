@@ -94,7 +94,7 @@ lives on the **bucket**, not the API.
 2. Use **F-Motion's own Supabase project** for studio magic links. Site URL
    and Redirect URLs: `https://f-motion.com/app/` (also `/` and `/**`).
    The studio sends `emailRedirectTo=https://f-motion.com/app/`.
-   Fotium Edit for a user already signed in on fotium.vip is a separate JWT
+   Partner-host Edit for a user already signed in on the gallery site is a separate JWT
    (`SUPABASE_ISSUER_EXTRA` / `SUPABASE_JWKS_URL_EXTRA` on the API).
 3. Record F-Motion `SUPABASE_ISSUER`, `SUPABASE_AUDIENCE`, `SUPABASE_JWKS_URL`.
 4. Record F-Motion `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (browser

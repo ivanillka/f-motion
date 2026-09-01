@@ -60,6 +60,61 @@
   .mkt-nav-links { display: flex; }
 }
 
+.mkt-nav-links a {
+  border-bottom: 1px solid transparent;
+  padding: 0 0 2px;
+  color: var(--mkt-muted);
+}
+
+.mkt-nav-links a[aria-current="page"] {
+  color: var(--mkt-accent-soft);
+  border-bottom-color: rgba(255, 177, 196, 0.4);
+  font-weight: 700;
+}
+
+.mkt-lead {
+  margin: 0 0 1rem;
+  max-width: 36rem;
+  color: var(--mkt-muted);
+  font-size: 1.05rem;
+  line-height: 1.5;
+}
+
+.mkt-text-link {
+  color: var(--mkt-accent-soft);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.mkt-section-lede,
+.mkt-section-cta {
+  text-align: center;
+  color: var(--mkt-muted);
+  max-width: 36rem;
+  margin: -1.5rem auto 2rem;
+}
+
+.mkt-section-cta { margin-top: 2rem; }
+
+.mkt-coming-soon {
+  text-align: center;
+  padding-top: 8rem;
+}
+
+.mkt-coming-soon h1 {
+  font-family: Syne, ui-sans-serif, sans-serif;
+  font-size: clamp(2rem, 5vw, 3rem);
+  margin: 1rem 0;
+}
+
+.mkt-coming-soon p { color: var(--mkt-muted); max-width: 32rem; margin: 0 auto 1rem; }
+
+.mkt-coming-soon a { color: var(--mkt-accent-soft); text-decoration: underline; }
+
 .mkt-nav-links button {
   background: none;
   border: 0;

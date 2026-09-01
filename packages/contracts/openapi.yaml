@@ -120,6 +120,157 @@ paths:
               schema: { $ref: "#/components/schemas/TypedError" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /projects/{project_id}/scenes/{scene_id}/fal/image-quotes:
+    post:
+      operationId: quoteFalImage
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+        - name: scene_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt: { type: string, minLength: 1, maxLength: 500 }
+              additionalProperties: false
+      responses:
+        "200":
+          description: Quoted FAL still generation job
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GenerationJobView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /projects/{project_id}/scenes/{scene_id}/fal/video-quotes:
+    post:
+      operationId: quoteFalVideo
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+        - name: scene_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [motion_prompt]
+              properties:
+                motion_prompt: { type: string, minLength: 1, maxLength: 500 }
+              additionalProperties: false
+      responses:
+        "200":
+          description: Quoted FAL image-to-video job
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GenerationJobView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /projects/{project_id}/fal/speech-quotes:
+    post:
+      operationId: quoteFalSpeech
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt: { type: string, minLength: 1, maxLength: 500 }
+              additionalProperties: false
+      responses:
+        "200":
+          description: Quoted FAL speech job
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GenerationJobView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /generation-jobs/{job_id}/confirm:
+    post:
+      operationId: confirmGenerationJob
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Generation job accepted after quote confirmation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GenerationJobView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Generation busy or quote expired
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TypedError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /generation-jobs/{job_id}:
+    get:
+      operationId: getGenerationJob
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Generation job state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GenerationJobView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /generation-jobs/{job_id}/cancel:
+    post:
+      operationId: cancelGenerationJob
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Cancel requested
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GenerationJobView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
   /providers/pexels/credential:
     get:
       operationId: getPexelsCredential
@@ -370,6 +521,10 @@ paths:
           in: query
           required: true
           schema: { type: string, minLength: 1, maxLength: 100 }
+        - name: orientation
+          in: query
+          required: false
+          schema: { type: string, enum: [portrait, landscape] }
       responses:
         "200":
           description: Bounded Pexels search results without source download URLs
@@ -446,6 +601,28 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "503": { $ref: "#/components/responses/Unavailable" }
+  /projects/{project_id}/scenes/{scene_id}/media/pexels/feedback:
+    post:
+      operationId: logPexelsPickFeedback
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+        - name: scene_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PexelsPickFeedback" }
+      responses:
+        "204":
+          description: Feedback logged
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /projects/{project_id}/render:
     post:
       operationId: enqueueRender
@@ -651,6 +828,7 @@ components:
             - render_input_incomplete
             - provider_unavailable
             - fal_not_connected
+            - fal_generation_busy
             - invalid_provider_credential
             - pexels_not_connected
         message: { type: string }
@@ -680,6 +858,26 @@ components:
         tone: { type: string, minLength: 1 }
         soundtrack: { type: object }
         voiceover: { type: object }
+        architecture: { $ref: "#/components/schemas/VideoArchitecture" }
+        media_glance: { $ref: "#/components/schemas/MediaGlanceHints" }
+    VideoArchitecture:
+      type: object
+      required: [goal, audience, structure, tone, pace, durationSeconds, media]
+      properties:
+        goal: { type: string, enum: [story, explain, promote, educate] }
+        audience: { type: string, enum: [general, social, customers, internal] }
+        structure: { type: string, enum: [story_arc, mystery, problem_solution, chronological] }
+        tone: { type: string, enum: [cinematic, documentary, energetic, calm] }
+        pace: { type: string, enum: [slow, balanced, fast] }
+        durationSeconds: { type: integer, enum: [15, 30, 45] }
+        media: { type: string, enum: [stock, own, mixed] }
+        delivery: { type: string, enum: [reel, story, youtube] }
+    MediaGlanceHints:
+      type: object
+      properties:
+        luminance: { type: number, minimum: 0, maximum: 1 }
+        warmth: { type: number }
+        orientation: { type: string, enum: [portrait, landscape, square] }
     CreateProjectRequest:
       type: object
       required: [purpose]
@@ -687,6 +885,8 @@ components:
         purpose: { type: string, minLength: 1 }
         audience: { type: string }
         tone: { type: string }
+        architecture: { $ref: "#/components/schemas/VideoArchitecture" }
+        media_glance: { $ref: "#/components/schemas/MediaGlanceHints" }
     CreatedProject:
       type: object
       required: [project, concepts]
@@ -883,6 +1083,7 @@ components:
         asset: { $ref: "#/components/schemas/SceneMediaView" }
         match: { type: object, additionalProperties: true }
         query: { type: string }
+        fit: { type: integer, minimum: 0, maximum: 100 }
       additionalProperties: true
     StoryboardPexelsResult:
       type: object
@@ -899,8 +1100,42 @@ components:
               asset: { $ref: "#/components/schemas/SceneMediaView" }
               match: { type: object, additionalProperties: true }
               query: { type: string }
+              fit: { type: integer, minimum: 0, maximum: 100 }
               message: { type: string }
             additionalProperties: true
+    PexelsPickFeedback:
+      type: object
+      required: [query, pexels_id]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 100 }
+        pexels_id: { type: integer, minimum: 1 }
+        fit: { type: integer, minimum: 0, maximum: 100 }
+        candidates:
+          type: array
+          maxItems: 12
+          items:
+            type: object
+            required: [id]
+            properties:
+              id: { type: integer, minimum: 1 }
+              fit: { type: integer, minimum: 0, maximum: 100 }
+            additionalProperties: false
+      additionalProperties: false
+    GenerationJobView:
+      type: object
+      required: [id, project_id, scene_id, kind, state]
+      properties:
+        id: { type: string }
+        project_id: { type: string }
+        scene_id: { type: string }
+        kind: { type: string, enum: [image, image_to_video, speech] }
+        state: { type: string }
+        endpoint_id: { type: string }
+        prompt: { type: string }
+        quote: { type: object, additionalProperties: true }
+        quote_expires_at: { type: string, format: date-time }
+        result_media: { $ref: "#/components/schemas/SceneMediaView" }
+      additionalProperties: true
     RenderJobAccepted:
       type: object
       required: [job_id, project_id, revision, kind, state]

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter } from "../dist/index.js";
+import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore } from "../dist/index.js";
 
 const snapshot = {
   schema_version: 1, id: "p1", owner_id: "u1", revision: 0,
@@ -22,6 +22,57 @@ const command = (kind, payload, base_revision = 0) => ({
   client_timestamp: "diagnostic",
   kind,
   payload
+});
+
+test("scene media intent tailors prompts per platform from scene context", () => {
+  const intent = sceneMediaIntent({
+    brief: "A lonely island appears through ocean mist",
+    caption: "No maps record the lighthouse.",
+    visual_prompt: "fog wide aerial establishing cinematic",
+    architecture: {
+      goal: "story",
+      audience: "social",
+      structure: "mystery",
+      tone: "documentary",
+      pace: "slow",
+      durationSeconds: 30,
+      media: "stock"
+    },
+    glance: { luminance: 0.2, warmth: -0.2, orientation: "portrait" }
+  });
+  assert.equal(intent.stock_queries.length, 2);
+  assert.match(intent.stock_queries[0], /fog.*lighthouse/i);
+  assert.match(intent.stock_queries[1], /fog wide aerial establishing/i);
+  assert.match(intent.image_prompt, /fog wide aerial establishing cinematic/i);
+  assert.match(intent.image_prompt, /documentary realism/i);
+  assert.match(intent.image_prompt, /vertical 9:16 social video composition/i);
+  assert.match(intent.image_prompt, /low light/i);
+  assert.match(intent.video_motion_prompt, /slow subtle camera push/i);
+  assert.equal(intent.speech_script, "No maps record the lighthouse.");
+  assert.ok(intent.intent_tokens.includes("documentary"));
+  assert.ok(stockIntentFitScore(intent.intent_tokens, "lonely island fog lighthouse", "https://www.pexels.com/video/lonely-island-lighthouse-fog-12345/") > 0);
+});
+
+test("select_concept persists architecture and media glance on the brief", () => {
+  const empty = { ...snapshot, scenes: [] };
+  const architecture = {
+    goal: "story",
+    audience: "social",
+    structure: "mystery",
+    tone: "documentary",
+    pace: "slow",
+    durationSeconds: 30,
+    media: "stock"
+  };
+  const glance = { luminance: 0.2, warmth: -0.15, orientation: "portrait" };
+  const result = applyCommand(empty, command("select_concept", {
+    concept_id: "story",
+    architecture,
+    media_glance: glance
+  }));
+  assert.deepEqual(result.brief.architecture, architecture);
+  assert.deepEqual(result.brief.media_glance, glance);
+  assert.match(result.scenes[0].visual_prompt, /low light|night mood|documentary/i);
 });
 
 test("concept construction is deterministic and exactly three", () => {

@@ -24,7 +24,10 @@ test("VPS compose path is single-seat, BYOK, and Fotium-free", async () => {
   assert.match(compose, /web:/);
   assert.match(compose, /WEB_PUBLISH_PORT:-8090/);
   assert.match(compose, /VITE_GIT_SHA/);
+  assert.match(compose, /VITE_APP_VERSION/);
   assert.match(webDocker, /VITE_GIT_SHA/);
+  assert.match(webDocker, /VITE_APP_VERSION/);
+  assert.match(script, /VITE_APP_VERSION/);
   assert.match(compose, /R2_PUBLIC_ENDPOINT/);
   assert.match(compose, /FENGINE_ENV: \$\{FENGINE_ENV:-selfhost\}/);
   assert.match(compose, /FENGINE_ACCESS_MODE: \$\{FENGINE_ACCESS_MODE:-single_user\}/);

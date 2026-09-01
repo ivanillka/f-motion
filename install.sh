@@ -19,6 +19,8 @@ die() {
 }
 
 echo "F-Motion open-source install (single seat)"
+product_version="$(node -e "console.log(require('$root/package.json').version)" 2>/dev/null || echo unknown)"
+echo "Version ${product_version}"
 echo "Corporate multi-user is a separate paid product."
 echo
 

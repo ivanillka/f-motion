@@ -4,6 +4,15 @@ All notable changes to F-Motion are listed here. The same notes appear in the
 studio under **Settings → What’s new**. Product version lives in root
 `package.json` and `apps/web/src/release.ts`.
 
+## [0.3.0] — 2026-09-01
+
+### Context-aware media
+
+- Licensed stock search ranks candidates with a fit score from your brief, scene, and optional media glance.
+- Video architecture and media glance persist when the storyboard is created — not only after concept selection.
+- YouTube-style delivery searches landscape Pexels; Reels and Stories stay portrait.
+- FAL image and motion dialogs open prefilled from scene intent; stock picks log feedback for tuning.
+
 ## [0.2.0] — 2026-08-28
 
 ### Create is the chat

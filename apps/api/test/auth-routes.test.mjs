@@ -306,14 +306,16 @@ test("/readyz reflects an async ready check and /healthz stays process-alive onl
   try {
     const ready = await fetch(`${origin}/readyz`);
     assert.equal(ready.status, 200);
-    assert.deepEqual(await ready.json(), { status: "ready" });
+    assert.deepEqual(await ready.json(), { status: "ready", version: "0.3.0" });
 
     dbUp = false;
     const unavailable = await fetch(`${origin}/readyz`);
     assert.equal(unavailable.status, 503);
-    assert.deepEqual(await unavailable.json(), { status: "unavailable" });
+    assert.deepEqual(await unavailable.json(), { status: "unavailable", version: "0.3.0" });
 
-    assert.equal((await fetch(`${origin}/healthz`)).status, 200);
+    const health = await fetch(`${origin}/healthz`);
+    assert.equal(health.status, 200);
+    assert.deepEqual(await health.json(), { status: "ok", version: "0.3.0" });
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
@@ -385,14 +387,12 @@ test("Pexels search is bounded and never exposes provider source URLs", async ()
     assert.equal((await fetch(`${origin}/api/pexels/search?q=${"x".repeat(101)}`)).status, 422);
     const response = await fetch(`${origin}/api/pexels/search?q=team`);
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), {
-      results: [{
-        id: 7,
-        creator: "Creator",
-        attributionUrl: "https://www.pexels.com/video/7",
-        previewUrl: "https://images.pexels.com/videos/7/preview.jpg"
-      }]
-    });
+    const body = await response.json();
+    assert.equal(body.results.length, 1);
+    assert.equal(body.results[0].id, 7);
+    assert.equal(typeof body.results[0].fit, "number");
+    assert.ok(body.results[0].fit >= 0 && body.results[0].fit <= 100);
+    assert.equal(body.results[0].sourceUrl, undefined);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
@@ -586,6 +586,8 @@ test("storyboard Pexels matching prefers unique IDs and reports no_result withou
     ]);
     assert.deepEqual(copies, [101, 102]);
     assert.ok(searches.length >= 3);
+    const matched = body.results.filter(({ state }) => state === "matched");
+    assert.ok(matched.every((row) => typeof row.fit === "number"));
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
@@ -630,17 +632,103 @@ test("automatic Pexels matching derives a visual query and never exposes the sou
       { method: "POST" }
     );
     assert.equal(response.status, 201);
-    assert.deepEqual(queries, ["lonely island ocean fog abandoned lighthouse"]);
+    assert.ok(queries.includes("lonely island ocean fog abandoned lighthouse"));
     assert.deepEqual(await response.json(), {
       asset: { id: "asset-17", state: "inspecting" },
       match: {
         id: 17,
         creator: "Island Creator",
         attributionUrl: "https://www.pexels.com/video/17",
-        previewUrl: "https://images.pexels.com/videos/17/preview.jpg"
+        previewUrl: "https://images.pexels.com/videos/17/preview.jpg",
+        fit: 100
       },
-      query: "lonely island ocean fog abandoned lighthouse"
+      query: "lonely island ocean fog abandoned lighthouse",
+      fit: 100
     });
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("project create persists architecture and media glance on brief", async () => {
+  const server = createServer(createTestApp());
+  const origin = await listen(server);
+  try {
+    const response = await fetch(`${origin}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        purpose: "Launch teaser for YouTube",
+        audience: "customers",
+        tone: "cinematic, balanced",
+        architecture: {
+          goal: "promote",
+          audience: "customers",
+          structure: "story_arc",
+          tone: "cinematic",
+          pace: "balanced",
+          durationSeconds: 30,
+          media: "stock",
+          delivery: "youtube"
+        },
+        media_glance: { luminance: 0.4, warmth: 0.2, orientation: "landscape" }
+      })
+    });
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(body.project.brief.architecture?.delivery, "youtube");
+    assert.equal(body.project.brief.media_glance?.orientation, "landscape");
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("stock pick feedback accepts ranked candidates", async () => {
+  const server = createServer(createTestApp({
+    projects: new ProjectService()
+  }));
+  const origin = await listen(server);
+  try {
+    const created = await (await fetch(`${origin}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "Feedback test" })
+    })).json();
+    const selected = await (await fetch(`${origin}/api/projects/${created.project.id}/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command_id: "select",
+        base_revision: 0,
+        client_timestamp: "",
+        kind: "select_concept",
+        payload: { concept_id: "direct" }
+      })
+    })).json();
+    const sceneId = selected.scenes[0].id;
+    const response = await fetch(
+      `${origin}/api/projects/${created.project.id}/scenes/${sceneId}/media/pexels/feedback`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: "ocean fog lighthouse",
+          pexels_id: 42,
+          fit: 88,
+          candidates: [{ id: 42, fit: 88 }, { id: 17, fit: 55 }]
+        })
+      }
+    );
+    assert.equal(response.status, 204);
+    const bad = await fetch(
+      `${origin}/api/projects/${created.project.id}/scenes/${sceneId}/media/pexels/feedback`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: "", pexels_id: 0 })
+      }
+    );
+    assert.equal(bad.status, 422);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

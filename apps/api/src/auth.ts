@@ -14,7 +14,7 @@ export interface AuthIssuer {
 }
 
 export interface AuthConfig extends AuthIssuer {
-  /** Fotium JWTs when Edit opens a draft for a user already signed in on fotium.vip. */
+  /** Partner-host JWTs when Edit opens a draft for a user already signed in on the gallery host. */
   extra?: AuthIssuer[];
 }
 export type AccountStateLookup = (ownerId: string) => Promise<string | undefined>;

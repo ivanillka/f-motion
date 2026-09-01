@@ -39,10 +39,10 @@ test("trusted import configuration is all-or-nothing and hosted HTTPS-only", () 
     FENGINE_IMPORT_TOKEN: "x".repeat(32),
     FENGINE_IMPORT_OWNER_ID: "11111111-1111-4111-8111-111111111111",
     FENGINE_WEB_ORIGIN: "https://f-motion.example",
-    FENGINE_IMPORT_MEDIA_ORIGINS: "https://media.fotium.vip,https://fotium.vip",
+    FENGINE_IMPORT_MEDIA_ORIGINS: "https://media.example.com,https://host.example.com",
     FENGINE_ENV: "hosted"
   });
-  assert.deepEqual(configured.mediaOrigins, ["https://media.fotium.vip", "https://fotium.vip"]);
+  assert.deepEqual(configured.mediaOrigins, ["https://media.example.com", "https://host.example.com"]);
 });
 
 test("influencer campaign filenames are valid external ids", () => {
@@ -57,7 +57,7 @@ test("influencer campaign filenames are valid external ids", () => {
   const draft = parseExternalDraft({
     externalId: `influencer:${campaign}`,
     title: "Dope × Mallghareth",
-    mediaUrls: ["https://media.fotium.vip/galleries/look/1.jpg"]
+    mediaUrls: ["https://media.example.com/galleries/look/1.jpg"]
   });
   assert.equal(draft.externalId, `influencer:${campaign}`);
 });
@@ -72,13 +72,18 @@ test("external drafts validate structured architecture and preserve distinct vis
     architecture: { duration_seconds: 30, goal: "promote", audience: "social", structure: "story_arc", tone: "cinematic", pace: "balanced", media: "stock" }
   });
   assert.equal(draft.architecture.durationSeconds, 30);
+  assert.equal(parseExternalDraft({
+    external_id: "queue:youtube",
+    title: "YouTube launch",
+    architecture: { delivery: "youtube" }
+  }).architecture.delivery, "youtube");
   assert.equal(draft.source.callToAction, "Open the complete gallery.");
   assert.equal(draft.source.visualHint, "editorial portrait photography Prague");
   assert.deepEqual(parseExternalDraft({
     external_id: "queue:media",
     title: "Media",
-    media_urls: ["https://media.fotium.vip/gallery/one.jpg"]
-  }).mediaUrls, ["https://media.fotium.vip/gallery/one.jpg"]);
+    media_urls: ["https://media.example.com/gallery/one.jpg"]
+  }).mediaUrls, ["https://media.example.com/gallery/one.jpg"]);
   const influencer = parseExternalDraft({
     externalId: "influencer:campaign-1",
     title: "Influencer reel",
@@ -86,24 +91,24 @@ test("external drafts validate structured architecture and preserve distinct vis
     visualHint: "golden hour portraits",
     architecture: { durationSeconds: 15 },
     mediaUrls: [
-      "https://media.fotium.vip/galleries/a/1.jpg",
-      { url: "https://media.fotium.vip/galleries/a/2.jpg" },
-      { sourceUrl: "https://fotium.vip/cdn/a/3.jpg" }
+      "https://media.example.com/galleries/a/1.jpg",
+      { url: "https://media.example.com/galleries/a/2.jpg" },
+      { sourceUrl: "https://host.example.com/cdn/a/3.jpg" }
     ]
   });
   assert.equal(influencer.externalId, "influencer:campaign-1");
   assert.equal(influencer.source.callToAction, "Shop the look.");
   assert.equal(influencer.architecture.media, "own");
   assert.deepEqual(influencer.mediaUrls, [
-    "https://media.fotium.vip/galleries/a/1.jpg",
-    "https://media.fotium.vip/galleries/a/2.jpg",
-    "https://fotium.vip/cdn/a/3.jpg"
+    "https://media.example.com/galleries/a/1.jpg",
+    "https://media.example.com/galleries/a/2.jpg",
+    "https://host.example.com/cdn/a/3.jpg"
   ]);
   assert.deepEqual(parseExternalDraft({
     external_id: "queue:media",
     title: "Media",
-    media_urls: ["http://localhost/a.jpg", "https://media.fotium.vip/galleries/look/1.jpg", "not-a-url"]
-  }).mediaUrls, ["https://media.fotium.vip/galleries/look/1.jpg"]);
+    media_urls: ["http://localhost/a.jpg", "https://media.example.com/galleries/look/1.jpg", "not-a-url"]
+  }).mediaUrls, ["https://media.example.com/galleries/look/1.jpg"]);
   assert.equal(parseExternalDraft({
     external_id: "queue:duration",
     title: "Duration",
@@ -116,7 +121,7 @@ test("external drafts validate structured architecture and preserve distinct vis
   }).architecture.durationSeconds, 15);
   assert.equal(parseExternalDraft({ title: "No id" }).externalId.startsWith("imported:"), true);
   assert.ok(parseExternalDraft(null).brief.purpose);
-  const nine = Array.from({ length: 9 }, (_, index) => `https://media.fotium.vip/galleries/look/${index + 1}.jpg`);
+  const nine = Array.from({ length: 9 }, (_, index) => `https://media.example.com/galleries/look/${index + 1}.jpg`);
   assert.deepEqual(parseExternalDraft({
     external_id: "queue:nine",
     title: "Nine stills",
@@ -227,7 +232,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     async put(key, body, type, bytes) {
       if (key.includes(projectIdForExternalImport(
         projectIdForExternalImport(ownerId, "followup:store"),
-        "https://media.fotium.vip/galleries/look/store.jpg"
+        "https://media.example.com/galleries/look/store.jpg"
       ))) {
         throw new Error("R2 unavailable");
       }
@@ -265,7 +270,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
       token,
       ownerId,
       webOrigin: "https://f-motion.example",
-      mediaOrigins: ["https://media.fotium.vip"]
+      mediaOrigins: ["https://media.example.com"]
     },
     externalMediaRequest: async (input, init) => {
       requested.push({ input: String(input), redirect: init?.redirect });
@@ -310,14 +315,14 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
   try {
     assert.equal((await request({
       ...baseBody,
-      caption: "One final look. Open the gallery: https://fotium.vip/galleries/portrait"
+      caption: "One final look. Open the gallery: https://host.example.com/galleries/portrait"
     })).status, 201);
     const mediaBody = {
       ...baseBody,
-      caption: "One final look. Open the gallery: https://fotium.vip/galleries/portrait",
+      caption: "One final look. Open the gallery: https://host.example.com/galleries/portrait",
       media_urls: [
-        "https://media.fotium.vip/galleries/portrait/full/1.jpg",
-        "https://media.fotium.vip/galleries/portrait/full/2.jpg"
+        "https://media.example.com/galleries/portrait/full/1.jpg",
+        "https://media.example.com/galleries/portrait/full/2.jpg"
       ]
     };
     const repaired = await request(mediaBody);
@@ -358,8 +363,8 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
       ...baseBody,
       external_id: "followup:403",
       media_urls: [
-        "https://media.fotium.vip/galleries/look/missing.jpg",
-        "https://media.fotium.vip/galleries/look/ok.jpg"
+        "https://media.example.com/galleries/look/missing.jpg",
+        "https://media.example.com/galleries/look/ok.jpg"
       ]
     });
     assert.equal(unreachable.status, 201);
@@ -372,7 +377,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     const storeBroke = await request({
       ...baseBody,
       external_id: "followup:store",
-      media_urls: ["https://media.fotium.vip/galleries/look/store.jpg"]
+      media_urls: ["https://media.example.com/galleries/look/store.jpg"]
     });
     assert.equal(storeBroke.status, 201);
     assert.match((await storeBroke.json()).project_url, /\/app\/\?project=/);
@@ -380,7 +385,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     const bounced = await request({
       ...baseBody,
       external_id: "followup:bounce",
-      media_urls: ["https://media.fotium.vip/galleries/look/bounce.jpg"]
+      media_urls: ["https://media.example.com/galleries/look/bounce.jpg"]
     });
     assert.equal(bounced.status, 201);
     assert.match((await bounced.json()).project_url, /\/app\/\?project=/);
@@ -388,7 +393,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     const webp = await request({
       ...baseBody,
       external_id: "followup:webp",
-      media_urls: ["https://media.fotium.vip/galleries/look/04.webp"]
+      media_urls: ["https://media.example.com/galleries/look/04.webp"]
     });
     assert.equal(webp.status, 201);
     const webpProjectId = projectIdForExternalImport(ownerId, "followup:webp");
@@ -403,7 +408,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     const webpRetry = await request({
       ...baseBody,
       external_id: "followup:webp",
-      media_urls: ["https://media.fotium.vip/galleries/look/04.webp"]
+      media_urls: ["https://media.example.com/galleries/look/04.webp"]
     });
     assert.equal(webpRetry.status, 200);
     await waitFor(
@@ -413,7 +418,7 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     assert.equal(requested.length, webpBeforeRetry);
     assert.ok(stored.some((entry) => entry.fromKey && String(entry.key).includes("/media-sealed/")));
 
-    const inspectUrl = "https://media.fotium.vip/galleries/look/inspect.jpg";
+    const inspectUrl = "https://media.example.com/galleries/look/inspect.jpg";
     const inspectExternalId = "followup:inspecting";
     const inspectProjectId = projectIdForExternalImport(ownerId, inspectExternalId);
     const inspectMediaId = projectIdForExternalImport(inspectProjectId, inspectUrl);
@@ -447,21 +452,21 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
       title: "Lookbook",
       callToAction: "See the set.",
       mediaUrls: [
-        { url: "https://media.fotium.vip/galleries/look/1.jpg" },
-        { sourceUrl: "https://media.fotium.vip/galleries/look/2.jpg" }
+        { url: "https://media.example.com/galleries/look/1.jpg" },
+        { sourceUrl: "https://media.example.com/galleries/look/2.jpg" }
       ]
     };
     assert.equal((await request(influencerBody)).status, 201);
     const firstInfluencer = projects.get(ownerId, projectIdForExternalImport(ownerId, "influencer:lookbook-1"));
     assert.equal(firstInfluencer.scenes[0].media_id, projectIdForExternalImport(
       projectIdForExternalImport(ownerId, "influencer:lookbook-1"),
-      "https://media.fotium.vip/galleries/look/1.jpg"
+      "https://media.example.com/galleries/look/1.jpg"
     ));
     const swapped = await request({
       ...influencerBody,
       mediaUrls: [
-        "https://media.fotium.vip/galleries/look/3.jpg",
-        "https://media.fotium.vip/galleries/look/4.jpg"
+        "https://media.example.com/galleries/look/3.jpg",
+        "https://media.example.com/galleries/look/4.jpg"
       ]
     });
     assert.equal(swapped.status, 200);
@@ -469,11 +474,11 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     assert.ok(updated.revision > firstInfluencer.revision);
     assert.equal(updated.scenes[0].media_id, projectIdForExternalImport(
       projectIdForExternalImport(ownerId, "influencer:lookbook-1"),
-      "https://media.fotium.vip/galleries/look/3.jpg"
+      "https://media.example.com/galleries/look/3.jpg"
     ));
     assert.equal(updated.scenes[1].media_id, projectIdForExternalImport(
       projectIdForExternalImport(ownerId, "influencer:lookbook-1"),
-      "https://media.fotium.vip/galleries/look/4.jpg"
+      "https://media.example.com/galleries/look/4.jpg"
     ));
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
@@ -506,7 +511,7 @@ test("trusted import returns the draft URL before host stills finish copying", a
       token,
       ownerId,
       webOrigin: "https://f-motion.example",
-      mediaOrigins: ["https://media.fotium.vip"]
+      mediaOrigins: ["https://media.example.com"]
     },
     externalMediaRequest: async () => {
       await gate;
@@ -522,7 +527,7 @@ test("trusted import returns the draft URL before host stills finish copying", a
       body: JSON.stringify({
         external_id: "followup:slow-stills",
         title: "Slow stills",
-        media_urls: ["https://media.fotium.vip/galleries/look/slow.jpg"]
+        media_urls: ["https://media.example.com/galleries/look/slow.jpg"]
       })
     });
     assert.equal(response.status, 201);
