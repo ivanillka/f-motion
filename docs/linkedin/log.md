@@ -4,6 +4,8 @@ Newest first. The weekly agent appends one row when it posts or skips.
 
 | Date | Topic | Source | Result |
 |------|-------|--------|--------|
+| 2026-09-01 | Context-aware media — 0.3.0 (fit scores, glance, orientation) | CHANGELOG | draft |
+| 2026-09-01 | Reliability — 0.3.1 (HTTP storyboard, public repo) | CHANGELOG | draft |
 | 2026-08-28 | Create is the chat — 0.2.0 update log | CHANGELOG / posts/2026-08-28-create-chat.md | draft |
 | 2026-08-25 | Stack: React timeline, Flutter Android, Express API, FFmpeg workers, object storage | Company page launch | posted |
 | 2026-08-25 | Live alpha intro — not a commercial launch. f-motion.com | Company page launch | posted |

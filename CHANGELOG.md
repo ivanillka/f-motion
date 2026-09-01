@@ -4,6 +4,16 @@ All notable changes to F-Motion are listed here. The same notes appear in the
 studio under **Settings → What’s new**. Product version lives in root
 `package.json` and `apps/web/src/release.ts`.
 
+## [0.3.1] — 2026-09-01
+
+### Reliability & site
+
+- Self-host and LAN HTTP studios create storyboards again — command IDs no longer require a secure browser context.
+- Create chat keeps your first topic line for the brief and opens the storyboard when the chat finishes.
+- Brief questions use a shorter subject instead of repeating your whole opening line.
+- f-motion.com marketing routes: **Login** and **How it works** show coming soon; hosted studio sign-in stays gated until reopen.
+- GitHub repository is public; VPS IPs, Tailscale URLs, and partner-specific deploy defaults removed from the tree.
+
 ## [0.3.0] — 2026-09-01
 
 ### Context-aware media

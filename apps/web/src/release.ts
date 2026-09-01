@@ -16,6 +16,16 @@ export interface ReleaseNote {
 /** Newest first. Settings shows the current version plus one prior note. */
 export const RELEASE_NOTES: readonly ReleaseNote[] = [
   {
+    version: "0.3.1",
+    date: "2026-09-01",
+    title: "Reliability & site",
+    items: [
+      "Self-host and LAN HTTP studios create storyboards again — command IDs no longer require a secure browser context.",
+      "Create chat keeps your first topic line for the brief and opens the storyboard when the chat finishes.",
+      "Brief questions use a shorter subject instead of repeating your whole opening line."
+    ]
+  },
+  {
     version: "0.3.0",
     date: "2026-09-01",
     title: "Context-aware media",
