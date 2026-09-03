@@ -52,7 +52,7 @@ async function expectRenderedProject(
 }
 
 async function signIn(page: import("@playwright/test").Page) {
-  await page.goto("/");
+  await page.goto("/studio");
   await page.getByRole("button", { name: "Email me a magic link" }).click();
   await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
 }
