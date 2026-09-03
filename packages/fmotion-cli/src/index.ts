@@ -13,3 +13,10 @@ export {
 export { readMedia, purposeFromMedia, type MediaRead, type MediaKind } from "./media.js";
 export { draftUrl, webOriginFromEnv } from "./draft.js";
 export { composeReel, type ComposeOptions, type ComposeResult } from "./compose.js";
+export {
+  batchReels,
+  loadBatchManifest,
+  type BatchItem,
+  type BatchOptions,
+  type BatchResult
+} from "./batch.js";

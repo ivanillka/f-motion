@@ -83,6 +83,7 @@ import {
   SelfhostValidationError,
   type SelfhostOwnerAuth
 } from "./selfhost-auth.js";
+import { ProjectBusyError, type ProjectPurgeResult } from "./project-purge.js";
 
 export interface MediaDependencies {
   repository: PostgresMediaRepository;
@@ -109,6 +110,8 @@ interface AppBaseOptions {
   apiKeys?: ApiKeyService;
   hostUsage?: HostUsageService;
   ownerAuth?: SelfhostOwnerAuth;
+  /** Hosted/self-host path: collect object keys, refuse busy jobs, cascade DB, then S3. */
+  purgeProject?: (ownerId: string, projectId: string) => Promise<ProjectPurgeResult | undefined>;
 }
 
 export interface AppOptions extends AppBaseOptions {
@@ -755,6 +758,28 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       if (project.scenes.length === 0) body.concepts = conceptsFor(project.brief);
       response.json(body);
     } catch (error) {
+      next(error);
+    }
+  });
+  app.delete("/api/projects/:projectId", async (request, response, next) => {
+    try {
+      if (!emptyBody(request.body)) {
+        return response.status(422).json({ type: "validation", message: "This request does not accept fields." });
+      }
+      const ownerId = String(response.locals.ownerId);
+      const projectId = request.params.projectId;
+      if (options.purgeProject) {
+        const result = await options.purgeProject(ownerId, projectId);
+        if (!result) return response.status(404).json({ type: "not_found", message: "not found" });
+        return response.json(result);
+      }
+      const deleted = await projects.delete(ownerId, projectId);
+      if (!deleted) return response.status(404).json({ type: "not_found", message: "not found" });
+      response.json({ project_id: projectId, deleted: true, storage_failures: [] });
+    } catch (error) {
+      if (error instanceof ProjectBusyError) {
+        return response.status(409).json({ type: "conflict", message: error.message });
+      }
       next(error);
     }
   });

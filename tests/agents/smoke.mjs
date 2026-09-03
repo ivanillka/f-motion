@@ -53,6 +53,7 @@ const reply = await new Promise((resolve, reject) => {
 assert.ok(reply.result.tools.some((tool) => tool.name === "usage"));
 assert.ok(reply.result.tools.some((tool) => tool.name === "compose_reel"));
 assert.ok(reply.result.tools.some((tool) => tool.name === "read_media"));
+assert.ok(reply.result.tools.some((tool) => tool.name === "delete_project"));
 child.kill("SIGTERM");
 await new Promise((resolve, reject) => api.close((error) => error ? reject(error) : resolve()));
 console.log("agents smoke ok");

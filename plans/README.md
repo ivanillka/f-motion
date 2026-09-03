@@ -130,7 +130,7 @@ Execute sequentially:
    scene, with conservative at-most-one submit behavior and existing media
    quarantine/inspection before selection.
 3. **050** reuses the same boundary to animate one already-approved image. It
-   must not introduce text-to-video, bulk generation, or automatic attachment.
+   must not introduce text-to-video, bulk AI generation, or automatic attachment.
 
 All three target the deployed branch `advisor/133-design-contract`, not the
 older planning checkout. Production feature enablement remains blocked until
@@ -267,6 +267,9 @@ Pushed to origin.
 - Merging divergent `8125787` history into `6287cce` to "recover" 012–016
   (those behaviors already exist on tip; the histories forked)
 - Text-to-video, bulk AI generation, managed credits (still rejected)
+- Parallel bulk renders or a second compose/render pipeline (still rejected).
+  Allowed: ephemeral sequential export batch — the singular `composeReel`
+  module, once per item, then `DELETE` the project after download.
 - Splitting `apps/web/src/main.tsx` / `server.ts` before tip promotion
 - KEK multi-version load and Postgres FAL confirm integration (deferred, not
   rejected — schedule after 052 if rotation is imminent)

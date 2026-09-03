@@ -88,8 +88,9 @@ Host-agnostic. Cursor MCP, OpenClaw HTTP wrappers, or `fmotion` CLI.
 | Tool | Role |
 |---|---|
 | `read_media` | Local inspect: kind, bytes, mime, width/height, orientation. No upload. |
-| `compose_reel` | Create → select concept → attach uploads and/or Pexels storyboard → optional preview. Returns `draft_url` and render download when complete. |
+| `compose_reel` | Create → select concept → attach uploads and/or Pexels storyboard → optional preview or final. Returns `draft_url` and render download when complete. This is the **only** compose path. |
 | `open_draft` | Resolve `project_url` / `projectUrl` for selective edit. |
+| `delete_project` | Hard-delete the project and its stored blobs after a result-only download. |
 | Existing `/v1` tools | `run_command`, `request_render`, `wait_render`, `download_render`, `usage` for later selective edits. |
 
 `read_media` is advisory. The worker still quarantines and inspects bytes
@@ -111,11 +112,31 @@ After compose, the user may:
 Do not clone the project unless a save-as-copy conflict requires it (existing
 studio recovery). The composed project **is** the draft.
 
+## Result-only bulk
+
+Bulk is the singular compose loop, run once per item, then purged. Do not
+invent a second storyboard or render pipeline.
+
+For each brief / media set:
+
+1. `compose_reel` with `render: "final"` (or CLI `fmotion batch`, which only
+   loops this function).
+2. Save the MP4 (`download_render` / CLI `--out`).
+3. `delete_project` before starting the next item.
+4. Do **not** promise `draft_url` in this mode. Single-shot compose still
+   returns a draft URL for studio edit.
+
+Stay serial (one active project). No text-to-video, no auto FAL fill, no
+parallel renders. On `quota_exceeded`, stop. Prior successes are already
+downloaded and deleted.
+
 ## Non-goals
 
 - A second public HTTP resource besides `/v1` orchestration
+- A second compose/render implementation for bulk
 - Auto-publishing to social
 - Managed FAL or Pexels keys
 - Auto-attaching AI stills or Hailuo clips
 - Replacing the storyboard editor
 - Server-side project clone as the “copy to draft” action
+- Keeping a pile of bulk drafts on the host

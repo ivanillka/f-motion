@@ -40,6 +40,12 @@ event IDs. Reconnection sends the last received event ID; the API resumes from
 that event when retained or returns the latest authoritative job snapshot.
 Completion refers to an immutable render result owned by the API.
 
+`DELETE /projects/{project_id}` hard-deletes the owner's project after the
+client has taken the render file. It refuses while a render or generation job
+is still queued or running. The API collects known object keys, removes the
+project row (cascade), then best-effort deletes storage objects and reports
+any leftover keys in `storage_failures`.
+
 ## Errors, retries, and local drafts
 
 Shared error codes define stable machine meaning and explicit retryability.

@@ -55,6 +55,7 @@ npx fmotion usage --json
 npx fmotion projects create --purpose "Island lighthouse reel" --json
 npx fmotion media read ./still.jpg --json
 npx fmotion compose --purpose "Island lighthouse reel" --media ./still.jpg --json
+npx fmotion batch ./manifest.json --out ./out --json
 npx fmotion draft <projectId> --json
 npx fmotion render <projectId> preview --json
 npx fmotion wait <jobId> --json
@@ -67,7 +68,11 @@ Exit codes map typed API errors (`3` = `quota_exceeded`).
 
 ## MCP (`fmotion-mcp`)
 
-Tools: `read_media`, `compose_reel`, `open_draft`, `create_project`, `run_command`, `request_render`, `wait_render`, `download_render`, `usage`.
+Tools: `read_media`, `compose_reel`, `open_draft`, `create_project`, `run_command`, `request_render`, `wait_render`, `download_render`, `usage`, `delete_project`.
+
+Result-only bulk is the same `compose_reel` call once per item, then
+`delete_project`. `fmotion batch` is that loop; it does not add a second
+compose pipeline.
 
 ### Hermes `mcp_servers` snippet
 

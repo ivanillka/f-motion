@@ -388,6 +388,22 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteProject
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+      responses:
+        "200":
+          description: Project row and collected object-storage keys were removed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectPurgeResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /projects/{project_id}/commands:
     post:
       operationId: applyCommand
@@ -842,6 +858,16 @@ components:
         hint: { type: string }
         validated_at: { type: string, format: date-time }
       additionalProperties: false
+    ProjectPurgeResult:
+      type: object
+      required: [project_id, deleted, storage_failures]
+      properties:
+        project_id: { type: string }
+        deleted: { type: boolean, const: true }
+        storage_failures:
+          type: array
+          items: { type: string }
+          description: Object keys that failed best-effort storage delete after the DB row was removed
     ProjectSummary:
       type: object
       required: [id, revision, brief]

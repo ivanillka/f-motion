@@ -235,6 +235,33 @@ export class FmotionClient {
       metadata: Record<string, unknown>;
     }>("GET", `/v1/render-jobs/${jobId}/download`);
   }
+
+  deleteProject(projectId: string) {
+    return this.request<{
+      project_id: string;
+      deleted: boolean;
+      storage_failures: string[];
+    }>("DELETE", `/v1/projects/${projectId}`);
+  }
+
+  async downloadToFile(jobId: string, destPath: string): Promise<{
+    path: string;
+    bytes: number;
+    kind: string;
+    url: string;
+  }> {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const { dirname } = await import("node:path");
+    const meta = await this.download(jobId);
+    const response = await this.fetchImpl(meta.url);
+    if (!response.ok) {
+      throw new FmotionApiError(response.status, { type: "upstream", message: "download failed" });
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    await mkdir(dirname(destPath), { recursive: true });
+    await writeFile(destPath, bytes);
+    return { path: destPath, bytes: bytes.length, kind: meta.kind, url: meta.url };
+  }
 }
 
 export { loadCredentials, saveCredentials, credentialsPath, type FmotionCredentials } from "./config.js";

@@ -4,6 +4,14 @@ All notable changes to F-Motion are listed here. The same notes appear in the
 studio under **Settings → What’s new**. Product version lives in root
 `package.json` and `apps/web/src/release.ts`.
 
+## [Unreleased]
+
+### Ephemeral bulk (agent / CLI)
+
+- `DELETE /projects/{id}` purges a draft and its stored blobs after the file is downloaded.
+- `fmotion batch` runs the same `composeReel` path once per manifest item, saves the MP4, then deletes the project. No second pipeline, no draft pile.
+- MCP `delete_project` and result-only bulk docs. Bulk AI generation stays rejected.
+
 ## [0.3.1] — 2026-09-01
 
 ### Reliability & site
