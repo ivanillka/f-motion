@@ -82,8 +82,8 @@ function HomePage() {
         </div>
         <div className="mkt-hero-media">
           <picture>
-            <source type="image/webp" srcSet="/web/assets/studio-ui.webp" />
-            <img src="/web/assets/studio-ui.jpg" alt="F-Motion storyboard studio with a vertical preview" />
+            <source type="image/webp" srcSet="/marketing/studio-ui.webp" />
+            <img src="/marketing/studio-ui.jpg" alt="F-Motion storyboard studio with a vertical preview" />
           </picture>
         </div>
       </section>

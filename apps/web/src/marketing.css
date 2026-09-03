@@ -1,4 +1,24 @@
-@import url("https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap");
+@font-face {
+  font-family: "Syne";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/syne-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Syne";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/syne-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Syne";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/syne-800.woff2") format("woff2");
+}
 
 .mkt {
   --mkt-bg: #111213;
@@ -13,7 +33,7 @@
   --mkt-cyan: #00e5ff;
   --mkt-max: 1280px;
   color: var(--mkt-text);
-  font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   background: var(--mkt-bg);
   min-height: 100dvh;
 }
@@ -50,7 +70,7 @@
 .mkt-nav-links {
   display: none;
   gap: 2rem;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.75rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -82,7 +102,7 @@
 
 .mkt-text-link {
   color: var(--mkt-accent-soft);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -141,7 +161,7 @@
   padding: 0.75rem 1.5rem;
   border: 0;
   border-radius: 999px;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -208,7 +228,7 @@
   border: 1px solid var(--mkt-border);
   background: var(--mkt-raised);
   color: var(--mkt-accent-soft);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.75rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -304,7 +324,7 @@
   background: var(--mkt-raised);
   display: grid;
   place-items: center;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   color: var(--mkt-accent-soft);
@@ -410,7 +430,7 @@
   align-items: center;
   max-width: var(--mkt-max);
   margin: 0 auto;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.625rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -453,7 +473,7 @@
   border-radius: 999px;
   border: 1px solid var(--mkt-border);
   background: var(--mkt-raised);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.625rem;
   letter-spacing: 0.1em;
   color: var(--mkt-muted);
@@ -518,7 +538,7 @@
 }
 
 .mkt-recipe span {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.65rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -536,7 +556,7 @@
   margin: 0;
   padding: 1.25rem;
   overflow-x: auto;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.75rem;
   line-height: 1.55;
   color: var(--mkt-muted);
