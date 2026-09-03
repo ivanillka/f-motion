@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 !deploy/vps/.env.example
+!deploy/hetzner/.env.example
 # Production workspaces
 node_modules/
 dist/
@@ -18,6 +19,7 @@ apps/mobile/android/.gradle/
 .env*
 !.env.example
 !deploy/vps/.env.example
+!deploy/hetzner/.env.example
 *.db
 uploads/
 .worktrees/

@@ -1,7 +1,7 @@
 # F-Engine hosted image: API process plus optional render-worker process.
 # The API process never calls FFmpeg (see docs/runbooks/render-worker.md).
-# FFmpeg is in the image so Fly can run `apps/worker` as a second process
-# group on the same app when a dedicated worker app cannot be created.
+# FFmpeg is in the image so the Hetzner compose worker service can run
+# `apps/worker` from the same image as the API.
 # Build from the repo root so the npm workspace tree resolves:
 #
 #   docker build -f apps/api/Dockerfile -t f-engine-reference-api .

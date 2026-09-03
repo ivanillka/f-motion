@@ -19,7 +19,7 @@
   ],
   "scripts": {
     "lint": "tsc -b --pretty false",
-    "test": "node --test prisma/*.test.mjs tests/agents/skill-sources.test.mjs deploy/vps/*.test.mjs && npm test --workspaces --if-present",
+    "test": "node --test prisma/*.test.mjs tests/agents/skill-sources.test.mjs deploy/vps/*.test.mjs deploy/hetzner/*.test.mjs && npm test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "build:pages": "VITE_SITE_AT_ROOT=1 npm run build --workspace apps/web && npm run verify:pages-artifact",
     "verify:pages-artifact": "node tools/deploy/verify-pages-artifact.mjs",
@@ -31,7 +31,8 @@
     "test:e2e:web": "playwright test -c tests/e2e/playwright.config.ts",
     "test:package-consumer": "node --test tests/package-consumer.test.mjs",
     "linkedin:n8n:setup": "node scripts/setup-n8n-fmotion-linkedin.mjs",
-    "vps:up": "bash scripts/vps-up.sh"
+    "vps:up": "bash scripts/vps-up.sh",
+    "hetzner:up": "bash scripts/hetzner-up.sh"
   },
   "devDependencies": {
     "@playwright/test": "1.62.0",

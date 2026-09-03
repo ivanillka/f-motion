@@ -893,11 +893,11 @@ test("hosted worker can share the API database URL when QUEUE_DATABASE_URL is un
   assert.match(source, /QUEUE_DATABASE_URL\?\.trim\(\) \|\| required\("DATABASE_URL"\)/);
 });
 
-test("hosted Fly API app runs a worker process that can render", async () => {
-  const fly = await readFile(new URL("../../../fly.api.toml", import.meta.url), "utf8");
-  assert.match(fly, /RENDER_WIDTH = "1080"/);
-  assert.match(fly, /RENDER_HEIGHT = "1920"/);
-  assert.match(fly, /\[http_service\][\s\S]*processes = \["app"\]/);
+test("hosted Hetzner compose runs a worker process that can render", async () => {
+  const compose = await readFile(new URL("../../../deploy/hetzner/docker-compose.yml", import.meta.url), "utf8");
+  assert.match(compose, /RENDER_WIDTH: \$\{RENDER_WIDTH:-1080\}/);
+  assert.match(compose, /RENDER_HEIGHT: \$\{RENDER_HEIGHT:-1920\}/);
+  assert.match(compose, /command: \["node", "apps\/worker\/dist\/start\.js"\]/);
   const docker = await readFile(new URL("../../api/Dockerfile", import.meta.url), "utf8");
   assert.match(docker, /apps\/worker\/dist/);
   assert.match(docker, /apps\/worker\/assets\/fonts/);

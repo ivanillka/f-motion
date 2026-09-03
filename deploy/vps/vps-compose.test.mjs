@@ -58,7 +58,7 @@ test("VPS compose path is single-seat, BYOK, and Fotium-free", async () => {
   assert.match(guide, /single user|single-seat|single seat/i);
   assert.match(guide, /corporate|paid/);
   assert.match(guide, /Fotium/);
-  assert.match(guide, /Fly\.io/);
+  assert.match(guide, /hosted-deploy|Hetzner/);
 });
 
 test("install.sh refuses placeholder env and prints next steps", () => {

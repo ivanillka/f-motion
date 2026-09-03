@@ -4,6 +4,10 @@ All notable changes to F-Motion are listed here. The same notes appear in the
 studio under **Settings → What’s new**. Product version lives in root
 `package.json` and `apps/web/src/release.ts`.
 
+## Unreleased
+
+- Hosted f-motion.com runs on a Hetzner VPS (`deploy/hetzner`, `npm run hetzner:up`). Fly.io configs are removed.
+
 ## [0.3.1] — 2026-09-01
 
 ### Reliability & site
