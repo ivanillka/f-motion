@@ -4,6 +4,10 @@ All notable changes to F-Motion are listed here. The same notes appear in the
 studio under **Settings → What’s new**. Product version lives in root
 `package.json` and `apps/web/src/release.ts`.
 
+## Unreleased
+
+- Hosted marketing site loads the hero image from `/marketing/` and Syne from `/fonts/` so Cloudflare Pages no longer 301s them into the SPA, and CSP no longer blocks Google Fonts.
+
 ## [0.3.1] — 2026-09-01
 
 ### Reliability & site

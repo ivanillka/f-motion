@@ -12,6 +12,9 @@ async function writePagesMeta() {
   await writeFile(
     resolve(dist, "_redirects"),
     [
+      "/web/assets/* /web/assets/:splat 200",
+      "/web/fonts/* /web/fonts/:splat 200",
+      "/web/vendor/* /web/vendor/:splat 200",
       "/web / 301",
       "/web/ / 301",
       "/web/* /:splat 301",
