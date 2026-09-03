@@ -236,6 +236,53 @@ export class FmotionClient {
     }>("GET", `/v1/render-jobs/${jobId}/download`);
   }
 
+  compose(body: {
+    purpose: string;
+    audience?: string;
+    tone?: string;
+    fill_stock?: boolean;
+    render?: "preview" | "final" | "none";
+  }) {
+    return this.request<{
+      project_id: string;
+      revision: number;
+      ready_scenes: number;
+      scene_count: number;
+      next: string;
+      render?: {
+        job_id: string;
+        phase: string;
+        kind: string;
+        download?: { url: string; expires_at: string; kind: string };
+      };
+    }>("POST", "/v1/compose", body);
+  }
+
+  runBatch(body: {
+    items: Array<{ purpose: string; audience?: string; tone?: string; fill_stock?: boolean }>;
+    render?: "preview" | "final";
+    keep_on_failure?: boolean;
+    fail_fast?: boolean;
+  }) {
+    return this.request<{
+      ok: boolean;
+      render: "preview" | "final";
+      succeeded: number;
+      failed: number;
+      items: Array<{
+        index: number;
+        purpose: string;
+        ok: boolean;
+        project_id?: string;
+        job_id?: string;
+        download?: { url: string; expires_at: string; kind: string };
+        purged?: boolean;
+        error?: string;
+        quota_exceeded?: boolean;
+      }>;
+    }>("POST", "/v1/batches", body);
+  }
+
   deleteProject(projectId: string) {
     return this.request<{
       project_id: string;

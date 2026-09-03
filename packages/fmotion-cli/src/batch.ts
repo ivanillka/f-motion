@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { FmotionApiError, FmotionClient } from "./client.js";
 import { composeReel, type ComposeOptions } from "./compose.js";
@@ -44,14 +44,6 @@ function slug(purpose: string): string {
   return (cleaned || "reel").slice(0, 40);
 }
 
-function projectIdOf(error: unknown): string | undefined {
-  if (error && typeof error === "object" && "project_id" in error) {
-    const value = (error as { project_id?: unknown }).project_id;
-    return typeof value === "string" && value ? value : undefined;
-  }
-  return undefined;
-}
-
 function asItems(raw: unknown): unknown[] {
   if (Array.isArray(raw)) return raw;
   if (raw && typeof raw === "object" && Array.isArray((raw as { items?: unknown }).items)) {
@@ -94,16 +86,82 @@ export async function loadBatchManifest(target: string): Promise<BatchItem[]> {
   });
 }
 
-async function purgeIfNeeded(
-  client: FmotionClient,
-  projectId: string | undefined,
-  keep: boolean
-): Promise<boolean> {
-  if (!projectId || keep) return false;
-  await client.deleteProject(projectId);
-  return true;
+function destFor(item: BatchItem, index: number, outDir: string): string {
+  if (!item.out) return join(outDir, `${String(index + 1).padStart(2, "0")}-${slug(item.purpose)}.mp4`);
+  return isAbsolute(item.out) ? item.out : join(outDir, item.out);
 }
 
+async function saveUrl(url: string, dest: string): Promise<void> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new FmotionApiError(response.status, { type: "upstream", message: "download failed" });
+  }
+  await mkdir(dirname(dest), { recursive: true });
+  await writeFile(dest, Buffer.from(await response.arrayBuffer()));
+}
+
+async function batchLocalItem(
+  client: FmotionClient,
+  item: BatchItem,
+  index: number,
+  outDir: string,
+  render: "preview" | "final",
+  keepOnFailure: boolean
+): Promise<BatchItemResult> {
+  const composeOptions: ComposeOptions = {
+    purpose: item.purpose,
+    audience: item.audience,
+    tone: item.tone,
+    mediaPaths: item.mediaPaths,
+    fillStock: item.fillStock,
+    render
+  };
+  let projectId: string | undefined;
+  try {
+    const composed = await composeReel(client, composeOptions);
+    projectId = composed.project_id;
+    if (!composed.render || composed.render.phase !== "complete" || !composed.render.job_id) {
+      throw new Error(
+        composed.next === "preview_ready"
+          ? "render did not complete"
+          : composed.next === "needs_media"
+            ? "storyboard still needs media"
+            : "no ready media to render"
+      );
+    }
+    const file = await client.downloadToFile(composed.render.job_id, destFor(item, index, outDir));
+    await client.deleteProject(projectId);
+    return {
+      index,
+      purpose: item.purpose,
+      ok: true,
+      path: file.path,
+      project_id: projectId,
+      job_id: composed.render.job_id,
+      purged: true
+    };
+  } catch (error) {
+    if (projectId && !keepOnFailure) {
+      await client.deleteProject(projectId).catch(() => undefined);
+    }
+    const quota = error instanceof FmotionApiError && error.body.type === "quota_exceeded";
+    return {
+      index,
+      purpose: item.purpose,
+      ok: false,
+      project_id: projectId,
+      purged: Boolean(projectId) && !keepOnFailure,
+      quota_exceeded: quota || undefined,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+/**
+ * Serial bulk. Brief/stock items call POST /v1/batches so the API loops
+ * composeOne — the same function as POST /v1/compose. Local files still go
+ * through composeReel because the bytes live on the client.
+ */
 export async function batchReels(
   client: FmotionClient,
   items: BatchItem[],
@@ -115,75 +173,68 @@ export async function batchReels(
   await mkdir(outDir, { recursive: true });
   const results: BatchItemResult[] = [];
 
-  for (const [index, item] of items.entries()) {
-    const composeOptions: ComposeOptions = {
-      purpose: item.purpose,
-      audience: item.audience,
-      tone: item.tone,
-      mediaPaths: item.mediaPaths,
-      fillStock: item.fillStock,
-      render
-    };
-    const dest = item.out
-      ? (isAbsolute(item.out) ? item.out : join(outDir, item.out))
-      : join(outDir, `${String(index + 1).padStart(2, "0")}-${slug(item.purpose)}.mp4`);
-    let projectId: string | undefined;
-    try {
-      const composed = await composeReel(client, composeOptions);
-      projectId = composed.project_id;
-      if (!composed.render || composed.render.phase !== "complete" || !composed.render.job_id) {
-        throw new Error(
-          composed.next === "preview_ready"
-            ? "render did not complete"
-            : composed.next === "needs_media"
-              ? "storyboard still needs media"
-              : "no ready media to render"
-        );
-      }
-      const file = await client.downloadToFile(composed.render.job_id, dest);
-      const purged = await purgeIfNeeded(client, projectId, false);
-      results.push({
-        index,
+  const remote = items
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => !item.mediaPaths?.length);
+  if (remote.length) {
+    const remoteResult = await client.runBatch({
+      items: remote.map(({ item }) => ({
         purpose: item.purpose,
-        ok: true,
-        path: file.path,
-        project_id: projectId,
-        job_id: composed.render.job_id,
-        purged
-      });
-    } catch (error) {
-      const id = projectId || projectIdOf(error);
-      let purged = false;
-      try {
-        purged = await purgeIfNeeded(client, id, Boolean(options.keepOnFailure));
-      } catch {
-        purged = false;
+        audience: item.audience,
+        tone: item.tone,
+        fill_stock: item.fillStock
+      })),
+      render,
+      keep_on_failure: options.keepOnFailure,
+      fail_fast: options.failFast
+    });
+    for (const [offset, row] of remoteResult.items.entries()) {
+      const mapped = remote[offset];
+      if (!mapped) continue;
+      if (row.ok && row.download?.url) {
+        const dest = destFor(mapped.item, mapped.index, outDir);
+        await saveUrl(row.download.url, dest);
+        results[mapped.index] = { ...row, index: mapped.index, path: dest };
+      } else {
+        results[mapped.index] = { ...row, index: mapped.index };
+        if (options.failFast || row.quota_exceeded) {
+          return summarize(results, render);
+        }
       }
-      const quota = error instanceof FmotionApiError && error.body.type === "quota_exceeded";
-      results.push({
-        index,
-        purpose: item.purpose,
-        ok: false,
-        project_id: id,
-        purged,
-        quota_exceeded: quota || undefined,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      if (options.failFast || quota) break;
     }
   }
 
+  for (const [index, item] of items.entries()) {
+    if (!item.mediaPaths?.length) continue;
+    results[index] = await batchLocalItem(
+      client,
+      item,
+      index,
+      outDir,
+      render,
+      Boolean(options.keepOnFailure)
+    );
+    if ((options.failFast || results[index]?.quota_exceeded) && !results[index]?.ok) {
+      return summarize(results, render);
+    }
+  }
+
+  return summarize(results, render);
+}
+
+function summarize(results: BatchItemResult[], render: "preview" | "final"): BatchResult {
+  const items = results.filter(Boolean);
   return {
-    ok: results.every((item) => item.ok),
+    ok: items.every((item) => item.ok),
     render,
-    items: results,
-    succeeded: results.filter((item) => item.ok).length,
-    failed: results.filter((item) => !item.ok).length
+    items,
+    succeeded: items.filter((item) => item.ok).length,
+    failed: items.filter((item) => !item.ok).length
   };
 }
 
 export function batchUsage(): string {
   return `Usage: fmotion batch <manifest.json|dir> [--out dir] [--render preview|final] [--fail-fast] [--keep-on-failure]
   dir must contain manifest.json; mediaPaths are relative to that file.
-  Each item is one composeReel call — there is no second bulk pipeline.`;
+  Brief/stock items call POST /v1/batches (composeOne in a loop). Local files still use composeReel.`;
 }

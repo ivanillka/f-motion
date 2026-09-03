@@ -84,6 +84,7 @@ import {
   type SelfhostOwnerAuth
 } from "./selfhost-auth.js";
 import { ProjectBusyError, type ProjectPurgeResult } from "./project-purge.js";
+import { composeOne, runBatch, type ComposeOneDeps } from "./compose-one.js";
 
 export interface MediaDependencies {
   repository: PostgresMediaRepository;
@@ -491,11 +492,113 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     return actual.length === keys.length && keys.every((key) => actual.includes(key));
   };
   const emptyBody = (value: unknown) => value === undefined || exactObject(value, []);
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const waitMediaReady = async (ownerId: string, projectId: string, assetId: string, timeoutMs = 60_000) => {
+    if (!options.media) throw new Error("media is not configured");
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const asset = await options.media.repository.get(ownerId, projectId, assetId);
+      if (asset?.state === "ready") return asset;
+      if (asset && asset.state !== "admitted" && asset.state !== "inspecting") {
+        throw new Error(`media ${assetId} ${asset.state}`);
+      }
+      await sleep(50);
+    }
+    throw new Error(`media ${assetId} still inspecting`);
+  };
   const pexelsForOwner = async (media: MediaDependencies, ownerId: string) => {
     if (media.pexelsForOwner) return media.pexelsForOwner(ownerId);
     if (media.pexels) return media.pexels;
     throw new PexelsProviderError("unavailable");
   };
+  const composeDeps = (ownerId: string): ComposeOneDeps => ({
+    projects,
+    fillStock: options.media ? async (owner, projectId) => {
+      const project = await projects.get(owner, projectId);
+      if (!project) throw new Error("not found");
+      const pexels = await pexelsForOwner(options.media!, owner);
+      const used = new Set<number>();
+      for (const scene of [...project.scenes].sort((left, right) => left.order - right.order)) {
+        if (scene.media_id) continue;
+        const hits = await pexels.search(scene.visual_prompt?.trim() || scene.caption.trim() || project.brief.purpose);
+        const selected = hits.find((hit) => !used.has(hit.id));
+        if (!selected) continue;
+        used.add(selected.id);
+        const asset = await pexels.copy(owner, projectId, selected, options.media!.repository, options.media!.store);
+        const ready = await waitMediaReady(owner, projectId, asset.id);
+        const latest = await projects.get(owner, projectId);
+        const current = latest?.scenes.find((item) => item.id === scene.id);
+        if (!latest || !current) continue;
+        const duration = typeof ready.detected?.duration_ms === "number"
+          ? Math.min(15_000, Math.max(500, Math.round(ready.detected.duration_ms)))
+          : current.duration_ms;
+        await projects.command(owner, {
+          command_id: randomUUID(),
+          project_id: projectId,
+          base_revision: latest.revision,
+          client_timestamp: new Date().toISOString(),
+          kind: "update_scene",
+          payload: { scene: { ...current, media_id: asset.id, duration_ms: duration } }
+        });
+      }
+    } : undefined,
+    requestRender: options.renders ? async (owner, projectId, kind) => {
+      if (options.hostUsage) {
+        const usage = await options.hostUsage.status(owner);
+        const cost = kind === "final" ? usage.costs.final : usage.costs.preview;
+        if (usage.balance < cost) {
+          const error = new QuotaExceededError();
+          Object.assign(error, { type: "quota_exceeded" });
+          throw error;
+        }
+      }
+      const job = await options.renders!.create(owner, projectId, kind);
+      if (!job) throw new Error("not found");
+      if (options.hostUsage) {
+        try {
+          await options.hostUsage.consumeRender(owner, kind, job.jobId);
+        } catch (error) {
+          if (error instanceof QuotaExceededError) {
+            await options.renders!.cancel(owner, job.jobId);
+            Object.assign(error, { type: "quota_exceeded" });
+          }
+          throw error;
+        }
+      }
+      return { job_id: job.jobId, kind: job.kind };
+    } : undefined,
+    waitRender: options.renders ? async (owner, jobId) => {
+      const deadline = Date.now() + 15 * 60_000;
+      let lastEventId = "";
+      let last = { phase: "queued" };
+      const terminal = new Set(["complete", "cancelled", "failed"]);
+      while (Date.now() < deadline) {
+        const events = await options.renders!.events(owner, jobId, lastEventId || undefined);
+        if (!events) throw new Error("not found");
+        for (const event of events) {
+          last = { phase: event.phase };
+          lastEventId = event.eventId;
+          if (terminal.has(event.phase)) return last;
+        }
+        await sleep(50);
+      }
+      throw new Error("render wait timed out");
+    } : undefined,
+    download: options.renders && options.media ? async (owner, jobId) => {
+      const result = await options.renders!.result(owner, jobId);
+      if (!result) throw new Error("not found");
+      return {
+        url: await options.media!.store.signedGet(result.objectKey),
+        expires_at: new Date(Date.now() + 300_000).toISOString(),
+        kind: result.kind
+      };
+    } : undefined,
+    purge: async (owner, projectId) => {
+      if (options.purgeProject) return options.purgeProject(owner, projectId);
+      const deleted = await projects.delete(owner, projectId);
+      return deleted ? { project_id: projectId, deleted: true, storage_failures: [] } : undefined;
+    }
+  });
   const pexelsHttpError = (error: unknown) => pexelsCredentialHttpError(error)
     ?? (error instanceof PexelsRequestError
       ? { status: 503, body: { type: "provider_unavailable", message: "Pexels could not be reached. Try again later." } }
@@ -779,6 +882,74 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     } catch (error) {
       if (error instanceof ProjectBusyError) {
         return response.status(409).json({ type: "conflict", message: error.message });
+      }
+      next(error);
+    }
+  });
+  app.post("/api/compose", async (request, response, next) => {
+    try {
+      const ownerId = String(response.locals.ownerId);
+      const brief = projectBrief(request.body);
+      const body = request.body && typeof request.body === "object" && !Array.isArray(request.body)
+        ? request.body as Record<string, unknown>
+        : {};
+      const render = body.render === "final" ? "final" : body.render === "none" ? "none" : "preview";
+      const result = await composeOne(composeDeps(ownerId), ownerId, {
+        purpose: brief.purpose,
+        audience: brief.audience,
+        tone: brief.tone,
+        fillStock: body.fill_stock === true || body.fillStock === true,
+        render
+      });
+      response.status(201).json(result);
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        return response.status(422).json({ type: "validation", message: error.message });
+      }
+      if (error instanceof QuotaExceededError) {
+        return response.status(402).json({ type: "quota_exceeded", message: error.message });
+      }
+      next(error);
+    }
+  });
+  app.post("/api/batches", async (request, response, next) => {
+    try {
+      const ownerId = String(response.locals.ownerId);
+      const body = request.body;
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return response.status(422).json({ type: "validation", message: "invalid batch" });
+      }
+      const rawItems = Array.isArray((body as { items?: unknown }).items)
+        ? (body as { items: unknown[] }).items
+        : undefined;
+      if (!rawItems?.length) {
+        return response.status(422).json({ type: "validation", message: "Batch has no items" });
+      }
+      const items = rawItems.map((item) => {
+        const brief = projectBrief(item);
+        const row = item && typeof item === "object" && !Array.isArray(item)
+          ? item as Record<string, unknown>
+          : {};
+        return {
+          purpose: brief.purpose,
+          audience: brief.audience,
+          tone: brief.tone,
+          fillStock: row.fill_stock === true || row.fillStock === true
+        };
+      });
+      const render = (body as { render?: unknown }).render === "preview" ? "preview" : "final";
+      const result = await runBatch(composeDeps(ownerId), ownerId, items, {
+        render,
+        keepOnFailure: (body as { keep_on_failure?: unknown }).keep_on_failure === true,
+        failFast: (body as { fail_fast?: unknown }).fail_fast === true
+      });
+      response.status(result.ok ? 200 : 207).json(result);
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        return response.status(422).json({ type: "validation", message: error.message });
+      }
+      if (error instanceof QuotaExceededError) {
+        return response.status(402).json({ type: "quota_exceeded", message: error.message });
       }
       next(error);
     }

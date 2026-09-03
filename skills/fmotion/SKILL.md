@@ -89,7 +89,8 @@ wrap `/v1` with the owner API key.
 
 - `read_media` — local sniff (not admission)
 - `compose_reel` — create, attach, optional stock fill, optional preview/final.
-  This is the only compose path. Bulk is this call in a loop.
+  Server equivalent: `POST /v1/compose` (`composeOne`). Bulk is that function
+  in a loop (`POST /v1/batches`).
 - `open_draft` — `projectUrl` for the studio
 - `delete_project` — purge a project after a result-only download
 - `usage` / `run_command` / `request_render` / `wait_render` / `download_render`
@@ -97,10 +98,10 @@ wrap `/v1` with the owner API key.
 
 ### Result-only bulk
 
-When the user wants many files and no drafts: for each item call
-`compose_reel` (`render: "final"`), save the file, then `delete_project`.
-Or run `fmotion batch manifest.json` — it only loops `composeReel`. Never
-open a draft in this mode. One item at a time.
+When the user wants many files and no drafts: `POST /v1/batches` or
+`fmotion batch manifest.json` — both reuse `composeOne`, then purge.
+Local files: `compose_reel` (`render: "final"`), save, then `delete_project`.
+Never open a draft in this mode. One item at a time.
 
 Install MCP:
 

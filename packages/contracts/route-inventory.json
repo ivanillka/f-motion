@@ -15,6 +15,8 @@
     { "method": "DELETE", "path": "/providers/pexels/credential", "auth": "bearer" },
     { "method": "GET", "path": "/projects", "auth": "bearer" },
     { "method": "POST", "path": "/projects", "auth": "bearer" },
+    { "method": "POST", "path": "/compose", "auth": "bearer" },
+    { "method": "POST", "path": "/batches", "auth": "bearer" },
     { "method": "GET", "path": "/projects/{project_id}", "auth": "bearer" },
     { "method": "DELETE", "path": "/projects/{project_id}", "auth": "bearer" },
     { "method": "POST", "path": "/projects/{project_id}/commands", "auth": "bearer" },

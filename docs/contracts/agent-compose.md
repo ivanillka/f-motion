@@ -114,17 +114,20 @@ studio recovery). The composed project **is** the draft.
 
 ## Result-only bulk
 
-Bulk is the singular compose loop, run once per item, then purged. Do not
+Bulk is `composeOne` on the API, run once per item, then purged. Do not
 invent a second storyboard or render pipeline.
 
-For each brief / media set:
+- `POST /v1/compose` — one item (`composeOne`).
+- `POST /v1/batches` — the host loops that same function, then deletes the
+  project after a completed download URL.
+- CLI `fmotion batch` calls `/v1/batches` for brief/stock items and saves
+  the files. Local `mediaPaths` still go through `compose_reel` (bytes live
+  on the client), then `delete_project`.
+- MCP without the batch route: `compose_reel` (`render: "final"`), save the
+  file, then `delete_project` before the next item.
 
-1. `compose_reel` with `render: "final"` (or CLI `fmotion batch`, which only
-   loops this function).
-2. Save the MP4 (`download_render` / CLI `--out`).
-3. `delete_project` before starting the next item.
-4. Do **not** promise `draft_url` in this mode. Single-shot compose still
-   returns a draft URL for studio edit.
+Do **not** promise `draft_url` in this mode. Single-shot compose still
+returns a draft URL for studio edit.
 
 Stay serial (one active project). No text-to-video, no auto FAL fill, no
 parallel renders. On `quota_exceeded`, stop. Prior successes are already

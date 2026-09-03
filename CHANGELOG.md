@@ -9,7 +9,9 @@ studio under **Settings → What’s new**. Product version lives in root
 ### Ephemeral bulk (agent / CLI)
 
 - `DELETE /projects/{id}` purges a draft and its stored blobs after the file is downloaded.
-- `fmotion batch` runs the same `composeReel` path once per manifest item, saves the MP4, then deletes the project. No second pipeline, no draft pile.
+- `POST /compose` is the singular `composeOne` path (create, storyboard, optional stock, optional render).
+- `POST /batches` runs that same function once per item, then hard-deletes the project. Serial, result-only.
+- `fmotion batch` calls `POST /v1/batches` for brief/stock items. Local files still use `composeReel` because the bytes live on the client.
 - MCP `delete_project` and result-only bulk docs. Bulk AI generation stays rejected.
 
 ## [0.3.1] — 2026-09-01

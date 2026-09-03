@@ -70,9 +70,10 @@ Exit codes map typed API errors (`3` = `quota_exceeded`).
 
 Tools: `read_media`, `compose_reel`, `open_draft`, `create_project`, `run_command`, `request_render`, `wait_render`, `download_render`, `usage`, `delete_project`.
 
-Result-only bulk is the same `compose_reel` call once per item, then
-`delete_project`. `fmotion batch` is that loop; it does not add a second
-compose pipeline.
+Result-only bulk is `POST /v1/batches`, which loops `composeOne` (the same
+function as `POST /v1/compose`) and deletes each project after the file is
+ready. `fmotion batch` calls that route for brief/stock items. MCP can still
+do `compose_reel` then `delete_project` per item.
 
 ### Hermes `mcp_servers` snippet
 

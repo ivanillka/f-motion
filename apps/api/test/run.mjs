@@ -4,6 +4,7 @@ await import("./auth-routes.test.mjs");
 await import("./contract-routes.test.mjs");
 await import("./projects-list.test.mjs");
 await import("./project-purge.test.mjs");
+await import("./compose-one.test.mjs");
 await import("./local-auth.test.mjs");
 await import("./selfhost-auth.test.mjs");
 await import("./access-policy.test.mjs");

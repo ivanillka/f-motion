@@ -268,8 +268,9 @@ Pushed to origin.
   (those behaviors already exist on tip; the histories forked)
 - Text-to-video, bulk AI generation, managed credits (still rejected)
 - Parallel bulk renders or a second compose/render pipeline (still rejected).
-  Allowed: ephemeral sequential export batch — the singular `composeReel`
-  module, once per item, then `DELETE` the project after download.
+  Allowed: ephemeral sequential export batch — the singular `composeOne`
+  module (`POST /v1/compose`), looped by `POST /v1/batches`, then `DELETE`
+  the project after download.
 - Splitting `apps/web/src/main.tsx` / `server.ts` before tip promotion
 - KEK multi-version load and Postgres FAL confirm integration (deferred, not
   rejected — schedule after 052 if rotation is imminent)

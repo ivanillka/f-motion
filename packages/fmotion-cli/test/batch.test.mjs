@@ -14,94 +14,63 @@ async function listen(server) {
   return `http://127.0.0.1:${address.port}`;
 }
 
-function composeFake({ quotaAfter = Infinity } = {}) {
+function batchFake({ quotaAfter = Infinity } = {}) {
   let nextId = 1;
-  let renderCount = 0;
   const hits = [];
   const deleted = [];
   const leftover = new Set();
   const server = createServer((request, response) => {
     hits.push(`${request.method} ${request.url}`);
     const url = new URL(request.url, "http://127.0.0.1");
-    if (request.method === "POST" && url.pathname === "/v1/projects") {
-      const id = `p${nextId}`;
-      nextId += 1;
-      leftover.add(id);
-      response.statusCode = 201;
-      response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({ project: { id, revision: 0, scenes: [] } }));
-      return;
-    }
-    const command = url.pathname.match(/^\/v1\/projects\/([^/]+)\/commands$/);
-    if (request.method === "POST" && command) {
-      response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({
-        id: command[1],
-        revision: 1,
-        scenes: [{ id: "s1", order: 0, duration_ms: 3000, media_id: "m1" }]
-      }));
-      return;
-    }
-    const getProject = url.pathname.match(/^\/v1\/projects\/([^/]+)$/);
-    if (request.method === "GET" && getProject) {
-      response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({
-        project: {
-          id: getProject[1],
-          revision: 1,
-          scenes: [{ id: "s1", order: 0, duration_ms: 3000, media_id: "m1" }]
-        }
-      }));
-      return;
-    }
-    if (request.method === "DELETE" && getProject) {
-      leftover.delete(getProject[1]);
-      deleted.push(getProject[1]);
-      response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({
-        project_id: getProject[1],
-        deleted: true,
-        storage_failures: []
-      }));
-      return;
-    }
-    const render = url.pathname.match(/^\/v1\/projects\/([^/]+)\/render$/);
-    if (request.method === "POST" && render) {
-      renderCount += 1;
-      response.setHeader("content-type", "application/json");
-      if (renderCount > quotaAfter) {
-        response.statusCode = 402;
-        response.end(JSON.stringify({ type: "quota_exceeded", message: "host usage quota exceeded" }));
-        return;
-      }
+    if (request.method === "POST" && url.pathname === "/v1/batches") {
       let body = "";
       request.on("data", (chunk) => { body += chunk; });
       request.on("end", () => {
-        const kind = JSON.parse(body || "{}").kind || "preview";
+        const parsed = JSON.parse(body || "{}");
+        const items = Array.isArray(parsed.items) ? parsed.items : [];
+        const results = [];
+        for (const [index, item] of items.entries()) {
+          const id = `p${nextId}`;
+          nextId += 1;
+          if (index >= quotaAfter) {
+            deleted.push(id);
+            results.push({
+              index,
+              purpose: item.purpose,
+              ok: false,
+              project_id: id,
+              purged: true,
+              quota_exceeded: true,
+              error: "host usage quota exceeded"
+            });
+            break;
+          }
+          deleted.push(id);
+          results.push({
+            index,
+            purpose: item.purpose,
+            ok: true,
+            project_id: id,
+            job_id: `job-${id}`,
+            download: {
+              url: `http://127.0.0.1:${server.address().port}/files/${id}.mp4`,
+              expires_at: "2099-01-01T00:00:00.000Z",
+              kind: "final"
+            },
+            purged: true
+          });
+        }
+        const ok = results.every((item) => item.ok);
+        response.statusCode = ok ? 200 : 207;
+        response.setHeader("content-type", "application/json");
         response.end(JSON.stringify({
-          job_id: `job-${render[1]}`,
-          project_id: render[1],
-          revision: 1,
-          kind,
-          state: "queued"
+          ok,
+          render: parsed.render || "final",
+          items: results,
+          succeeded: results.filter((item) => item.ok).length,
+          failed: results.filter((item) => !item.ok).length
         }));
       });
-      return;
-    }
-    const events = url.pathname.match(/^\/v1\/render-jobs\/([^/]+)\/events$/);
-    if (events) {
-      response.setHeader("content-type", "text/event-stream");
-      response.end(`data: {"job_id":"${events[1]}","phase":"complete","percent":100}\n\n`);
-      return;
-    }
-    const download = url.pathname.match(/^\/v1\/render-jobs\/([^/]+)\/download$/);
-    if (download) {
-      response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({
-        url: `http://127.0.0.1:${server.address().port}/files/${download[1]}.mp4`,
-        expires_at: "2099-01-01T00:00:00.000Z",
-        kind: "final"
-      }));
       return;
     }
     if (url.pathname.startsWith("/files/")) {
@@ -116,8 +85,8 @@ function composeFake({ quotaAfter = Infinity } = {}) {
   return { server, hits, deleted, leftover };
 }
 
-test("batchReels loops composeReel, writes two files, and purges each project", async () => {
-  const fake = composeFake();
+test("batchReels posts /v1/batches, writes two files, and records each purge", async () => {
+  const fake = batchFake();
   const origin = await listen(fake.server);
   const outDir = await mkdtemp(join(tmpdir(), "fmotion-batch-"));
   try {
@@ -137,15 +106,15 @@ test("batchReels loops composeReel, writes two files, and purges each project", 
     assert.match(await readFile(join(outDir, files[0]), "utf8"), /mp4-/);
     assert.deepEqual(fake.deleted, ["p1", "p2"]);
     assert.equal(fake.leftover.size, 0);
-    assert.ok(fake.hits.every((hit) => !hit.includes("/batch")));
-    assert.ok(fake.hits.filter((hit) => hit === "POST /v1/projects").length === 2);
+    assert.ok(fake.hits.includes("POST /v1/batches"));
+    assert.ok(fake.hits.every((hit) => !hit.includes("/v1/projects")));
   } finally {
     await new Promise((resolve, reject) => fake.server.close((error) => error ? reject(error) : resolve()));
   }
 });
 
 test("quota on a later item keeps prior files and already-purged projects", async () => {
-  const fake = composeFake({ quotaAfter: 2 });
+  const fake = batchFake({ quotaAfter: 2 });
   const origin = await listen(fake.server);
   const outDir = await mkdtemp(join(tmpdir(), "fmotion-batch-quota-"));
   try {
