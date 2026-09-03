@@ -311,6 +311,7 @@ export function App() {
   });
   const partnerGalleryUrl = import.meta.env.VITE_PARTNER_GALLERY_URL?.trim();
   const partnerGalleryName = import.meta.env.VITE_PARTNER_GALLERY_NAME?.trim() || "Partner gallery";
+  const previewRenderLabel = import.meta.env.VITE_RENDER_LABEL?.trim() || "720p preview";
   const renderLabel = renderKind === "final" ? "final export" : previewRenderLabel;
   const renderHeading = renderKind === "final" ? "Final export" : "Accurate preview";
   const downloadLabel = renderKind === "final" ? "Download export" : "Download preview";
