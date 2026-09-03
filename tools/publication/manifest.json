@@ -119,9 +119,8 @@
     {
       "name": "private-deployment",
       "classification": "private",
+      "prefixes": ["deploy/"],
       "paths": [
-        "fly.api.toml",
-        "fly.worker.toml",
         "apps/api/Dockerfile",
         "apps/worker/Dockerfile"
       ],

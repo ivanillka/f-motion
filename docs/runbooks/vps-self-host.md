@@ -7,7 +7,7 @@ Run Frame Engine on one VPS with Docker Compose. This path is for **one operator
 | **Open source (this doc)** | 1 user | `FENGINE_ENV=selfhost` + `FENGINE_ACCESS_MODE=single_user` + one UUID |
 | **Corporate / paid** | Several users | Not this compose stack — contact sales / paid deployment |
 
-Not included here: Fly.io, Fotium partner branding, shared Pexels/FAL server keys. Media providers use **BYOK** in the app.
+Not included here: the public f-motion.com Hetzner host, Fotium partner branding, shared Pexels/FAL server keys. Media providers use **BYOK** in the app.
 
 ## What you get
 
@@ -94,5 +94,5 @@ The studio header shows the baked git SHA. If it does not match `git rev-parse H
 ## Not this path
 
 - Multi-user invite lists or open mode → corporate product
-- Fly.toml / GitHub Actions deploy → cloud SaaS
+- Invite-only f-motion.com on Hetzner → [hosted deploy](hosted-deploy.md)
 - Fotium partner email gates → stripped from the web image build
