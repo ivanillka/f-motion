@@ -6,6 +6,7 @@ test("home is a centered title with feature buttons", async () => {
   const source = await readFile(new URL("../src/MarketingPages.tsx", import.meta.url), "utf8");
   const repo = await readFile(new URL("../src/repo.ts", import.meta.url), "utf8");
   assert.match(source, /mkt-splash/);
+  assert.match(source, /mkt-splash-stage/);
   assert.match(source, /F-Motion/);
   assert.match(source, /aria-label="Features"/);
   assert.match(source, />Studio</);

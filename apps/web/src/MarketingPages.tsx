@@ -91,8 +91,10 @@ function Splash({ page }: { page: MarketingRoute }) {
   return (
     <section className="mkt-splash" aria-labelledby="splash-title">
       {page !== "home" ? <a className="mkt-splash-brand" href="/">F-Motion</a> : null}
-      <h1 id="splash-title" className={headline.includes(" ") ? "is-long" : undefined}>{headline}</h1>
-      {lede ? <p className="mkt-splash-lede">{lede}{page === "self-host" ? <> <a href={SELFHOST_DOCS} target="_blank" rel="noreferrer">Guide</a></> : null}</p> : null}
+      <div className="mkt-splash-stage">
+        <h1 id="splash-title" className={headline.includes(" ") ? "is-long" : undefined}>{headline}</h1>
+        {lede ? <p className="mkt-splash-lede">{lede}{page === "self-host" ? <> <a href={SELFHOST_DOCS} target="_blank" rel="noreferrer">Guide</a></> : null}</p> : null}
+      </div>
       <FeatureNav page={page} studio={studio} />
     </section>
   );
