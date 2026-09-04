@@ -44,10 +44,10 @@ never a fill.
 ## Splash
 
 Keep the contract: the word lives in a glass cube in the sky. Same cube on
-every splash page. Text links under it (Studio in rose). Stars and fog sit
-in the empty left and right. Sky speed rises while the page is loading or
-swapping, then eases back to slow. Freeze all of it when reduced-motion is
-set. Do not add a hero essay.
+every splash page. Text links under it (Studio in rose). Stars and fog sit far in the empty left and right — faint, distant, never
+on the cube. Sky speed rises while the page is loading or swapping, then
+eases back to slow. Freeze all of it when reduced-motion is set. Do not
+add a hero essay.
 
 ## After a visual pass
 

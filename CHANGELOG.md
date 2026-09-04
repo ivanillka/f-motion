@@ -9,7 +9,7 @@ studio under **Settings → What’s new**. Product version lives in root
 ### Site
 
 - Splash feature buttons are Studio, How it works, GitHub, and Self-host. GitHub opens the agent skill (`skills/fmotion`). Hosted was the same CTA as Studio and is gone; `/hosted` still opens home.
-- Cursor `frontend-design` skill lives in `.cursor/skills/` and follows `DESIGN.md`. The splash is a glass cube in space holding the wordmark on every public page. Stars speed up while the site is loading or swapping pages, then ease back to slow. Reduced motion freezes the sky and the cube.
+- Cursor `frontend-design` skill lives in `.cursor/skills/` and follows `DESIGN.md`. The splash is a glass cube in space holding the wordmark on every public page. Stars speed up while the site is loading or swapping pages, then ease back to slow. Fog stays faint and out at the edges. Reduced motion freezes the sky and the cube.
 
 ### Ephemeral bulk (agent / CLI)
 

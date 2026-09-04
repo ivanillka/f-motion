@@ -160,20 +160,20 @@ function SplashSky({ paceRef }: { paceRef: { current: number } }) {
     const paint = (t: number) => {
       ctx.clearRect(0, 0, width, height);
       const clouds = [
-        { x: 0.16 + Math.sin(t * 0.11) * 0.035, y: 0.46 + Math.cos(t * 0.09) * 0.03, rose: true },
-        { x: 0.84 + Math.cos(t * 0.1) * 0.035, y: 0.52 + Math.sin(t * 0.08) * 0.03, rose: false }
+        { x: 0.04 + Math.sin(t * 0.07) * 0.02, y: 0.38 + Math.cos(t * 0.05) * 0.02, rose: true },
+        { x: 0.96 + Math.cos(t * 0.06) * 0.02, y: 0.62 + Math.sin(t * 0.05) * 0.02, rose: false }
       ];
       for (const cloud of clouds) {
         const gx = cloud.x * width;
         const gy = cloud.y * height;
-        const reach = Math.max(width, height) * 0.42;
-        const fog = ctx.createRadialGradient(gx, gy, 0, gx, gy, reach);
+        const reach = Math.max(width, height) * 0.55;
+        const fog = ctx.createRadialGradient(gx, gy, reach * 0.12, gx, gy, reach);
         if (cloud.rose) {
-          fog.addColorStop(0, "rgba(165, 77, 103, 0.36)");
-          fog.addColorStop(0.42, "rgba(180, 40, 70, 0.12)");
+          fog.addColorStop(0, "rgba(165, 77, 103, 0.14)");
+          fog.addColorStop(0.55, "rgba(180, 40, 70, 0.04)");
         } else {
-          fog.addColorStop(0, "rgba(70, 88, 110, 0.32)");
-          fog.addColorStop(0.42, "rgba(0, 180, 210, 0.07)");
+          fog.addColorStop(0, "rgba(70, 88, 110, 0.12)");
+          fog.addColorStop(0.55, "rgba(0, 180, 210, 0.03)");
         }
         fog.addColorStop(1, "rgba(0, 0, 0, 0)");
         ctx.fillStyle = fog;
