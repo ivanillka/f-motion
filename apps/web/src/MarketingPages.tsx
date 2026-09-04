@@ -66,21 +66,27 @@ export function pageTitle(path: string): string {
 
 function FeatureNav({ page, studio }: { page: MarketingRoute; studio: string }) {
   const item = (href: string, label: string, current: boolean) => (
-    <a
-      className={`mkt-btn mkt-btn-lg ${current ? "mkt-btn-ghost is-current" : "mkt-btn-ghost"}`}
-      href={href}
-      aria-current={current ? "page" : undefined}
-    >
-      {label}
-    </a>
+    <a href={href} aria-current={current ? "page" : undefined}>{label}</a>
   );
   return (
     <nav className="mkt-splash-features" aria-label="Features">
-      <a className="mkt-btn mkt-btn-primary mkt-btn-lg" href={studio}>Studio</a>
+      <a className="is-studio" href={studio}>Studio</a>
       {item("/how-it-works", "How it works", page === "how-it-works")}
-      <a className="mkt-btn mkt-btn-ghost mkt-btn-lg" href={SKILL_REPO} target="_blank" rel="noreferrer">GitHub</a>
+      <a href={SKILL_REPO} target="_blank" rel="noreferrer">GitHub</a>
       {item("/self-host", "Self-host", page === "self-host")}
     </nav>
+  );
+}
+
+function Headline({ text }: { text: string }) {
+  const long = text.includes(" ");
+  if (text !== "F-Motion") {
+    return <h1 id="splash-title" className={long ? "is-long" : undefined}>{text}</h1>;
+  }
+  return (
+    <h1 id="splash-title">
+      F<span className="mkt-hyphen">-</span>Motion
+    </h1>
   );
 }
 
@@ -91,10 +97,8 @@ function Splash({ page }: { page: MarketingRoute }) {
   return (
     <section className="mkt-splash" aria-labelledby="splash-title">
       {page !== "home" ? <a className="mkt-splash-brand" href="/">F-Motion</a> : null}
-      <div className="mkt-splash-stage">
-        <h1 id="splash-title" className={headline.includes(" ") ? "is-long" : undefined}>{headline}</h1>
-        {lede ? <p className="mkt-splash-lede">{lede}{page === "self-host" ? <> <a href={SELFHOST_DOCS} target="_blank" rel="noreferrer">Guide</a></> : null}</p> : null}
-      </div>
+      <Headline text={headline} />
+      {lede ? <p className="mkt-splash-lede">{lede}{page === "self-host" ? <> <a href={SELFHOST_DOCS} target="_blank" rel="noreferrer">Guide</a></> : null}</p> : null}
       <FeatureNav page={page} studio={studio} />
     </section>
   );
@@ -118,7 +122,7 @@ export function MarketingSite({ path }: { path: string }) {
     const timer = window.setTimeout(() => {
       setShown(page);
       setPhase("in");
-    }, 180);
+    }, 200);
     return () => window.clearTimeout(timer);
   }, [page, shown]);
 

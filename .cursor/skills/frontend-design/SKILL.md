@@ -41,8 +41,8 @@ hairline accents, never fills.
 
 ## Splash
 
-Keep the contract: big title, few buttons (Studio, How it works, GitHub,
-Self-host). Put the title in a 9:16 stage. Do not add a hero essay.
+Keep the contract: the word is the reel. Giant title, no card, text links
+(Studio in rose). The hyphen is a 1px cyan hairline. Do not add a hero essay.
 
 ## After a visual pass
 

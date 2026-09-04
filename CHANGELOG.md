@@ -9,7 +9,7 @@ studio under **Settings → What’s new**. Product version lives in root
 ### Site
 
 - Splash feature buttons are Studio, How it works, GitHub, and Self-host. GitHub opens the agent skill (`skills/fmotion`). Hosted was the same CTA as Studio and is gone; `/hosted` still opens home.
-- Cursor `frontend-design` skill lives in `.cursor/skills/` and follows `DESIGN.md`. The splash title sits in a 9:16 stage.
+- Cursor `frontend-design` skill lives in `.cursor/skills/` and follows `DESIGN.md`. The splash is the wordmark: no card, Studio as a rose text link, hyphen as a cyan hairline.
 
 ### Ephemeral bulk (agent / CLI)
 
