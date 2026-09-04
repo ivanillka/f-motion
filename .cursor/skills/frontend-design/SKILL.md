@@ -15,9 +15,11 @@ and **f-motion.com** — never a partner brand name.
 ## Job
 
 F-Motion makes vertical reels. The characteristic object is a **9:16 frame**.
-The personality is cinematic, calm, precise, private. Dark-first. Rose
-`#a54d67` is the only action color. Cyan / magenta / yellow / green are
-hairline accents, never fills.
+The personality is cinematic, calm, precise, private. Dark-first. The
+memorable marketing object is a **glass cube in space** holding the
+wordmark — reuse that cube on every public splash page. Rose `#a54d67`
+is the only action color. Cyan is a hairline on the cube and the hyphen,
+never a fill.
 
 ## Do
 
@@ -41,9 +43,11 @@ hairline accents, never fills.
 
 ## Splash
 
-Keep the contract: the word is the reel. Giant title, no card, text links
-(Studio in rose). The hyphen is a 1px cyan hairline. Quiet fog and stars may
-live in the empty left and right — never over the type. Do not add a hero essay.
+Keep the contract: the word lives in a glass cube in the sky. Same cube on
+every splash page. Text links under it (Studio in rose). Stars and fog sit
+in the empty left and right. Sky speed rises while the page is loading or
+swapping, then eases back to slow. Freeze all of it when reduced-motion is
+set. Do not add a hero essay.
 
 ## After a visual pass
 

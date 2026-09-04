@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./marketing.css";
 
 import { githubBlobUrl, githubTreeUrl } from "./repo";
@@ -116,7 +116,22 @@ function seedStars(count: number): SkyStar[] {
   });
 }
 
-function SplashSky() {
+const CUBE_FACES = ["front", "back", "right", "left", "top", "bottom"] as const;
+
+function WordCube({ children }: { children: ReactNode }) {
+  return (
+    <div className="mkt-cube-scene">
+      <div className="mkt-cube">
+        {CUBE_FACES.map((side) => (
+          <span key={side} className="mkt-cube-face" data-side={side} aria-hidden="true" />
+        ))}
+        <div className="mkt-cube-core">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function SplashSky({ paceRef }: { paceRef: { current: number } }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = ref.current;
@@ -125,10 +140,13 @@ function SplashSky() {
     if (!ctx) return;
     const reduced = typeof matchMedia === "function"
       && matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const stars = seedStars(110);
+    const stars = seedStars(110);
     let width = 0;
     let height = 0;
     let frame = 0;
+    let clock = 0;
+    let last = performance.now();
+    let current = paceRef.current;
 
     const size = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -139,8 +157,7 @@ function SplashSky() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
 
-    const paint = (ms: number) => {
-      const t = ms / 1000;
+    const paint = (t: number) => {
       ctx.clearRect(0, 0, width, height);
       const clouds = [
         { x: 0.16 + Math.sin(t * 0.11) * 0.035, y: 0.46 + Math.cos(t * 0.09) * 0.03, rose: true },
@@ -188,7 +205,14 @@ function SplashSky() {
       return () => watch.disconnect();
     }
     const tick = (ms: number) => {
-      if (!document.hidden) paint(ms);
+      const dt = Math.min(0.05, (ms - last) / 1000);
+      last = ms;
+      if (!document.hidden) {
+        const target = paceRef.current;
+        current += (target - current) * Math.min(1, dt * 2.6);
+        clock += dt * current;
+        paint(clock);
+      }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
@@ -196,7 +220,7 @@ function SplashSky() {
       cancelAnimationFrame(frame);
       watch.disconnect();
     };
-  }, []);
+  }, [paceRef]);
   return <canvas className="mkt-sky" ref={ref} aria-hidden="true" />;
 }
 
@@ -207,8 +231,10 @@ function Splash({ page }: { page: MarketingRoute }) {
   return (
     <section className="mkt-splash" aria-labelledby="splash-title">
       {page !== "home" ? <a className="mkt-splash-brand" href="/">F-Motion</a> : null}
-      <Headline text={headline} />
-      {lede ? <p className="mkt-splash-lede">{lede}{page === "self-host" ? <> <a href={SELFHOST_DOCS} target="_blank" rel="noreferrer">Guide</a></> : null}</p> : null}
+      <WordCube>
+        <Headline text={headline} />
+        {lede ? <p className="mkt-splash-lede">{lede}{page === "self-host" ? <> <a href={SELFHOST_DOCS} target="_blank" rel="noreferrer">Guide</a></> : null}</p> : null}
+      </WordCube>
       <FeatureNav page={page} studio={studio} />
     </section>
   );
@@ -218,6 +244,27 @@ export function MarketingSite({ path }: { path: string }) {
   const page = marketingRoute(path);
   const [shown, setShown] = useState(page);
   const [phase, setPhase] = useState<"in" | "out">("in");
+  const [busy, setBusy] = useState(true);
+  const pace = busy ? 3.4 : phase === "out" ? 2.2 : 1;
+  const paceRef = useRef(pace);
+  paceRef.current = pace;
+
+  useEffect(() => {
+    let gone = false;
+    const finish = () => { if (!gone) setBusy(false); };
+    const onLoad = () => {
+      const fonts = document.fonts?.ready ?? Promise.resolve();
+      void fonts.then(finish);
+    };
+    if (document.readyState === "complete") onLoad();
+    else window.addEventListener("load", onLoad);
+    const fallback = window.setTimeout(finish, 2200);
+    return () => {
+      gone = true;
+      window.removeEventListener("load", onLoad);
+      window.clearTimeout(fallback);
+    };
+  }, []);
 
   useEffect(() => {
     if (page === shown) return;
@@ -237,8 +284,8 @@ export function MarketingSite({ path }: { path: string }) {
   }, [page, shown]);
 
   return (
-    <div className="mkt mkt-is-splash">
-      <SplashSky />
+    <div className="mkt mkt-is-splash" style={{ ["--mkt-pace" as string]: String(pace) }}>
+      <SplashSky paceRef={paceRef} />
       <div className="mkt-main mkt-main-splash">
         <div className={`mkt-page is-${phase}`} key={shown}>
           <Splash page={shown} />
