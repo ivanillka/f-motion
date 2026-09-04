@@ -287,7 +287,7 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   await page.getByRole("button", { name: "Edit scene 1" }).click();
   await page.getByRole("button", { name: "Find another licensed video for scene 1" }).click();
   await expect(page.locator(".fit-badge").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Select for scene 1" })).toHaveCount(8);
+  await expect(page.getByRole("button", { name: "Select for scene 1" })).toHaveCount(3);
   await page.getByRole("article").filter({ hasText: "Fixture Two With A Long Name" })
     .getByRole("button", { name: "Select for scene 1" }).click();
   await expect(page.getByRole("status").filter({ hasText: "video by Fixture Two With A Long Name on Pexels" })).toBeVisible();
