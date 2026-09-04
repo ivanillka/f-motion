@@ -7,7 +7,6 @@ const SELFHOST_DOCS = githubBlobUrl("docs/runbooks/self-host.md");
 export type MarketingRoute =
   | "home"
   | "self-host"
-  | "hosted"
   | "how-it-works"
   | "login";
 
@@ -33,7 +32,6 @@ export function isMarketingPath(path: string): boolean {
 
 export function marketingRoute(path: string): MarketingRoute {
   if (path === "/self-host") return "self-host";
-  if (path === "/hosted") return "hosted";
   if (path === "/how-it-works") return "how-it-works";
   if (path === "/login") return "login";
   return "home";
@@ -42,7 +40,6 @@ export function marketingRoute(path: string): MarketingRoute {
 const TITLES: Record<MarketingRoute, string> = {
   home: "F-Motion",
   "self-host": "F-Motion — Self-host",
-  hosted: "F-Motion — Hosted",
   "how-it-works": "F-Motion — How it works",
   login: "F-Motion — Login"
 };
@@ -50,7 +47,6 @@ const TITLES: Record<MarketingRoute, string> = {
 const HEADLINES: Record<MarketingRoute, string> = {
   home: "F-Motion",
   "how-it-works": "How it works",
-  hosted: "Hosted",
   "self-host": "Self-host",
   login: "Login"
 };
@@ -58,7 +54,6 @@ const HEADLINES: Record<MarketingRoute, string> = {
 const LEDES: Record<MarketingRoute, string> = {
   home: "",
   "how-it-works": "Coming soon on f-motion.com.",
-  hosted: "Sign in, write a brief, download a 720p preview.",
   "self-host": "The same studio, one image, on your VPS.",
   login: "Coming soon on f-motion.com."
 };
@@ -82,7 +77,6 @@ function FeatureNav({ page, studio }: { page: MarketingRoute; studio: string }) 
     <nav className="mkt-splash-features" aria-label="Features">
       <a className="mkt-btn mkt-btn-primary mkt-btn-lg" href={studio}>Studio</a>
       {item("/how-it-works", "How it works", page === "how-it-works")}
-      {item("/hosted", "Hosted", page === "hosted")}
       {item("/self-host", "Self-host", page === "self-host")}
     </nav>
   );

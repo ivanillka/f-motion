@@ -14,6 +14,11 @@ function normalizePath(pathname: string): string {
   return pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
 }
 
+function canonicalPath(pathname: string): string {
+  const path = normalizePath(pathname);
+  return path === "/hosted" ? "/" : path;
+}
+
 function redirectStudioAuth(): void {
   const url = new URL(window.location.href);
   const params = url.searchParams;
@@ -35,12 +40,20 @@ function redirectStudioAuth(): void {
 }
 
 function SiteRoot() {
-  const [path, setPath] = useState(() => normalizePath(window.location.pathname));
+  const [path, setPath] = useState(() => canonicalPath(window.location.pathname));
 
   useEffect(() => {
     redirectStudioAuth();
-    setPath(normalizePath(window.location.pathname));
-    const onPop = () => setPath(normalizePath(window.location.pathname));
+    if (normalizePath(window.location.pathname) === "/hosted") {
+      history.replaceState(null, "", "/");
+    }
+    setPath(canonicalPath(window.location.pathname));
+    const onPop = () => {
+      if (normalizePath(window.location.pathname) === "/hosted") {
+        history.replaceState(null, "", "/");
+      }
+      setPath(canonicalPath(window.location.pathname));
+    };
     const onClick = (event: MouseEvent) => {
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
         return;
@@ -50,11 +63,12 @@ function SiteRoot() {
       let url: URL;
       try { url = new URL(link.href, window.location.origin); } catch { return; }
       if (url.origin !== window.location.origin) return;
-      const next = normalizePath(url.pathname);
-      if (!isMarketingPath(next)) return;
+      const raw = normalizePath(url.pathname);
+      if (!isMarketingPath(raw)) return;
+      const next = canonicalPath(raw);
       event.preventDefault();
-      if (next === normalizePath(window.location.pathname) && url.search === window.location.search) return;
-      history.pushState(null, "", `${url.pathname}${url.search}${url.hash}`);
+      if (next === canonicalPath(window.location.pathname) && url.search === window.location.search) return;
+      history.pushState(null, "", `${next}${url.search}${url.hash}`);
       setPath(next);
     };
     window.addEventListener("popstate", onPop);

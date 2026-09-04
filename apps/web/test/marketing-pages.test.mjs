@@ -9,8 +9,9 @@ test("home is a centered title with feature buttons", async () => {
   assert.match(source, /aria-label="Features"/);
   assert.match(source, />Studio</);
   assert.match(source, /\/how-it-works/);
-  assert.match(source, /\/hosted/);
   assert.match(source, /\/self-host/);
+  assert.doesNotMatch(source, />Hosted</);
+  assert.doesNotMatch(source, /href="\/hosted"/);
   assert.doesNotMatch(source, /mkt-hero-media|mkt-recipes|\bComingSoon\b/);
 });
 
@@ -24,6 +25,7 @@ test("every marketing page stays on the splash and animates the swap", async () 
   assert.match(site, /isMarketingPath/);
   assert.match(site, /history\.pushState/);
   assert.match(site, /document\.addEventListener\("click"/);
+  assert.match(site, /path === "\/hosted" \? "\/"/);
 });
 
 test("site router keeps self-host on studio-only App", async () => {

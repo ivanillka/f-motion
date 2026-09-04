@@ -6,6 +6,10 @@ studio under **Settings → What’s new**. Product version lives in root
 
 ## [Unreleased]
 
+### Site
+
+- Splash feature buttons are Studio, How it works, and Self-host. Hosted was the same CTA as Studio and is gone; `/hosted` still opens home.
+
 ### Ephemeral bulk (agent / CLI)
 
 - `DELETE /projects/{id}` purges a draft and its stored blobs after the file is downloaded.
