@@ -855,13 +855,19 @@ export function App() {
     const stored = parseBriefChat(localStorage.getItem("fengine-brief-chat"));
     const hasUser = stored.messages.some((message) => message.role === "user");
     if (!hasUser) {
-      localStorage.removeItem("fengine-draft");
-      localStorage.removeItem("fengine-brief-chat");
-      briefDraftRef.current = "";
-      setDraft("");
+      const leftover = stored.composer.trim();
+      if (!leftover) {
+        localStorage.removeItem("fengine-draft");
+        localStorage.removeItem("fengine-brief-chat");
+        briefDraftRef.current = "";
+        setDraft("");
+        setComposer("");
+      } else {
+        setComposer(leftover);
+        briefDraftRef.current = leftover;
+      }
       setBriefChat([BRIEF_OPENING]);
       setBriefAsked([]);
-      setComposer("");
     } else {
       setBriefChat(stored.messages.length ? stored.messages : [BRIEF_OPENING]);
       setBriefAsked(stored.asked);

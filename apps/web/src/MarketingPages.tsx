@@ -71,84 +71,15 @@ function ComingSoon({ title }: { title: string }) {
 function HomePage() {
   const studio = studioHref();
   return (
-    <div className="mkt-fade">
-      <section className="mkt-hero">
-        <h1>Vertical reels from your own media.</h1>
-        <p className="mkt-lead">Write a short brief, pick a story, drop in your clips, download a 720p vertical preview.</p>
-        <p className="mkt-chip">brief → storyboard → preview</p>
-        <div className="mkt-hero-actions">
-          <a className="mkt-btn mkt-btn-primary mkt-btn-lg" href={studio}>Open studio</a>
-          <a className="mkt-text-link" href="/self-host">Self-host on your VPS</a>
-        </div>
-        <div className="mkt-hero-media">
-          <picture>
-            <source type="image/webp" srcSet="/web/assets/studio-ui.webp" />
-            <img src="/web/assets/studio-ui.jpg" alt="F-Motion storyboard studio with a vertical preview" />
-          </picture>
-        </div>
-      </section>
-
-      <section className="mkt-section" id="how" aria-labelledby="how-heading">
-        <h2 id="how-heading">How a reel gets made</h2>
-        <p className="mkt-section-lede">Not a multitrack editor. A guided storyboard that stays on this path.</p>
-        <div className="mkt-steps">
-          <div className="mkt-step">
-            <div className="mkt-step-num">01 Describe</div>
-            <p>Write a short brief. F-Motion offers three story concepts — you pick one.</p>
-          </div>
-          <div className="mkt-step">
-            <div className="mkt-step-num">02 Choose pictures</div>
-            <p>Upload clips you already have. On the hosted studio you can also search licensed Pexels stock, or add optional AI stills.</p>
-          </div>
-          <div className="mkt-step">
-            <div className="mkt-step-num">03 Download preview</div>
-            <p>Edit the storyboard, then download an accurate 720p vertical preview. Nothing publishes itself.</p>
-          </div>
-        </div>
-        <p className="mkt-section-cta">
-          <a className="mkt-text-link" href="/how-it-works">Full how-it-works guide</a>
-        </p>
-      </section>
-
-      <section className="mkt-section" aria-labelledby="ways-heading">
-        <h2 id="ways-heading">Three ways to use it</h2>
-        <div className="mkt-recipes">
-          <article className="mkt-recipe">
-            <span>01 Hosted</span>
-            <h3>Use it here</h3>
-            <p>Open the studio on f-motion.com. Your uploads and Pexels search are free. Optional AI is billed when you confirm a job.</p>
-            <a href="/hosted">Hosted studio</a>
-          </article>
-          <article className="mkt-recipe">
-            <span>02 Self-host</span>
-            <h3>One image on your VPS</h3>
-            <p>Run the same studio on a machine you control. Your uploads stay there. Stock search and AI stay optional.</p>
-            <a href="/self-host">Self-host guide</a>
-          </article>
-          <article className="mkt-recipe">
-            <span>03 Source</span>
-            <h3>Read the GitHub repo</h3>
-            <p>Apache-2.0 source, issues, and docs. Fork it, file a bug, or pin a release on your own host.</p>
-            <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">GitHub repo</a>
-          </article>
-        </div>
-      </section>
-
-      <section className="mkt-band">
-        <div className="mkt-split">
-          <div>
-            <h2>Your media stays yours.</h2>
-            <p>Uploads on a self-hosted image stay on that VPS. Hosted files stay in F-Motion storage you can delete. Pexels clips keep their creator attribution. Pexels is not public domain.</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="mkt-cta">
-        <h2>Make a preview</h2>
-        <p>Start on f-motion.com. Self-host if you want the same app on your server.</p>
-        <a className="mkt-btn mkt-btn-primary mkt-btn-lg" href={studio}>Open studio</a>
-      </section>
-    </div>
+    <section className="mkt-splash" aria-labelledby="splash-title">
+      <h1 id="splash-title">F-Motion</h1>
+      <nav className="mkt-splash-features" aria-label="Features">
+        <a className="mkt-btn mkt-btn-primary mkt-btn-lg" href={studio}>Studio</a>
+        <a className="mkt-btn mkt-btn-ghost mkt-btn-lg" href="/how-it-works">How it works</a>
+        <a className="mkt-btn mkt-btn-ghost mkt-btn-lg" href="/hosted">Hosted</a>
+        <a className="mkt-btn mkt-btn-ghost mkt-btn-lg" href="/self-host">Self-host</a>
+      </nav>
+    </section>
   );
 }
 
@@ -238,18 +169,21 @@ function HostedPage() {
 export function MarketingSite({ path }: { path: string }) {
   const page = marketingRoute(path);
   const studio = studioHref();
+  const splash = page === "home";
 
   return (
-    <div className="mkt">
-      <header className="mkt-nav">
-        <a className="mkt-brand" href="/">F-MOTION</a>
-        <nav className="mkt-nav-links" aria-label="Marketing">
-          <MarketingNav page={page} />
-        </nav>
-        <a className="mkt-btn mkt-btn-primary" href={studio}>Open studio</a>
-      </header>
+    <div className={splash ? "mkt mkt-is-splash" : "mkt"}>
+      {!splash && (
+        <header className="mkt-nav">
+          <a className="mkt-brand" href="/">F-MOTION</a>
+          <nav className="mkt-nav-links" aria-label="Marketing">
+            <MarketingNav page={page} />
+          </nav>
+          <a className="mkt-btn mkt-btn-primary" href={studio}>Open studio</a>
+        </header>
+      )}
 
-      <div className="mkt-main">
+      <div className={splash ? "mkt-main mkt-main-splash" : "mkt-main"}>
         {page === "home" && <HomePage />}
         {page === "self-host" && <SelfHostPage />}
         {page === "hosted" && <HostedPage />}
@@ -257,15 +191,17 @@ export function MarketingSite({ path }: { path: string }) {
         {page === "login" && <ComingSoon title="Login" />}
       </div>
 
-      <footer className="mkt-footer">
-        <strong className="mkt-brand" style={{ fontSize: "1rem" }}>F-MOTION</strong>
-        <nav>
-          <MarketingNav page={page} />
-          <a href={studio}>Studio</a>
-          <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">GitHub</a>
-        </nav>
-        <span>© {new Date().getFullYear()} F-Motion</span>
-      </footer>
+      {!splash && (
+        <footer className="mkt-footer">
+          <strong className="mkt-brand" style={{ fontSize: "1rem" }}>F-MOTION</strong>
+          <nav>
+            <MarketingNav page={page} />
+            <a href={studio}>Studio</a>
+            <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">GitHub</a>
+          </nav>
+          <span>© {new Date().getFullYear()} F-Motion</span>
+        </footer>
+      )}
     </div>
   );
 }
