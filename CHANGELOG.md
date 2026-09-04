@@ -8,7 +8,7 @@ studio under **Settings → What’s new**. Product version lives in root
 
 ### Site
 
-- Splash feature buttons are Studio, How it works, and Self-host. Hosted was the same CTA as Studio and is gone; `/hosted` still opens home.
+- Splash feature buttons are Studio, How it works, GitHub, and Self-host. GitHub opens the agent skill (`skills/fmotion`). Hosted was the same CTA as Studio and is gone; `/hosted` still opens home.
 
 ### Ephemeral bulk (agent / CLI)
 

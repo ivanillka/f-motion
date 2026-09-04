@@ -4,12 +4,17 @@ import { readFile } from "node:fs/promises";
 
 test("home is a centered title with feature buttons", async () => {
   const source = await readFile(new URL("../src/MarketingPages.tsx", import.meta.url), "utf8");
+  const repo = await readFile(new URL("../src/repo.ts", import.meta.url), "utf8");
   assert.match(source, /mkt-splash/);
   assert.match(source, /F-Motion/);
   assert.match(source, /aria-label="Features"/);
   assert.match(source, />Studio</);
   assert.match(source, /\/how-it-works/);
+  assert.match(source, />GitHub</);
+  assert.match(source, /skills\/fmotion/);
   assert.match(source, /\/self-host/);
+  assert.match(repo, /ivanillka\/f-motion/);
+  assert.match(repo, /advisor\/133-design-contract/);
   assert.doesNotMatch(source, />Hosted</);
   assert.doesNotMatch(source, /href="\/hosted"/);
   assert.doesNotMatch(source, /mkt-hero-media|mkt-recipes|\bComingSoon\b/);

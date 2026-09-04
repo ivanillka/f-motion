@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import "./marketing.css";
 
-import { githubBlobUrl } from "./repo";
-const SELFHOST_DOCS = githubBlobUrl("docs/runbooks/self-host.md");
+import { githubBlobUrl, githubTreeUrl } from "./repo";
+const SELFHOST_DOCS = githubBlobUrl("docs/runbooks/vps-self-host.md");
+const SKILL_REPO = githubTreeUrl("skills/fmotion");
 
 export type MarketingRoute =
   | "home"
@@ -77,6 +78,7 @@ function FeatureNav({ page, studio }: { page: MarketingRoute; studio: string }) 
     <nav className="mkt-splash-features" aria-label="Features">
       <a className="mkt-btn mkt-btn-primary mkt-btn-lg" href={studio}>Studio</a>
       {item("/how-it-works", "How it works", page === "how-it-works")}
+      <a className="mkt-btn mkt-btn-ghost mkt-btn-lg" href={SKILL_REPO} target="_blank" rel="noreferrer">GitHub</a>
       {item("/self-host", "Self-host", page === "self-host")}
     </nav>
   );
