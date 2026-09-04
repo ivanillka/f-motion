@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 test("home is a centered title with feature buttons", async () => {
   const source = await readFile(new URL("../src/MarketingPages.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../src/marketing.css", import.meta.url), "utf8");
   const repo = await readFile(new URL("../src/repo.ts", import.meta.url), "utf8");
   assert.match(source, /mkt-splash/);
   assert.match(source, /mkt-hyphen/);
@@ -16,7 +17,11 @@ test("home is a centered title with feature buttons", async () => {
   assert.match(source, /seedStars/);
   assert.match(source, /0\.34/);
   assert.match(source, /0\.66/);
-  assert.doesNotMatch(source, /mkt-splash-stage/);
+  assert.doesNotMatch(source, /mkt-splash-brand/);
+  assert.doesNotMatch(css, /mkt-splash-brand/);
+  assert.match(css, /\.mkt-splash-lede \{/);
+  assert.match(source, /mkt-cube-home/);
+  assert.match(source, /aria-label="F-Motion"/);
   assert.match(source, /F-Motion/);
   assert.match(source, /aria-label="Features"/);
   assert.match(source, />Studio</);

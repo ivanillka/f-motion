@@ -228,13 +228,16 @@ function Splash({ page }: { page: MarketingRoute }) {
   const studio = studioHref();
   const headline = HEADLINES[page];
   const lede = LEDES[page];
+  const cube = (
+    <WordCube>
+      <Headline text={headline} />
+      {lede ? <p className="mkt-splash-lede">{lede}</p> : null}
+    </WordCube>
+  );
   return (
     <section className="mkt-splash" aria-labelledby="splash-title">
-      {page !== "home" ? <a className="mkt-splash-brand" href="/">F-Motion</a> : null}
-      <WordCube>
-        <Headline text={headline} />
-        {lede ? <p className="mkt-splash-lede">{lede}{page === "self-host" ? <> <a href={SELFHOST_DOCS} target="_blank" rel="noreferrer">Guide</a></> : null}</p> : null}
-      </WordCube>
+      {page === "home" ? cube : <a className="mkt-cube-home" href="/" aria-label="F-Motion">{cube}</a>}
+      {page === "self-host" ? <a className="mkt-splash-lede" href={SELFHOST_DOCS} target="_blank" rel="noreferrer">Guide</a> : null}
       <FeatureNav page={page} studio={studio} />
     </section>
   );

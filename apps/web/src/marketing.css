@@ -247,9 +247,15 @@
   transform: translateZ(calc(var(--s) / 2 - 2px));
 }
 
-.mkt-splash-brand,
-.mkt-splash-features {
+.mkt-cube-home {
   position: relative;
+  color: inherit;
+  display: block;
+}
+
+.mkt-cube-home:focus-visible {
+  outline: 2px solid var(--mkt-accent);
+  outline-offset: 8px;
 }
 
 .mkt-cube-core h1 {
@@ -275,6 +281,7 @@
 }
 
 .mkt-splash-features {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -307,15 +314,7 @@
   max-width: 9ch;
 }
 
-.mkt-splash-brand {
-  font-family: Syne, ui-sans-serif, sans-serif;
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  color: var(--mkt-muted);
-}
-
-.mkt-cube-core .mkt-splash-lede {
+.mkt-splash-lede {
   margin: 0;
   max-width: 16rem;
   color: var(--mkt-muted);
