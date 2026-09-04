@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   MarketingSite,
+  isMarketingPath,
   isStudioPath,
   pageTitle,
   studioComingSoon
@@ -40,8 +41,28 @@ function SiteRoot() {
     redirectStudioAuth();
     setPath(normalizePath(window.location.pathname));
     const onPop = () => setPath(normalizePath(window.location.pathname));
+    const onClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+      const link = event.target instanceof Element ? event.target.closest("a") : null;
+      if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
+      let url: URL;
+      try { url = new URL(link.href, window.location.origin); } catch { return; }
+      if (url.origin !== window.location.origin) return;
+      const next = normalizePath(url.pathname);
+      if (!isMarketingPath(next)) return;
+      event.preventDefault();
+      if (next === normalizePath(window.location.pathname) && url.search === window.location.search) return;
+      history.pushState(null, "", `${url.pathname}${url.search}${url.hash}`);
+      setPath(next);
+    };
     window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
+    document.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      document.removeEventListener("click", onClick);
+    };
   }, []);
 
   useEffect(() => {
