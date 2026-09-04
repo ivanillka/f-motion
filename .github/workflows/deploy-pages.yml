@@ -1,4 +1,5 @@
 name: deploy-pages
+# Retrigger production upload after hosted secrets were added.
 
 on:
   workflow_dispatch:
