@@ -167,8 +167,21 @@
 
 .mkt-main { padding-top: 6rem; }
 
-.mkt-is-splash { display: flex; min-height: 100dvh; }
-.mkt-main-splash { padding: 0; flex: 1; display: flex; }
+.mkt-is-splash {
+  position: relative;
+  display: flex;
+  min-height: 100dvh;
+  background: linear-gradient(180deg, #111213 0%, #131518 100%);
+}
+.mkt-main-splash { position: relative; z-index: 1; padding: 0; flex: 1; display: flex; }
+
+.mkt-sky {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
 
 .mkt-splash {
   position: relative;
@@ -181,8 +194,6 @@
   text-align: center;
   gap: 1.5rem;
   padding: 2rem 1.25rem;
-  background:
-    linear-gradient(180deg, #111213 0%, #131518 100%);
 }
 
 .mkt-splash::before {

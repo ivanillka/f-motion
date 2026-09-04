@@ -8,6 +8,10 @@ test("home is a centered title with feature buttons", async () => {
   assert.match(source, /mkt-splash/);
   assert.match(source, /mkt-hyphen/);
   assert.match(source, /is-studio/);
+  assert.match(source, /mkt-sky/);
+  assert.match(source, /seedStars/);
+  assert.match(source, /0\.34/);
+  assert.match(source, /0\.66/);
   assert.doesNotMatch(source, /mkt-splash-stage/);
   assert.match(source, /F-Motion/);
   assert.match(source, /aria-label="Features"/);

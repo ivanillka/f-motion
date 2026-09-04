@@ -42,7 +42,8 @@ hairline accents, never fills.
 ## Splash
 
 Keep the contract: the word is the reel. Giant title, no card, text links
-(Studio in rose). The hyphen is a 1px cyan hairline. Do not add a hero essay.
+(Studio in rose). The hyphen is a 1px cyan hairline. Quiet fog and stars may
+live in the empty left and right — never over the type. Do not add a hero essay.
 
 ## After a visual pass
 
