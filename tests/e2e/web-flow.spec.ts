@@ -70,13 +70,31 @@ async function describeVideo(page: Page, text: string): Promise<void> {
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
 }
 
+async function briefAdvance(page: Page): Promise<"storyboard" | "own" | "choices"> {
+  const storyboard = page.getByRole("heading", { name: "Storyboard" });
+  const own = page.getByRole("button", { name: "My own media", exact: true });
+  const choice = page.locator(".brief-chat-choices button").first();
+  await expect.poll(async () => {
+    if (await storyboard.isVisible()) return "storyboard";
+    if (await own.isVisible()) return "own";
+    if (await choice.isVisible()) return "choices";
+    return "wait";
+  }, { timeout: 15_000 }).not.toBe("wait");
+  if (await storyboard.isVisible()) return "storyboard";
+  if (await own.isVisible()) return "own";
+  return "choices";
+}
+
 async function sayOwnMedia(page: Page): Promise<void> {
+  if (await page.getByRole("heading", { name: "Storyboard" }).isVisible()) return;
   const own = page.getByRole("button", { name: "My own media", exact: true });
   if (await own.isVisible()) {
     await own.click();
     return;
   }
-  await page.getByLabel("Message F-Motion").fill("My own media");
+  const box = page.getByLabel("Message F-Motion");
+  if (!await box.isVisible()) return;
+  await box.fill("My own media");
   await page.getByRole("button", { name: "Send" }).click();
 }
 
@@ -84,25 +102,24 @@ async function briefWithOwnStill(page: Page, text: string): Promise<void> {
   await page.getByLabel("Message F-Motion").fill(text);
   await page.getByRole("button", { name: "Send" }).click();
   let pickedOwn = false;
-  for (let step = 0; step < 4; step += 1) {
-    if (await page.getByRole("heading", { name: "Storyboard" }).isVisible()) return;
-    const own = page.getByRole("button", { name: "My own media", exact: true });
-    if (await own.isVisible()) {
-      await own.click();
+  for (let step = 0; step < 6; step += 1) {
+    const next = await briefAdvance(page);
+    if (next === "storyboard") return;
+    if (next === "own") {
+      await page.getByRole("button", { name: "My own media", exact: true }).click();
       pickedOwn = true;
       break;
     }
-    const choice = page.locator(".brief-chat-choices button").first();
-    if (!await choice.isVisible()) break;
-    await choice.click();
+    await page.locator(".brief-chat-choices button").first().click();
   }
   if (!pickedOwn) await sayOwnMedia(page);
+  if (await page.getByRole("heading", { name: "Storyboard" }).isVisible()) return;
   await page.locator("section.create-brief input[type=file]").setInputFiles("apps/worker/test/fixtures/still.jpg");
   for (let step = 0; step < 4; step += 1) {
-    if (await page.getByRole("heading", { name: "Storyboard" }).isVisible()) return;
-    const choice = page.locator(".brief-chat-choices button").first();
-    if (!await choice.isVisible()) break;
-    await choice.click();
+    const next = await briefAdvance(page);
+    if (next === "storyboard") return;
+    if (next !== "choices") break;
+    await page.locator(".brief-chat-choices button").first().click();
   }
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
 }
@@ -333,7 +350,7 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
     }));
   await signIn(page);
   await page.getByRole("button", { name: "Create new video" }).click();
-  await briefWithOwnStill(page, "A fictional lighthouse that does not exist on stock");
+  await briefWithOwnStill(page, "A fictional lighthouse no camera has recorded");
   await createStoryboard(page);
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
