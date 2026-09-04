@@ -17,6 +17,7 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /find\(\(\{ id \}\) => id === sceneId\)/);
   assert.doesNotMatch(source, /saveScenePatch[\s\S]{0,120}scenes\[0\]/);
   assert.doesNotMatch(source, /searchStock[\s\S]{0,120}scenes\[0\]/);
+  assert.match(source, /setCandidates\(body\.results\.slice\(0, 3\)\)/);
   assert.doesNotMatch(source, /selectStock[\s\S]{0,120}scenes\[0\]/);
   assert.doesNotMatch(source, /Test stale revision|Choose one concept/);
   assert.doesNotMatch(source, /Automatically matched|strongest licensed match|Finding the best/);
