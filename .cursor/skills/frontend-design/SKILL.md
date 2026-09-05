@@ -43,13 +43,14 @@ never a fill.
 
 ## Splash
 
-Keep the contract: the word lives in a glass cube in the sky. Same cube on
-every splash page — page name on the face, cube itself links home. Do not pin
-a second F-Motion label on the cube. The cube stays a crystal volume in
-three-quarter view (never face-on), with an inner shell for thickness and one
-slow cyan hairline on the near edge. Text links under it (Studio in rose). Stars and fog sit far in the empty left and right — faint, distant, never
-on the cube. Sky speed rises while the page is loading or swapping, then
-eases back to slow. Freeze all of it when reduced-motion is set. Do not
+Keep the contract: the cube is the splash UI. Home, How it works, Self-host,
+and Login live on the four walls. Changing section yaws the same cube — do
+not fade-swap a second page. GitHub stays an external link. Do not pin a
+second F-Motion label on the cube. Do not invent up/down cube pages until a
+face actually has more than one screen. Inner shell for thickness; cyan
+stays a hairline. Text links under it (Studio in rose). Stars and fog sit far in the empty left and right — faint, distant, never
+on the cube. Sky speed rises while the page is loading or turning, then
+eases back to slow. Freeze the turn when reduced-motion is set. Do not
 add a hero essay.
 
 ## After a visual pass

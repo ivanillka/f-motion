@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import "./marketing.css";
 
 import { githubBlobUrl, githubTreeUrl } from "./repo";
@@ -64,13 +64,47 @@ export function pageTitle(path: string): string {
   return TITLES[marketingRoute(path)] ?? "F-Motion";
 }
 
+const FACE_YAW: Record<MarketingRoute, number> = {
+  home: 0,
+  "how-it-works": -90,
+  "self-host": -180,
+  login: 90
+};
+
+const FACE_SIDE: Record<MarketingRoute, "front" | "right" | "back" | "left"> = {
+  home: "front",
+  "how-it-works": "right",
+  "self-host": "back",
+  login: "left"
+};
+
+const FACE_PATH: Record<MarketingRoute, string> = {
+  home: "/",
+  "how-it-works": "/how-it-works",
+  "self-host": "/self-host",
+  login: "/login"
+};
+
+const FACE_ORDER: MarketingRoute[] = ["home", "how-it-works", "self-host", "login"];
+
+function towardYaw(from: number, to: number): number {
+  const raw = ((to - from) % 360 + 360) % 360;
+  return from + (raw > 180 ? raw - 360 : raw);
+}
+
+function neighborFace(page: MarketingRoute, step: number): MarketingRoute {
+  const index = FACE_ORDER.indexOf(page);
+  return FACE_ORDER[(index + step + FACE_ORDER.length) % FACE_ORDER.length] ?? page;
+}
+
 function FeatureNav({ page, studio }: { page: MarketingRoute; studio: string }) {
-  const item = (href: string, label: string, current: boolean) => (
-    <a href={href} aria-current={current ? "page" : undefined}>{label}</a>
+  const item = (href: string, label: string, current: boolean, className?: string) => (
+    <a className={className} href={href} aria-current={current ? "page" : undefined}>{label}</a>
   );
   return (
     <nav className="mkt-splash-features" aria-label="Features">
-      <a className="is-studio" href={studio}>Studio</a>
+      {item("/", "Home", page === "home")}
+      {item(studio, "Studio", page === "login", "is-studio")}
       {item("/how-it-works", "How it works", page === "how-it-works")}
       <a href={SKILL_REPO} target="_blank" rel="noreferrer">GitHub</a>
       {item("/self-host", "Self-host", page === "self-host")}
@@ -78,16 +112,14 @@ function FeatureNav({ page, studio }: { page: MarketingRoute; studio: string }) 
   );
 }
 
-function Headline({ text }: { text: string }) {
+function Headline({ text, active }: { text: string; active: boolean }) {
   const long = text.includes(" ");
-  if (text !== "F-Motion") {
-    return <h1 id="splash-title" className={long ? "is-long" : undefined}>{text}</h1>;
-  }
-  return (
-    <h1 id="splash-title">
-      F<span className="mkt-hyphen">-</span>Motion
-    </h1>
-  );
+  const className = long ? "mkt-face-title is-long" : "mkt-face-title";
+  const mark = text === "F-Motion"
+    ? <>F<span className="mkt-hyphen">-</span>Motion</>
+    : text;
+  if (active) return <h1 id="splash-title" className={className}>{mark}</h1>;
+  return <p className={className}>{mark}</p>;
 }
 
 type SkyStar = {
@@ -118,7 +150,20 @@ function seedStars(count: number): SkyStar[] {
 
 const CUBE_FACES = ["front", "back", "right", "left", "top", "bottom"] as const;
 
-function WordCube({ children }: { children: ReactNode }) {
+function FaceCopy({ page, active }: { page: MarketingRoute; active: boolean }) {
+  const lede = LEDES[page];
+  return (
+    <>
+      <Headline text={HEADLINES[page]} active={active} />
+      {lede ? <p className="mkt-splash-lede">{lede}</p> : null}
+      {active && page === "self-host"
+        ? <a className="mkt-splash-lede" href={SELFHOST_DOCS} target="_blank" rel="noreferrer">Guide</a>
+        : null}
+    </>
+  );
+}
+
+function WordCube({ page, onTurn }: { page: MarketingRoute; onTurn: (next: MarketingRoute) => void }) {
   const faces = (kind: "outer" | "inner") => CUBE_FACES.map((side) => (
     <span
       key={`${kind}-${side}`}
@@ -127,12 +172,61 @@ function WordCube({ children }: { children: ReactNode }) {
       aria-hidden="true"
     />
   ));
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const dragged = useRef(false);
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    start.current = { x: event.clientX, y: event.clientY };
+    dragged.current = false;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const origin = start.current;
+    start.current = null;
+    if (!origin) return;
+    const dx = event.clientX - origin.x;
+    const dy = event.clientY - origin.y;
+    if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy)) return;
+    dragged.current = true;
+    onTurn(neighborFace(page, dx < 0 ? 1 : -1));
+  };
+  const onClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!dragged.current) return;
+    dragged.current = false;
+    event.preventDefault();
+    event.stopPropagation();
+  };
   return (
-    <div className="mkt-cube-scene">
-      <div className="mkt-cube">
-        {faces("outer")}
-        <div className="mkt-cube-shell" aria-hidden="true">{faces("inner")}</div>
-        <div className="mkt-cube-core">{children}</div>
+    <div
+      className="mkt-cube-scene"
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onClickCapture={onClickCapture}
+    >
+      <div className="mkt-cube-rig">
+        <div className="mkt-cube">
+          {faces("outer")}
+          <div className="mkt-cube-shell" aria-hidden="true">{faces("inner")}</div>
+          {FACE_ORDER.map((face) => {
+            const active = face === page;
+            const side = FACE_SIDE[face];
+            const copy = <FaceCopy page={face} active={active} />;
+            if (active) {
+              return <div key={face} className="mkt-cube-core" data-side={side}>{copy}</div>;
+            }
+            return (
+              <a
+                key={face}
+                className="mkt-cube-core"
+                data-side={side}
+                href={FACE_PATH[face]}
+                aria-hidden="true"
+                tabIndex={-1}
+              >
+                {copy}
+              </a>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -231,31 +325,29 @@ function SplashSky({ paceRef }: { paceRef: { current: number } }) {
   return <canvas className="mkt-sky" ref={ref} aria-hidden="true" />;
 }
 
-function Splash({ page }: { page: MarketingRoute }) {
-  const studio = studioHref();
-  const headline = HEADLINES[page];
-  const lede = LEDES[page];
-  const cube = (
-    <WordCube>
-      <Headline text={headline} />
-      {lede ? <p className="mkt-splash-lede">{lede}</p> : null}
-    </WordCube>
-  );
+function goFace(next: MarketingRoute): void {
+  const path = FACE_PATH[next];
+  const here = window.location.pathname.replace(/\/$/, "") || "/";
+  if (path === here) return;
+  history.pushState(null, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function Splash({ page, onTurn }: { page: MarketingRoute; onTurn: (next: MarketingRoute) => void }) {
   return (
     <section className="mkt-splash" aria-labelledby="splash-title">
-      {page === "home" ? cube : <a className="mkt-cube-home" href="/" aria-label="F-Motion">{cube}</a>}
-      {page === "self-host" ? <a className="mkt-splash-lede" href={SELFHOST_DOCS} target="_blank" rel="noreferrer">Guide</a> : null}
-      <FeatureNav page={page} studio={studio} />
+      <WordCube page={page} onTurn={onTurn} />
+      <FeatureNav page={page} studio={studioHref()} />
     </section>
   );
 }
 
 export function MarketingSite({ path }: { path: string }) {
   const page = marketingRoute(path);
-  const [shown, setShown] = useState(page);
-  const [phase, setPhase] = useState<"in" | "out">("in");
+  const [yaw, setYaw] = useState(() => FACE_YAW[page]);
   const [busy, setBusy] = useState(true);
-  const pace = busy ? 3.4 : phase === "out" ? 2.2 : 1;
+  const [turning, setTurning] = useState(false);
+  const pace = busy ? 3.4 : turning ? 2.2 : 1;
   const paceRef = useRef(pace);
   paceRef.current = pace;
 
@@ -277,28 +369,46 @@ export function MarketingSite({ path }: { path: string }) {
   }, []);
 
   useEffect(() => {
-    if (page === shown) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLElement && event.target.closest("input, textarea, a, button")) return;
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        goFace(neighborFace(page, 1));
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        goFace(neighborFace(page, -1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [page]);
+
+  useEffect(() => {
+    setYaw((from) => towardYaw(from, FACE_YAW[page]));
     const reduced = typeof matchMedia === "function"
       && matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduced) {
-      setShown(page);
-      setPhase("in");
+      setTurning(false);
       return;
     }
-    setPhase("out");
-    const timer = window.setTimeout(() => {
-      setShown(page);
-      setPhase("in");
-    }, 200);
+    setTurning(true);
+    const timer = window.setTimeout(() => setTurning(false), 800);
     return () => window.clearTimeout(timer);
-  }, [page, shown]);
+  }, [page]);
 
   return (
-    <div className="mkt mkt-is-splash" style={{ ["--mkt-pace" as string]: String(pace) }}>
+    <div
+      className="mkt mkt-is-splash"
+      style={{
+        ["--mkt-pace" as string]: String(pace),
+        ["--mkt-yaw" as string]: `${yaw}deg`
+      }}
+    >
       <SplashSky paceRef={paceRef} />
       <div className="mkt-main mkt-main-splash">
-        <div className={`mkt-page is-${phase}`} key={shown}>
-          <Splash page={shown} />
+        <div className="mkt-page">
+          <Splash page={page} onTurn={goFace} />
         </div>
       </div>
     </div>
