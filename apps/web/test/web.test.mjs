@@ -17,6 +17,7 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /find\(\(\{ id \}\) => id === sceneId\)/);
   assert.doesNotMatch(source, /saveScenePatch[\s\S]{0,120}scenes\[0\]/);
   assert.doesNotMatch(source, /searchStock[\s\S]{0,120}scenes\[0\]/);
+  assert.match(source, /setCandidates\(body\.results\.slice\(0, 3\)\)/);
   assert.doesNotMatch(source, /selectStock[\s\S]{0,120}scenes\[0\]/);
   assert.doesNotMatch(source, /Test stale revision|Choose one concept/);
   assert.doesNotMatch(source, /Automatically matched|strongest licensed match|Finding the best/);
@@ -317,6 +318,14 @@ test("build puts SPA at site root with studio under /studio", async () => {
   const redirects = await readFile(new URL("_redirects", dist), "utf8");
   assert.match(home, /\/assets\/index-/);
   assert.doesNotMatch(home, /\/app\/assets\//);
+  const entryJs = home.match(/\/assets\/(index-[^"]+\.js)/)?.[1];
+  assert.ok(entryJs, "hashed splash entry");
+  const entry = await readFile(new URL(`assets/${entryJs}`, dist), "utf8");
+  assert.doesNotMatch(entry, /InterDisplay/);
+  assert.doesNotMatch(entry, /continueToStoryboard/);
+  const { readdir } = await import("node:fs/promises");
+  const assets = await readdir(new URL("assets/", dist));
+  assert.ok(assets.some((name) => name.startsWith("main-") && name.endsWith(".js")));
   assert.match(redirects, /\/app\/ \/\s*studio\s*301/);
   assert.match(redirects, /\/web\/ \/\s*301/);
 });

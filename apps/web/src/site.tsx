@@ -1,16 +1,31 @@
-import { StrictMode, useEffect, useState } from "react";
+import { lazy, StrictMode, Suspense, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   MarketingSite,
+  isMarketingPath,
   isStudioPath,
   pageTitle,
   studioComingSoon
 } from "./MarketingPages";
-import { App } from "./main";
+
+const App = lazy(() => import("./main").then((mod) => ({ default: mod.App })));
+
+function Studio() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: "100dvh", background: "#111213" }} aria-busy="true" />}>
+      <App />
+    </Suspense>
+  );
+}
 
 function normalizePath(pathname: string): string {
   if (!pathname || pathname === "/") return "/";
   return pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+}
+
+function canonicalPath(pathname: string): string {
+  const path = normalizePath(pathname);
+  return path === "/hosted" ? "/" : path;
 }
 
 function redirectStudioAuth(): void {
@@ -34,14 +49,43 @@ function redirectStudioAuth(): void {
 }
 
 function SiteRoot() {
-  const [path, setPath] = useState(() => normalizePath(window.location.pathname));
+  const [path, setPath] = useState(() => canonicalPath(window.location.pathname));
 
   useEffect(() => {
     redirectStudioAuth();
-    setPath(normalizePath(window.location.pathname));
-    const onPop = () => setPath(normalizePath(window.location.pathname));
+    if (normalizePath(window.location.pathname) === "/hosted") {
+      history.replaceState(null, "", "/");
+    }
+    setPath(canonicalPath(window.location.pathname));
+    const onPop = () => {
+      if (normalizePath(window.location.pathname) === "/hosted") {
+        history.replaceState(null, "", "/");
+      }
+      setPath(canonicalPath(window.location.pathname));
+    };
+    const onClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+      const link = event.target instanceof Element ? event.target.closest("a") : null;
+      if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
+      let url: URL;
+      try { url = new URL(link.href, window.location.origin); } catch { return; }
+      if (url.origin !== window.location.origin) return;
+      const raw = normalizePath(url.pathname);
+      if (!isMarketingPath(raw)) return;
+      const next = canonicalPath(raw);
+      event.preventDefault();
+      if (next === canonicalPath(window.location.pathname) && url.search === window.location.search) return;
+      history.pushState(null, "", `${next}${url.search}${url.hash}`);
+      setPath(next);
+    };
     window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
+    document.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      document.removeEventListener("click", onClick);
+    };
   }, []);
 
   useEffect(() => {
@@ -49,11 +93,11 @@ function SiteRoot() {
   }, [path]);
 
   if (import.meta.env.VITE_SELFHOST_AUTH === "1") {
-    return <App />;
+    return <Studio />;
   }
 
   if (isStudioPath(path) && !studioComingSoon()) {
-    return <App />;
+    return <Studio />;
   }
 
   if (isStudioPath(path) && studioComingSoon()) {

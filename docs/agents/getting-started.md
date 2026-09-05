@@ -55,6 +55,7 @@ npx fmotion usage --json
 npx fmotion projects create --purpose "Island lighthouse reel" --json
 npx fmotion media read ./still.jpg --json
 npx fmotion compose --purpose "Island lighthouse reel" --media ./still.jpg --json
+npx fmotion batch ./manifest.json --out ./out --json
 npx fmotion draft <projectId> --json
 npx fmotion render <projectId> preview --json
 npx fmotion wait <jobId> --json
@@ -67,7 +68,12 @@ Exit codes map typed API errors (`3` = `quota_exceeded`).
 
 ## MCP (`fmotion-mcp`)
 
-Tools: `read_media`, `compose_reel`, `open_draft`, `create_project`, `run_command`, `request_render`, `wait_render`, `download_render`, `usage`.
+Tools: `read_media`, `compose_reel`, `open_draft`, `create_project`, `run_command`, `request_render`, `wait_render`, `download_render`, `usage`, `delete_project`.
+
+Result-only bulk is `POST /v1/batches`, which loops `composeOne` (the same
+function as `POST /v1/compose`) and deletes each project after the file is
+ready. `fmotion batch` calls that route for brief/stock items. MCP can still
+do `compose_reel` then `delete_project` per item.
 
 ### Hermes `mcp_servers` snippet
 

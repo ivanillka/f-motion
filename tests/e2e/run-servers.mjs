@@ -85,24 +85,14 @@ const mediaRepository = {
     return true;
   }
 };
-const pexelsResults = [
-  {
-    id: 101,
-    creator: "Fixture One",
-    attributionUrl: "https://www.pexels.com/video/101",
-    previewUrl: "https://e2e-images.invalid/101.jpg",
-    sourceUrl: "https://e2e-media.invalid/101.mp4",
-    contentType: "video/mp4"
-  },
-  {
-    id: 102,
-    creator: "Fixture Two With A Long Name",
-    attributionUrl: "https://www.pexels.com/video/102",
-    previewUrl: "https://e2e-images.invalid/102.jpg",
-    sourceUrl: "https://e2e-media.invalid/102.mp4",
-    contentType: "video/mp4"
-  }
-];
+const pexelsResults = [101, 102, 103, 104, 105, 106, 107, 108].map((id) => ({
+  id,
+  creator: id === 102 ? "Fixture Two With A Long Name" : `Fixture ${id}`,
+  attributionUrl: `https://www.pexels.com/video/${id}`,
+  previewUrl: `https://e2e-images.invalid/${id}.jpg`,
+  sourceUrl: `https://e2e-media.invalid/${id}.mp4`,
+  contentType: "video/mp4"
+}));
 const media = {
   repository: mediaRepository,
   store: {

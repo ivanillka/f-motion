@@ -18,6 +18,7 @@ export interface ProjectRepository {
   list(ownerId: string): ProjectSummary[] | Promise<ProjectSummary[]>;
   get(ownerId: string, projectId: string): ProjectSnapshot | undefined | Promise<ProjectSnapshot | undefined>;
   command(ownerId: string, command: CommandEnvelope): ProjectSnapshot | Promise<ProjectSnapshot>;
+  delete(ownerId: string, projectId: string): boolean | Promise<boolean>;
 }
 
 export class ProjectService implements ProjectRepository {
@@ -68,6 +69,16 @@ export class ProjectService implements ProjectRepository {
     this.#projects.set(`${ownerId}:${project.id}`, updated);
     this.#receipts.set(receiptKey, updated);
     return structuredClone(updated);
+  }
+
+  delete(ownerId: string, projectId: string): boolean {
+    const key = `${ownerId}:${projectId}`;
+    if (!this.#projects.has(key)) return false;
+    this.#projects.delete(key);
+    for (const receiptKey of this.#receipts.keys()) {
+      if (receiptKey.startsWith(`${ownerId}:${projectId}:`)) this.#receipts.delete(receiptKey);
+    }
+    return true;
   }
 }
 
@@ -166,6 +177,14 @@ export class PostgresProjectRepository implements ProjectRepository {
     );
     const project = result.rows[0];
     return project && projectSnapshot(this.pool, project);
+  }
+
+  async delete(ownerId: string, projectId: string): Promise<boolean> {
+    const result = await this.pool.query(
+      `DELETE FROM "Project" WHERE "ownerId" = $1 AND id = $2`,
+      [ownerId, projectId]
+    );
+    return (result.rowCount ?? 0) > 0;
   }
 
   async command(ownerId: string, command: CommandEnvelope): Promise<ProjectSnapshot> {

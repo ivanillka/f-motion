@@ -9,6 +9,7 @@ import { assertLocalAuthAllowed } from "./local-auth.js";
 import { assertSelfhostConfig, engineEnv, PostgresSelfhostOwner } from "./selfhost-auth.js";
 import { PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
 import { PostgresRenderRepository, renderProfilesFromEnv } from "./render-repository.js";
+import { purgeProject } from "./project-purge.js";
 import { createApp, createTestApp } from "./server.js";
 import {
   assertNoSharedFalCredential,
@@ -85,6 +86,7 @@ const media = {
     return pexelsCredentials.client(ownerId);
   }
 };
+const purge = (ownerId: string, projectId: string) => purgeProject(pool, objectStore, ownerId, projectId);
 
 const port = Number(process.env.PORT ?? 3000);
 
@@ -105,7 +107,8 @@ if (engineEnv(process.env) === "selfhost") {
     falGeneration,
     pexelsCredentials,
     apiKeys,
-    hostUsage
+    hostUsage,
+    purgeProject: purge
   }).listen(port);
 } else if (process.env.FENGINE_LOCAL_AUTH === "1") {
   // ponytail: local-only identity inject. Ceiling: single fixed owner. Upgrade: real Supabase JWT.
@@ -126,7 +129,8 @@ if (engineEnv(process.env) === "selfhost") {
     falGeneration,
     pexelsCredentials,
     apiKeys,
-    hostUsage
+    hostUsage,
+    purgeProject: purge
   }).listen(port);
 } else {
   createApp({
@@ -160,6 +164,7 @@ if (engineEnv(process.env) === "selfhost") {
       await hostUsage.ensureFreeGrant(ownerId);
     },
     accessPolicy,
-    externalImports
+    externalImports,
+    purgeProject: purge
   }).listen(port);
 }
