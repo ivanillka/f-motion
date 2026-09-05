@@ -192,8 +192,7 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: 1.5rem;
-  padding: 2rem 1.25rem;
+  padding: 2rem 1.25rem 6.5rem;
 }
 
 .mkt-splash::before {
@@ -212,17 +211,17 @@
 }
 
 .mkt-cube-rig {
-  transform: rotateX(16deg) rotateY(var(--mkt-yaw, 0deg));
   transform-style: preserve-3d;
-  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 0.95s cubic-bezier(0.37, 0.02, 0.16, 1);
 }
 
 .mkt-cube {
-  --s: min(70vw, 26rem);
+  --s: min(62vw, 22rem);
   width: var(--s);
   height: var(--s);
   position: relative;
   transform-style: preserve-3d;
+  animation: mktCubeDrift 32s ease-in-out infinite;
 }
 
 .mkt-cube-face {
@@ -314,7 +313,13 @@
   gap: 0.75rem;
   padding: 1.5rem;
   color: inherit;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition: opacity 0.4s ease;
 }
+
+.mkt-cube-core.is-facing { opacity: 1; }
+.mkt-cube-core.is-away { opacity: 0.12; cursor: pointer; }
 
 .mkt-cube-core[data-side="front"] { transform: translateZ(calc(var(--s) / 2 - 2px)); }
 .mkt-cube-core[data-side="right"] { transform: rotateY(90deg) translateZ(calc(var(--s) / 2 - 2px)); }
@@ -352,12 +357,20 @@
 }
 
 .mkt-splash-features {
-  position: relative;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 1.1rem;
+  z-index: 2;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.25rem 1.75rem;
+  gap: 0.15rem 1.35rem;
+  padding: 0 1rem;
+  pointer-events: none;
 }
+
+.mkt-splash-features a { pointer-events: auto; }
 
 .mkt-splash-features a {
   display: inline-flex;
@@ -416,6 +429,12 @@
   50% { opacity: 1; transform: scale(1.05); }
 }
 
+@keyframes mktCubeDrift {
+  0% { transform: rotateX(-1.5deg) rotateY(-2.2deg) rotateZ(-0.7deg); }
+  50% { transform: rotateX(1.3deg) rotateY(2deg) rotateZ(0.7deg); }
+  100% { transform: rotateX(-1.5deg) rotateY(-2.2deg) rotateZ(-0.7deg); }
+}
+
 @keyframes mktEdgeGlint {
   0%, 100% { transform: translateY(0); opacity: 0.2; }
   50% { transform: translateY(130%); opacity: 0.85; }
@@ -423,11 +442,13 @@
 
 @media (prefers-reduced-motion: reduce) {
   .mkt-splash::before,
+  .mkt-cube,
   .mkt-cube-face[data-side="front"]::after,
   .mkt-cube-face[data-side="right"]::after,
   .mkt-cube-face[data-side="back"]::after,
   .mkt-cube-face[data-side="left"]::after { animation: none; }
-  .mkt-cube-rig { transition: none; }
+  .mkt-cube-rig,
+  .mkt-cube-core { transition: none; }
 }
 
 .mkt-hero {

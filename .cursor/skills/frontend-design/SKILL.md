@@ -45,10 +45,13 @@ never a fill.
 
 Keep the contract: the cube is the splash UI. Home, How it works, Self-host,
 and Login live on the four walls. Changing section yaws the same cube — do
-not fade-swap a second page. GitHub stays an external link. Do not pin a
-second F-Motion label on the cube. Do not invent up/down cube pages until a
-face actually has more than one screen. Inner shell for thickness; cyan
-stays a hairline. Text links under it (Studio in rose). Stars and fog sit far in the empty left and right — faint, distant, never
+not fade-swap a second page. Drive the turn with an interpolatable
+transform, not a CSS variable. Keep a slight idle drift. Unfocused faces
+stay dim and unmounted until first seen. Nav sits below the cube, never on
+it. GitHub stays an external link. Do not pin a second F-Motion label on
+the cube. Do not invent up/down cube pages until a face actually has more
+than one screen. Inner shell for thickness; cyan stays a hairline. Text
+links under it (Studio in rose). Stars and fog sit far in the empty left and right — faint, distant, never
 on the cube. Sky speed rises while the page is loading or turning, then
 eases back to slow. Freeze the turn when reduced-motion is set. Do not
 add a hero essay.

@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type TransitionEvent as ReactTransitionEvent
+} from "react";
 import "./marketing.css";
 
 import { githubBlobUrl, githubTreeUrl } from "./repo";
@@ -163,7 +170,37 @@ function FaceCopy({ page, active }: { page: MarketingRoute; active: boolean }) {
   );
 }
 
-function WordCube({ page, onTurn }: { page: MarketingRoute; onTurn: (next: MarketingRoute) => void }) {
+function WordCube({
+  page,
+  yaw,
+  onTurn
+}: {
+  page: MarketingRoute;
+  yaw: number;
+  onTurn: (next: MarketingRoute) => void;
+}) {
+  const [facing, setFacing] = useState(page);
+  const [seen, setSeen] = useState(() => new Set<MarketingRoute>([page]));
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const dragged = useRef(false);
+
+  useEffect(() => {
+    setSeen((prev) => {
+      if (prev.has(page)) return prev;
+      const next = new Set(prev);
+      next.add(page);
+      return next;
+    });
+    const reduced = typeof matchMedia === "function"
+      && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      setFacing(page);
+      return;
+    }
+    const settle = window.setTimeout(() => setFacing(page), 1100);
+    return () => window.clearTimeout(settle);
+  }, [page]);
+
   const faces = (kind: "outer" | "inner") => CUBE_FACES.map((side) => (
     <span
       key={`${kind}-${side}`}
@@ -172,8 +209,6 @@ function WordCube({ page, onTurn }: { page: MarketingRoute; onTurn: (next: Marke
       aria-hidden="true"
     />
   ));
-  const start = useRef<{ x: number; y: number } | null>(null);
-  const dragged = useRef(false);
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     start.current = { x: event.clientX, y: event.clientY };
     dragged.current = false;
@@ -195,6 +230,10 @@ function WordCube({ page, onTurn }: { page: MarketingRoute; onTurn: (next: Marke
     event.preventDefault();
     event.stopPropagation();
   };
+  const onYawEnd = (event: ReactTransitionEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || event.propertyName !== "transform") return;
+    setFacing(page);
+  };
   return (
     <div
       className="mkt-cube-scene"
@@ -202,28 +241,27 @@ function WordCube({ page, onTurn }: { page: MarketingRoute; onTurn: (next: Marke
       onPointerUp={onPointerUp}
       onClickCapture={onClickCapture}
     >
-      <div className="mkt-cube-rig">
+      <div
+        className="mkt-cube-rig"
+        style={{ transform: `rotateX(16deg) rotateY(${yaw}deg)` }}
+        onTransitionEnd={onYawEnd}
+      >
         <div className="mkt-cube">
           {faces("outer")}
           <div className="mkt-cube-shell" aria-hidden="true">{faces("inner")}</div>
           {FACE_ORDER.map((face) => {
-            const active = face === page;
-            const side = FACE_SIDE[face];
-            const copy = <FaceCopy page={face} active={active} />;
-            if (active) {
-              return <div key={face} className="mkt-cube-core" data-side={side}>{copy}</div>;
-            }
+            const live = face === facing || face === page || seen.has(face);
+            if (!live) return null;
             return (
-              <a
+              <div
                 key={face}
-                className="mkt-cube-core"
-                data-side={side}
-                href={FACE_PATH[face]}
-                aria-hidden="true"
-                tabIndex={-1}
+                className={face === facing ? "mkt-cube-core is-facing" : "mkt-cube-core is-away"}
+                data-side={FACE_SIDE[face]}
+                aria-hidden={face === facing ? undefined : true}
+                onClick={face === facing ? undefined : () => onTurn(face)}
               >
-                {copy}
-              </a>
+                <FaceCopy page={face} active={face === facing} />
+              </div>
             );
           })}
         </div>
@@ -333,10 +371,18 @@ function goFace(next: MarketingRoute): void {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
-function Splash({ page, onTurn }: { page: MarketingRoute; onTurn: (next: MarketingRoute) => void }) {
+function Splash({
+  page,
+  yaw,
+  onTurn
+}: {
+  page: MarketingRoute;
+  yaw: number;
+  onTurn: (next: MarketingRoute) => void;
+}) {
   return (
     <section className="mkt-splash" aria-labelledby="splash-title">
-      <WordCube page={page} onTurn={onTurn} />
+      <WordCube page={page} yaw={yaw} onTurn={onTurn} />
       <FeatureNav page={page} studio={studioHref()} />
     </section>
   );
@@ -347,9 +393,10 @@ export function MarketingSite({ path }: { path: string }) {
   const [yaw, setYaw] = useState(() => FACE_YAW[page]);
   const [busy, setBusy] = useState(true);
   const [turning, setTurning] = useState(false);
-  const pace = busy ? 3.4 : turning ? 2.2 : 1;
+  const booted = useRef(false);
+  const pace = busy ? 3.4 : 1;
   const paceRef = useRef(pace);
-  paceRef.current = pace;
+  paceRef.current = turning && !busy ? 1.8 : pace;
 
   useEffect(() => {
     let gone = false;
@@ -385,6 +432,10 @@ export function MarketingSite({ path }: { path: string }) {
   }, [page]);
 
   useEffect(() => {
+    if (!booted.current) {
+      booted.current = true;
+      return;
+    }
     setYaw((from) => towardYaw(from, FACE_YAW[page]));
     const reduced = typeof matchMedia === "function"
       && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -393,22 +444,16 @@ export function MarketingSite({ path }: { path: string }) {
       return;
     }
     setTurning(true);
-    const timer = window.setTimeout(() => setTurning(false), 800);
-    return () => window.clearTimeout(timer);
+    const done = window.setTimeout(() => setTurning(false), 1100);
+    return () => window.clearTimeout(done);
   }, [page]);
 
   return (
-    <div
-      className="mkt mkt-is-splash"
-      style={{
-        ["--mkt-pace" as string]: String(pace),
-        ["--mkt-yaw" as string]: `${yaw}deg`
-      }}
-    >
+    <div className="mkt mkt-is-splash" style={{ ["--mkt-pace" as string]: busy ? "3.4" : "1" }}>
       <SplashSky paceRef={paceRef} />
       <div className="mkt-main mkt-main-splash">
         <div className="mkt-page">
-          <Splash page={page} onTurn={goFace} />
+          <Splash page={page} yaw={yaw} onTurn={goFace} />
         </div>
       </div>
     </div>
