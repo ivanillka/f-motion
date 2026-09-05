@@ -20,9 +20,13 @@ test("home is a centered title with feature buttons", async () => {
   assert.match(source, /stepDelta/);
   assert.match(source, /raw > n \/ 2 \? raw - n : raw/);
   assert.match(source, /WordCube/);
+  assert.match(source, /setTimeout\(\(\) => setFacing\(page\), 420\)/);
+  assert.match(source, /setTimeout\(\(\) => setTurning\(false\), 420\)/);
   assert.match(css, /mktEdgeGlint/);
   assert.match(css, /perspective: 42rem/);
   assert.match(css, /\.mkt-cube-rig/);
+  assert.match(css, /transition: transform 0\.38s/);
+  assert.doesNotMatch(css, /fonts\.googleapis/);
   assert.match(css, /mktCubeDrift/);
   assert.match(css, /\.mkt-cube-core\.is-away/);
   assert.match(css, /position: fixed/);
@@ -89,4 +93,6 @@ test("site router keeps self-host on studio-only App", async () => {
   assert.match(source, /VITE_SELFHOST_AUTH === "1"/);
   assert.match(source, /studioComingSoon/);
   assert.match(source, /MarketingSite path="\/login"/);
+  assert.match(source, /lazy\(\(\) => import\("\.\/main"\)/);
+  assert.doesNotMatch(source, /import \{ App \} from "\.\/main"/);
 });

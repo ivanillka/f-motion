@@ -51,6 +51,8 @@ variable. Keep a slight idle drift. Unfocused faces stay dim and unmounted
 until first seen. Nav sits below the cube, never on it. GitHub stays an
 external link. Do not pin a second F-Motion label on the cube. Do not
 invent up/down cube pages until a face actually has more than one screen.
+Do not ship the studio bundle on the public splash — lazy-load App from
+`site.tsx`. Keep the cube turn near 400ms, not a full second.
 Inner shell for thickness; cyan stays a hairline. Text
 links under it (Studio in rose). Stars and fog sit far in the empty left and right — faint, distant, never
 on the cube. Sky speed rises while the page is loading or turning, then

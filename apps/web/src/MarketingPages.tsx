@@ -202,7 +202,7 @@ function WordCube({
       setFacing(page);
       return;
     }
-    const settle = window.setTimeout(() => setFacing(page), 1100);
+    const settle = window.setTimeout(() => setFacing(page), 420);
     return () => window.clearTimeout(settle);
   }, [page]);
 
@@ -455,7 +455,7 @@ export function MarketingSite({ path }: { path: string }) {
       return;
     }
     setTurning(true);
-    const done = window.setTimeout(() => setTurning(false), 1100);
+    const done = window.setTimeout(() => setTurning(false), 420);
     return () => window.clearTimeout(done);
   }, [index]);
 

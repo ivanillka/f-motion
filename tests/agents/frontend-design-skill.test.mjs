@@ -7,6 +7,7 @@ test("frontend-design skill is pinned to DESIGN.md and stays off the reel skill"
   assert.match(skill, /^name:\s*frontend-design/m);
   assert.match(skill, /DESIGN\.md/);
   assert.match(skill, /9:16/);
+  assert.match(skill, /lazy-load App/);
   assert.doesNotMatch(skill, /Fotium/i);
   const compose = await readFile(new URL("../../skills/fmotion/SKILL.md", import.meta.url), "utf8");
   assert.doesNotMatch(compose, /frontend-design/);

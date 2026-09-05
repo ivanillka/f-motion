@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from "react";
+import { lazy, StrictMode, Suspense, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   MarketingSite,
@@ -7,7 +7,16 @@ import {
   pageTitle,
   studioComingSoon
 } from "./MarketingPages";
-import { App } from "./main";
+
+const App = lazy(() => import("./main").then((mod) => ({ default: mod.App })));
+
+function Studio() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: "100dvh", background: "#111213" }} aria-busy="true" />}>
+      <App />
+    </Suspense>
+  );
+}
 
 function normalizePath(pathname: string): string {
   if (!pathname || pathname === "/") return "/";
@@ -84,11 +93,11 @@ function SiteRoot() {
   }, [path]);
 
   if (import.meta.env.VITE_SELFHOST_AUTH === "1") {
-    return <App />;
+    return <Studio />;
   }
 
   if (isStudioPath(path) && !studioComingSoon()) {
-    return <App />;
+    return <Studio />;
   }
 
   if (isStudioPath(path) && studioComingSoon()) {
