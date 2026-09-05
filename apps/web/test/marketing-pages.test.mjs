@@ -15,8 +15,10 @@ test("home is a centered title with feature buttons", async () => {
   assert.match(source, /rotateY\(\$\{yaw\}deg\)/);
   assert.match(source, /is-facing/);
   assert.match(source, /is-away/);
-  assert.match(source, /towardYaw/);
-  assert.match(source, /raw > 180 \? raw - 360 : raw/);
+  assert.match(source, /SECTIONS/);
+  assert.match(source, /sectionAtWall/);
+  assert.match(source, /stepDelta/);
+  assert.match(source, /raw > n \/ 2 \? raw - n : raw/);
   assert.match(source, /WordCube/);
   assert.match(css, /mktEdgeGlint/);
   assert.match(css, /perspective: 42rem/);
@@ -56,7 +58,8 @@ test("every marketing page stays on the splash and animates the swap", async () 
   const site = await readFile(new URL("../src/site.tsx", import.meta.url), "utf8");
   assert.match(pages, /How it works/);
   assert.match(pages, /Coming soon on f-motion\.com/);
-  assert.match(pages, /FACE_YAW/);
+  assert.match(pages, /SECTIONS/);
+  assert.match(pages, /sectionAtWall/);
   assert.match(pages, /goFace/);
   assert.match(pages, /ArrowRight/);
   assert.match(pages, /prefers-reduced-motion/);
@@ -64,6 +67,21 @@ test("every marketing page stays on the splash and animates the swap", async () 
   assert.match(site, /history\.pushState/);
   assert.match(site, /document\.addEventListener\("click"/);
   assert.match(site, /path === "\/hosted" \? "\/"/);
+});
+
+test("cube path walks the short way around a ring of any length", () => {
+  const wrap = (index, n) => ((index % n) + n) % n;
+  const stepDelta = (from, to, n) => {
+    const raw = wrap(to - from, n);
+    if (raw === 0) return 0;
+    return raw > n / 2 ? raw - n : raw;
+  };
+  assert.equal(stepDelta(0, 1, 4), 1);
+  assert.equal(stepDelta(0, 3, 4), -1);
+  assert.equal(stepDelta(0, 2, 4), 2);
+  assert.equal(stepDelta(0, 3, 8), 3);
+  assert.equal(stepDelta(0, 5, 8), -3);
+  assert.equal(wrap(-1, 5), 4);
 });
 
 test("site router keeps self-host on studio-only App", async () => {

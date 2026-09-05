@@ -71,20 +71,6 @@ export function pageTitle(path: string): string {
   return TITLES[marketingRoute(path)] ?? "F-Motion";
 }
 
-const FACE_YAW: Record<MarketingRoute, number> = {
-  home: 0,
-  "how-it-works": -90,
-  "self-host": -180,
-  login: 90
-};
-
-const FACE_SIDE: Record<MarketingRoute, "front" | "right" | "back" | "left"> = {
-  home: "front",
-  "how-it-works": "right",
-  "self-host": "back",
-  login: "left"
-};
-
 const FACE_PATH: Record<MarketingRoute, string> = {
   home: "/",
   "how-it-works": "/how-it-works",
@@ -92,16 +78,35 @@ const FACE_PATH: Record<MarketingRoute, string> = {
   login: "/login"
 };
 
-const FACE_ORDER: MarketingRoute[] = ["home", "how-it-works", "self-host", "login"];
+// ponytail: four physical walls. SECTIONS can grow; recycle the wall that went behind.
+const SECTIONS: MarketingRoute[] = ["home", "how-it-works", "self-host", "login"];
+const WALLS = ["front", "right", "back", "left"] as const;
 
-function towardYaw(from: number, to: number): number {
-  const raw = ((to - from) % 360 + 360) % 360;
-  return from + (raw > 180 ? raw - 360 : raw);
+function wrapIndex(index: number, n: number): number {
+  return ((index % n) + n) % n;
+}
+
+function stepDelta(from: number, to: number, n: number): number {
+  const raw = wrapIndex(to - from, n);
+  if (raw === 0) return 0;
+  return raw > n / 2 ? raw - n : raw;
+}
+
+function sectionIndex(page: MarketingRoute): number {
+  const index = SECTIONS.indexOf(page);
+  return index < 0 ? 0 : index;
 }
 
 function neighborFace(page: MarketingRoute, step: number): MarketingRoute {
-  const index = FACE_ORDER.indexOf(page);
-  return FACE_ORDER[(index + step + FACE_ORDER.length) % FACE_ORDER.length] ?? page;
+  const n = SECTIONS.length;
+  return SECTIONS[wrapIndex(sectionIndex(page) + step, n)] ?? page;
+}
+
+function sectionAtWall(index: number, wall: number): MarketingRoute {
+  const slot = wrapIndex(index, 4);
+  const offset = wrapIndex(wall - slot, 4);
+  const step = offset === 3 ? -1 : offset;
+  return SECTIONS[wrapIndex(index + step, SECTIONS.length)] ?? "home";
 }
 
 function FeatureNav({ page, studio }: { page: MarketingRoute; studio: string }) {
@@ -249,14 +254,15 @@ function WordCube({
         <div className="mkt-cube">
           {faces("outer")}
           <div className="mkt-cube-shell" aria-hidden="true">{faces("inner")}</div>
-          {FACE_ORDER.map((face) => {
+          {WALLS.map((side, wall) => {
+            const face = sectionAtWall(sectionIndex(facing), wall);
             const live = face === facing || face === page || seen.has(face);
             if (!live) return null;
             return (
               <div
-                key={face}
+                key={side}
                 className={face === facing ? "mkt-cube-core is-facing" : "mkt-cube-core is-away"}
-                data-side={FACE_SIDE[face]}
+                data-side={side}
                 aria-hidden={face === facing ? undefined : true}
                 onClick={face === facing ? undefined : () => onTurn(face)}
               >
@@ -390,10 +396,12 @@ function Splash({
 
 export function MarketingSite({ path }: { path: string }) {
   const page = marketingRoute(path);
-  const [yaw, setYaw] = useState(() => FACE_YAW[page]);
+  const index = sectionIndex(page);
+  const [yaw, setYaw] = useState(() => -90 * index);
   const [busy, setBusy] = useState(true);
   const [turning, setTurning] = useState(false);
   const booted = useRef(false);
+  const indexRef = useRef(index);
   const pace = busy ? 3.4 : 1;
   const paceRef = useRef(pace);
   paceRef.current = turning && !busy ? 1.8 : pace;
@@ -434,9 +442,12 @@ export function MarketingSite({ path }: { path: string }) {
   useEffect(() => {
     if (!booted.current) {
       booted.current = true;
+      indexRef.current = index;
       return;
     }
-    setYaw((from) => towardYaw(from, FACE_YAW[page]));
+    const delta = stepDelta(indexRef.current, index, SECTIONS.length);
+    indexRef.current = index;
+    setYaw((from) => from - 90 * delta);
     const reduced = typeof matchMedia === "function"
       && matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduced) {
@@ -446,7 +457,7 @@ export function MarketingSite({ path }: { path: string }) {
     setTurning(true);
     const done = window.setTimeout(() => setTurning(false), 1100);
     return () => window.clearTimeout(done);
-  }, [page]);
+  }, [index]);
 
   return (
     <div className="mkt mkt-is-splash" style={{ ["--mkt-pace" as string]: busy ? "3.4" : "1" }}>
