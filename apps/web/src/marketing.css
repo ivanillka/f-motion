@@ -237,12 +237,12 @@
 .mkt-cube-face[data-side="front"]::after {
   content: "";
   position: absolute;
-  top: -30%;
+  top: -20%;
   right: 0;
   width: 1px;
-  height: 55%;
-  background: linear-gradient(180deg, transparent, #00e5ff, transparent);
-  opacity: 0.55;
+  height: 70%;
+  background: linear-gradient(180deg, transparent 10%, #00e5ff 50%, transparent 90%);
+  opacity: 0.8;
   animation: mktEdgeGlint calc(11s / var(--mkt-pace, 1)) ease-in-out infinite;
 }
 
@@ -329,12 +329,13 @@
 
 .mkt-hyphen {
   display: inline-block;
-  width: 1px;
-  height: 0.72em;
+  width: 2px;
+  height: 0.68em;
   margin: 0 0.14em;
   overflow: hidden;
   color: transparent;
   background: var(--mkt-cyan);
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.45);
   vertical-align: -0.04em;
 }
 
