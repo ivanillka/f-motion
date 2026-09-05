@@ -206,33 +206,90 @@
 }
 
 .mkt-cube-scene {
-  perspective: 90rem;
-  perspective-origin: 50% 46%;
+  perspective: 42rem;
+  perspective-origin: 50% 42%;
 }
 
 .mkt-cube {
-  --s: min(78vw, 30rem);
+  --s: min(70vw, 26rem);
   width: var(--s);
   height: var(--s);
   position: relative;
   transform-style: preserve-3d;
-  animation: mktCubeDrift calc(36s / var(--mkt-pace, 1)) ease-in-out infinite;
+  animation: mktCubeDrift calc(40s / var(--mkt-pace, 1)) ease-in-out infinite;
 }
 
 .mkt-cube-face {
   position: absolute;
   inset: 0;
-  border: 1px solid rgba(0, 229, 255, 0.22);
-  background: rgba(241, 242, 243, 0.018);
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  background: rgba(241, 242, 243, 0.016);
   pointer-events: none;
 }
 
-.mkt-cube-face[data-side="front"] { transform: translateZ(calc(var(--s) / 2)); }
-.mkt-cube-face[data-side="back"] { transform: rotateY(180deg) translateZ(calc(var(--s) / 2)); }
-.mkt-cube-face[data-side="right"] { transform: rotateY(90deg) translateZ(calc(var(--s) / 2)); }
-.mkt-cube-face[data-side="left"] { transform: rotateY(-90deg) translateZ(calc(var(--s) / 2)); }
-.mkt-cube-face[data-side="top"] { transform: rotateX(90deg) translateZ(calc(var(--s) / 2)); }
-.mkt-cube-face[data-side="bottom"] { transform: rotateX(-90deg) translateZ(calc(var(--s) / 2)); }
+.mkt-cube-face[data-side="front"] {
+  transform: translateZ(calc(var(--s) / 2));
+  overflow: hidden;
+  border-color: rgba(0, 229, 255, 0.38);
+  background: linear-gradient(180deg, rgba(241, 242, 243, 0.05), rgba(241, 242, 243, 0.012));
+}
+
+.mkt-cube-face[data-side="front"]::after {
+  content: "";
+  position: absolute;
+  top: -30%;
+  right: 0;
+  width: 1px;
+  height: 55%;
+  background: linear-gradient(180deg, transparent, #00e5ff, transparent);
+  opacity: 0.55;
+  animation: mktEdgeGlint calc(11s / var(--mkt-pace, 1)) ease-in-out infinite;
+}
+
+.mkt-cube-face[data-side="back"] {
+  transform: rotateY(180deg) translateZ(calc(var(--s) / 2));
+  border-color: rgba(0, 229, 255, 0.1);
+  background: rgba(17, 18, 19, 0.2);
+}
+
+.mkt-cube-face[data-side="right"] {
+  transform: rotateY(90deg) translateZ(calc(var(--s) / 2));
+  border-color: rgba(0, 229, 255, 0.22);
+  background: rgba(17, 18, 19, 0.28);
+}
+
+.mkt-cube-face[data-side="left"] {
+  transform: rotateY(-90deg) translateZ(calc(var(--s) / 2));
+  border-color: rgba(0, 229, 255, 0.1);
+  background: rgba(17, 18, 19, 0.22);
+}
+
+.mkt-cube-face[data-side="top"] {
+  transform: rotateX(90deg) translateZ(calc(var(--s) / 2));
+  border-color: rgba(0, 229, 255, 0.42);
+  background: linear-gradient(180deg, rgba(241, 242, 243, 0.07), rgba(241, 242, 243, 0.012));
+}
+
+.mkt-cube-face[data-side="bottom"] {
+  transform: rotateX(-90deg) translateZ(calc(var(--s) / 2));
+  border-color: rgba(0, 229, 255, 0.12);
+  background: rgba(17, 18, 19, 0.45);
+}
+
+.mkt-cube-shell {
+  position: absolute;
+  inset: 0;
+  transform: scale3d(0.84, 0.84, 0.84);
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+
+.mkt-cube-shell .mkt-cube-face {
+  border-color: rgba(241, 242, 243, 0.1);
+  background: rgba(17, 18, 19, 0.1);
+}
+
+.mkt-cube-shell .mkt-cube-face::after { content: none; }
 
 .mkt-cube-core {
   position: absolute;
@@ -267,6 +324,7 @@
   margin: 0;
   padding: 0 0.06em;
   white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.06), 0 14px 32px rgba(0, 0, 0, 0.4);
 }
 
 .mkt-hyphen {
@@ -358,17 +416,23 @@
 }
 
 @keyframes mktCubeDrift {
-  0% { transform: rotateX(10deg) rotateY(-22deg) rotateZ(-3deg); }
-  50% { transform: rotateX(6deg) rotateY(20deg) rotateZ(3deg); }
-  100% { transform: rotateX(10deg) rotateY(-22deg) rotateZ(-3deg); }
+  0% { transform: rotateX(18deg) rotateY(-30deg) rotateZ(-3deg); }
+  50% { transform: rotateX(22deg) rotateY(-16deg) rotateZ(2deg); }
+  100% { transform: rotateX(18deg) rotateY(-30deg) rotateZ(-3deg); }
+}
+
+@keyframes mktEdgeGlint {
+  0%, 100% { transform: translateY(0); opacity: 0.2; }
+  50% { transform: translateY(130%); opacity: 0.85; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .mkt-page.is-in,
   .mkt-page.is-out,
   .mkt-splash::before,
-  .mkt-cube { animation: none; }
-  .mkt-cube { transform: rotateX(8deg) rotateY(-14deg); }
+  .mkt-cube,
+  .mkt-cube-face[data-side="front"]::after { animation: none; }
+  .mkt-cube { transform: rotateX(20deg) rotateY(-24deg); }
 }
 
 .mkt-hero {

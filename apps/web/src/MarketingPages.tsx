@@ -119,12 +119,19 @@ function seedStars(count: number): SkyStar[] {
 const CUBE_FACES = ["front", "back", "right", "left", "top", "bottom"] as const;
 
 function WordCube({ children }: { children: ReactNode }) {
+  const faces = (kind: "outer" | "inner") => CUBE_FACES.map((side) => (
+    <span
+      key={`${kind}-${side}`}
+      className={kind === "inner" ? "mkt-cube-face is-inner" : "mkt-cube-face"}
+      data-side={side}
+      aria-hidden="true"
+    />
+  ));
   return (
     <div className="mkt-cube-scene">
       <div className="mkt-cube">
-        {CUBE_FACES.map((side) => (
-          <span key={side} className="mkt-cube-face" data-side={side} aria-hidden="true" />
-        ))}
+        {faces("outer")}
+        <div className="mkt-cube-shell" aria-hidden="true">{faces("inner")}</div>
         <div className="mkt-cube-core">{children}</div>
       </div>
     </div>

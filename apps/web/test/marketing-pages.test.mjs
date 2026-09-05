@@ -10,7 +10,11 @@ test("home is a centered title with feature buttons", async () => {
   assert.match(source, /mkt-hyphen/);
   assert.match(source, /is-studio/);
   assert.match(source, /mkt-cube/);
+  assert.match(source, /mkt-cube-shell/);
   assert.match(source, /WordCube/);
+  assert.match(css, /mktEdgeGlint/);
+  assert.match(css, /perspective: 42rem/);
+  assert.doesNotMatch(css, /rotateY\(20deg\)/);
   assert.match(source, /--mkt-pace/);
   assert.match(source, /readyState/);
   assert.match(source, /paceRef/);
