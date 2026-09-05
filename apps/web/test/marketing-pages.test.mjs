@@ -24,6 +24,7 @@ test("home is a centered title with feature buttons", async () => {
   assert.match(css, /mktCubeDrift/);
   assert.match(css, /\.mkt-cube-core\.is-away/);
   assert.match(css, /position: fixed/);
+  assert.match(css, /padding-bottom: 8\.75rem/);
   assert.doesNotMatch(css, /rotateY\(20deg\)/);
   assert.match(source, /--mkt-pace/);
   assert.match(source, /readyState/);
