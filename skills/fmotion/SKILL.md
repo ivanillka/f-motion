@@ -88,10 +88,20 @@ Prefer `fmotion-mcp` or `fmotion` CLI when the host can attach them. Otherwise
 wrap `/v1` with the owner API key.
 
 - `read_media` — local sniff (not admission)
-- `compose_reel` — create, attach, optional stock fill, optional preview
+- `compose_reel` — create, attach, optional stock fill, optional preview/final.
+  Server equivalent: `POST /v1/compose` (`composeOne`). Bulk is that function
+  in a loop (`POST /v1/batches`).
 - `open_draft` — `projectUrl` for the studio
+- `delete_project` — purge a project after a result-only download
 - `usage` / `run_command` / `request_render` / `wait_render` / `download_render`
   for selective follow-ups
+
+### Result-only bulk
+
+When the user wants many files and no drafts: `POST /v1/batches` or
+`fmotion batch manifest.json` — both reuse `composeOne`, then purge.
+Local files: `compose_reel` (`render: "final"`), save, then `delete_project`.
+Never open a draft in this mode. One item at a time.
 
 Install MCP:
 

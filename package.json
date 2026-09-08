@@ -19,7 +19,7 @@
   ],
   "scripts": {
     "lint": "tsc -b --pretty false",
-    "test": "node --test prisma/*.test.mjs tests/agents/skill-sources.test.mjs deploy/vps/*.test.mjs && npm test --workspaces --if-present",
+    "test": "node --test prisma/*.test.mjs tests/agents/*.test.mjs deploy/vps/*.test.mjs && npm test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "build:pages": "VITE_SITE_AT_ROOT=1 npm run build --workspace apps/web && npm run verify:pages-artifact",
     "verify:pages-artifact": "node tools/deploy/verify-pages-artifact.mjs",

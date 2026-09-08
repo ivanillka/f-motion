@@ -47,7 +47,7 @@ const TOOLS = [
         media_paths: { type: "array", items: { type: "string" } },
         concept_id: { type: "string" },
         fill_stock: { type: "boolean", description: "Match Pexels when the user has no files (BYOK)" },
-        render: { type: "string", enum: ["preview", "none"], default: "preview" }
+        render: { type: "string", enum: ["preview", "final", "none"], default: "preview" }
       }
     }
   },
@@ -122,6 +122,15 @@ const TOOLS = [
     name: "usage",
     description: "Return remaining host render_unit balance and costs.",
     inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "delete_project",
+    description: "Hard-delete a project and its object-storage blobs. Refuse if a render or generation job is still running. Use after a result-only bulk item is downloaded.",
+    inputSchema: {
+      type: "object",
+      required: ["project_id"],
+      properties: { project_id: { type: "string" } }
+    }
   }
 ] as const;
 
@@ -163,7 +172,7 @@ async function callTool(name: string, args: Record<string, unknown>) {
         mediaPaths,
         conceptId: args.concept_id ? String(args.concept_id) : undefined,
         fillStock: Boolean(args.fill_stock),
-        render: args.render === "none" ? "none" : "preview",
+        render: args.render === "none" ? "none" : args.render === "final" ? "final" : "preview",
         webOrigin: webOriginFromEnv()
       }));
     }
@@ -190,6 +199,8 @@ async function callTool(name: string, args: Record<string, unknown>) {
       return textResult(await api.download(String(args.job_id)));
     case "usage":
       return textResult(await api.usage());
+    case "delete_project":
+      return textResult(await api.deleteProject(String(args.project_id)));
     default:
       throw new Error(`Unknown tool: ${name}`);
   }

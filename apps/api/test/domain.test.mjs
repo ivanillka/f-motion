@@ -8,6 +8,15 @@ test("account-state suspended and deletion-pending are denied", () => {
   assert.throws(() => assertAccountActive("suspended"));
   assert.throws(() => assertAccountActive("deletion_pending"));
 });
+test("in-memory delete removes the project for that owner only", () => {
+  const service = new ProjectService();
+  const project = service.create("owner", { purpose: "Temp", audience: "Team", tone: "Warm" });
+  assert.equal(service.delete("other", project.id), false);
+  assert.equal(service.get("owner", project.id)?.id, project.id);
+  assert.equal(service.delete("owner", project.id), true);
+  assert.equal(service.get("owner", project.id), undefined);
+  assert.equal(service.delete("owner", project.id), false);
+});
 test("ownership scopes every project and command", () => {
   const service = new ProjectService();
   const project = service.create("owner", { purpose: "Demo", audience: "Team", tone: "Warm" });

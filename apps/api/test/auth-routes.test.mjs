@@ -1,10 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { ProjectService } from "../dist/domain.js";
 import { renderProfilesFromEnv } from "../dist/render-repository.js";
 import { createApp, createTestApp } from "../dist/server.js";
+
+const productVersion = JSON.parse(
+  readFileSync(new URL("../../../package.json", import.meta.url), "utf8")
+).version;
 
 async function listen(server) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -306,16 +311,16 @@ test("/readyz reflects an async ready check and /healthz stays process-alive onl
   try {
     const ready = await fetch(`${origin}/readyz`);
     assert.equal(ready.status, 200);
-    assert.deepEqual(await ready.json(), { status: "ready", version: "0.3.0" });
+    assert.deepEqual(await ready.json(), { status: "ready", version: productVersion });
 
     dbUp = false;
     const unavailable = await fetch(`${origin}/readyz`);
     assert.equal(unavailable.status, 503);
-    assert.deepEqual(await unavailable.json(), { status: "unavailable", version: "0.3.0" });
+    assert.deepEqual(await unavailable.json(), { status: "unavailable", version: productVersion });
 
     const health = await fetch(`${origin}/healthz`);
     assert.equal(health.status, 200);
-    assert.deepEqual(await health.json(), { status: "ok", version: "0.3.0" });
+    assert.deepEqual(await health.json(), { status: "ok", version: productVersion });
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

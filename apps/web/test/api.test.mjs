@@ -82,6 +82,22 @@ test("create chat asks only missing brief questions, at most four", () => {
   assert.equal(nextBriefQuestion("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds\nPexels real stock video", false, ["audience", "length", "visuals"]), undefined);
   assert.equal(nextBriefQuestion("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds", true, ["audience", "length"]), undefined);
   assert.equal(nextBriefQuestion("Launch a 15 second reel using stock to promote our product for customers", false, []), undefined);
+  assert.equal(
+    nextBriefQuestion(
+      "A fictional lighthouse no camera has recorded\nTell a story\nGeneral viewers\nAbout 15 seconds",
+      false,
+      ["intent", "audience", "length"]
+    )?.id,
+    "visuals"
+  );
+  assert.equal(
+    nextBriefQuestion(
+      "A fictional lighthouse that does not exist on stock\nTell a story\nGeneral viewers\nAbout 15 seconds",
+      false,
+      ["intent", "audience", "length"]
+    ),
+    undefined
+  );
   assert.match(briefReadyMessage("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds\nPexels real stock video"), /mystery about mystery murder in san francisco/);
   assert.doesNotMatch(briefReadyMessage("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds\nPexels real stock video"), /More settings|Continue when you are ready/);
   const stored = parseBriefChat(JSON.stringify({

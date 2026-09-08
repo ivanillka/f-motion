@@ -61,7 +61,15 @@ test("private package tarballs install and run outside the monorepo without regi
   );
   assert.deepEqual(
     engine.files.map(({ path }) => path).sort(),
-    ["dist/index.d.ts", "dist/index.js", "package.json"]
+    [
+      "dist/brief-architecture.d.ts",
+      "dist/brief-architecture.js",
+      "dist/index.d.ts",
+      "dist/index.js",
+      "dist/media-intent.d.ts",
+      "dist/media-intent.js",
+      "package.json"
+    ]
   );
   for (const entry of [...contracts.files, ...engine.files]) {
     assert.doesNotMatch(entry.path, /(?:^|\/)(?:test|plans|\.env)|\.tsbuildinfo$|\.map$/);

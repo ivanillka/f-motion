@@ -235,6 +235,80 @@ export class FmotionClient {
       metadata: Record<string, unknown>;
     }>("GET", `/v1/render-jobs/${jobId}/download`);
   }
+
+  compose(body: {
+    purpose: string;
+    audience?: string;
+    tone?: string;
+    fill_stock?: boolean;
+    render?: "preview" | "final" | "none";
+  }) {
+    return this.request<{
+      project_id: string;
+      revision: number;
+      ready_scenes: number;
+      scene_count: number;
+      next: string;
+      render?: {
+        job_id: string;
+        phase: string;
+        kind: string;
+        download?: { url: string; expires_at: string; kind: string };
+      };
+    }>("POST", "/v1/compose", body);
+  }
+
+  runBatch(body: {
+    items: Array<{ purpose: string; audience?: string; tone?: string; fill_stock?: boolean }>;
+    render?: "preview" | "final";
+    keep_on_failure?: boolean;
+    fail_fast?: boolean;
+  }) {
+    return this.request<{
+      ok: boolean;
+      render: "preview" | "final";
+      succeeded: number;
+      failed: number;
+      items: Array<{
+        index: number;
+        purpose: string;
+        ok: boolean;
+        project_id?: string;
+        job_id?: string;
+        download?: { url: string; expires_at: string; kind: string };
+        purged?: boolean;
+        error?: string;
+        quota_exceeded?: boolean;
+      }>;
+    }>("POST", "/v1/batches", body);
+  }
+
+  deleteProject(projectId: string) {
+    return this.request<{
+      project_id: string;
+      deleted: boolean;
+      storage_failures: string[];
+    }>("DELETE", `/v1/projects/${projectId}`);
+  }
+
+  async downloadToFile(jobId: string, destPath: string): Promise<{
+    path: string;
+    bytes: number;
+    kind: string;
+    url: string;
+  }> {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const { dirname } = await import("node:path");
+    const meta = await this.download(jobId);
+    const response = await this.fetchImpl(meta.url);
+    if (!response.ok) {
+      throw new FmotionApiError(response.status, { type: "upstream", message: "download failed" });
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    await mkdir(dirname(destPath), { recursive: true });
+    await writeFile(destPath, bytes);
+    return { path: destPath, bytes: bytes.length, kind: meta.kind, url: meta.url };
+  }
 }
 
 export { loadCredentials, saveCredentials, credentialsPath, type FmotionCredentials } from "./config.js";

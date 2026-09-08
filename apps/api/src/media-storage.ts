@@ -1,4 +1,4 @@
-import { CopyObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -519,6 +519,13 @@ export class PrivateObjectStore {
     const etag = result.CopyObjectResult?.ETag?.replaceAll('"', "");
     if (!etag) throw new Error("object identity missing");
     return { etag, ...(result.VersionId ? { versionId: result.VersionId } : {}) };
+  }
+
+  async delete(objectKey: string): Promise<void> {
+    await this.client.send(new DeleteObjectCommand({
+      Bucket: this.bucket,
+      Key: objectKey
+    }));
   }
 
   async exists(objectKey: string): Promise<boolean> {

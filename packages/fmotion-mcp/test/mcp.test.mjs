@@ -74,7 +74,8 @@ test("fmotion-mcp lists tools and reports usage over /v1", async () => {
       "request_render",
       "wait_render",
       "download_render",
-      "usage"
+      "usage",
+      "delete_project"
     ]);
     const usage = await rpc(child, {
       jsonrpc: "2.0",

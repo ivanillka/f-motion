@@ -311,6 +311,7 @@ export function App() {
   });
   const partnerGalleryUrl = import.meta.env.VITE_PARTNER_GALLERY_URL?.trim();
   const partnerGalleryName = import.meta.env.VITE_PARTNER_GALLERY_NAME?.trim() || "Partner gallery";
+  const previewRenderLabel = import.meta.env.VITE_RENDER_LABEL?.trim() || "720p preview";
   const renderLabel = renderKind === "final" ? "final export" : previewRenderLabel;
   const renderHeading = renderKind === "final" ? "Final export" : "Accurate preview";
   const downloadLabel = renderKind === "final" ? "Download export" : "Download preview";
@@ -854,13 +855,19 @@ export function App() {
     const stored = parseBriefChat(localStorage.getItem("fengine-brief-chat"));
     const hasUser = stored.messages.some((message) => message.role === "user");
     if (!hasUser) {
-      localStorage.removeItem("fengine-draft");
-      localStorage.removeItem("fengine-brief-chat");
-      briefDraftRef.current = "";
-      setDraft("");
+      const leftover = stored.composer.trim();
+      if (!leftover) {
+        localStorage.removeItem("fengine-draft");
+        localStorage.removeItem("fengine-brief-chat");
+        briefDraftRef.current = "";
+        setDraft("");
+        setComposer("");
+      } else {
+        setComposer(leftover);
+        briefDraftRef.current = leftover;
+      }
       setBriefChat([BRIEF_OPENING]);
       setBriefAsked([]);
-      setComposer("");
     } else {
       setBriefChat(stored.messages.length ? stored.messages : [BRIEF_OPENING]);
       setBriefAsked(stored.asked);

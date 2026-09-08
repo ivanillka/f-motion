@@ -80,6 +80,19 @@ test("signedPut binds the admitted byte ceiling and only targets quarantine", as
   assert.doesNotMatch(decodeURIComponent(url.pathname), /\/media\/a$/);
 });
 
+test("PrivateObjectStore deletes an object by key", async () => {
+  let input;
+  const store = new PrivateObjectStore({
+    async send(command) {
+      input = command.input;
+      assert.equal(command.constructor.name, "DeleteObjectCommand");
+      return {};
+    }
+  }, "bucket");
+  await store.delete("projects/p/renders/1.mp4");
+  assert.deepEqual(input, { Bucket: "bucket", Key: "projects/p/renders/1.mp4" });
+});
+
 test("PrivateObjectStore uploads a multi-chunk stream with its known length", async () => {
   const chunks = [Buffer.from([1, 2]), Buffer.from([3, 4])];
   const body = Readable.from(chunks);

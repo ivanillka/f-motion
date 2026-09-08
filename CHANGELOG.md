@@ -4,6 +4,21 @@ All notable changes to F-Motion are listed here. The same notes appear in the
 studio under **Settings → What’s new**. Product version lives in root
 `package.json` and `apps/web/src/release.ts`.
 
+## [Unreleased]
+
+### Site
+
+- Splash feature buttons are Studio, How it works, GitHub, and Self-host. GitHub opens the agent skill (`skills/fmotion`). Hosted was the same CTA as Studio and is gone; `/hosted` still opens home.
+- Cursor `frontend-design` skill lives in `.cursor/skills/` and follows `DESIGN.md`. The splash is a glass cube in space holding the wordmark on every public page. Stars speed up while the site is loading or swapping pages, then ease back to slow. Fog stays faint and out at the edges. Reduced motion freezes the sky and the cube.
+
+### Ephemeral bulk (agent / CLI)
+
+- `DELETE /projects/{id}` purges a draft and its stored blobs after the file is downloaded.
+- `POST /compose` is the singular `composeOne` path (create, storyboard, optional stock, optional render).
+- `POST /batches` runs that same function once per item, then hard-deletes the project. Serial, result-only.
+- `fmotion batch` calls `POST /v1/batches` for brief/stock items. Local files still use `composeReel` because the bytes live on the client.
+- MCP `delete_project` and result-only bulk docs. Bulk AI generation stays rejected.
+
 ## [0.3.1] — 2026-09-01
 
 ### Reliability & site

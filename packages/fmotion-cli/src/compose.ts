@@ -11,7 +11,7 @@ export type ComposeOptions = {
   mediaPaths?: string[];
   conceptId?: string;
   fillStock?: boolean;
-  render?: "preview" | "none";
+  render?: "preview" | "final" | "none";
   webOrigin?: string;
 };
 
@@ -85,6 +85,24 @@ export async function composeReel(client: FmotionClient, options: ComposeOptions
     ...(options.tone ? { tone: options.tone } : {})
   });
   let project = created.project;
+  try {
+    return await finishCompose(client, project, media, purpose, options);
+  } catch (error) {
+    if (error && typeof error === "object") {
+      Object.assign(error, { project_id: project.id });
+    }
+    throw error;
+  }
+}
+
+async function finishCompose(
+  client: FmotionClient,
+  created: ProjectView,
+  media: MediaRead[],
+  purpose: string,
+  options: ComposeOptions
+): Promise<ComposeResult> {
+  let project = created;
   if (!project.scenes.length) {
     const architecture = recommendVideoArchitecture(purpose);
     const conceptId = options.conceptId
@@ -141,7 +159,8 @@ export async function composeReel(client: FmotionClient, options: ComposeOptions
   };
 
   if (options.render !== "none" && readyScenes > 0 && readyScenes === project.scenes.length) {
-    const job = await client.render(project.id, "preview");
+    const kind = options.render === "final" ? "final" : "preview";
+    const job = await client.render(project.id, kind);
     const waited = await client.wait(job.job_id);
     const download = waited.phase === "complete" ? await client.download(job.job_id) : undefined;
     result.render = {

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { FmotionApiError, FmotionClient } from "./client.js";
+import { batchReels, batchUsage, loadBatchManifest } from "./batch.js";
 import { composeReel } from "./compose.js";
 import { loadCredentials, saveCredentials } from "./config.js";
 import { draftUrl, webOriginFromEnv } from "./draft.js";
@@ -110,7 +111,13 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
           print(await client.getProject(id), flags.json);
           return 0;
         }
-        throw new Error("Usage: fmotion projects [list|create|get]");
+        if (sub === "delete") {
+          const id = rest[1] || String(flags.options.id || "");
+          if (!id) throw new Error("Missing project id");
+          print(await client.deleteProject(id), flags.json);
+          return 0;
+        }
+        throw new Error("Usage: fmotion projects [list|create|get|delete]");
       }
       case "media": {
         const sub = rest[0];
@@ -151,7 +158,9 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
           mediaPaths: media,
           conceptId: flags.options.concept ? String(flags.options.concept) : undefined,
           fillStock: Boolean(flags.options.stock),
-          render: flags.options.render === "none" ? "none" : "preview",
+          render: flags.options.render === "none"
+            ? "none"
+            : flags.options.render === "final" ? "final" : "preview",
           webOrigin: flags.options["web-origin"]
             ? String(flags.options["web-origin"])
             : webOriginFromEnv()
@@ -197,6 +206,22 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
         print(await (await clientFromEnv()).download(jobId), flags.json);
         return 0;
       }
+      case "batch": {
+        const target = rest[0] || String(flags.options.manifest || "");
+        if (!target) throw new Error(batchUsage());
+        const kind = flags.options.render === "preview" ? "preview" : "final";
+        if (flags.options.render && flags.options.render !== "preview" && flags.options.render !== "final") {
+          throw new Error("kind must be preview or final");
+        }
+        const result = await batchReels(await clientFromEnv(), await loadBatchManifest(target), {
+          render: kind,
+          keepOnFailure: Boolean(flags.options["keep-on-failure"]),
+          failFast: Boolean(flags.options["fail-fast"]),
+          outDir: flags.options.out ? String(flags.options.out) : "out"
+        });
+        print(result, flags.json);
+        return result.ok ? 0 : result.items.some((item) => item.quota_exceeded) ? 3 : 1;
+      }
       case "help":
       case undefined: {
         print(`fmotion — thin F-Motion /v1 client
@@ -204,10 +229,11 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
 Commands:
   login|config --api-key fm_… [--api-origin URL]
   usage
-  projects list|create|get
+  projects list|create|get|delete
   media read <file> [file…]
   media upload <projectId> <file>
-  compose [--purpose "…"] [--media a.jpg,b.jpg] [--stock] [--render none]
+  compose [--purpose "…"] [--media a.jpg,b.jpg] [--stock] [--render none|preview|final]
+  batch <manifest.json|dir> [--out dir] [--render preview|final] [--fail-fast] [--keep-on-failure]
   draft <projectId> [--web-origin URL]
   command <projectId> '<json-envelope>'
   render <projectId> [preview|final]

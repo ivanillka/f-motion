@@ -1,14 +1,24 @@
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type TransitionEvent as ReactTransitionEvent
+} from "react";
 import "./marketing.css";
 
-import { GITHUB_REPO_URL, githubBlobUrl } from "./repo";
-const SELFHOST_DOCS = githubBlobUrl("docs/runbooks/self-host.md");
+import { githubBlobUrl, githubTreeUrl } from "./repo";
+const SELFHOST_DOCS = githubBlobUrl("docs/runbooks/vps-self-host.md");
+const SKILL_REPO = githubTreeUrl("skills/fmotion");
 
 export type MarketingRoute =
   | "home"
   | "self-host"
-  | "hosted"
   | "how-it-works"
   | "login";
+
+const MARKETING_PATHS = new Set(["/", "/how-it-works", "/hosted", "/self-host", "/login"]);
 
 export function studioComingSoon(): boolean {
   return import.meta.env.VITE_STUDIO_COMING_SOON === "1"
@@ -24,20 +34,36 @@ export function isStudioPath(path: string): boolean {
     || path === "/app" || path.startsWith("/app/");
 }
 
+export function isMarketingPath(path: string): boolean {
+  return MARKETING_PATHS.has(path);
+}
+
 export function marketingRoute(path: string): MarketingRoute {
   if (path === "/self-host") return "self-host";
-  if (path === "/hosted") return "hosted";
   if (path === "/how-it-works") return "how-it-works";
   if (path === "/login") return "login";
   return "home";
 }
 
 const TITLES: Record<MarketingRoute, string> = {
-  home: "F-Motion — Vertical reels from your own media",
+  home: "F-Motion",
   "self-host": "F-Motion — Self-host",
-  hosted: "F-Motion — Hosted studio",
   "how-it-works": "F-Motion — How it works",
   login: "F-Motion — Login"
+};
+
+const HEADLINES: Record<MarketingRoute, string> = {
+  home: "F-Motion",
+  "how-it-works": "How it works",
+  "self-host": "Self-host",
+  login: "Login"
+};
+
+const LEDES: Record<MarketingRoute, string> = {
+  home: "",
+  "how-it-works": "Coming soon on f-motion.com.",
+  "self-host": "The same studio, one image, on your VPS.",
+  login: "Coming soon on f-motion.com."
 };
 
 export function pageTitle(path: string): string {
@@ -45,227 +71,402 @@ export function pageTitle(path: string): string {
   return TITLES[marketingRoute(path)] ?? "F-Motion";
 }
 
-function MarketingNav({ page }: { page: MarketingRoute }) {
+const FACE_PATH: Record<MarketingRoute, string> = {
+  home: "/",
+  "how-it-works": "/how-it-works",
+  "self-host": "/self-host",
+  login: "/login"
+};
+
+// ponytail: four physical walls. SECTIONS can grow; recycle the wall that went behind.
+const SECTIONS: MarketingRoute[] = ["home", "how-it-works", "self-host", "login"];
+const WALLS = ["front", "right", "back", "left"] as const;
+
+function wrapIndex(index: number, n: number): number {
+  return ((index % n) + n) % n;
+}
+
+function stepDelta(from: number, to: number, n: number): number {
+  const raw = wrapIndex(to - from, n);
+  if (raw === 0) return 0;
+  return raw > n / 2 ? raw - n : raw;
+}
+
+function sectionIndex(page: MarketingRoute): number {
+  const index = SECTIONS.indexOf(page);
+  return index < 0 ? 0 : index;
+}
+
+function neighborFace(page: MarketingRoute, step: number): MarketingRoute {
+  const n = SECTIONS.length;
+  return SECTIONS[wrapIndex(sectionIndex(page) + step, n)] ?? page;
+}
+
+function sectionAtWall(index: number, wall: number): MarketingRoute {
+  const slot = wrapIndex(index, 4);
+  const offset = wrapIndex(wall - slot, 4);
+  const step = offset === 3 ? -1 : offset;
+  return SECTIONS[wrapIndex(index + step, SECTIONS.length)] ?? "home";
+}
+
+function FeatureNav({ page, studio }: { page: MarketingRoute; studio: string }) {
+  const item = (href: string, label: string, current: boolean, className?: string) => (
+    <a className={className} href={href} aria-current={current ? "page" : undefined}>{label}</a>
+  );
+  return (
+    <nav className="mkt-splash-features" aria-label="Features">
+      {item("/", "Home", page === "home")}
+      {item(studio, "Studio", page === "login", "is-studio")}
+      {item("/how-it-works", "How it works", page === "how-it-works")}
+      <a href={SKILL_REPO} target="_blank" rel="noreferrer">GitHub</a>
+      {item("/self-host", "Self-host", page === "self-host")}
+    </nav>
+  );
+}
+
+function Headline({ text, active }: { text: string; active: boolean }) {
+  const long = text.includes(" ");
+  const className = long ? "mkt-face-title is-long" : "mkt-face-title";
+  const mark = text === "F-Motion"
+    ? <>F<span className="mkt-hyphen">-</span>Motion</>
+    : text;
+  if (active) return <h1 id="splash-title" className={className}>{mark}</h1>;
+  return <p className={className}>{mark}</p>;
+}
+
+type SkyStar = {
+  x: number;
+  y: number;
+  r: number;
+  a: number;
+  speed: number;
+  tw: number;
+  tint: "white" | "cyan" | "rose";
+};
+
+function seedStars(count: number): SkyStar[] {
+  return Array.from({ length: count }, () => {
+    const left = Math.random() < 0.5;
+    const roll = Math.random();
+    return {
+      x: left ? Math.random() * 0.34 : 0.66 + Math.random() * 0.34,
+      y: Math.random(),
+      r: 0.35 + Math.random() * 1.15,
+      a: 0.28 + Math.random() * 0.5,
+      speed: 0.012 + Math.random() * 0.018,
+      tw: Math.random() * Math.PI * 2,
+      tint: roll < 0.1 ? "cyan" : roll < 0.2 ? "rose" : "white"
+    };
+  });
+}
+
+const CUBE_FACES = ["front", "back", "right", "left", "top", "bottom"] as const;
+
+function FaceCopy({ page, active }: { page: MarketingRoute; active: boolean }) {
+  const lede = LEDES[page];
   return (
     <>
-      <a href="/" aria-current={page === "home" ? "page" : undefined}>Home</a>
-      <a href="/how-it-works">How it works</a>
-      <a href="/hosted" aria-current={page === "hosted" ? "page" : undefined}>Hosted</a>
-      <a href="/self-host" aria-current={page === "self-host" ? "page" : undefined}>Self-host</a>
-      <a href="/login" aria-current={page === "login" ? "page" : undefined}>Login</a>
+      <Headline text={HEADLINES[page]} active={active} />
+      {lede ? <p className="mkt-splash-lede">{lede}</p> : null}
+      {active && page === "self-host"
+        ? <a className="mkt-splash-lede" href={SELFHOST_DOCS} target="_blank" rel="noreferrer">Guide</a>
+        : null}
     </>
   );
 }
 
-function ComingSoon({ title }: { title: string }) {
+function WordCube({
+  page,
+  yaw,
+  onTurn
+}: {
+  page: MarketingRoute;
+  yaw: number;
+  onTurn: (next: MarketingRoute) => void;
+}) {
+  const [facing, setFacing] = useState(page);
+  const [seen, setSeen] = useState(() => new Set<MarketingRoute>([page]));
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const dragged = useRef(false);
+
+  useEffect(() => {
+    setSeen((prev) => {
+      if (prev.has(page)) return prev;
+      const next = new Set(prev);
+      next.add(page);
+      return next;
+    });
+    const reduced = typeof matchMedia === "function"
+      && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      setFacing(page);
+      return;
+    }
+    const settle = window.setTimeout(() => setFacing(page), 420);
+    return () => window.clearTimeout(settle);
+  }, [page]);
+
+  const faces = (kind: "outer" | "inner") => CUBE_FACES.map((side) => (
+    <span
+      key={`${kind}-${side}`}
+      className={kind === "inner" ? "mkt-cube-face is-inner" : "mkt-cube-face"}
+      data-side={side}
+      aria-hidden="true"
+    />
+  ));
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    start.current = { x: event.clientX, y: event.clientY };
+    dragged.current = false;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const origin = start.current;
+    start.current = null;
+    if (!origin) return;
+    const dx = event.clientX - origin.x;
+    const dy = event.clientY - origin.y;
+    if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy)) return;
+    dragged.current = true;
+    onTurn(neighborFace(page, dx < 0 ? 1 : -1));
+  };
+  const onClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!dragged.current) return;
+    dragged.current = false;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const onYawEnd = (event: ReactTransitionEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || event.propertyName !== "transform") return;
+    setFacing(page);
+  };
   return (
-    <section className="mkt-section mkt-coming-soon" aria-labelledby="coming-heading">
-      <p className="mkt-live">Coming soon</p>
-      <h1 id="coming-heading">{title}</h1>
-      <p className="mkt-lead">This part of f-motion.com is not open yet.</p>
-      <p>We are finishing it. For now, read the <a href="/self-host">self-host guide</a> or browse <a href="/">home</a>.</p>
+    <div
+      className="mkt-cube-scene"
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onClickCapture={onClickCapture}
+    >
+      <div
+        className="mkt-cube-rig"
+        style={{ transform: `rotateX(16deg) rotateY(${yaw}deg)` }}
+        onTransitionEnd={onYawEnd}
+      >
+        <div className="mkt-cube">
+          {faces("outer")}
+          <div className="mkt-cube-shell" aria-hidden="true">{faces("inner")}</div>
+          {WALLS.map((side, wall) => {
+            const face = sectionAtWall(sectionIndex(facing), wall);
+            const live = face === facing || face === page || seen.has(face);
+            if (!live) return null;
+            return (
+              <div
+                key={side}
+                className={face === facing ? "mkt-cube-core is-facing" : "mkt-cube-core is-away"}
+                data-side={side}
+                aria-hidden={face === facing ? undefined : true}
+                onClick={face === facing ? undefined : () => onTurn(face)}
+              >
+                <FaceCopy page={face} active={face === facing} />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SplashSky({ paceRef }: { paceRef: { current: number } }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d", { alpha: true });
+    if (!ctx) return;
+    const reduced = typeof matchMedia === "function"
+      && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const stars = seedStars(110);
+    let width = 0;
+    let height = 0;
+    let frame = 0;
+    let clock = 0;
+    let last = performance.now();
+    let current = paceRef.current;
+
+    const size = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      width = canvas.clientWidth;
+      height = canvas.clientHeight;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const paint = (t: number) => {
+      ctx.clearRect(0, 0, width, height);
+      const clouds = [
+        { x: 0.04 + Math.sin(t * 0.07) * 0.02, y: 0.38 + Math.cos(t * 0.05) * 0.02, rose: true },
+        { x: 0.96 + Math.cos(t * 0.06) * 0.02, y: 0.62 + Math.sin(t * 0.05) * 0.02, rose: false }
+      ];
+      for (const cloud of clouds) {
+        const gx = cloud.x * width;
+        const gy = cloud.y * height;
+        const reach = Math.max(width, height) * 0.55;
+        const fog = ctx.createRadialGradient(gx, gy, reach * 0.12, gx, gy, reach);
+        if (cloud.rose) {
+          fog.addColorStop(0, "rgba(165, 77, 103, 0.14)");
+          fog.addColorStop(0.55, "rgba(180, 40, 70, 0.04)");
+        } else {
+          fog.addColorStop(0, "rgba(70, 88, 110, 0.12)");
+          fog.addColorStop(0.55, "rgba(0, 180, 210, 0.03)");
+        }
+        fog.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = fog;
+        ctx.fillRect(0, 0, width, height);
+      }
+      for (const star of stars) {
+        const y = ((star.y + t * star.speed) % 1 + 1) % 1;
+        const twinkle = reduced ? 1 : 0.72 + 0.28 * Math.sin(t * 0.55 + star.tw);
+        const alpha = star.a * twinkle;
+        ctx.beginPath();
+        ctx.arc(star.x * width, y * height, star.r, 0, Math.PI * 2);
+        ctx.fillStyle = star.tint === "cyan"
+          ? `rgba(0, 229, 255, ${alpha})`
+          : star.tint === "rose"
+            ? `rgba(255, 177, 196, ${alpha})`
+            : `rgba(241, 242, 243, ${alpha})`;
+        ctx.fill();
+      }
+    };
+
+    size();
+    const watch = new ResizeObserver(() => {
+      size();
+      if (reduced) paint(0);
+    });
+    watch.observe(canvas);
+    if (reduced) {
+      paint(0);
+      return () => watch.disconnect();
+    }
+    const tick = (ms: number) => {
+      const dt = Math.min(0.05, (ms - last) / 1000);
+      last = ms;
+      if (!document.hidden) {
+        const target = paceRef.current;
+        current += (target - current) * Math.min(1, dt * 2.6);
+        clock += dt * current;
+        paint(clock);
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(frame);
+      watch.disconnect();
+    };
+  }, [paceRef]);
+  return <canvas className="mkt-sky" ref={ref} aria-hidden="true" />;
+}
+
+function goFace(next: MarketingRoute): void {
+  const path = FACE_PATH[next];
+  const here = window.location.pathname.replace(/\/$/, "") || "/";
+  if (path === here) return;
+  history.pushState(null, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function Splash({
+  page,
+  yaw,
+  onTurn
+}: {
+  page: MarketingRoute;
+  yaw: number;
+  onTurn: (next: MarketingRoute) => void;
+}) {
+  return (
+    <section className="mkt-splash" aria-labelledby="splash-title">
+      <WordCube page={page} yaw={yaw} onTurn={onTurn} />
+      <FeatureNav page={page} studio={studioHref()} />
     </section>
-  );
-}
-
-function HomePage() {
-  const studio = studioHref();
-  return (
-    <div className="mkt-fade">
-      <section className="mkt-hero">
-        <h1>Vertical reels from your own media.</h1>
-        <p className="mkt-lead">Write a short brief, pick a story, drop in your clips, download a 720p vertical preview.</p>
-        <p className="mkt-chip">brief → storyboard → preview</p>
-        <div className="mkt-hero-actions">
-          <a className="mkt-btn mkt-btn-primary mkt-btn-lg" href={studio}>Open studio</a>
-          <a className="mkt-text-link" href="/self-host">Self-host on your VPS</a>
-        </div>
-        <div className="mkt-hero-media">
-          <picture>
-            <source type="image/webp" srcSet="/web/assets/studio-ui.webp" />
-            <img src="/web/assets/studio-ui.jpg" alt="F-Motion storyboard studio with a vertical preview" />
-          </picture>
-        </div>
-      </section>
-
-      <section className="mkt-section" id="how" aria-labelledby="how-heading">
-        <h2 id="how-heading">How a reel gets made</h2>
-        <p className="mkt-section-lede">Not a multitrack editor. A guided storyboard that stays on this path.</p>
-        <div className="mkt-steps">
-          <div className="mkt-step">
-            <div className="mkt-step-num">01 Describe</div>
-            <p>Write a short brief. F-Motion offers three story concepts — you pick one.</p>
-          </div>
-          <div className="mkt-step">
-            <div className="mkt-step-num">02 Choose pictures</div>
-            <p>Upload clips you already have. On the hosted studio you can also search licensed Pexels stock, or add optional AI stills.</p>
-          </div>
-          <div className="mkt-step">
-            <div className="mkt-step-num">03 Download preview</div>
-            <p>Edit the storyboard, then download an accurate 720p vertical preview. Nothing publishes itself.</p>
-          </div>
-        </div>
-        <p className="mkt-section-cta">
-          <a className="mkt-text-link" href="/how-it-works">Full how-it-works guide</a>
-        </p>
-      </section>
-
-      <section className="mkt-section" aria-labelledby="ways-heading">
-        <h2 id="ways-heading">Three ways to use it</h2>
-        <div className="mkt-recipes">
-          <article className="mkt-recipe">
-            <span>01 Hosted</span>
-            <h3>Use it here</h3>
-            <p>Open the studio on f-motion.com. Your uploads and Pexels search are free. Optional AI is billed when you confirm a job.</p>
-            <a href="/hosted">Hosted studio</a>
-          </article>
-          <article className="mkt-recipe">
-            <span>02 Self-host</span>
-            <h3>One image on your VPS</h3>
-            <p>Run the same studio on a machine you control. Your uploads stay there. Stock search and AI stay optional.</p>
-            <a href="/self-host">Self-host guide</a>
-          </article>
-          <article className="mkt-recipe">
-            <span>03 Source</span>
-            <h3>Read the GitHub repo</h3>
-            <p>Apache-2.0 source, issues, and docs. Fork it, file a bug, or pin a release on your own host.</p>
-            <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">GitHub repo</a>
-          </article>
-        </div>
-      </section>
-
-      <section className="mkt-band">
-        <div className="mkt-split">
-          <div>
-            <h2>Your media stays yours.</h2>
-            <p>Uploads on a self-hosted image stay on that VPS. Hosted files stay in F-Motion storage you can delete. Pexels clips keep their creator attribution. Pexels is not public domain.</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="mkt-cta">
-        <h2>Make a preview</h2>
-        <p>Start on f-motion.com. Self-host if you want the same app on your server.</p>
-        <a className="mkt-btn mkt-btn-primary mkt-btn-lg" href={studio}>Open studio</a>
-      </section>
-    </div>
-  );
-}
-
-function SelfHostPage() {
-  const studio = studioHref();
-  return (
-    <div className="mkt-fade">
-      <section className="mkt-int-hero">
-        <div className="mkt-live">For operators</div>
-        <h1>Install F-Motion on your VPS.</h1>
-        <p>One Docker image runs the studio, API, worker, Postgres, MinIO, and Caddy. Your uploads stay on that machine. Stock search and AI stay BYOK.</p>
-        <div className="mkt-hero-actions">
-          <a className="mkt-btn mkt-btn-primary mkt-btn-lg" href={SELFHOST_DOCS} target="_blank" rel="noreferrer">Self-host guide</a>
-          <a className="mkt-btn mkt-btn-ghost mkt-btn-lg" href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">GitHub repo</a>
-        </div>
-      </section>
-      <section className="mkt-section">
-        <h2>What you get</h2>
-        <div className="mkt-recipes">
-          <article className="mkt-recipe">
-            <span>01</span>
-            <h3>Web + API + worker</h3>
-            <p>Same brief → storyboard → preview flow as the hosted studio, without shipping media to us.</p>
-          </article>
-          <article className="mkt-recipe">
-            <span>02</span>
-            <h3>Owner password</h3>
-            <p>First open creates a single owner. The container prints an operator token. Sign in at /studio with that email and password.</p>
-          </article>
-          <article className="mkt-recipe">
-            <span>03</span>
-            <h3>BYOK providers</h3>
-            <p>Pexels and FAL keys stay in your database. No platform fallback keys.</p>
-          </article>
-        </div>
-      </section>
-      <section className="mkt-cta">
-        <h2>Run it yourself</h2>
-        <a className="mkt-btn mkt-btn-primary mkt-btn-lg" href={SELFHOST_DOCS} target="_blank" rel="noreferrer">Read self-host.md</a>
-        <a className="mkt-text-link" href="/hosted">Prefer hosted</a>
-      </section>
-    </div>
-  );
-}
-
-function HostedPage() {
-  const studio = studioHref();
-  return (
-    <div className="mkt-fade">
-      <section className="mkt-int-hero">
-        <div className="mkt-live">f-motion.com</div>
-        <h1>Use the hosted studio.</h1>
-        <p>Sign in, write a brief, and download a 720p vertical preview. Your own uploads are free. Licensed Pexels search is included. Optional AI stills and short animation are charged when you run a job — you confirm before it starts.</p>
-        <div className="mkt-hero-actions">
-          <a className="mkt-btn mkt-btn-primary mkt-btn-lg" href={studio}>Open studio</a>
-          <a className="mkt-btn mkt-btn-ghost mkt-btn-lg" href="/self-host">Prefer self-host</a>
-        </div>
-      </section>
-      <section className="mkt-section">
-        <h2>Hosted studio</h2>
-        <div className="mkt-recipes">
-          <article className="mkt-recipe">
-            <span>Free</span>
-            <h3>Your own media</h3>
-            <p>Upload clips or stills you already have. Preview and download stay available without a provider key.</p>
-          </article>
-          <article className="mkt-recipe">
-            <span>Included</span>
-            <h3>Pexels stock</h3>
-            <p>Search licensed footage with your connected Pexels key. Attribution stays on the clip.</p>
-          </article>
-          <article className="mkt-recipe">
-            <span>BYOK</span>
-            <h3>Optional AI</h3>
-            <p>FAL stills and speech are optional. You see the quote before a job runs.</p>
-          </article>
-        </div>
-      </section>
-      <section className="mkt-cta">
-        <h2>Open the studio</h2>
-        <a className="mkt-btn mkt-btn-primary mkt-btn-lg" href={studio}>Open studio</a>
-      </section>
-    </div>
   );
 }
 
 export function MarketingSite({ path }: { path: string }) {
   const page = marketingRoute(path);
-  const studio = studioHref();
+  const index = sectionIndex(page);
+  const [yaw, setYaw] = useState(() => -90 * index);
+  const [busy, setBusy] = useState(true);
+  const [turning, setTurning] = useState(false);
+  const booted = useRef(false);
+  const indexRef = useRef(index);
+  const pace = busy ? 3.4 : 1;
+  const paceRef = useRef(pace);
+  paceRef.current = turning && !busy ? 1.8 : pace;
+
+  useEffect(() => {
+    let gone = false;
+    const finish = () => { if (!gone) setBusy(false); };
+    const onLoad = () => {
+      const fonts = document.fonts?.ready ?? Promise.resolve();
+      void fonts.then(finish);
+    };
+    if (document.readyState === "complete") onLoad();
+    else window.addEventListener("load", onLoad);
+    const fallback = window.setTimeout(finish, 2200);
+    return () => {
+      gone = true;
+      window.removeEventListener("load", onLoad);
+      window.clearTimeout(fallback);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLElement && event.target.closest("input, textarea, a, button")) return;
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        goFace(neighborFace(page, 1));
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        goFace(neighborFace(page, -1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [page]);
+
+  useEffect(() => {
+    if (!booted.current) {
+      booted.current = true;
+      indexRef.current = index;
+      return;
+    }
+    const delta = stepDelta(indexRef.current, index, SECTIONS.length);
+    indexRef.current = index;
+    setYaw((from) => from - 90 * delta);
+    const reduced = typeof matchMedia === "function"
+      && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      setTurning(false);
+      return;
+    }
+    setTurning(true);
+    const done = window.setTimeout(() => setTurning(false), 420);
+    return () => window.clearTimeout(done);
+  }, [index]);
 
   return (
-    <div className="mkt">
-      <header className="mkt-nav">
-        <a className="mkt-brand" href="/">F-MOTION</a>
-        <nav className="mkt-nav-links" aria-label="Marketing">
-          <MarketingNav page={page} />
-        </nav>
-        <a className="mkt-btn mkt-btn-primary" href={studio}>Open studio</a>
-      </header>
-
-      <div className="mkt-main">
-        {page === "home" && <HomePage />}
-        {page === "self-host" && <SelfHostPage />}
-        {page === "hosted" && <HostedPage />}
-        {page === "how-it-works" && <ComingSoon title="How it works" />}
-        {page === "login" && <ComingSoon title="Login" />}
+    <div className="mkt mkt-is-splash" style={{ ["--mkt-pace" as string]: busy ? "3.4" : "1" }}>
+      <SplashSky paceRef={paceRef} />
+      <div className="mkt-main mkt-main-splash">
+        <div className="mkt-page">
+          <Splash page={page} yaw={yaw} onTurn={goFace} />
+        </div>
       </div>
-
-      <footer className="mkt-footer">
-        <strong className="mkt-brand" style={{ fontSize: "1rem" }}>F-MOTION</strong>
-        <nav>
-          <MarketingNav page={page} />
-          <a href={studio}>Studio</a>
-          <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">GitHub</a>
-        </nav>
-        <span>© {new Date().getFullYear()} F-Motion</span>
-      </footer>
     </div>
   );
 }

@@ -1,0 +1,46 @@
+name: deploy-pages
+# Retrigger production upload after hosted secrets were added.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/deploy-pages.yml"
+
+concurrency:
+  group: deploy-pages-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: npm
+      - name: Require hosted deploy secrets
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          missing=
+          [ -n "${VITE_SUPABASE_URL:-}" ] || missing="${missing} VITE_SUPABASE_URL"
+          [ -n "${VITE_SUPABASE_ANON_KEY:-}" ] || missing="${missing} VITE_SUPABASE_ANON_KEY"
+          [ -n "${CLOUDFLARE_API_TOKEN:-}" ] || missing="${missing} CLOUDFLARE_API_TOKEN"
+          [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ] || missing="${missing} CLOUDFLARE_ACCOUNT_ID"
+          if [ -n "$missing" ]; then
+            echo "Missing GitHub Actions secrets:$missing"
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm run deploy:pages -- --project-name f-motion
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
