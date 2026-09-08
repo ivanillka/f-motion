@@ -21,8 +21,7 @@ export type MarketingRoute =
 const MARKETING_PATHS = new Set(["/", "/how-it-works", "/hosted", "/self-host", "/login"]);
 
 export function studioComingSoon(): boolean {
-  return import.meta.env.VITE_STUDIO_COMING_SOON === "1"
-    || (import.meta.env.PROD && import.meta.env.VITE_SELFHOST_AUTH !== "1");
+  return import.meta.env.VITE_STUDIO_COMING_SOON === "1";
 }
 
 export function studioHref(): string {
@@ -67,7 +66,9 @@ const LEDES: Record<MarketingRoute, string> = {
 };
 
 export function pageTitle(path: string): string {
-  if (isStudioPath(path) && !studioComingSoon()) return "F-Motion — Studio";
+  if (!studioComingSoon() && (isStudioPath(path) || path === "/login")) {
+    return "F-Motion — Studio";
+  }
   return TITLES[marketingRoute(path)] ?? "F-Motion";
 }
 

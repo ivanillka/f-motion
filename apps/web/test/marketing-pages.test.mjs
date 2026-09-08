@@ -73,6 +73,15 @@ test("every marketing page stays on the splash and animates the swap", async () 
   assert.match(site, /path === "\/hosted" \? "\/"/);
 });
 
+test("hosted studio opens unless VITE_STUDIO_COMING_SOON is set", async () => {
+  const pages = await readFile(new URL("../src/MarketingPages.tsx", import.meta.url), "utf8");
+  const site = await readFile(new URL("../src/site.tsx", import.meta.url), "utf8");
+  assert.match(pages, /VITE_STUDIO_COMING_SOON === "1"/);
+  assert.doesNotMatch(pages, /PROD && import\.meta\.env\.VITE_SELFHOST_AUTH/);
+  assert.match(site, /!studioComingSoon\(\) && \(isStudioPath\(path\) \|\| path === "\/login"\)/);
+  assert.match(site, /MarketingSite path="\/login"/);
+});
+
 test("cube path walks the short way around a ring of any length", () => {
   const wrap = (index, n) => ((index % n) + n) % n;
   const stepDelta = (from, to, n) => {

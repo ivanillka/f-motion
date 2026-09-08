@@ -96,7 +96,7 @@ function SiteRoot() {
     return <Studio />;
   }
 
-  if (isStudioPath(path) && !studioComingSoon()) {
+  if (!studioComingSoon() && (isStudioPath(path) || path === "/login")) {
     return <Studio />;
   }
 
