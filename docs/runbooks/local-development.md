@@ -9,9 +9,9 @@ npm run demo
 
 Open `http://127.0.0.1:4173`. Without both Supabase web variables, the email
 button uses an explicit session-only demo identity against an in-memory API.
-No bearer token is stored by the demo gateway. The worker renders a real FFmpeg
-720p preview. This is the Gate 2 UI path used by
-`npm run test:e2e:web`.
+No bearer token is stored by the demo gateway. Browser uploads PUT to the
+local worker on `:43141`. The worker renders a real FFmpeg 720p preview.
+This is the Gate 2 UI path used by `npm run test:e2e:web`.
 
 ## Full local stack (Postgres + MinIO + API + worker)
 
