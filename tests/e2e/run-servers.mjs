@@ -97,7 +97,7 @@ const media = {
   repository: mediaRepository,
   store: {
     async signedPut(objectKey) {
-      return `https://e2e-storage.invalid/${encodeURIComponent(objectKey)}`;
+      return `http://127.0.0.1:43141/uploads/${encodeURIComponent(objectKey)}`;
     },
     async exists() {
       return true;
