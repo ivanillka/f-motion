@@ -9,6 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_PARTNER_GALLERY_NAME?: string;
   readonly VITE_GITHUB_REPO_SLUG?: string;
   readonly VITE_SELFHOST_AUTH?: string;
+  readonly VITE_STUDIO_COMING_SOON?: string;
   readonly VITE_GIT_SHA?: string;
 }
 
