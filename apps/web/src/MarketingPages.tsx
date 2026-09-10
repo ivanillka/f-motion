@@ -4,6 +4,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   type TransitionEvent as ReactTransitionEvent
 } from "react";
 import "./marketing.css";
@@ -34,13 +35,13 @@ export function isStudioPath(path: string): boolean {
 }
 
 export function isMarketingPath(path: string): boolean {
-  return MARKETING_PATHS.has(path);
+  return MARKETING_PATHS.has(path) || isStudioPath(path);
 }
 
 export function marketingRoute(path: string): MarketingRoute {
   if (path === "/self-host") return "self-host";
   if (path === "/how-it-works") return "how-it-works";
-  if (path === "/login") return "login";
+  if (path === "/login" || isStudioPath(path)) return "login";
   return "home";
 }
 
@@ -78,6 +79,10 @@ const FACE_PATH: Record<MarketingRoute, string> = {
   "self-host": "/self-host",
   login: "/login"
 };
+
+function pathFor(route: MarketingRoute): string {
+  return route === "login" ? studioHref() : FACE_PATH[route];
+}
 
 // ponytail: four physical walls. SECTIONS can grow; recycle the wall that went behind.
 const SECTIONS: MarketingRoute[] = ["home", "how-it-works", "self-host", "login"];
@@ -163,11 +168,26 @@ function seedStars(count: number): SkyStar[] {
 
 const CUBE_FACES = ["front", "back", "right", "left", "top", "bottom"] as const;
 
-function FaceCopy({ page, active }: { page: MarketingRoute; active: boolean }) {
+function FaceCopy({
+  page,
+  active,
+  studio
+}: {
+  page: MarketingRoute;
+  active: boolean;
+  studio?: ReactNode;
+}) {
+  if (page === "login" && studio && !studioComingSoon()) {
+    if (!active) return <Headline text="Studio" active={false} />;
+    return <div className="mkt-studio-face">{studio}</div>;
+  }
+  const title = page === "login"
+    ? (studioComingSoon() ? "Login" : "Studio")
+    : HEADLINES[page];
   const lede = LEDES[page];
   return (
     <>
-      <Headline text={HEADLINES[page]} active={active} />
+      <Headline text={title} active={active} />
       {lede ? <p className="mkt-splash-lede">{lede}</p> : null}
       {active && page === "self-host"
         ? <a className="mkt-splash-lede" href={SELFHOST_DOCS} target="_blank" rel="noreferrer">Guide</a>
@@ -179,10 +199,12 @@ function FaceCopy({ page, active }: { page: MarketingRoute; active: boolean }) {
 function WordCube({
   page,
   yaw,
+  studio,
   onTurn
 }: {
   page: MarketingRoute;
   yaw: number;
+  studio?: ReactNode;
   onTurn: (next: MarketingRoute) => void;
 }) {
   const [facing, setFacing] = useState(page);
@@ -216,6 +238,10 @@ function WordCube({
     />
   ));
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.target instanceof Element
+      && event.target.closest("a, button, input, textarea, label, select, .app-shell, .mkt-splash-features")) {
+      return;
+    }
     start.current = { x: event.clientX, y: event.clientY };
     dragged.current = false;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -267,7 +293,10 @@ function WordCube({
                 aria-hidden={face === facing ? undefined : true}
                 onClick={face === facing ? undefined : () => onTurn(face)}
               >
-                <FaceCopy page={face} active={face === facing} />
+                <FaceCopy page={face} active={face === facing} studio={studio} />
+                {face === facing
+                  ? <FeatureNav page={page} studio={studioHref()} />
+                  : null}
               </div>
             );
           })}
@@ -371,7 +400,7 @@ function SplashSky({ paceRef }: { paceRef: { current: number } }) {
 }
 
 function goFace(next: MarketingRoute): void {
-  const path = FACE_PATH[next];
+  const path = pathFor(next);
   const here = window.location.pathname.replace(/\/$/, "") || "/";
   if (path === here) return;
   history.pushState(null, "", path);
@@ -381,23 +410,25 @@ function goFace(next: MarketingRoute): void {
 function Splash({
   page,
   yaw,
+  studio,
   onTurn
 }: {
   page: MarketingRoute;
   yaw: number;
+  studio?: ReactNode;
   onTurn: (next: MarketingRoute) => void;
 }) {
   return (
     <section className="mkt-splash" aria-labelledby="splash-title">
-      <WordCube page={page} yaw={yaw} onTurn={onTurn} />
-      <FeatureNav page={page} studio={studioHref()} />
+      <WordCube page={page} yaw={yaw} studio={studio} onTurn={onTurn} />
     </section>
   );
 }
 
-export function MarketingSite({ path }: { path: string }) {
+export function MarketingSite({ path, studio }: { path: string; studio?: ReactNode }) {
   const page = marketingRoute(path);
   const index = sectionIndex(page);
+  const inStudio = page === "login" && !studioComingSoon();
   const [yaw, setYaw] = useState(() => -90 * index);
   const [busy, setBusy] = useState(true);
   const [turning, setTurning] = useState(false);
@@ -461,11 +492,14 @@ export function MarketingSite({ path }: { path: string }) {
   }, [index]);
 
   return (
-    <div className="mkt mkt-is-splash" style={{ ["--mkt-pace" as string]: busy ? "3.4" : "1" }}>
+    <div
+      className={`mkt mkt-is-splash${inStudio ? " mkt-is-studio" : ""}`}
+      style={{ ["--mkt-pace" as string]: busy ? "3.4" : "1" }}
+    >
       <SplashSky paceRef={paceRef} />
       <div className="mkt-main mkt-main-splash">
         <div className="mkt-page">
-          <Splash page={page} yaw={yaw} onTurn={goFace} />
+          <Splash page={page} yaw={yaw} studio={studio} onTurn={goFace} />
         </div>
       </div>
     </div>

@@ -3,9 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   MarketingSite,
   isMarketingPath,
-  isStudioPath,
-  pageTitle,
-  studioComingSoon
+  pageTitle
 } from "./MarketingPages";
 
 const App = lazy(() => import("./main").then((mod) => ({ default: mod.App })));
@@ -96,15 +94,7 @@ function SiteRoot() {
     return <Studio />;
   }
 
-  if (!studioComingSoon() && (isStudioPath(path) || path === "/login")) {
-    return <Studio />;
-  }
-
-  if (isStudioPath(path) && studioComingSoon()) {
-    return <MarketingSite path="/login" />;
-  }
-
-  return <MarketingSite path={path} />;
+  return <MarketingSite path={path} studio={<Studio />} />;
 }
 
 createRoot(document.getElementById("root")!).render(
