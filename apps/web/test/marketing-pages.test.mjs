@@ -29,8 +29,11 @@ test("home is a centered title with feature buttons", async () => {
   assert.doesNotMatch(css, /fonts\.googleapis/);
   assert.match(css, /mktCubeDrift/);
   assert.match(css, /\.mkt-cube-core\.is-away/);
-  assert.match(css, /position: fixed/);
-  assert.match(css, /padding-bottom: 8\.75rem/);
+  assert.match(css, /\.mkt-studio-face/);
+  assert.match(css, /\.mkt-is-studio \.mkt-cube/);
+  assert.match(css, /position: absolute/);
+  assert.doesNotMatch(css, /\.mkt-splash-features \{[\s\S]{0,80}position: fixed/);
+  assert.doesNotMatch(css, /padding-bottom: 8\.75rem/);
   assert.doesNotMatch(css, /rotateY\(20deg\)/);
   assert.match(source, /--mkt-pace/);
   assert.match(source, /readyState/);
@@ -44,6 +47,11 @@ test("home is a centered title with feature buttons", async () => {
   assert.doesNotMatch(source, /mkt-cube-home/);
   assert.match(source, /F-Motion/);
   assert.match(source, /aria-label="Features"/);
+  assert.match(source, /face === facing/);
+  assert.match(source, /mkt-studio-face/);
+  assert.match(source, /isMarketingPath/);
+  assert.match(source, /isStudioPath\(path\)/);
+  assert.match(source, /pathFor/);
   assert.match(source, /"Home"/);
   assert.match(source, /"Studio"/);
   assert.match(source, /\/how-it-works/);
@@ -71,6 +79,8 @@ test("every marketing page stays on the splash and animates the swap", async () 
   assert.match(site, /history\.pushState/);
   assert.match(site, /document\.addEventListener\("click"/);
   assert.match(site, /path === "\/hosted" \? "\/"/);
+  assert.match(site, /MarketingSite path=\{path\} studio=\{<Studio \/>\}/);
+  assert.doesNotMatch(site, /if \(!studioComingSoon\(\) && \(isStudioPath/);
 });
 
 test("hosted studio opens unless VITE_STUDIO_COMING_SOON is set", async () => {
@@ -78,8 +88,10 @@ test("hosted studio opens unless VITE_STUDIO_COMING_SOON is set", async () => {
   const site = await readFile(new URL("../src/site.tsx", import.meta.url), "utf8");
   assert.match(pages, /VITE_STUDIO_COMING_SOON === "1"/);
   assert.doesNotMatch(pages, /PROD && import\.meta\.env\.VITE_SELFHOST_AUTH/);
-  assert.match(site, /!studioComingSoon\(\) && \(isStudioPath\(path\) \|\| path === "\/login"\)/);
-  assert.match(site, /MarketingSite path="\/login"/);
+  assert.match(pages, /mkt-studio-face/);
+  assert.match(pages, /inStudio \? 6 : 16/);
+  assert.match(site, /MarketingSite path=\{path\} studio=\{<Studio \/>\}/);
+  assert.doesNotMatch(site, /if \(!studioComingSoon\(\) && \(isStudioPath/);
 });
 
 test("cube path walks the short way around a ring of any length", () => {
@@ -100,8 +112,8 @@ test("cube path walks the short way around a ring of any length", () => {
 test("site router keeps self-host on studio-only App", async () => {
   const source = await readFile(new URL("../src/site.tsx", import.meta.url), "utf8");
   assert.match(source, /VITE_SELFHOST_AUTH === "1"/);
-  assert.match(source, /studioComingSoon/);
-  assert.match(source, /MarketingSite path="\/login"/);
+  assert.match(source, /return <Studio \/>;/);
+  assert.match(source, /MarketingSite path=\{path\} studio=\{<Studio \/>\}/);
   assert.match(source, /lazy\(\(\) => import\("\.\/main"\)/);
   assert.doesNotMatch(source, /import \{ App \} from "\.\/main"/);
 });

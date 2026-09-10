@@ -48,13 +48,15 @@ menu is a ring that can grow — recycle the wall that went behind, do not
 add a fifth face. Changing section yaws the same cube — do not fade-swap
 a second page. Drive the turn with an interpolatable transform, not a CSS
 variable. Keep a slight idle drift. Unfocused faces stay dim and unmounted
-until first seen. Nav sits below the cube, never on it. GitHub stays an
-external link. Do not pin a second F-Motion label on the cube. Do not
-invent up/down cube pages until a face actually has more than one screen.
+until first seen. Nav sits on the facing wall, inside the glass, never as
+a HUD under the cube. Studio sign-in stays on a wall — do not unmount the
+cube for `/studio`. After sign-in the facing wall opens (larger cube, less
+tilt); keep the editor flat on that face, do not wrap it around four sides.
+GitHub stays an external link. Do not pin a second F-Motion label on the cube.
 Do not ship the studio bundle on the public splash — lazy-load App from
 `site.tsx`. Keep the cube turn near 400ms, not a full second.
-Inner shell for thickness; cyan stays a hairline. Text
-links under it (Studio in rose). Stars and fog sit far in the empty left and right — faint, distant, never
+Inner shell for thickness; cyan stays a hairline. Studio in the nav stays
+rose. Stars and fog sit far in the empty left and right — faint, distant, never
 on the cube. Sky speed rises while the page is loading or turning, then
 eases back to slow. Freeze the turn when reduced-motion is set. Do not
 add a hero essay.
