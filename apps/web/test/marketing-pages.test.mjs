@@ -30,7 +30,8 @@ test("home is a centered title with feature buttons", async () => {
   assert.match(css, /mktCubeDrift/);
   assert.match(css, /\.mkt-cube-core\.is-away/);
   assert.match(css, /\.mkt-studio-face/);
-  assert.match(css, /\.mkt-is-studio \.mkt-cube/);
+  assert.match(css, /--s: min\(62vw, 22rem\)/);
+  assert.doesNotMatch(css, /38rem/);
   assert.match(css, /position: absolute/);
   assert.doesNotMatch(css, /\.mkt-splash-features \{[\s\S]{0,80}position: fixed/);
   assert.doesNotMatch(css, /padding-bottom: 8\.75rem/);
@@ -89,7 +90,8 @@ test("hosted studio opens unless VITE_STUDIO_COMING_SOON is set", async () => {
   assert.match(pages, /VITE_STUDIO_COMING_SOON === "1"/);
   assert.doesNotMatch(pages, /PROD && import\.meta\.env\.VITE_SELFHOST_AUTH/);
   assert.match(pages, /mkt-studio-face/);
-  assert.match(pages, /inStudio \? 6 : 16/);
+  assert.match(pages, /rotateX\(16deg\) rotateY\(\$\{yaw\}deg\)/);
+  assert.doesNotMatch(pages, /inStudio \? 6 : 16/);
   assert.match(site, /MarketingSite path=\{path\} studio=\{<Studio \/>\}/);
   assert.doesNotMatch(site, /if \(!studioComingSoon\(\) && \(isStudioPath/);
 });

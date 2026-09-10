@@ -50,8 +50,8 @@ a second page. Drive the turn with an interpolatable transform, not a CSS
 variable. Keep a slight idle drift. Unfocused faces stay dim and unmounted
 until first seen. Nav sits on the facing wall, inside the glass, never as
 a HUD under the cube. Studio sign-in stays on a wall — do not unmount the
-cube for `/studio`. After sign-in the facing wall opens (larger cube, less
-tilt); keep the editor flat on that face, do not wrap it around four sides.
+cube for `/studio`. Same cube size and camera on every wall. Keep the
+editor flat on the facing face, do not wrap it around four sides.
 GitHub stays an external link. Do not pin a second F-Motion label on the cube.
 Do not ship the studio bundle on the public splash — lazy-load App from
 `site.tsx`. Keep the cube turn near 400ms, not a full second.

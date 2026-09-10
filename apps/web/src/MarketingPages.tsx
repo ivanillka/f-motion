@@ -199,13 +199,11 @@ function FaceCopy({
 function WordCube({
   page,
   yaw,
-  tilt,
   studio,
   onTurn
 }: {
   page: MarketingRoute;
   yaw: number;
-  tilt: number;
   studio?: ReactNode;
   onTurn: (next: MarketingRoute) => void;
 }) {
@@ -277,7 +275,7 @@ function WordCube({
     >
       <div
         className="mkt-cube-rig"
-        style={{ transform: `rotateX(${tilt}deg) rotateY(${yaw}deg)` }}
+        style={{ transform: `rotateX(16deg) rotateY(${yaw}deg)` }}
         onTransitionEnd={onYawEnd}
       >
         <div className="mkt-cube">
@@ -412,19 +410,17 @@ function goFace(next: MarketingRoute): void {
 function Splash({
   page,
   yaw,
-  tilt,
   studio,
   onTurn
 }: {
   page: MarketingRoute;
   yaw: number;
-  tilt: number;
   studio?: ReactNode;
   onTurn: (next: MarketingRoute) => void;
 }) {
   return (
     <section className="mkt-splash" aria-labelledby="splash-title">
-      <WordCube page={page} yaw={yaw} tilt={tilt} studio={studio} onTurn={onTurn} />
+      <WordCube page={page} yaw={yaw} studio={studio} onTurn={onTurn} />
     </section>
   );
 }
@@ -433,7 +429,6 @@ export function MarketingSite({ path, studio }: { path: string; studio?: ReactNo
   const page = marketingRoute(path);
   const index = sectionIndex(page);
   const inStudio = page === "login" && !studioComingSoon();
-  const tilt = inStudio ? 6 : 16;
   const [yaw, setYaw] = useState(() => -90 * index);
   const [busy, setBusy] = useState(true);
   const [turning, setTurning] = useState(false);
@@ -504,7 +499,7 @@ export function MarketingSite({ path, studio }: { path: string; studio?: ReactNo
       <SplashSky paceRef={paceRef} />
       <div className="mkt-main mkt-main-splash">
         <div className="mkt-page">
-          <Splash page={page} yaw={yaw} tilt={tilt} studio={studio} onTurn={goFace} />
+          <Splash page={page} yaw={yaw} studio={studio} onTurn={goFace} />
         </div>
       </div>
     </div>

@@ -447,17 +447,8 @@
   position: absolute;
 }
 
-.mkt-is-studio .mkt-cube {
-  --s: min(86vw, 38rem, 84dvh);
-  animation: none;
-}
-
-.mkt-is-studio:has(.app-shell-signed) .mkt-cube {
-  --s: min(94vw, 92dvh);
-}
-
+.mkt-is-studio .mkt-cube { animation: none; }
 .mkt-is-studio:has(.app-shell-signed) .mkt-splash-features { display: none; }
-.mkt-is-studio:has(.app-shell-signed) .mkt-studio-face { flex: 1; }
 
 .mkt-splash-lede {
   margin: 0;
@@ -503,7 +494,6 @@
 @media (max-width: 640px) {
   .mkt-splash { padding: 1.25rem 0.75rem; }
   .mkt-cube { --s: min(78vw, 20rem); }
-  .mkt-is-studio .mkt-cube { --s: min(94vw, 88dvh); }
   .mkt-splash-features { gap: 0 0.45rem; }
   .mkt-splash-features a { font-size: 0.75rem; min-height: 40px; }
 }
