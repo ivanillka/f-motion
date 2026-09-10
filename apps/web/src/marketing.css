@@ -309,7 +309,7 @@
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
-  padding: 1.5rem 1.5rem 3.5rem;
+  padding: 1.25rem 1rem 0.55rem;
   color: inherit;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
@@ -317,6 +317,7 @@
 }
 
 .mkt-cube-core.is-facing { opacity: 1; }
+.mkt-cube-core.is-facing > :not(.mkt-studio-face):first-child { margin-top: auto; }
 .mkt-cube-core.is-away { opacity: 0.12; cursor: pointer; }
 
 .mkt-cube-core[data-side="front"] { transform: translateZ(calc(var(--s) / 2 - 2px)); }
@@ -355,16 +356,14 @@
 }
 
 .mkt-splash-features {
-  position: absolute;
-  left: 0.4rem;
-  right: 0.4rem;
-  bottom: 0.35rem;
+  position: relative;
   z-index: 2;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 0 0.75rem;
-  padding: 0;
+  margin-top: auto;
+  padding: 0.15rem 0 0;
 }
 
 .mkt-splash-features a {
@@ -395,8 +394,12 @@
 }
 
 .mkt-studio-face {
-  position: absolute;
-  inset: 0.45rem 0.45rem 3.35rem;
+  position: relative;
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-height: 0;
+  width: 100%;
+  margin-top: 0;
   overflow: auto;
   text-align: left;
 }
@@ -411,6 +414,24 @@
   padding: 8px;
   background: transparent;
 }
+
+.mkt-studio-face .app-stage > header {
+  min-height: 0;
+  padding: 0 0 6px;
+  font-size: 0.75rem;
+}
+
+.mkt-studio-face .header-identity strong,
+.mkt-studio-face .build-rev { display: none; }
+
+.mkt-studio-face h1 {
+  font-size: clamp(1.25rem, 4.2cqi, 1.85rem);
+  line-height: 1.15;
+  margin: 0 0 0.4rem;
+}
+
+.mkt-studio-face label,
+.mkt-studio-face p { font-size: 0.9rem; }
 
 .mkt-studio-face .app-shell-signed .app-stage {
   padding-bottom: 8px;
@@ -436,8 +457,7 @@
 }
 
 .mkt-is-studio:has(.app-shell-signed) .mkt-splash-features { display: none; }
-.mkt-is-studio:has(.app-shell-signed) .mkt-cube-core.is-facing { padding-bottom: 0.75rem; }
-.mkt-is-studio:has(.app-shell-signed) .mkt-studio-face { inset: 0.4rem; }
+.mkt-is-studio:has(.app-shell-signed) .mkt-studio-face { flex: 1; }
 
 .mkt-splash-lede {
   margin: 0;
