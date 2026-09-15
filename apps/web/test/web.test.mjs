@@ -305,28 +305,33 @@ test("studio shell brands F-Motion and keeps real destinations only", async () =
 
 test("self-host vite build serves the studio at /", async () => {
   const source = await readFile(new URL("../vite.config.ts", import.meta.url), "utf8");
-  assert.match(source, /VITE_SELFHOST_AUTH === "1" \|\| process\.env\.VITE_SITE_AT_ROOT === "1"/);
+  assert.match(source, /VITE_SELFHOST_AUTH === "1"/);
+  assert.doesNotMatch(source, /VITE_SITE_AT_ROOT/);
 });
 
-test("build puts SPA at site root with studio under /studio", async () => {
+test("build puts marketing at site root with studio under /app", async () => {
   const { readFile, access } = await import("node:fs/promises");
   const dist = new URL("../dist/", import.meta.url);
   await access(new URL("index.html", dist));
+  await access(new URL("app/index.html", dist));
   await access(new URL("_redirects", dist));
   await access(new URL("music/pulse.mp3", dist));
   const home = await readFile(new URL("index.html", dist), "utf8");
   const redirects = await readFile(new URL("_redirects", dist), "utf8");
-  assert.match(home, /\/assets\/index-/);
-  assert.doesNotMatch(home, /\/app\/assets\//);
-  const entryJs = home.match(/\/assets\/(index-[^"]+\.js)/)?.[1];
-  assert.ok(entryJs, "hashed splash entry");
-  const entry = await readFile(new URL(`assets/${entryJs}`, dist), "utf8");
+  assert.match(home, /Vertical reels from your own media/);
+  assert.match(home, /href="\/app\/"/);
+  assert.doesNotMatch(home, /id="root"/);
+  assert.doesNotMatch(home, /mkt-cube/);
+  const spa = await readFile(new URL("app/index.html", dist), "utf8");
+  assert.match(spa, /\/app\/assets\/index-/);
+  const entryJs = spa.match(/\/app\/assets\/(index-[^"]+\.js)/)?.[1];
+  assert.ok(entryJs, "hashed studio entry");
+  const entry = await readFile(new URL(`app/assets/${entryJs}`, dist), "utf8");
   assert.doesNotMatch(entry, /InterDisplay/);
-  assert.doesNotMatch(entry, /continueToStoryboard/);
   const { readdir } = await import("node:fs/promises");
-  const assets = await readdir(new URL("assets/", dist));
+  const assets = await readdir(new URL("app/assets/", dist));
   assert.ok(assets.some((name) => name.startsWith("main-") && name.endsWith(".js")));
-  assert.match(redirects, /\/app\/ \/\s*studio\s*301/);
+  assert.match(redirects, /\/studio\/ \/\s*app\//);
   assert.match(redirects, /\/web\/ \/\s*301/);
   const integrateLive = await readFile(new URL("integrate.html", dist), "utf8");
   assert.match(integrateLive, /CMS plugin/);

@@ -1,5 +1,5 @@
 name: deploy-pages
-# Retrigger production upload so /integrate.html ships the CMS plugin recipe.
+# Retrigger production upload: static marketing at / instead of the cube splash.
 
 on:
   workflow_dispatch:
