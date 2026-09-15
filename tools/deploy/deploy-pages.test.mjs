@@ -73,3 +73,10 @@ test("ci android setup does not install the removed SDK tools package", async ()
   assert.match(yml, /packages:\s*""/);
   assert.doesNotMatch(yml, /android-actions\/setup-android@v3/);
 });
+
+test("ci pulls MinIO from Quay, not Docker Hub", async () => {
+  const yml = await readFile(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
+  assert.match(yml, /quay\.io\/minio\/minio/);
+  assert.match(yml, /quay\.io\/minio\/mc/);
+  assert.doesNotMatch(yml, /(?:^|\s)minio\/minio/);
+});
