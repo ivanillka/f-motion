@@ -13,6 +13,8 @@ test("marketing landing keeps Web and Integrate paths with studio CTA", async ()
     "Import &amp; open",
     "Render pipeline",
     "MCP agent loop",
+    "CMS plugin",
+    "reel_ready",
     "project-imports",
     "/marketing/hero-reel.png"
   ]) {

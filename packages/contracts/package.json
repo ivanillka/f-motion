@@ -11,6 +11,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./host-notify": {
+      "types": "./dist/host-notify.d.ts",
+      "import": "./dist/host-notify.js"
+    },
     "./schema/f-engine-v1.schema.json": "./schema/f-engine-v1.schema.json",
     "./openapi.yaml": "./openapi.yaml",
     "./route-inventory.json": "./route-inventory.json",

@@ -70,7 +70,7 @@ export function MarketingLanding({
                 </div>
                 <div>
                   <h2>Your media, your keys.</h2>
-                  <p>Pexels and FAL stay BYOK. F-Motion meters host render units — not provider credits — so your creative stack stays under your control.</p>
+                  <p>Pexels and FAL stay BYOK. F-Motion meters host render units, not provider credits, so your creative stack stays under your control.</p>
                 </div>
               </div>
             </section>
@@ -78,7 +78,7 @@ export function MarketingLanding({
             <section className="mkt-section">
               <h2>From draft to download.</h2>
               <p style={{ textAlign: "center", color: "var(--mkt-muted)", maxWidth: "36rem", margin: "-1.5rem auto 2rem" }}>
-                A timeline built for vertical storytelling — calm, precise, private.
+                A timeline built for vertical storytelling: calm, precise, private.
               </p>
               <div className="mkt-frame">
                 <div className="mkt-frame-bar" aria-hidden="true"><i /><i /><i /></div>
@@ -97,8 +97,8 @@ export function MarketingLanding({
               <div className="mkt-live">API v1 is live</div>
               <h1>Embed cinematic creation in your product.</h1>
               <p>
-                Keep your upload, auth, Immich/faces, and publishing. Call F-Motion for the reel —
-                then publish back to your gallery, feed, or stories.
+                Keep your upload, auth, and publishing. Call F-Motion for the reel.
+                Then publish back to your gallery, feed, or stories. F-Motion does not post to social.
               </p>
               <div className="mkt-hero-actions">
                 <button type="button" className="mkt-btn mkt-btn-primary mkt-btn-lg" onClick={onOpenStudio}>Get API access</button>
@@ -124,6 +124,11 @@ export function MarketingLanding({
                   <h3>MCP agent loop</h3>
                   <p>OpenClaw, Cursor, or Hermes: drop media or chat, ask a few questions, return a preview plus a draft link.</p>
                 </article>
+                <article className="mkt-recipe">
+                  <span>04</span>
+                  <h3>CMS plugin</h3>
+                  <p>Thin WordPress-shaped adapter over import and webhook. Sibling plugins subscribe to <code>reel_ready</code>. Drupal, Shopify, and generic webhooks use the same events.</p>
+                </article>
               </div>
             </section>
 
@@ -148,7 +153,7 @@ export function MarketingLanding({
   -H "Authorization: Bearer $FENGINE_IMPORT_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "external_id": "fotium:gallery:weekend",
+    "external_id": "cms:gallery:weekend",
     "title": "Weekend portraits",
     "caption": "Quiet frames from the session.",
     "call_to_action": "Open the full gallery.",

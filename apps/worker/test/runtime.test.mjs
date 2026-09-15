@@ -93,6 +93,12 @@ function createFakePool(initialState, storedInput = renderInput, options = {}) {
       state = "complete";
       return { rowCount: 1 };
     }
+    if (sql.includes(`SELECT "notifyUrl"`) && sql.includes(`FROM "RenderJob"`)) {
+      return { rows: [{ notifyUrl: null, externalId: null, kind: "preview", projectId: "project" }] };
+    }
+    if (sql.includes(`INSERT INTO "WorkOutbox"`)) {
+      return { rowCount: 1 };
+    }
     if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
     throw new Error(`unexpected query in fake pool: ${sql}`);
   };

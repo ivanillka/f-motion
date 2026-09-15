@@ -25,7 +25,7 @@ process.env.VITE_APP_VERSION ??= productVersion;
 export default defineConfig(({ command }) => ({
   plugins: [react()],
   // Self-host and f-motion.com SPA-at-root builds use /. Legacy artifact builds use /app/.
-  base: process.env.VITE_SELFHOST_AUTH === "1" || process.env.VITE_SITE_AT_ROOT === "1"
+  base: process.env.VITE_SELFHOST_AUTH === "1"
     ? "/"
     : command === "build" ? "/app/" : "/",
   server: {

@@ -51,6 +51,7 @@ import {
   PostgresRenderRepository,
   RenderCapacityError,
   RenderInputIncompleteError,
+  type RenderEnqueueOptions,
   type RenderKind
 } from "./render-repository.js";
 import type { AccessPolicy } from "./access-policy.js";
@@ -78,6 +79,7 @@ import {
 } from "./external-import.js";
 import { ApiKeyValidationError, type ApiKeyService } from "./api-keys.js";
 import { QuotaExceededError, type PostgresHostUsageService } from "./host-usage.js";
+import { parseNotifyUrl, type RenderNotifyConfig } from "./render-notify.js";
 import {
   SetupClosedError,
   SelfhostValidationError,
@@ -99,10 +101,11 @@ export type HostUsageService = Pick<PostgresHostUsageService, "status" | "consum
 interface AppBaseOptions {
   projects: ProjectRepository;
   media?: MediaDependencies;
-  renders?: PostgresRenderRepository;
+  renders?: Pick<PostgresRenderRepository, "create" | "cancel" | "events" | "result">;
   ready?: () => boolean | Promise<boolean>;
   workerOrigin?: string;
   externalImports?: ExternalImportConfig;
+  renderNotify?: RenderNotifyConfig;
   /** Test adapter for trusted remote-media imports. */
   externalMediaRequest?: typeof fetch;
   falCredentials?: FalCredentialService;
@@ -301,6 +304,16 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       return response.status(401).json({ type: "unauthorized", message: "authentication required" });
     }
     const draft = parseExternalDraft(request.body);
+    let storedNotifyUrl: string | undefined;
+    if (draft.notifyUrl) {
+      if (!options.renderNotify) {
+        return response.status(422).json({ type: "validation", message: "notify_url is not configured" });
+      }
+      storedNotifyUrl = parseNotifyUrl(draft.notifyUrl, options.renderNotify.origins);
+      if (!storedNotifyUrl) {
+        return response.status(422).json({ type: "validation", message: "invalid notify_url" });
+      }
+    }
     console.error("external import received", draft.externalId);
     const reply = (project: { id: string; revision: number }, created: boolean, imported: number, allowed: number) => {
       const projectUrl = externalProjectUrl(integration.webOrigin, project.id);
@@ -309,7 +322,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         created,
         project_id: project.id,
         project_url: projectUrl,
-        // Fotium marketing admin reads camelCase when opening the draft tab.
+        // Hosts opening a browser tab should prefer camelCase projectUrl.
         projectUrl,
         revision: project.revision
       });
@@ -318,6 +331,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const projectId = projectIdForExternalImport(integration.ownerId, draft.externalId);
       const prior = await projects.get(integration.ownerId, projectId);
       let project = await projects.create(integration.ownerId, draft.brief, projectId);
+      await projects.bindHostImport(integration.ownerId, projectId, {
+        externalId: draft.externalId,
+        ...(storedNotifyUrl ? { notifyUrl: storedNotifyUrl } : {})
+      });
       const generatedScenes = buildStoryboardDraft(draft.brief.purpose, randomUUID, draft.architecture, draft.source);
       const allowedMediaUrls = draft.mediaUrls.filter((url) => externalMediaUrlAllowed(url, integration.mediaOrigins));
       if (allowedMediaUrls.length !== draft.mediaUrls.length) {
@@ -420,7 +437,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         console.error("external import failed after reply", error instanceof Error ? error.message : error);
         return;
       }
-      // Fotium maps 422/5xx to 502. After a valid token, always hand back a draft URL.
+      // After a valid token, always hand back a draft URL.
       try {
         const projectId = projectIdForExternalImport(integration.ownerId, draft.externalId);
         const prior = await projects.get(integration.ownerId, projectId);
@@ -1376,11 +1393,30 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const ownerId = String(response.locals.ownerId);
       if (!options.renders) return response.status(503).json({ type: "unavailable" });
       if (!request.body || typeof request.body !== "object" || Array.isArray(request.body)
-        || !["preview", "final"].includes(String(request.body.kind))
-        || Object.keys(request.body).some((key) => key !== "kind")) {
+        || !["preview", "final"].includes(String(request.body.kind))) {
+        return response.status(422).json({ type: "validation", message: "invalid render kind" });
+      }
+      const allowedKeys = new Set(["kind", "notify_url", "notifyUrl", "external_id", "externalId"]);
+      if (Object.keys(request.body).some((key) => !allowedKeys.has(key))) {
         return response.status(422).json({ type: "validation", message: "invalid render kind" });
       }
       const kind = request.body.kind as RenderKind;
+      const enqueue: RenderEnqueueOptions = {};
+      const notifyRaw = request.body.notify_url ?? request.body.notifyUrl;
+      if (notifyRaw !== undefined && notifyRaw !== null && notifyRaw !== "") {
+        if (!options.renderNotify) {
+          return response.status(422).json({ type: "validation", message: "notify_url is not configured" });
+        }
+        const notifyUrl = parseNotifyUrl(notifyRaw, options.renderNotify.origins);
+        if (!notifyUrl) {
+          return response.status(422).json({ type: "validation", message: "invalid notify_url" });
+        }
+        enqueue.notifyUrl = notifyUrl;
+      }
+      const externalRaw = request.body.external_id ?? request.body.externalId;
+      if (typeof externalRaw === "string" && externalRaw.trim()) {
+        enqueue.externalId = externalRaw.trim().slice(0, 128);
+      }
       if (options.hostUsage) {
         const usage = await options.hostUsage.status(ownerId);
         const cost = kind === "final" ? usage.costs.final : usage.costs.preview;
@@ -1394,7 +1430,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           });
         }
       }
-      const job = await options.renders.create(ownerId, request.params.projectId, kind);
+      const job = await options.renders.create(ownerId, request.params.projectId, kind, enqueue);
       if (!job) return response.status(404).json({ type: "not_found", message: "not found" });
       if (options.hostUsage) {
         try {

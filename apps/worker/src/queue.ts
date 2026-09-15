@@ -1,3 +1,4 @@
+import { renderNotifyQueue, type RenderNotifyJob } from "@f-engine/contracts/host-notify";
 import pg from "pg";
 import { PgBoss, type Job } from "pg-boss";
 
@@ -6,6 +7,7 @@ export const renderQueue = "render-preview";
 export const falImageQueue = "generate-fal-image";
 export const falVideoQueue = "generate-fal-video";
 export const falSpeechQueue = "generate-fal-speech";
+export { renderNotifyQueue };
 
 export interface InspectionJob {
   assetId: string;
@@ -33,6 +35,7 @@ export type FalSpeechQueueJob = FalImageQueueJob;
 export interface QueueHandlers {
   inspect(job: InspectionJob, signal: AbortSignal): Promise<Record<string, unknown>>;
   render(job: PreviewJob, signal: AbortSignal): Promise<Record<string, unknown>>;
+  notifyRender?(job: RenderNotifyJob, signal: AbortSignal): Promise<Record<string, unknown>>;
   generateFalImage?(job: FalImageQueueJob, signal: AbortSignal): Promise<Record<string, unknown>>;
   generateFalVideo?(job: FalVideoQueueJob, signal: AbortSignal): Promise<Record<string, unknown>>;
   generateFalSpeech?(job: FalSpeechQueueJob, signal: AbortSignal): Promise<Record<string, unknown>>;
@@ -128,6 +131,7 @@ export async function startQueueRuntime(
   await boss.createQueue(falImageQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 600 });
   await boss.createQueue(falVideoQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 1200 });
   await boss.createQueue(falSpeechQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 600 });
+  await boss.createQueue(renderNotifyQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 60 });
   await boss.work<InspectionJob>(inspectionQueue, { pollingIntervalSeconds: 1 }, async (jobs: Job<InspectionJob>[]) => {
     const job = jobs[0];
     if (!job) return;
@@ -138,6 +142,13 @@ export async function startQueueRuntime(
     if (!job) return;
     return handlers.render(job.data, job.signal);
   });
+  if (handlers.notifyRender) {
+    await boss.work<RenderNotifyJob>(renderNotifyQueue, { pollingIntervalSeconds: 1 }, async (jobs: Job<RenderNotifyJob>[]) => {
+      const job = jobs[0];
+      if (!job) return;
+      return handlers.notifyRender!(job.data, job.signal);
+    });
+  }
   if (handlers.generateFalImage) {
     await boss.work<FalImageQueueJob>(falImageQueue, { pollingIntervalSeconds: 1 }, async (jobs: Job<FalImageQueueJob>[]) => {
       const job = jobs[0];

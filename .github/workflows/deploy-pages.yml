@@ -1,5 +1,5 @@
 name: deploy-pages
-# Retrigger production upload after hosted secrets were added.
+# Retrigger production upload: static marketing at / instead of the cube splash.
 
 on:
   workflow_dispatch:
@@ -21,6 +21,7 @@ jobs:
           node-version: 24.15.0
           cache: npm
       - name: Require hosted deploy secrets
+        id: creds
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
@@ -34,11 +35,16 @@ jobs:
           [ -n "${CLOUDFLARE_API_TOKEN:-}" ] || missing="${missing} CLOUDFLARE_API_TOKEN"
           [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ] || missing="${missing} CLOUDFLARE_ACCOUNT_ID"
           if [ -n "$missing" ]; then
-            echo "Missing GitHub Actions secrets:$missing"
-            exit 1
+            echo "Hosted Pages secrets are not set:$missing"
+            echo "Skipping deploy. Add the secrets to this repo, then re-run."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
-      - run: npm ci
-      - run: npm run deploy:pages -- --project-name f-motion
+      - if: steps.creds.outputs.skip != 'true'
+        run: npm ci
+      - if: steps.creds.outputs.skip != 'true'
+        run: npm run deploy:pages -- --project-name f-motion
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}

@@ -13,17 +13,25 @@ export class NotFoundError extends Error {
 
 export class ValidationError extends Error {}
 
+export interface HostImportBinding {
+  externalId: string;
+  notifyUrl?: string;
+}
+
 export interface ProjectRepository {
   create(ownerId: string, brief: ProjectSnapshot["brief"], projectId?: string): ProjectSnapshot | Promise<ProjectSnapshot>;
   list(ownerId: string): ProjectSummary[] | Promise<ProjectSummary[]>;
   get(ownerId: string, projectId: string): ProjectSnapshot | undefined | Promise<ProjectSnapshot | undefined>;
   command(ownerId: string, command: CommandEnvelope): ProjectSnapshot | Promise<ProjectSnapshot>;
   delete(ownerId: string, projectId: string): boolean | Promise<boolean>;
+  bindHostImport(ownerId: string, projectId: string, binding: HostImportBinding): void | Promise<void>;
+  hostImportBinding(ownerId: string, projectId: string): HostImportBinding | undefined | Promise<HostImportBinding | undefined>;
 }
 
 export class ProjectService implements ProjectRepository {
   readonly #projects = new Map<string, ProjectSnapshot>();
   readonly #receipts = new Map<string, ProjectSnapshot>();
+  readonly #hostImports = new Map<string, HostImportBinding>();
 
   create(ownerId: string, brief: ProjectSnapshot["brief"], projectId = randomUUID()): ProjectSnapshot {
     const existing = this.get(ownerId, projectId);
@@ -75,10 +83,23 @@ export class ProjectService implements ProjectRepository {
     const key = `${ownerId}:${projectId}`;
     if (!this.#projects.has(key)) return false;
     this.#projects.delete(key);
+    this.#hostImports.delete(key);
     for (const receiptKey of this.#receipts.keys()) {
       if (receiptKey.startsWith(`${ownerId}:${projectId}:`)) this.#receipts.delete(receiptKey);
     }
     return true;
+  }
+
+  bindHostImport(ownerId: string, projectId: string, binding: HostImportBinding): void {
+    this.#hostImports.set(`${ownerId}:${projectId}`, {
+      externalId: binding.externalId,
+      ...(binding.notifyUrl ? { notifyUrl: binding.notifyUrl } : {})
+    });
+  }
+
+  hostImportBinding(ownerId: string, projectId: string): HostImportBinding | undefined {
+    const binding = this.#hostImports.get(`${ownerId}:${projectId}`);
+    return binding && { ...binding };
   }
 }
 
@@ -185,6 +206,29 @@ export class PostgresProjectRepository implements ProjectRepository {
       [ownerId, projectId]
     );
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async bindHostImport(ownerId: string, projectId: string, binding: HostImportBinding): Promise<void> {
+    await this.pool.query(
+      `UPDATE "Project"
+          SET "externalId" = $1,
+              "notifyUrl" = COALESCE($2, "notifyUrl")
+        WHERE "ownerId" = $3 AND id = $4`,
+      [binding.externalId, binding.notifyUrl ?? null, ownerId, projectId]
+    );
+  }
+
+  async hostImportBinding(ownerId: string, projectId: string): Promise<HostImportBinding | undefined> {
+    const result = await this.pool.query<{ externalId: string | null; notifyUrl: string | null }>(
+      `SELECT "externalId", "notifyUrl" FROM "Project" WHERE "ownerId" = $1 AND id = $2`,
+      [ownerId, projectId]
+    );
+    const row = result.rows[0];
+    if (!row?.externalId) return undefined;
+    return {
+      externalId: row.externalId,
+      ...(row.notifyUrl ? { notifyUrl: row.notifyUrl } : {})
+    };
   }
 
   async command(ownerId: string, command: CommandEnvelope): Promise<ProjectSnapshot> {

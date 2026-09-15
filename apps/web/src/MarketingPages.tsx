@@ -119,6 +119,7 @@ function FeatureNav({ page, studio }: { page: MarketingRoute; studio: string }) 
       {item("/", "Home", page === "home")}
       {item(studio, "Studio", page === "login", "is-studio")}
       {item("/how-it-works", "How it works", page === "how-it-works")}
+      <a href="/integrate.html">Integrate</a>
       <a href={SKILL_REPO} target="_blank" rel="noreferrer">GitHub</a>
       {item("/self-host", "Self-host", page === "self-host")}
     </nav>

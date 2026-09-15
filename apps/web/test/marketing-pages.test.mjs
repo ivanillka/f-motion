@@ -47,6 +47,7 @@ test("home is a centered title with feature buttons", async () => {
   assert.match(source, /"Home"/);
   assert.match(source, /"Studio"/);
   assert.match(source, /\/how-it-works/);
+  assert.match(source, /href="\/integrate.html"/);
   assert.match(source, />GitHub</);
   assert.match(source, /skills\/fmotion/);
   assert.match(source, /\/self-host/);
@@ -57,9 +58,20 @@ test("home is a centered title with feature buttons", async () => {
   assert.doesNotMatch(source, /mkt-hero-media|mkt-recipes|\bComingSoon\b/);
 });
 
+test("hosted splash is the static marketing site, not the cube", async () => {
+  const site = await readFile(new URL("../src/site.tsx", import.meta.url), "utf8");
+  const home = await readFile(new URL("../public/web/index.html", import.meta.url), "utf8");
+  assert.doesNotMatch(site, /MarketingSite/);
+  assert.doesNotMatch(site, /isMarketingPath/);
+  assert.doesNotMatch(site, /mkt-cube/);
+  assert.match(site, /lazy\(\(\) => import\("\.\/main"\)/);
+  assert.match(home, /Vertical reels from your own media/);
+  assert.match(home, /href="\/app\/"/);
+  assert.match(home, /integrate\.html/);
+});
+
 test("every marketing page stays on the splash and animates the swap", async () => {
   const pages = await readFile(new URL("../src/MarketingPages.tsx", import.meta.url), "utf8");
-  const site = await readFile(new URL("../src/site.tsx", import.meta.url), "utf8");
   assert.match(pages, /How it works/);
   assert.match(pages, /Coming soon on f-motion\.com/);
   assert.match(pages, /SECTIONS/);
@@ -67,19 +79,13 @@ test("every marketing page stays on the splash and animates the swap", async () 
   assert.match(pages, /goFace/);
   assert.match(pages, /ArrowRight/);
   assert.match(pages, /prefers-reduced-motion/);
-  assert.match(site, /isMarketingPath/);
-  assert.match(site, /history\.pushState/);
-  assert.match(site, /document\.addEventListener\("click"/);
-  assert.match(site, /path === "\/hosted" \? "\/"/);
 });
 
 test("hosted studio opens unless VITE_STUDIO_COMING_SOON is set", async () => {
-  const pages = await readFile(new URL("../src/MarketingPages.tsx", import.meta.url), "utf8");
   const site = await readFile(new URL("../src/site.tsx", import.meta.url), "utf8");
-  assert.match(pages, /VITE_STUDIO_COMING_SOON === "1"/);
-  assert.doesNotMatch(pages, /PROD && import\.meta\.env\.VITE_SELFHOST_AUTH/);
-  assert.match(site, /!studioComingSoon\(\) && \(isStudioPath\(path\) \|\| path === "\/login"\)/);
-  assert.match(site, /MarketingSite path="\/login"/);
+  assert.match(site, /VITE_STUDIO_COMING_SOON === "1"/);
+  assert.match(site, /Coming soon on f-motion\.com/);
+  assert.doesNotMatch(site, /MarketingSite/);
 });
 
 test("cube path walks the short way around a ring of any length", () => {
@@ -101,7 +107,7 @@ test("site router keeps self-host on studio-only App", async () => {
   const source = await readFile(new URL("../src/site.tsx", import.meta.url), "utf8");
   assert.match(source, /VITE_SELFHOST_AUTH === "1"/);
   assert.match(source, /studioComingSoon/);
-  assert.match(source, /MarketingSite path="\/login"/);
   assert.match(source, /lazy\(\(\) => import\("\.\/main"\)/);
   assert.doesNotMatch(source, /import \{ App \} from "\.\/main"/);
+  assert.doesNotMatch(source, /MarketingSite/);
 });

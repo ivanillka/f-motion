@@ -43,6 +43,8 @@ test("private package tarballs install and run outside the monorepo without regi
   assert.deepEqual(
     contracts.files.map(({ path }) => path).sort(),
     [
+      "dist/host-notify.d.ts",
+      "dist/host-notify.js",
       "dist/index.d.ts",
       "dist/index.js",
       "fixtures/error-render-capacity.json",

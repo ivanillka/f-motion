@@ -44,6 +44,11 @@ async function main() {
       "/web / 301",
       "/web/ / 301",
       "/web/* /:splat 301",
+      "/studio /app/ 301",
+      "/studio/ /app/ 301",
+      "/studio/* /app/:splat 301",
+      "/login /app/ 301",
+      "/hosted / 301",
       ""
     ].join("\n")
   );
@@ -54,7 +59,7 @@ async function main() {
     JSON.stringify({ version: 1, include: ["/api/*"], exclude: [] }, null, 2) + "\n"
   );
 
-  console.log("Site root = marketing; studio at /app/; /web/* redirects to /*");
+  console.log("Site root = marketing; studio at /app/; /studio and /web redirect");
 }
 
 main().catch((error) => {

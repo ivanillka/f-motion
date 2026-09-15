@@ -543,6 +543,7 @@ button, .btn {
 }
 @media (min-width: 860px) {
   .recipes { grid-template-columns: repeat(3, 1fr); }
+  .recipes-quad { grid-template-columns: repeat(2, 1fr); }
 }
 .recipe {
   padding: 28px;
@@ -573,6 +574,12 @@ button, .btn {
   margin-top: 8px;
 }
 .recipe a.cyan { color: var(--cyan); }
+.recipe code,
+.dx code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  color: var(--accent-soft);
+}
 
 .diagram {
   border-radius: 12px;
