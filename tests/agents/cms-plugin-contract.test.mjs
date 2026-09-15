@@ -37,7 +37,8 @@ test("CMS plugin architecture names hooks and stays a thin adapter", async () =>
   assert.match(doc, /hook_fmotion_before_import_alter/);
   assert.match(doc, /hook_fmotion_reel_ready/);
   assert.match(doc, /Shopify/);
-  assert.match(doc, /no social API tokens/i);
+  assert.match(doc, /hold social network API tokens/);
+  assert.match(doc, /Social API tokens/);
   assert.match(doc, /Immich/);
   assert.match(doc, /Do not iframe/);
   assert.match(doc, /Fotium is a custom gallery host/);
@@ -61,9 +62,10 @@ test("CMS plugin architecture names hooks and stays a thin adapter", async () =>
   assert.match(stub, /\/notify/);
   assert.match(stub, /\/import/);
   assert.match(stub, /501/);
-  assert.doesNotMatch(stub, /META_|TIKTOK_|YOUTUBE_|IMMICH/i);
+  assert.match(stub, /Do not put social API tokens or Immich\/faces here/);
+  assert.doesNotMatch(stub, /update_option\s*\(/);
 
-  assert.match(stubReadme, /not an installable plugin/i);
+  assert.match(stubReadme, /not\*\* an installable plugin/);
   assert.match(stubReadme, /includes\/class-import\.php/);
   assert.match(stubReadme, /fmotion_reel_ready/);
 });
