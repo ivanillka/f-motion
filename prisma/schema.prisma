@@ -127,8 +127,11 @@ model Project {
   commands          CommandReceipt[]
   jobs              RenderJob[]
   generationJobs    GenerationJob[]
+  externalId        String?
+  notifyUrl         String?
 
   @@unique([ownerId, id])
+  @@unique([ownerId, externalId])
   @@index([ownerId])
 }
 
@@ -203,6 +206,8 @@ model RenderJob {
   renderProfile Json
   renderInput Json
   state       RenderState @default(queued)
+  notifyUrl   String?
+  externalId  String?
   result      RenderResult?
   events      RenderEvent[]
 

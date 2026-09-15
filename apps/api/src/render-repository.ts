@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isProjectSnapshot, type ProjectSnapshot } from "@f-engine/contracts";
+import { renderNotifyQueue } from "@f-engine/contracts/host-notify";
 import { validateRenderProfile, type RenderProfile } from "@f-engine/reel-engine";
 import type { Pool, PoolClient } from "pg";
 
@@ -32,6 +33,13 @@ export interface RenderJobRecord {
   kind: RenderKind;
   renderProfile: RenderProfile;
   state: "queued" | "running" | "cancelled" | "complete" | "failed";
+  notifyUrl?: string;
+  externalId?: string;
+}
+
+export interface RenderEnqueueOptions {
+  notifyUrl?: string;
+  externalId?: string;
 }
 
 export interface RenderResultRecord {
@@ -55,6 +63,25 @@ export class RenderInputIncompleteError extends Error {
   }
 }
 
+async function enqueueRenderNotify(
+  client: PoolClient,
+  job: { jobId: string; projectId: string; kind: RenderKind; notifyUrl?: string; externalId?: string }
+): Promise<void> {
+  if (!job.notifyUrl) return;
+  await client.query(
+    `INSERT INTO "WorkOutbox" (id, kind, "dedupeKey", payload)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT ("dedupeKey") DO NOTHING`,
+    [randomUUID(), renderNotifyQueue, `${renderNotifyQueue}:${job.jobId}`, {
+      notifyUrl: job.notifyUrl,
+      jobId: job.jobId,
+      projectId: job.projectId,
+      kind: job.kind,
+      ...(job.externalId ? { externalId: job.externalId } : {})
+    }]
+  );
+}
+
 async function insertEvent(
   client: PoolClient,
   jobId: string,
@@ -73,7 +100,12 @@ export class PostgresRenderRepository {
     readonly profiles: RenderProfiles = renderProfilesFromEnv({})
   ) {}
 
-  async create(ownerId: string, projectId: string, kind: RenderKind): Promise<RenderJobRecord | undefined> {
+  async create(
+    ownerId: string,
+    projectId: string,
+    kind: RenderKind,
+    options: RenderEnqueueOptions = {}
+  ): Promise<RenderJobRecord | undefined> {
     const client = await this.pool.connect();
     let attemptedRevision: number | undefined;
     try {
@@ -91,8 +123,10 @@ export class PostgresRenderRepository {
         ownerId: string;
         revision: number;
         brief: ProjectSnapshot["brief"];
+        notifyUrl: string | null;
+        externalId: string | null;
       }>(
-        `SELECT id, "ownerId", revision, brief
+        `SELECT id, "ownerId", revision, brief, "notifyUrl", "externalId"
            FROM "Project" WHERE "ownerId" = $1 AND id = $2 FOR UPDATE`,
         [ownerId, projectId]
       );
@@ -102,6 +136,8 @@ export class PostgresRenderRepository {
         return undefined;
       }
       attemptedRevision = projectRow.revision;
+      const notifyUrl = options.notifyUrl ?? projectRow.notifyUrl ?? undefined;
+      const externalId = options.externalId ?? projectRow.externalId ?? undefined;
       const existing = await client.query<{
         id: string;
         ownerId: string;
@@ -110,8 +146,10 @@ export class PostgresRenderRepository {
         kind: RenderKind;
         renderProfile: RenderProfile;
         state: RenderJobRecord["state"];
+        notifyUrl: string | null;
+        externalId: string | null;
       }>(
-        `SELECT id, "ownerId", "projectId", revision, kind, "renderProfile"
+        `SELECT id, "ownerId", "projectId", revision, kind, "renderProfile", state, "notifyUrl", "externalId"
            FROM "RenderJob"
           WHERE "ownerId" = $1 AND "projectId" = $2 AND revision = $3
             AND kind = $4
@@ -121,6 +159,24 @@ export class PostgresRenderRepository {
       );
       const existingRow = existing.rows[0];
       if (existingRow) {
+        const resolvedNotify = notifyUrl ?? existingRow.notifyUrl ?? undefined;
+        const resolvedExternal = externalId ?? existingRow.externalId ?? undefined;
+        if (resolvedNotify && resolvedNotify !== existingRow.notifyUrl) {
+          await client.query(
+            `UPDATE "RenderJob" SET "notifyUrl" = $1, "externalId" = COALESCE($2, "externalId")
+              WHERE id = $3`,
+            [resolvedNotify, resolvedExternal ?? null, existingRow.id]
+          );
+        }
+        if (existingRow.state === "complete" && resolvedNotify) {
+          await enqueueRenderNotify(client, {
+            jobId: existingRow.id,
+            projectId: existingRow.projectId,
+            kind: existingRow.kind,
+            notifyUrl: resolvedNotify,
+            ...(resolvedExternal ? { externalId: resolvedExternal } : {})
+          });
+        }
         await client.query("COMMIT");
         return {
           jobId: existingRow.id,
@@ -129,7 +185,9 @@ export class PostgresRenderRepository {
           revision: existingRow.revision,
           kind: existingRow.kind,
           renderProfile: existingRow.renderProfile,
-          state: existingRow.state
+          state: existingRow.state,
+          ...(resolvedNotify ? { notifyUrl: resolvedNotify } : {}),
+          ...(resolvedExternal ? { externalId: resolvedExternal } : {})
         };
       }
       const active = await client.query<{ count: string }>(
@@ -192,12 +250,14 @@ export class PostgresRenderRepository {
         revision: renderInput.revision,
         kind,
         renderProfile: structuredClone(this.profiles[kind]),
-        state: "queued"
+        state: "queued",
+        ...(notifyUrl ? { notifyUrl } : {}),
+        ...(externalId ? { externalId } : {})
       };
       await client.query(
-        `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, kind, "renderProfile", "renderInput", state)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued')`,
-        [jobId, ownerId, projectId, job.revision, job.kind, job.renderProfile, renderInput]
+        `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, kind, "renderProfile", "renderInput", state, "notifyUrl", "externalId")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued', $8, $9)`,
+        [jobId, ownerId, projectId, job.revision, job.kind, job.renderProfile, renderInput, notifyUrl ?? null, externalId ?? null]
       );
       await client.query(
         `INSERT INTO "WorkOutbox" (id, kind, "dedupeKey", payload)
@@ -326,11 +386,19 @@ export class PostgresRenderRepository {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      const job = await client.query(
-        `SELECT 1 FROM "RenderJob" WHERE id = $1 AND state IN ('queued', 'running') FOR UPDATE`,
+      const job = await client.query<{
+        id: string;
+        projectId: string;
+        kind: RenderKind;
+        notifyUrl: string | null;
+        externalId: string | null;
+      }>(
+        `SELECT id, "projectId", kind, "notifyUrl", "externalId"
+           FROM "RenderJob" WHERE id = $1 AND state IN ('queued', 'running') FOR UPDATE`,
         [jobId]
       );
-      if (!job.rowCount) {
+      const row = job.rows[0];
+      if (!row) {
         await client.query("ROLLBACK");
         return false;
       }
@@ -346,6 +414,13 @@ export class PostgresRenderRepository {
       }
       await client.query(`UPDATE "RenderJob" SET state = 'complete' WHERE id = $1`, [jobId]);
       await insertEvent(client, jobId, "complete", 100);
+      await enqueueRenderNotify(client, {
+        jobId,
+        projectId: row.projectId,
+        kind: row.kind,
+        ...(row.notifyUrl ? { notifyUrl: row.notifyUrl } : {}),
+        ...(row.externalId ? { externalId: row.externalId } : {})
+      });
       await client.query("COMMIT");
       return true;
     } catch (error) {

@@ -19,6 +19,7 @@ export interface ExternalDraft {
   architecture: VideoArchitecture;
   source: StoryboardSource;
   mediaUrls: string[];
+  notifyUrl?: string;
 }
 
 const ownerIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -62,7 +63,7 @@ function optionalText(value: unknown, maximum: number): string | undefined {
   return text.slice(0, maximum);
 }
 
-/** Fotium admin is camelCase; accept snake_case or camelCase for one field. */
+/** Hosts may send camelCase or snake_case for the same field. */
 function field(body: Record<string, unknown>, snake: string, camel: string): unknown {
   return body[snake] !== undefined ? body[snake] : body[camel];
 }
@@ -113,7 +114,7 @@ export function parseExternalDraft(value: unknown): ExternalDraft {
   const title = clipText(
     body.title,
     120,
-    externalId.replace(/^(followup|queue|task|influencer|fotium|imported):/i, "").trim() || "Imported draft"
+    externalId.replace(/^(followup|queue|task|influencer|host|imported):/i, "").trim() || "Imported draft"
   );
   const caption = optionalText(body.caption, 500);
   const callToAction = optionalText(field(body, "call_to_action", "callToAction"), 180);
@@ -148,12 +149,14 @@ export function parseExternalDraft(value: unknown): ExternalDraft {
     )
   };
   const audience = optionalText(body.audience, 80) ?? "Social audience";
+  const notifyUrl = optionalText(field(body, "notify_url", "notifyUrl"), 2_048);
   return {
     externalId,
     brief: { purpose, audience, tone: `${architecture.tone}, ${architecture.pace}` },
     architecture,
     source: { ...(caption ? { caption } : {}), ...(callToAction ? { callToAction } : {}), ...(visualHint ? { visualHint } : {}) },
-    mediaUrls: parsedMediaUrls
+    mediaUrls: parsedMediaUrls,
+    ...(notifyUrl ? { notifyUrl } : {})
   };
 }
 

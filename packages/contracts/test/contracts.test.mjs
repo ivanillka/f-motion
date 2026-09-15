@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { acceptsFixture, isProjectSnapshot, isSoundtrack, isVoiceover, isStoryboardScenes, isStoryboardPlan, isSceneBrief } from "../dist/index.js";
+import { parseNotifyUrl, renderNotifyConfigFromEnv, signRenderNotify, verifyRenderNotify, deliverRenderNotify, buildRenderCompleteNotify } from "../dist/host-notify.js";
 
 const fixture = async (name) => JSON.parse(await readFile(new URL(`../fixtures/${name}`, import.meta.url)));
 const inventory = JSON.parse(await readFile(new URL("../route-inventory.json", import.meta.url), "utf8"));
@@ -114,6 +115,17 @@ test("storyboard lifecycle validation enforces scene count, IDs, order, and prom
   assert.equal(isStoryboardScenes([{ ...scene, visual_prompt: undefined }], true), false);
 });
 
+test("openapi documents a typed host import contract", () => {
+  assert.match(openapi, /ExternalProjectImport:/);
+  assert.match(openapi, /EnqueueRenderRequest:/);
+  assert.match(openapi, /RenderCompleteNotify:/);
+  assert.match(openapi, /notify_url:/);
+  assert.doesNotMatch(
+    openapi,
+    /\/integrations\/project-imports:[\s\S]*?schema: \{ type: object, additionalProperties: true \}/
+  );
+});
+
 test("openapi documents every inventoried versioned path and typed error", () => {
   assert.match(openapi, /^openapi: 3\.1\.0/m);
   for (const route of inventory.versioned) {
@@ -160,3 +172,47 @@ test("storyboard plan fixtures accept 4–6 briefs and reject invalid plans", as
     duration_ms: 20_000
   }))), false);
 });
+
+test("notify_url allowlists origins and signs render.complete", async () => {
+  const origins = ["https://cms.example.com"];
+  assert.equal(parseNotifyUrl("https://cms.example.com/hooks/fmotion", origins), "https://cms.example.com/hooks/fmotion");
+  assert.equal(parseNotifyUrl("https://evil.example/hooks", origins), undefined);
+  assert.equal(parseNotifyUrl("http://cms.example.com/hooks", origins), undefined);
+  assert.equal(parseNotifyUrl("https://user:pass@cms.example.com/hooks", origins), undefined);
+  const secret = "x".repeat(32);
+  assert.deepEqual(renderNotifyConfigFromEnv({
+    FENGINE_RENDER_NOTIFY_ORIGINS: "https://cms.example.com",
+    FENGINE_RENDER_NOTIFY_SECRET: secret
+  }), { secret, origins });
+  assert.equal(renderNotifyConfigFromEnv({}), undefined);
+  assert.throws(() => renderNotifyConfigFromEnv({ FENGINE_RENDER_NOTIFY_SECRET: secret }), /ORIGINS/);
+  const payload = buildRenderCompleteNotify({
+    jobId: "job-1",
+    projectId: "project-1",
+    kind: "preview",
+    externalId: "cms:gallery:weekend"
+  });
+  assert.equal(payload.download_path, "/v1/render-jobs/job-1/download");
+  const raw = JSON.stringify(payload);
+  const header = signRenderNotify(raw, secret, 1_710_000_000);
+  assert.equal(verifyRenderNotify(raw, header, secret, 1_710_000_000_000), true);
+  assert.equal(verifyRenderNotify(raw, header, secret, 1_710_400_000_000), false);
+  assert.equal(verifyRenderNotify(raw + "x", header, secret, 1_710_000_000_000), false);
+  let posted;
+  await deliverRenderNotify(
+    { notifyUrl: "https://cms.example.com/hooks/fmotion", jobId: "job-1", projectId: "project-1", kind: "preview", externalId: "cms:gallery:weekend" },
+    secret,
+    origins,
+    async (url, init) => {
+      posted = { url: String(url), ...init };
+      return new Response(null, { status: 204 });
+    },
+    new Date(1_710_000_000_000)
+  );
+  assert.equal(posted.url, "https://cms.example.com/hooks/fmotion");
+  assert.equal(posted.method, "POST");
+  assert.equal(posted.redirect, "error");
+  assert.equal(verifyRenderNotify(posted.body, posted.headers["x-f-motion-signature"], secret, 1_710_000_000_000), true);
+  assert.equal(JSON.parse(posted.body).event, "render.complete");
+});
+

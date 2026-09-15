@@ -353,14 +353,20 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.match(home, /searchParams\.set\("project"/);
   for (const phrase of [
     "Embed cinematic creation in your product",
-    "Integration Recipes",
+    "Integration recipes",
     "api.f-motion.com",
     "./assets/host-diagram.jpg",
-    "MCP Agent Loop",
-    "./agents.html"
+    "MCP agent loop",
+    "./agents.html",
+    "FENGINE_IMPORT_TOKEN",
+    "notify_url",
+    "does not post to social",
+    "cms:gallery:weekend"
   ]) {
     assert.match(integrate, new RegExp(phrase));
   }
+  assert.doesNotMatch(integrate, /\u2014/);
+  assert.doesNotMatch(integrate, /mailto:/);
   const agents = await readFile(new URL("agents.html", root), "utf8");
   for (const phrase of [
     "Ask an agent. Keep the draft.",
@@ -401,7 +407,7 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.match(integrate, /host-diagram\.webp/);
   assert.doesNotMatch(home, /#docs|View docs/);
   assert.doesNotMatch(integrate, /#docs|View docs/);
-  assert.match(integrate, /Open studio →/);
+  assert.match(integrate, /Partner contract/);
   assert.match(home, /href="\/app\/"/);
   assert.match(integrate, /href="\/app\/"/);
   assert.match(integrate, /href="\.\/terms\.html"/);

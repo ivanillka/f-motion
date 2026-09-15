@@ -4,7 +4,7 @@ F-Motion’s machine surface stays `/v1`. This contract is the **simple creator
 loop** an agent or the studio Create page should run. Do not invent a parallel
 product API.
 
-Partner import (Fotium already has media + copy) stays
+Partner import (a CMS or gallery that already has media + copy) stays
 [`partner-import.md`](./partner-import.md). This document is for a person
 talking to an agent or starting in the app.
 

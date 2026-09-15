@@ -49,4 +49,5 @@ another selfie).
 ## Handoff to F-Motion
 
 Face data does **not** need to enter F-Motion. Import sends chosen `media_urls`
-(+ brief). Publishing reels/stories stays in Fotium after webhook/SSE.
+(+ brief). Publishing stays in the host after webhook or SSE. F-Motion does not
+post to social.

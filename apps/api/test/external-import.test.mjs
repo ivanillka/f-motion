@@ -542,3 +542,99 @@ test("trusted import returns the draft URL before host stills finish copying", a
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+test("trusted import stores notify_url and rejects origins outside the allowlist", async () => {
+  const ownerId = "11111111-1111-4111-8111-111111111111";
+  const token = "trusted-import-token-that-is-long-enough";
+  const projects = new ProjectService();
+  const server = createServer(createTestApp({
+    projects,
+    externalImports: { token, ownerId, webOrigin: "https://f-motion.example", mediaOrigins: [] },
+    renderNotify: { secret: "y".repeat(32), origins: ["https://cms.example.com"] }
+  }));
+  const origin = await listen(server);
+  const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+  try {
+    assert.equal(parseExternalDraft({
+      external_id: "cms:gallery:weekend",
+      notify_url: "https://cms.example.com/hooks/fmotion"
+    }).notifyUrl, "https://cms.example.com/hooks/fmotion");
+    const rejected = await fetch(`${origin}/api/integrations/project-imports`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        external_id: "cms:gallery:blocked",
+        title: "Blocked",
+        notify_url: "https://evil.example/steal"
+      })
+    });
+    assert.equal(rejected.status, 422);
+    const accepted = await fetch(`${origin}/api/integrations/project-imports`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        external_id: "cms:gallery:weekend",
+        title: "Weekend portraits",
+        notify_url: "https://cms.example.com/hooks/fmotion"
+      })
+    });
+    assert.equal(accepted.status, 201);
+    const created = await accepted.json();
+    assert.equal(created.projectUrl, created.project_url);
+    const binding = projects.hostImportBinding(ownerId, created.project_id);
+    assert.equal(binding.externalId, "cms:gallery:weekend");
+    assert.equal(binding.notifyUrl, "https://cms.example.com/hooks/fmotion");
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("render enqueue validates notify_url and forwards it with the host external id", async () => {
+  const admitted = [];
+  const server = createServer(createTestApp({
+    renderNotify: { secret: "y".repeat(32), origins: ["https://cms.example.com"] },
+    renders: {
+      async create(ownerId, projectId, kind, options) {
+        admitted.push({ ownerId, projectId, kind, options });
+        return { jobId: "job", ownerId, projectId, revision: 0, kind, renderProfile: { width: 540, height: 960 }, state: "queued" };
+      }
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const { project } = await (await fetch(`${origin}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "Preview" })
+    })).json();
+    const blocked = await fetch(`${origin}/api/projects/${project.id}/render`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind: "preview", notify_url: "https://evil.example/steal" })
+    });
+    assert.equal(blocked.status, 422);
+    const extra = await fetch(`${origin}/api/projects/${project.id}/render`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind: "preview", width: 999 })
+    });
+    assert.equal(extra.status, 422);
+    const accepted = await fetch(`${origin}/api/projects/${project.id}/render`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        kind: "preview",
+        notify_url: "https://cms.example.com/hooks/fmotion",
+        external_id: "cms:gallery:weekend"
+      })
+    });
+    assert.equal(accepted.status, 202);
+    assert.deepEqual(admitted.at(-1).options, {
+      notifyUrl: "https://cms.example.com/hooks/fmotion",
+      externalId: "cms:gallery:weekend"
+    });
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+

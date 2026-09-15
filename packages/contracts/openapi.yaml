@@ -41,11 +41,17 @@ paths:
     post:
       operationId: importExternalProject
       security: [{ IntegrationToken: [] }]
+      summary: Trusted host import of a reel draft
+      description: >
+        Host-agnostic draft import. Idempotent on `external_id` (or `externalId`).
+        Auth is the shared import token, not a user JWT or `fm_` key.
+        Extra host fields are ignored. Unknown `media_urls` origins are skipped
+        and the draft is still created.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, additionalProperties: true }
+            schema: { $ref: "#/components/schemas/ExternalProjectImport" }
       responses:
         "200": { $ref: "#/components/responses/ExternalImportResult" }
         "201": { $ref: "#/components/responses/ExternalImportResult" }
@@ -700,12 +706,7 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [kind]
-              properties:
-                kind: { type: string, enum: [preview, final] }
-              additionalProperties: false
+            schema: { $ref: "#/components/schemas/EnqueueRenderRequest" }
       responses:
         "202":
           description: Queued or coalesced render job
@@ -858,15 +859,123 @@ components:
       description: Trusted import result
       content:
         application/json:
-          schema:
-            type: object
-            required: [created, project_id, project_url, revision]
-            properties:
-              created: { type: boolean }
-              project_id: { type: string }
-              project_url: { type: string }
-              revision: { type: integer, minimum: 0 }
+          schema: { $ref: "#/components/schemas/ExternalImportResult" }
   schemas:
+    ExternalProjectImport:
+      type: object
+      description: >
+        Trusted host import. Snake_case is canonical; camelCase aliases are
+        accepted for the same fields. `external_id` is the idempotency key.
+      properties:
+        external_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Stable host id. Retries with the same value reuse the draft.
+        externalId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        title: { type: string, maxLength: 120 }
+        caption: { type: string, maxLength: 500 }
+        call_to_action: { type: string, maxLength: 180 }
+        callToAction: { type: string, maxLength: 180 }
+        visual_hint: { type: string, maxLength: 240 }
+        visualHint: { type: string, maxLength: 240 }
+        purpose: { type: string, maxLength: 500 }
+        goal: { type: string }
+        audience: { type: string, maxLength: 80 }
+        architecture: { $ref: "#/components/schemas/ImportArchitecture" }
+        media_urls: { $ref: "#/components/schemas/ImportMediaUrls" }
+        mediaUrls: { $ref: "#/components/schemas/ImportMediaUrls" }
+        notify_url:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: >
+            Optional HTTPS callback stored on the draft. Later renders of this
+            project POST a signed render.complete event here when the origin is
+            listed in FENGINE_RENDER_NOTIFY_ORIGINS.
+        notifyUrl:
+          type: string
+          format: uri
+          maxLength: 2048
+        duration_seconds: { type: number }
+        durationSeconds: { type: number }
+    ImportMediaUrls:
+      type: array
+      maxItems: 8
+      items:
+        oneOf:
+          - type: string
+            format: uri
+            maxLength: 2048
+          - type: object
+            properties:
+              url: { type: string, format: uri, maxLength: 2048 }
+              source_url: { type: string, format: uri, maxLength: 2048 }
+              sourceUrl: { type: string, format: uri, maxLength: 2048 }
+    ImportArchitecture:
+      type: object
+      description: Host-supplied reel architecture. Unknown enum values fall back.
+      properties:
+        duration_seconds: { type: number }
+        durationSeconds: { type: number }
+        goal: { type: string, enum: [story, explain, promote, educate] }
+        audience: { type: string, enum: [general, social, customers, internal] }
+        structure: { type: string, enum: [story_arc, mystery, problem_solution, chronological] }
+        tone: { type: string, enum: [cinematic, documentary, energetic, calm] }
+        pace: { type: string, enum: [slow, balanced, fast] }
+        media: { type: string, enum: [stock, own, mixed] }
+        delivery: { type: string, enum: [reel, story, youtube] }
+    ExternalImportResult:
+      type: object
+      required: [created, project_id, project_url, projectUrl, revision]
+      properties:
+        created: { type: boolean }
+        project_id: { type: string }
+        project_url:
+          type: string
+          format: uri
+          description: Studio deep link including `?project=`
+        projectUrl:
+          type: string
+          format: uri
+          description: CamelCase alias. Hosts should prefer this when opening a tab.
+        revision: { type: integer, minimum: 0 }
+    EnqueueRenderRequest:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [preview, final] }
+        notify_url:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: >
+            Optional HTTPS callback. Overrides a notify_url stored at import.
+            Must match FENGINE_RENDER_NOTIFY_ORIGINS.
+        notifyUrl: { type: string, format: uri, maxLength: 2048 }
+        external_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Optional host id echoed on render.complete when not stored at import.
+        externalId: { type: string, minLength: 1, maxLength: 128 }
+      additionalProperties: false
+    RenderCompleteNotify:
+      type: object
+      required: [event, job_id, project_id, kind, download_path]
+      properties:
+        event: { type: string, const: render.complete }
+        job_id: { type: string }
+        project_id: { type: string }
+        kind: { type: string, enum: [preview, final] }
+        download_path:
+          type: string
+          description: Owner-authenticated path, typically `/v1/render-jobs/{job_id}/download`
+        external_id: { type: string }
+      additionalProperties: false
     HealthStatus:
       type: object
       required: [status]

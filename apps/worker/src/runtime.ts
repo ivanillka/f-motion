@@ -8,6 +8,12 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { isProjectSnapshot, type ProjectSnapshot } from "@f-engine/contracts";
+import {
+  deliverRenderNotify,
+  renderNotifyConfigFromEnv,
+  renderNotifyQueue,
+  type RenderNotifyJob
+} from "@f-engine/contracts/host-notify";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -558,6 +564,15 @@ export function createQueueHandlers(
     async generateFalSpeech(job, signal) {
       return processFalSpeechJob(pool, store, job, signal, env);
     },
+    async notifyRender(job: RenderNotifyJob, _signal: AbortSignal) {
+      const notify = renderNotifyConfigFromEnv(env);
+      if (!notify) {
+        console.error("render notify skipped: not configured", job.jobId);
+        return { state: "skipped" };
+      }
+      await deliverRenderNotify(job, notify.secret, notify.origins);
+      return { state: "delivered" };
+    },
     async render(job: PreviewJob, signal: AbortSignal) {
       let stored: Awaited<ReturnType<typeof storedRender>>;
       try {
@@ -628,6 +643,30 @@ export function createQueueHandlers(
               `INSERT INTO "RenderEvent" ("jobId", phase, percent) VALUES ($1, 'complete', 100)`,
               [job.jobId]
             );
+            const notify = await client.query<{
+              notifyUrl: string | null;
+              externalId: string | null;
+              kind: "preview" | "final";
+              projectId: string;
+            }>(
+              `SELECT "notifyUrl", "externalId", kind, "projectId" FROM "RenderJob" WHERE id = $1`,
+              [job.jobId]
+            );
+            const notifyRow = notify.rows[0];
+            if (notifyRow?.notifyUrl) {
+              await client.query(
+                `INSERT INTO "WorkOutbox" (id, kind, "dedupeKey", payload)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT ("dedupeKey") DO NOTHING`,
+                [randomUUID(), renderNotifyQueue, `${renderNotifyQueue}:${job.jobId}`, {
+                  notifyUrl: notifyRow.notifyUrl,
+                  jobId: job.jobId,
+                  projectId: notifyRow.projectId,
+                  kind: notifyRow.kind,
+                  ...(notifyRow.externalId ? { externalId: notifyRow.externalId } : {})
+                }]
+              );
+            }
             await client.query("COMMIT");
             uploadedObjectKey = undefined;
             return { state: "complete", objectKey };

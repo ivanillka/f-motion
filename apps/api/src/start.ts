@@ -3,6 +3,7 @@ import pg from "pg";
 import { accessPolicyFromEnv } from "./access-policy.js";
 import { PostgresApiKeyService } from "./api-keys.js";
 import { externalImportConfigFromEnv } from "./external-import.js";
+import { renderNotifyConfigFromEnv } from "./render-notify.js";
 import { PostgresProjectRepository } from "./domain.js";
 import { freeRenderUnitsFromEnv, PostgresHostUsageService } from "./host-usage.js";
 import { assertLocalAuthAllowed } from "./local-auth.js";
@@ -44,6 +45,7 @@ assertNoSharedFalCredential(process.env);
 assertNoSharedPexelsCredential(process.env);
 const accessPolicy = accessPolicyFromEnv(process.env);
 const externalImports = externalImportConfigFromEnv(process.env);
+const renderNotify = renderNotifyConfigFromEnv(process.env);
 
 const pool = new pg.Pool({ connectionString: required("DATABASE_URL") });
 // pg.Pool emits "error" for idle-client connection drops (DB restart, network
@@ -108,6 +110,8 @@ if (engineEnv(process.env) === "selfhost") {
     pexelsCredentials,
     apiKeys,
     hostUsage,
+    externalImports,
+    renderNotify,
     purgeProject: purge
   }).listen(port);
 } else if (process.env.FENGINE_LOCAL_AUTH === "1") {
@@ -130,6 +134,8 @@ if (engineEnv(process.env) === "selfhost") {
     pexelsCredentials,
     apiKeys,
     hostUsage,
+    externalImports,
+    renderNotify,
     purgeProject: purge
   }).listen(port);
 } else {
@@ -165,6 +171,7 @@ if (engineEnv(process.env) === "selfhost") {
     },
     accessPolicy,
     externalImports,
+    renderNotify,
     purgeProject: purge
   }).listen(port);
 }

@@ -384,5 +384,7 @@ the storage host, fix bucket CORS (§2) before debugging the API.
 | `FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION`, `FENGINE_CREDENTIAL_KEY_V<n>` | API + worker (when FAL BYOK on) | encrypt/decrypt user provider credentials |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | web build | F-Motion Supabase client only |
 | `VITE_ENABLE_GOOGLE_AUTH` | web build | optional UI flag after Google provider setup |
+| `FENGINE_IMPORT_TOKEN`, `FENGINE_IMPORT_OWNER_ID`, `FENGINE_IMPORT_MEDIA_ORIGINS`, `FENGINE_WEB_ORIGIN` | API | optional trusted host import (any CMS/gallery) |
+| `FENGINE_RENDER_NOTIFY_ORIGINS`, `FENGINE_RENDER_NOTIFY_SECRET` | API + worker | optional signed `render.complete` webhooks |
 | `FENGINE_LOCAL_AUTH` | — | must stay **unset** on every hosted process |
 | `VITE_ALLOW_DEMO_AUTH` | — | must stay **unset** on every hosted web build |
