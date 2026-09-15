@@ -328,6 +328,12 @@ test("build puts SPA at site root with studio under /studio", async () => {
   assert.ok(assets.some((name) => name.startsWith("main-") && name.endsWith(".js")));
   assert.match(redirects, /\/app\/ \/\s*studio\s*301/);
   assert.match(redirects, /\/web\/ \/\s*301/);
+  const integrateLive = await readFile(new URL("integrate.html", dist), "utf8");
+  assert.match(integrateLive, /CMS plugin/);
+  assert.match(integrateLive, /Four supported paths/);
+  assert.doesNotMatch(integrateLive, /id="root"/);
+  const agentsLive = await readFile(new URL("agents.html", dist), "utf8");
+  assert.match(agentsLive, /Ask an agent\. Keep the draft/);
 });
 
 test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind", async () => {

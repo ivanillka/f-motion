@@ -1,7 +1,7 @@
 /**
  * After Vite build: SPA-at-root (f-motion.com) or legacy static marketing + /app studio.
  */
-import { writeFile } from "node:fs/promises";
+import { cp, readdir, writeFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -27,10 +27,20 @@ async function writePagesMeta() {
   );
 }
 
+/** Keep the cube at /. Lift stitch pages so /integrate.html and /agents.html are real files. */
+async function liftStaticMarketingPages() {
+  const web = resolve(dist, "web");
+  for (const name of await readdir(web)) {
+    if (name === "index.html") continue;
+    await cp(resolve(web, name), resolve(dist, name), { recursive: true });
+  }
+}
+
 async function main() {
   if (process.env.VITE_SITE_AT_ROOT === "1") {
     await writePagesMeta();
-    console.log("SPA at site root; studio at /studio; legacy /app → /studio");
+    await liftStaticMarketingPages();
+    console.log("SPA at site root; static /integrate.html /agents.html lifted; studio at /studio");
     return;
   }
   await import("./promote-marketing-root.mjs");

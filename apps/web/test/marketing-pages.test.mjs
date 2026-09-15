@@ -47,6 +47,7 @@ test("home is a centered title with feature buttons", async () => {
   assert.match(source, /"Home"/);
   assert.match(source, /"Studio"/);
   assert.match(source, /\/how-it-works/);
+  assert.match(source, /href="\/integrate.html"/);
   assert.match(source, />GitHub</);
   assert.match(source, /skills\/fmotion/);
   assert.match(source, /\/self-host/);

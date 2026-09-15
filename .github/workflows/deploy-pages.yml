@@ -1,5 +1,5 @@
 name: deploy-pages
-# Retrigger production upload after hosted secrets were added.
+# Retrigger production upload so /integrate.html ships the CMS plugin recipe.
 
 on:
   workflow_dispatch:
