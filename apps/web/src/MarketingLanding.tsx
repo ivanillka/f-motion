@@ -124,6 +124,11 @@ export function MarketingLanding({
                   <h3>MCP agent loop</h3>
                   <p>OpenClaw, Cursor, or Hermes: drop media or chat, ask a few questions, return a preview plus a draft link.</p>
                 </article>
+                <article className="mkt-recipe">
+                  <span>04</span>
+                  <h3>CMS plugin</h3>
+                  <p>Thin WordPress-shaped adapter over import and webhook. Sibling plugins subscribe to <code>reel_ready</code>. Drupal, Shopify, and generic webhooks use the same events.</p>
+                </article>
               </div>
             </section>
 

@@ -6,6 +6,8 @@ infrastructure, customer data, and operational policy.
 
 Partner import (any CMS or gallery), Edit-in-F-Motion, and the signed
 `render.complete` webhook: [`partner-import.md`](./partner-import.md).  
+CMS plugin (thin adapter + hook map; WordPress first):
+[`cms-plugin.md`](./cms-plugin.md).  
 Agent compose (media-first or chat-only → preview + draft):
 [`agent-compose.md`](./agent-compose.md).  
 Recipes: [`../agents/host-recipes.md`](../agents/host-recipes.md).  

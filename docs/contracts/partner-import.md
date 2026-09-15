@@ -6,6 +6,11 @@ publishing, and queue scenarios. Do not rebuild those inside F-Motion.
 
 F-Motion does not post to social networks. The host publishes.
 
+A CMS plugin is a thin adapter over this import and webhook, not a fork of the
+engine. WordPress is the first public plugin target. Drupal, Shopify, and a
+generic HTTPS webhook use the same events. Architecture and hook names:
+[`cms-plugin.md`](./cms-plugin.md). Fotium is a reference host, not the only host.
+
 ## Easy creator path
 
 1. The user drops media in the host.

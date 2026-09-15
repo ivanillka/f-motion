@@ -782,7 +782,7 @@
 }
 
 @media (min-width: 768px) {
-  .mkt-recipes { grid-template-columns: repeat(3, 1fr); }
+  .mkt-recipes { grid-template-columns: repeat(2, 1fr); }
 }
 
 .mkt-recipe {

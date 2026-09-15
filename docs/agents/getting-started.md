@@ -108,11 +108,14 @@ mcp_servers:
 
 ## Host recipes
 
-Import-and-open, API render pipeline, and MCP agent loop:
+Import-and-open, API render pipeline, MCP agent loop, and CMS plugin:
 [`docs/agents/host-recipes.md`](./host-recipes.md).
 
 Partner import + Edit-in-F-Motion + webhook contract:
 [`docs/contracts/partner-import.md`](../contracts/partner-import.md).
+
+CMS plugin architecture (thin adapter, hook map, WordPress stub):
+[`docs/contracts/cms-plugin.md`](../contracts/cms-plugin.md).
 
 ## OpenClaw
 

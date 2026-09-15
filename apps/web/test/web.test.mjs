@@ -357,6 +357,10 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
     "api.f-motion.com",
     "./assets/host-diagram.jpg",
     "MCP agent loop",
+    "CMS plugin",
+    "Four supported paths",
+    "reel_ready",
+    "cms-plugin.md",
     "./agents.html",
     "FENGINE_IMPORT_TOKEN",
     "notify_url",
@@ -386,6 +390,7 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.match(css, /\.glitch-logo/);
   assert.match(css, /font-family:\s*"Syne"|--display:\s*"Syne"/);
   assert.match(css, /syne-700\.woff2/);
+  assert.match(css, /\.recipes-quad/);
   assert.match(home, /data-glitch="rgb-split"/);
   assert.match(home, /data-glitch="scramble-cascade"/);
   assert.match(home, /data-glitch="slice-tear"/);

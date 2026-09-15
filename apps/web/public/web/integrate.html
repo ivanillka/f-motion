@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#111213">
-  <meta name="description" content="Embed F-Motion reel creation in any CMS or gallery. Import drafts, headless render, or MCP agents. The host publishes. F-Motion does not post to social.">
+  <meta name="description" content="Embed F-Motion reel creation in any CMS or gallery. Import drafts, headless render, MCP agents, or a CMS plugin. The host publishes. F-Motion does not post to social.">
   <title>F-Motion Integrate</title>
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./web.css">
@@ -28,7 +28,7 @@
     <section class="page-hero" aria-label="Integrate hero">
       <p class="live-pill"><i aria-hidden="true"></i> API V1 IS LIVE</p>
       <h1>Embed cinematic creation in your product.</h1>
-      <p>Any CMS or gallery can import a draft, open Edit in F-Motion, or render headless. You keep upload, identity, and publishing. F-Motion does not post to social.</p>
+      <p>Any CMS or gallery can import a draft, open Edit in F-Motion, render headless, or ship a plugin. You keep upload, identity, and publishing. F-Motion does not post to social.</p>
       <div class="cta-row">
         <a class="btn btn-primary" href="/app/">Open studio</a>
         <a class="btn btn-raised" href="https://github.com/ivanillka/f-motion/blob/advisor/133-design-contract/docs/contracts/partner-import.md">Partner contract</a>
@@ -38,8 +38,8 @@
     <section class="section" aria-labelledby="recipes-heading">
       <div class="section-inner">
         <h2 id="recipes-heading">Integration recipes</h2>
-        <p class="lede">Three supported paths. Prefer these over inventing a parallel API.</p>
-        <div class="recipes">
+        <p class="lede">Four supported paths. Prefer these over inventing a parallel API.</p>
+        <div class="recipes recipes-quad">
           <article class="recipe">
             <div class="recipe-icon" aria-hidden="true">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 12h10M10 6l6 6-6 6"/><path d="M20 5v14"/></svg>
@@ -64,6 +64,14 @@
             <p>Cursor, OpenClaw, or Hermes: drop media or chat, ask a few questions, return a preview plus a draft link.</p>
             <a class="cyan" href="./agents.html">Agent loop</a>
           </article>
+          <article class="recipe">
+            <div class="recipe-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="5" width="10" height="14" rx="1.5"/><path d="M14 9h4.5A1.5 1.5 0 0 1 20 10.5v3A1.5 1.5 0 0 1 18.5 15H14M8 9v6"/></svg>
+            </div>
+            <h3>CMS plugin</h3>
+            <p>Thin adapter over import and <code>render.complete</code>. Sibling plugins subscribe to <code>reel_ready</code>. WordPress first; Drupal, Shopify, and generic webhooks use the same events.</p>
+            <a href="https://github.com/ivanillka/f-motion/blob/advisor/133-design-contract/docs/contracts/cms-plugin.md">Plugin architecture</a>
+          </article>
         </div>
       </div>
     </section>
@@ -71,7 +79,7 @@
     <section class="section" aria-labelledby="boundary-heading">
       <div class="section-inner">
         <h2 id="boundary-heading">Host publishes</h2>
-        <p class="lede">F-Motion writes the reel file. Your product posts it. Faces, Immich, and social accounts stay in the host.</p>
+        <p class="lede">F-Motion writes the reel file. Your product posts it. Faces, Immich, and social accounts stay in the host. A CMS plugin fires <code>reel_ready</code> so social, SEO, and gallery plugins can subscribe without F-Motion internals.</p>
       </div>
     </section>
 

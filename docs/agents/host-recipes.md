@@ -1,6 +1,6 @@
 # Host recipes
 
-Three supported ways to use F-Motion from another product. Prefer these over
+Four supported ways to use F-Motion from another product. Prefer these over
 inventing a parallel API. F-Motion does not post to social; the host publishes.
 
 ## 1) Import-and-open (CMS / gallery admin)
@@ -98,3 +98,34 @@ Do not put the OpenClaw gateway operator token into F-Motion auth.
 
 Details: [`docs/agents/getting-started.md`](./getting-started.md),
 [`docs/agents/openclaw/README.md`](./openclaw/README.md).
+
+## 4) CMS plugin (WordPress first)
+
+**When:** You ship F-Motion inside WordPress, Drupal, Shopify, or a similar CMS,
+and other plugins must subscribe without knowing F-Motion internals.
+
+The plugin is a thin adapter over recipe 1 (and optionally recipe 2). It is not
+a fork of the engine. Fotium is a reference custom host that already speaks
+import-and-open; it is not the only host.
+
+1. Filter `before_import` so sibling plugins can mutate `media_urls` and the brief.
+2. `POST /v1/integrations/project-imports`.
+3. Action `after_import`. Open `projectUrl` in a new tab (link-out Edit, not iframe).
+4. Receive signed `render.complete` on the plugin `notify_url`.
+5. Download, attach to the CMS, then fire `reel_ready` with `post_id`,
+   `attachment_id`, `mp4_url`, and `external_id`.
+
+WordPress names: `fmotion_before_import`, `fmotion_after_import`,
+`fmotion_reel_ready`, `fmotion_edit_open`. REST:
+`POST /wp-json/fmotion/v1/notify`.
+
+Drupal (`hook_fmotion_*`), Shopify (`fmotion/reel_ready`), and a generic HTTPS
+webhook use the same canonical events.
+
+Non-goals: no social API tokens in the F-Motion plugin, no Immich or faces
+inside the plugin, no studio iframe until session handoff exists.
+
+This pass ships the architecture and a WordPress stub
+(`plugins/wordpress/`). A follow-up ships the installable plugin package.
+
+See [`docs/contracts/cms-plugin.md`](../contracts/cms-plugin.md).

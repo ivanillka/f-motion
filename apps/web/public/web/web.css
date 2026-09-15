@@ -543,6 +543,7 @@ button, .btn {
 }
 @media (min-width: 860px) {
   .recipes { grid-template-columns: repeat(3, 1fr); }
+  .recipes-quad { grid-template-columns: repeat(2, 1fr); }
 }
 .recipe {
   padding: 28px;
