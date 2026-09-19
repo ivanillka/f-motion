@@ -24,6 +24,7 @@ test("home is a centered title with feature buttons", async () => {
   assert.match(source, /setTimeout\(\(\) => setTurning\(false\), 420\)/);
   assert.match(css, /mktEdgeGlint/);
   assert.match(css, /perspective: 42rem/);
+  assert.match(css, /--s: min\(62vw, 22rem\)/);
   assert.match(css, /\.mkt-cube-rig/);
   assert.match(css, /transition: transform 0\.38s/);
   assert.doesNotMatch(css, /fonts\.googleapis/);

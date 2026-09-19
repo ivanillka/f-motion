@@ -2652,7 +2652,20 @@ export function App() {
     <button type="button" aria-current={step === "settings" ? "page" : undefined} onClick={() => setStep("settings")}>Settings</button>
   </> : null;
 
-  return <div className={`app-shell${inApp ? " app-shell-signed" : ""}${step === "editor" ? " app-shell-editor" : ""}${step === "brief" ? " app-shell-brief" : ""}`}>
+  const workSurface = step === "brief" || step === "media" || step === "editor" || step === "render";
+
+  return <div className={`app-space${inApp ? " is-signed" : ""}${workSurface ? " is-work" : ""}`}>
+    <div className="app-space-sky" aria-hidden="true" />
+    <div className="app-space-stage">
+      <div className="app-space-cube" aria-hidden="true">
+        <i data-side="back" />
+        <i data-side="left" />
+        <i data-side="right" />
+        <i data-side="top" />
+        <i data-side="bottom" />
+        <i data-side="front" />
+      </div>
+      <div className={`app-shell${inApp ? " app-shell-signed" : ""}${step === "editor" ? " app-shell-editor" : ""}${step === "brief" ? " app-shell-brief" : ""}`}>
     {inApp && <nav className="app-rail" aria-label="Primary">
       <a className="rail-brand" href="/">F-MOTION</a>
       {appNav}
@@ -2678,7 +2691,7 @@ export function App() {
           </span>
         )}
         {authReady && token && step !== "sign-in" && !inApp && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
-        <span role="status">{online ? "● Connected" : "○ Reconnecting — draft kept locally"}</span>
+        <span role="status">{online ? "● Connected" : "○ Reconnecting. Draft kept locally"}</span>
         <span className="build-rev" title={`F-Motion ${APP_VERSION}`}>{APP_VERSION}</span>
         <span className="build-rev" title="Git revision">{String(import.meta.env.VITE_GIT_SHA ?? "dev").slice(0, 7)}</span>
       </div>
@@ -2748,7 +2761,7 @@ export function App() {
       {draftsLoading && <p role="status">Loading drafts…</p>}
       {!draftsLoading && drafts.length === 0 && <div className="empty-drafts">
         <p role="status">No drafts yet.</p>
-        <p>Describe what you want to make — F-Motion will recommend a video plan and storyboard.</p>
+        <p>Describe what you want to make. F-Motion will recommend a video plan and storyboard.</p>
       </div>}
       <div className="concepts drafts-grid">{drafts.map((item) =>
         <button key={item.id} className="card draft-card" onClick={() => void openDraft(item.id)}>
@@ -3578,6 +3591,8 @@ export function App() {
     </dialog>}
     </div>
     {inApp && <nav className="app-dock" aria-label="Primary">{appNav}</nav>}
+  </div>
+    </div>
   </div>;
 }
 
