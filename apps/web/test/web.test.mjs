@@ -279,6 +279,11 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.editor-foot/);
   assert.match(css, /\.inspector-pair/);
   assert.match(css, /\.app-shell-editor \.app-stage \{\s*max-width: none;/);
+  assert.match(css, /--hud-w: min\(1100px, 92vw\)/);
+  assert.match(css, /--hud-h: min\(800px, 88vh\)/);
+  assert.match(css, /\.app-space-stage \{\s*position: relative;[\s\S]*width: var\(--hud-w\);[\s\S]*height: var\(--hud-h\);/);
+  assert.match(css, /@media \(max-width: 899px\) \{\s*\.app-space \{[\s\S]*--hud-w: 100vw;[\s\S]*--hud-h: 100dvh;/);
+  assert.doesNotMatch(css, /\.app-space[^{]*\{[^}]*--hud-w:[^}]*22rem/);
   assert.match(css, /margin-inline: auto/);
   assert.match(css, /dialog\[open\][\s\S]{0,180}max-height: calc\(100dvh - 24px\)/);
   assert.match(css, /dialog img/);
@@ -293,6 +298,9 @@ test("studio shell brands F-Motion and keeps real destinations only", async () =
   assert.doesNotMatch(source, /F-Engine Reference/);
   assert.match(source, /className="app-rail"/);
   assert.match(source, /className="app-dock"/);
+  assert.match(source, /className=\{`app-space/);
+  assert.match(source, /app-space-cube/);
+  assert.doesNotMatch(source, /mkt-studio-face|mkt-cube-core/);
   assert.match(source, /className="studio-board"/);
   assert.match(source, /partner-brands/);
   assert.match(source, /className="editor-foot"/);

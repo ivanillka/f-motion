@@ -2652,7 +2652,20 @@ export function App() {
     <button type="button" aria-current={step === "settings" ? "page" : undefined} onClick={() => setStep("settings")}>Settings</button>
   </> : null;
 
-  return <div className={`app-shell${inApp ? " app-shell-signed" : ""}${step === "editor" ? " app-shell-editor" : ""}${step === "brief" ? " app-shell-brief" : ""}`}>
+  const workSurface = step === "brief" || step === "media" || step === "editor" || step === "render";
+
+  return <div className={`app-space${inApp ? " is-signed" : ""}${workSurface ? " is-work" : ""}`}>
+    <div className="app-space-sky" aria-hidden="true" />
+    <div className="app-space-stage">
+      <div className="app-space-cube" aria-hidden="true">
+        <i data-side="back" />
+        <i data-side="left" />
+        <i data-side="right" />
+        <i data-side="top" />
+        <i data-side="bottom" />
+        <i data-side="front" />
+      </div>
+      <div className={`app-shell${inApp ? " app-shell-signed" : ""}${step === "editor" ? " app-shell-editor" : ""}${step === "brief" ? " app-shell-brief" : ""}`}>
     {inApp && <nav className="app-rail" aria-label="Primary">
       <a className="rail-brand" href="/">F-MOTION</a>
       {appNav}
@@ -3578,6 +3591,8 @@ export function App() {
     </dialog>}
     </div>
     {inApp && <nav className="app-dock" aria-label="Primary">{appNav}</nav>}
+  </div>
+    </div>
   </div>;
 }
 
