@@ -15,14 +15,12 @@ const SKILL_REPO = githubTreeUrl("skills/fmotion");
 export type MarketingRoute =
   | "home"
   | "self-host"
-  | "how-it-works"
-  | "login";
+  | "how-it-works";
 
-const MARKETING_PATHS = new Set(["/", "/how-it-works", "/hosted", "/self-host", "/login"]);
+const MARKETING_PATHS = new Set(["/", "/how-it-works", "/hosted", "/self-host"]);
 
 export function studioComingSoon(): boolean {
-  return import.meta.env.VITE_STUDIO_COMING_SOON === "1"
-    || (import.meta.env.PROD && import.meta.env.VITE_SELFHOST_AUTH !== "1");
+  return import.meta.env.VITE_STUDIO_COMING_SOON === "1";
 }
 
 export function studioHref(): string {
@@ -34,39 +32,51 @@ export function isStudioPath(path: string): boolean {
     || path === "/app" || path.startsWith("/app/");
 }
 
+export function isStudioEditPath(path: string): boolean {
+  return path === "/studio/edit" || path.startsWith("/studio/edit/")
+    || path === "/app" || path.startsWith("/app/");
+}
+
+export function isAdminPath(path: string): boolean {
+  return path === "/studio/admin" || path.startsWith("/studio/admin/");
+}
+
 export function isMarketingPath(path: string): boolean {
   return MARKETING_PATHS.has(path);
+}
+
+export function isLoginPath(path: string): boolean {
+  return path === "/login" || path.startsWith("/login/");
 }
 
 export function marketingRoute(path: string): MarketingRoute {
   if (path === "/self-host") return "self-host";
   if (path === "/how-it-works") return "how-it-works";
-  if (path === "/login") return "login";
   return "home";
 }
 
 const TITLES: Record<MarketingRoute, string> = {
   home: "F-Motion",
   "self-host": "F-Motion — Self-host",
-  "how-it-works": "F-Motion — How it works",
-  login: "F-Motion — Login"
+  "how-it-works": "F-Motion — How it works"
 };
 
 const HEADLINES: Record<MarketingRoute, string> = {
   home: "F-Motion",
   "how-it-works": "How it works",
-  "self-host": "Self-host",
-  login: "Login"
+  "self-host": "Self-host"
 };
 
 const LEDES: Record<MarketingRoute, string> = {
   home: "",
   "how-it-works": "Coming soon on f-motion.com.",
-  "self-host": "The same studio, one image, on your VPS.",
-  login: "Coming soon on f-motion.com."
+  "self-host": "The same studio, one image, on your VPS."
 };
 
 export function pageTitle(path: string): string {
+  if (isLoginPath(path)) return "F-Motion — Login";
+  if (isAdminPath(path)) return "F-Motion — Admin";
+  if (isStudioEditPath(path) && !studioComingSoon()) return "F-Motion — Editor";
   if (isStudioPath(path) && !studioComingSoon()) return "F-Motion — Studio";
   return TITLES[marketingRoute(path)] ?? "F-Motion";
 }
@@ -74,12 +84,11 @@ export function pageTitle(path: string): string {
 const FACE_PATH: Record<MarketingRoute, string> = {
   home: "/",
   "how-it-works": "/how-it-works",
-  "self-host": "/self-host",
-  login: "/login"
+  "self-host": "/self-host"
 };
 
 // ponytail: four physical walls. SECTIONS can grow; recycle the wall that went behind.
-const SECTIONS: MarketingRoute[] = ["home", "how-it-works", "self-host", "login"];
+const SECTIONS: MarketingRoute[] = ["home", "how-it-works", "self-host"];
 const WALLS = ["front", "right", "back", "left"] as const;
 
 function wrapIndex(index: number, n: number): number {
@@ -109,14 +118,14 @@ function sectionAtWall(index: number, wall: number): MarketingRoute {
   return SECTIONS[wrapIndex(index + step, SECTIONS.length)] ?? "home";
 }
 
-function FeatureNav({ page, studio }: { page: MarketingRoute; studio: string }) {
+function FeatureNav({ page }: { page: MarketingRoute }) {
   const item = (href: string, label: string, current: boolean, className?: string) => (
     <a className={className} href={href} aria-current={current ? "page" : undefined}>{label}</a>
   );
   return (
     <nav className="mkt-splash-features" aria-label="Features">
       {item("/", "Home", page === "home")}
-      {item(studio, "Studio", page === "login", "is-studio")}
+      {item("/login", "Studio", false, "is-studio")}
       {item("/how-it-works", "How it works", page === "how-it-works")}
       <a href={SKILL_REPO} target="_blank" rel="noreferrer">GitHub</a>
       {item("/self-host", "Self-host", page === "self-host")}
@@ -276,7 +285,7 @@ function WordCube({
   );
 }
 
-function SplashSky({ paceRef }: { paceRef: { current: number } }) {
+export function SplashSky({ paceRef }: { paceRef: { current: number } }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = ref.current;
@@ -389,7 +398,7 @@ function Splash({
   return (
     <section className="mkt-splash" aria-labelledby="splash-title">
       <WordCube page={page} yaw={yaw} onTurn={onTurn} />
-      <FeatureNav page={page} studio={studioHref()} />
+      <FeatureNav page={page} />
     </section>
   );
 }

@@ -1,12 +1,18 @@
 import { lazy, StrictMode, Suspense, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { AdminPage } from "./AdminPage";
+import { LoginPage } from "./LoginPage";
 import {
   MarketingSite,
+  isAdminPath,
+  isLoginPath,
   isMarketingPath,
+  isStudioEditPath,
   isStudioPath,
   pageTitle,
   studioComingSoon
 } from "./MarketingPages";
+import { StudioCube } from "./StudioCube";
 
 const App = lazy(() => import("./main").then((mod) => ({ default: mod.App })));
 
@@ -41,7 +47,7 @@ function redirectStudioAuth(): void {
   if (!onHome && !legacyApp) return;
   if (!/^[0-9a-f-]{36}$/i.test(project) && !code && !error) return;
 
-  const next = new URL("/studio", url.origin);
+  const next = new URL("/login", url.origin);
   if (/^[0-9a-f-]{36}$/i.test(project)) next.searchParams.set("project", project);
   if (code) next.searchParams.set("code", code);
   if (error) next.searchParams.set("error_code", error);
@@ -96,12 +102,24 @@ function SiteRoot() {
     return <Studio />;
   }
 
-  if (isStudioPath(path) && !studioComingSoon()) {
+  if (isLoginPath(path)) {
+    return <LoginPage comingSoon={studioComingSoon()} />;
+  }
+
+  if (isAdminPath(path) && !studioComingSoon()) {
+    return <AdminPage />;
+  }
+
+  if (isStudioEditPath(path) && !studioComingSoon()) {
     return <Studio />;
   }
 
+  if (isStudioPath(path) && !studioComingSoon()) {
+    return <StudioCube />;
+  }
+
   if (isStudioPath(path) && studioComingSoon()) {
-    return <MarketingSite path="/login" />;
+    return <LoginPage comingSoon />;
   }
 
   return <MarketingSite path={path} />;

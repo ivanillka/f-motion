@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildStoryboardDraft, conceptsFor } from "@f-engine/reel-engine";
+import { advanceBrief, buildStoryboardDraft, conceptsFor, parseBriefAsked } from "@f-engine/reel-engine";
 import type { CommandEnvelope } from "@f-engine/contracts";
 import { isMediaGlanceHints, isVideoArchitecture, type MediaGlanceHints, type VideoArchitecture } from "@f-engine/contracts";
 import {
@@ -77,7 +77,7 @@ import {
   type ExternalImportConfig
 } from "./external-import.js";
 import { ApiKeyValidationError, type ApiKeyService } from "./api-keys.js";
-import { QuotaExceededError, type PostgresHostUsageService } from "./host-usage.js";
+import { QuotaExceededError, renderUnitCost, type PostgresHostUsageService } from "./host-usage.js";
 import {
   SetupClosedError,
   SelfhostValidationError,
@@ -843,6 +843,54 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       await options.pexelsCredentials.disconnect(String(response.locals.ownerId));
       response.status(204).end();
     } catch (error) { next(error); }
+  });
+  app.post("/api/quotes/bulk", async (request, response, next) => {
+    try {
+      const body = request.body && typeof request.body === "object" && !Array.isArray(request.body)
+        ? request.body as Record<string, unknown>
+        : {};
+      const raw = body.quantity;
+      const quantity = typeof raw === "number" ? raw : Number(raw);
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
+        return response.status(422).json({ type: "validation", message: "invalid quantity" });
+      }
+      const kind = body.kind === "preview" ? "preview" : "final";
+      const { cost } = renderUnitCost(kind);
+      const total = quantity * cost;
+      const quote: Record<string, unknown> = {
+        quantity,
+        kind,
+        unit: "render_unit",
+        per_item: cost,
+        total
+      };
+      if (options.hostUsage) {
+        const usage = await options.hostUsage.status(String(response.locals.ownerId));
+        quote.balance = usage.balance;
+        quote.payable = usage.balance >= total;
+      }
+      response.json(quote);
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.post("/api/briefs/next", async (request, response, next) => {
+    try {
+      const body = request.body && typeof request.body === "object" && !Array.isArray(request.body)
+        ? request.body as Record<string, unknown>
+        : {};
+      if (typeof body.conversation !== "string") {
+        return response.status(422).json({ type: "validation", message: "invalid brief turn" });
+      }
+      const conversation = body.conversation.normalize("NFKC").slice(0, 2000);
+      if (body.has_own_media !== undefined && typeof body.has_own_media !== "boolean") {
+        return response.status(422).json({ type: "validation", message: "invalid brief turn" });
+      }
+      const turn = advanceBrief(conversation, body.has_own_media === true, parseBriefAsked(body.asked));
+      response.json(turn);
+    } catch (error) {
+      next(error);
+    }
   });
   app.get("/api/projects", async (_request, response, next) => {
     try {

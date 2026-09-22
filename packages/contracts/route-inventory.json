@@ -13,6 +13,8 @@
     { "method": "PUT", "path": "/providers/pexels/credential", "auth": "bearer" },
     { "method": "POST", "path": "/providers/pexels/credential/test", "auth": "bearer" },
     { "method": "DELETE", "path": "/providers/pexels/credential", "auth": "bearer" },
+    { "method": "POST", "path": "/quotes/bulk", "auth": "bearer" },
+    { "method": "POST", "path": "/briefs/next", "auth": "bearer" },
     { "method": "GET", "path": "/projects", "auth": "bearer" },
     { "method": "POST", "path": "/projects", "auth": "bearer" },
     { "method": "POST", "path": "/compose", "auth": "bearer" },

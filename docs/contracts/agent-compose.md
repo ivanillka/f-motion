@@ -30,7 +30,7 @@ The user may start either way. Same question budget and same exit.
 
 1. User drops images or short clips (host chat attachments or local paths).
 2. Agent calls `read_media` (or uses host vision **plus** `read_media` for
-   type, count, and orientation). The studio Create chat glances locally
+   type, count, and orientation). The studio Create slides glance locally
    (dimensions + 64px color) before its remaining questions — no VLM.
 3. Agent asks at most **four** questions (see below).
 4. `compose_reel` uploads, builds a storyboard, preview-renders when ready.
@@ -72,14 +72,15 @@ Suggested plan fields (existing architecture, not a new schema):
 | `duration_seconds` | `15` `30` `45` |
 | `media` | `own` `stock` `mixed` |
 
-## Create is the chat
+## Create is a few slides
 
-The studio Create page is the chat: opening line, answers, chips, composer.
-Plan fields are inferred from that conversation. When the chat has enough,
-the storyboard opens — length picks the 4/5/6-beat plan. Overlay, motion,
-crop, music, and voice-over stay in the storyboard. Agents mention those exist
-in the draft. They do not dump the architecture grid or a second concept
-picker unless the user asks to change one.
+The studio Create page is a short slide deck: one request at a time, pick a
+chip or type your own. `POST /v1/briefs/next` returns the next content-aware
+question or `{ ready: true }` plus the inferred plan. Cap remains four follow-ups
+after the opening. When the turn is ready, the storyboard opens — length picks
+the 4/5/6-beat plan. Overlay, motion, crop, music, and voice-over stay in the
+storyboard. Agents mention those exist in the draft. They do not dump the
+architecture grid or a second concept picker unless the user asks to change one.
 
 ## Tools
 

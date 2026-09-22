@@ -85,7 +85,7 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.doesNotMatch(source, /loop=\{!livePlaying\}/);
   assert.match(source, /Message F-Motion/);
   assert.match(source, /sendBrief\(/);
-  assert.match(source, /Create chat/);
+  assert.match(source, /Create slides/);
   assert.match(source, /Suggested answers/);
   assert.doesNotMatch(source, /asks at most four missing questions/);
   assert.doesNotMatch(source, /Plan the video/);

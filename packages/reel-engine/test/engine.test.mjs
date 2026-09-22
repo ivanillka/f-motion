@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore } from "../dist/index.js";
+import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, advanceBrief } from "../dist/index.js";
 
 const snapshot = {
   schema_version: 1, id: "p1", owner_id: "u1", revision: 0,
@@ -447,6 +447,20 @@ test("update_soundtrack stores a stock bed on the brief and can clear it", () =>
     /invalid soundtrack/
   );
 });
+test("brief slides adapt the next request to what the user already said", () => {
+  const opening = advanceBrief("", false, []);
+  assert.equal(opening.ready, false);
+  assert.equal(opening.question?.id, "topic");
+  assert.ok(opening.question?.choices?.includes("A quiet mystery"));
+  const afterMystery = advanceBrief("A quiet mystery", false, []);
+  assert.equal(afterMystery.ready, false);
+  assert.equal(afterMystery.question?.id, "audience");
+  assert.match(afterMystery.question?.prompt ?? "", /mystery/i);
+  const ready = advanceBrief("Launch a 15 second reel using stock to promote our product for customers", false, []);
+  assert.equal(ready.ready, true);
+  assert.match(ready.message ?? "", /promo|15/);
+});
+
 test("update_voiceover stores uploaded narration on the brief and can clear it", () => {
   const withVo = applyCommand(snapshot, command("update_voiceover", {
     voiceover: { media_id: "vo-1", offset_ms: 0, level: 1 }

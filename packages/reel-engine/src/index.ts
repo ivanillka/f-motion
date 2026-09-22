@@ -29,6 +29,25 @@ export {
   recommendVideoArchitecture
 } from "./brief-architecture.js";
 export {
+  BRIEF_OPENING_TEXT,
+  BRIEF_READY,
+  BRIEF_STARTERS,
+  advanceBrief,
+  answeredBriefQuestions,
+  briefChoiceSets,
+  briefPurposeFromChat,
+  briefQuestionFor,
+  briefQuestionIds,
+  briefReadyMessage,
+  briefTopic,
+  isBriefReadyMessage,
+  nextBriefQuestion,
+  parseBriefAsked,
+  type BriefQuestion,
+  type BriefQuestionId,
+  type BriefTurn
+} from "./brief-interview.js";
+export {
   glanceMoodWords,
   isSceneMediaIntent,
   resolveSceneMediaIntent,

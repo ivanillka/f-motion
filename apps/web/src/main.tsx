@@ -15,7 +15,7 @@ import {
   defaultVideoArchitecture,
   defaultVoiceoverPrompt,
   previewMediaShouldLoop,
-  nextBriefQuestion,
+  advanceBrief,
   parseBriefChat,
   BRIEF_OPENING,
   DROP_OWN_MEDIA,
@@ -426,6 +426,20 @@ export function App() {
   }, [authSetup.error, authSetup.gateway]);
 
   useEffect(() => {
+    if (import.meta.env.VITE_SELFHOST_AUTH === "1") return;
+    if (!authReady || token) return;
+    const here = new URL(location.href);
+    if (here.pathname === "/login" || here.pathname.startsWith("/login/")) return;
+    const next = new URL("/login", here.origin);
+    for (const key of ["project", "code", "error_code", "error"]) {
+      const value = here.searchParams.get(key);
+      if (value) next.searchParams.set(key, value);
+    }
+    history.replaceState(null, "", `${next.pathname}${next.search}${here.hash}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, [authReady, token]);
+
+  useEffect(() => {
     if (import.meta.env.VITE_SELFHOST_AUTH !== "1") return;
     if (!authReady || token || !authSetup.gateway?.setupNeeded) return;
     let cancelled = false;
@@ -623,6 +637,10 @@ export function App() {
     }
   }
 
+  function requestBriefTurn(conversation: string, hasOwnMedia: boolean, asked: BriefQuestionId[]) {
+    return advanceBrief(conversation, hasOwnMedia, asked);
+  }
+
   function planFromChat(): VideoArchitecture {
     const conversation = briefDraftRef.current;
     const plan = recommendVideoArchitecture([conversation, ...pendingFiles.map((file) => file.name)].filter(Boolean).join(" "));
@@ -667,15 +685,18 @@ export function App() {
       const nextDraft = [briefDraftRef.current, notes].filter(Boolean).join("\n").slice(0, 2000);
       briefDraftRef.current = nextDraft;
       setDraft(nextDraft);
-      const next = nextBriefQuestion(nextDraft, true, asked);
+      const turn = requestBriefTurn(nextDraft, true, asked);
       setBriefChat((chat) => {
         const stripped = chat.filter((message) => message.text !== LOOKING_AT_MEDIA);
         const withNotes: BriefChatMessage[] = [...stripped, { role: "assistant", text: notes }];
-        if (!next) return [...withNotes, { role: "assistant", text: briefReadyMessage(nextDraft) }];
-        return [...withNotes, { role: "assistant", text: next.prompt, questionId: next.id, choices: next.choices }];
+        if (turn.ready) return [...withNotes, { role: "assistant", text: turn.message ?? briefReadyMessage(nextDraft) }];
+        const next = turn.question;
+        return next
+          ? [...withNotes, { role: "assistant", text: next.prompt, questionId: next.id, choices: next.choices }]
+          : [...withNotes, { role: "assistant", text: briefReadyMessage(nextDraft) }];
       });
-      if (next) setBriefAsked((current) => current.includes(next.id) ? current : [...current, next.id]);
-      else void continueToStoryboard();
+      if (turn.ready || !turn.question) void continueToStoryboard();
+      else setBriefAsked(turn.asked);
     } finally {
       mediaLookLock.current = false;
       setMediaLooking(false);
@@ -701,18 +722,23 @@ export function App() {
       void lookAtOwnMedia();
       return;
     }
-    const next = nextBriefQuestion(conversation, pendingFiles.length > 0, briefAsked);
-    if (!next) {
+    const turn = requestBriefTurn(conversation, pendingFiles.length > 0, briefAsked);
+    if (turn.ready || !turn.question) {
       setBriefChat((current) => {
         const last = current[current.length - 1];
         if (last && isBriefReadyMessage(last.text)) return [...current, user];
-        return [...current, user, { role: "assistant", text: briefReadyMessage(conversation) }];
+        return [...current, user, { role: "assistant", text: turn.message ?? briefReadyMessage(conversation) }];
       });
       void continueToStoryboard();
       return;
     }
-    setBriefAsked((asked) => asked.includes(next.id) ? asked : [...asked, next.id]);
-    setBriefChat((current) => [...current, user, { role: "assistant", text: next.prompt, questionId: next.id, choices: next.choices }]);
+    setBriefAsked(turn.asked);
+    setBriefChat((current) => [...current, user, {
+      role: "assistant",
+      text: turn.question.prompt,
+      questionId: turn.question.id,
+      choices: turn.question.choices
+    }]);
   }
 
   async function continueToStoryboard() {
@@ -2759,18 +2785,25 @@ export function App() {
     </section>}
     {authReady && step === "brief" && <section className="create-brief">
       <h1 className="brief-title">Create</h1>
-      <div ref={briefChatPane} className="brief-chat" aria-label="Create chat" aria-live="polite" aria-busy={mediaLooking || undefined}>
-        {briefChat.map((message, index) =>
-          <div key={`${message.role}:${index}:${message.text.slice(0, 24)}`} className={`brief-chat-msg is-${message.role}`}>
-            <p>{message.text}</p>
-            {message.choices && index === briefChat.length - 1 ? (
-              <div className="brief-chat-choices" role="group" aria-label="Suggested answers">
-                {message.choices.map((choice) =>
-                  <button key={choice} type="button" className="secondary" onClick={() => sendBrief(choice)}>{choice}</button>)}
-              </div>
-            ) : null}
-          </div>)}
+      {(() => {
+        const slide = [...briefChat].reverse().find((message) => message.role === "assistant");
+        const glance = briefChat.find((message) => message.text.startsWith("I looked at"));
+        const answered = briefChat.filter((message) => message.role === "user").length;
+        return (
+      <div ref={briefChatPane} className="brief-slide" aria-label="Create slides" aria-live="polite" aria-busy={mediaLooking || undefined}>
+        <p className="brief-slide-step">Slide {Math.min(answered + 1, 5)} of 5</p>
+        <h2 className="brief-slide-prompt">{slide?.text || BRIEF_OPENING.text}</h2>
+        {glance && slide?.text !== glance.text ? <p className="brief-slide-note">{glance.text}</p> : null}
+        {(slide?.choices ?? BRIEF_OPENING.choices) && (
+          <div className="brief-chat-choices brief-slide-choices" role="group" aria-label="Suggested answers">
+            {(slide?.choices ?? BRIEF_OPENING.choices ?? []).map((choice) =>
+              <button key={choice} type="button" className="secondary" onClick={() => sendBrief(choice)}>{choice}</button>)}
+          </div>
+        )}
+        <p className="brief-slide-hint">Pick one, or type your own. The next slide follows what you say.</p>
       </div>
+        );
+      })()}
       {pendingFiles.length > 0 && <ul className="create-pending-files">{pendingFiles.map((file, index) =>
         <li key={`${file.name}-${index}`}>
           <span>{file.name}</span>

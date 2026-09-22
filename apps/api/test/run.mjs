@@ -2,6 +2,7 @@
 await import("./domain.test.mjs");
 await import("./auth-routes.test.mjs");
 await import("./contract-routes.test.mjs");
+await import("./brief-next.test.mjs");
 await import("./projects-list.test.mjs");
 await import("./project-purge.test.mjs");
 await import("./compose-one.test.mjs");

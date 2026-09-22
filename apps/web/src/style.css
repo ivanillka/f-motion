@@ -903,31 +903,38 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   overflow: hidden;
   clip: rect(0 0 0 0);
 }
-.brief-chat {
+.login-shell .app-stage { display: grid; place-items: center; }
+.login-card {
+  width: min(420px, 100%);
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+.login-kicker { margin: 0; font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-soft); }
+.login-kicker a { color: inherit; text-decoration: none; }
+.brief-slide {
+  display: grid;
+  gap: 16px;
   flex: 1;
   min-height: 180px;
-  overflow: auto;
-  padding: 4px 2px 8px;
   align-content: start;
+  padding: 8px 2px 12px;
 }
-.brief-chat-msg {
-  display: grid;
-  gap: 8px;
-  max-width: 92%;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
+.brief-slide-step {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-soft);
 }
-.brief-chat-msg.is-user {
-  justify-self: end;
-  background: var(--raised);
-}
-.brief-chat-msg p { margin: 0; color: var(--text); }
-.brief-chat-choices { display: flex; flex-wrap: wrap; gap: 6px; }
-.brief-chat-choices button { width: auto; min-height: 36px; padding: 6px 10px; font-size: 0.82rem; }
+.brief-slide-prompt { margin: 0; font-size: 1.5rem; font-weight: 600; line-height: 1.3; }
+.brief-slide-note { margin: 0; color: var(--muted); }
+.brief-slide-hint { margin: 0; color: var(--muted); font-size: 0.9rem; }
+.brief-chat-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.brief-chat-choices button { width: auto; min-height: 44px; padding: 8px 12px; font-size: 0.9rem; }
 .brief-composer {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

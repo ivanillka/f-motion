@@ -55,6 +55,8 @@ test("home is a centered title with feature buttons", async () => {
   assert.doesNotMatch(source, />Hosted</);
   assert.doesNotMatch(source, /href="\/hosted"/);
   assert.doesNotMatch(source, /mkt-hero-media|mkt-recipes|\bComingSoon\b/);
+  assert.doesNotMatch(source, /"login"/);
+  assert.match(source, /\["home", "how-it-works", "self-host"\]/);
 });
 
 test("every marketing page stays on the splash and animates the swap", async () => {
@@ -92,7 +94,8 @@ test("site router keeps self-host on studio-only App", async () => {
   const source = await readFile(new URL("../src/site.tsx", import.meta.url), "utf8");
   assert.match(source, /VITE_SELFHOST_AUTH === "1"/);
   assert.match(source, /studioComingSoon/);
-  assert.match(source, /MarketingSite path="\/login"/);
+  assert.match(source, /LoginPage/);
+  assert.doesNotMatch(source, /MarketingSite path="\/login"/);
   assert.match(source, /lazy\(\(\) => import\("\.\/main"\)/);
   assert.doesNotMatch(source, /import \{ App \} from "\.\/main"/);
 });

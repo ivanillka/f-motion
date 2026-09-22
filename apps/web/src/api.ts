@@ -1,10 +1,20 @@
 import {
+  BRIEF_OPENING_TEXT,
+  BRIEF_READY,
+  BRIEF_STARTERS,
+  advanceBrief,
+  briefPurposeFromChat,
+  briefQuestionIds,
+  briefReadyMessage,
   buildStoryboardDraft,
   conceptIdForArchitecture,
   conceptsFor,
   cueAtElapsed,
   cuesForScene,
   defaultVideoArchitecture,
+  isBriefReadyMessage,
+  nextBriefQuestion,
+  parseBriefAsked,
   recommendVideoArchitecture,
   resolveSceneMediaIntent,
   sceneMediaIntent,
@@ -12,6 +22,9 @@ import {
   spokenWordIndex,
   spokenWordsForCues,
   VOICEOVER_DUCK,
+  type BriefQuestion,
+  type BriefQuestionId,
+  type BriefTurn,
   type Concept,
   type MediaGlanceHints,
   type MediaIntentAdapter,
@@ -99,6 +112,11 @@ export interface SceneMediaView {
 }
 
 export {
+  BRIEF_STARTERS,
+  advanceBrief,
+  briefPurposeFromChat,
+  briefQuestionIds,
+  briefReadyMessage,
   buildStoryboardDraft,
   conceptIdForArchitecture,
   conceptsFor,
@@ -107,63 +125,37 @@ export {
   spokenWordIndex,
   spokenWordsForCues,
   defaultVideoArchitecture,
+  isBriefReadyMessage,
+  nextBriefQuestion,
   recommendVideoArchitecture,
   setMediaIntentAdapter,
   VOICEOVER_DUCK,
+  type BriefQuestion,
+  type BriefQuestionId,
+  type BriefTurn,
   type Concept,
   type MediaGlanceHints,
   type MediaIntentAdapter,
   type VideoArchitecture
 };
 
-export const briefQuestionIds = ["intent", "audience", "length", "visuals"] as const;
-export type BriefQuestionId = (typeof briefQuestionIds)[number];
-
-export interface BriefQuestion {
-  id: BriefQuestionId;
-  prompt: string;
-  choices: readonly string[];
-}
-
 export interface BriefChatMessage {
   role: "assistant" | "user";
   text: string;
-  questionId?: BriefQuestionId;
+  questionId?: BriefQuestion["id"];
   choices?: readonly string[];
 }
 
 export const BRIEF_OPENING: BriefChatMessage = {
   role: "assistant",
-  text: "What do you want to make? Drop photos or describe the video. I will ask only what I still need."
+  text: BRIEF_OPENING_TEXT,
+  questionId: "topic",
+  choices: BRIEF_STARTERS
 };
 
 export const LOOKING_AT_MEDIA = "Looking at your media…";
 export const DROP_OWN_MEDIA = "Drop the photos or clips. I will look at them first, then ask only what is still missing.";
-export const BRIEF_READY = "That is enough for a video plan."
-
-const briefChoiceSets: Record<BriefQuestionId, readonly string[]> = {
-  intent: ["Tell a story", "Explain something", "Promote an idea or product", "Teach the viewer"],
-  audience: ["General viewers", "Social media audience", "Customers", "Internal team"],
-  length: ["About 15 seconds", "About 30 seconds", "About 45 seconds"],
-  visuals: ["Pexels real stock video", "My own media", "Mix Pexels stock and my media"]
-};
-
-function titledPlace(place: string): string {
-  return place.replace(/\b\p{L}/gu, (letter) => letter.toLocaleUpperCase());
-}
-
-function topicPhrase(value: string): string {
-  return value
-    .replace(/^(?:i\s+)?(?:need|want)\s+(?:a\s+)?(?:story|video)\s+(?:about|on)\s+/iu, "")
-    .replace(/^(?:make|create)\s+(?:a\s+)?(?:story|video)\s+(?:about|on)\s+/iu, "")
-    .trim();
-}
-
-function clipSubject(value: string): string {
-  const text = topicPhrase(value.replace(/[.!?]+$/u, "").trim());
-  if (!text) return "this video";
-  return text.length > 52 ? `${text.slice(0, 49).trim()}…` : text;
-}
+export { BRIEF_READY };
 
 /** ponytail: LAN http installs block crypto.randomUUID outside a secure context; HTTPS fixes it. */
 export function newCommandId(): string {
@@ -277,172 +269,6 @@ export function briefShouldGlance(conversation: string, fileCount: number): bool
     || (/\b(my|our)\s+(photos?|videos?|footage|clips?)\b/u.test(text) && !/\bpexels\b/u.test(text));
 }
 
-const briefMetaLine = /^(I looked at|I added |File names:|Looking at your media|That is enough for)/iu;
-
-/** First user topic, not the later chip answers or glance notes. */
-export function briefPurposeFromChat(conversation: string, fileCount = 0): string {
-  const chips = new Set(Object.values(briefChoiceSets).flat().map((choice) => choice.toLowerCase()));
-  const first = conversation.split(/\n+/u).map((line) => line.trim()).find((line) =>
-    line && !briefMetaLine.test(line) && !chips.has(line.toLowerCase())
-  ) ?? "";
-  const purpose = first.slice(0, 500).trim();
-  if (purpose) return purpose;
-  if (fileCount > 0) return `Video from ${fileCount} photo${fileCount === 1 ? "" : "s"}`;
-  return "";
-}
-
-function briefTopicLine(conversation: string): string {
-  const chips = new Set(Object.values(briefChoiceSets).flat().map((choice) => choice.toLowerCase()));
-  const topics: string[] = [];
-  for (const line of conversation.split(/\n+/u).map((row) => row.trim())) {
-    if (!line || briefMetaLine.test(line)) continue;
-    if (chips.has(line.toLowerCase())) break;
-    topics.push(line);
-  }
-  return topics[topics.length - 1] ?? "";
-}
-
-/** First user line plus the plan inferred from every answer so far. */
-export function briefTopic(conversation: string): {
-  subject: string;
-  place: string;
-  hook: string;
-  plan: VideoArchitecture;
-} {
-  const first = briefTopicLine(conversation);
-  const place = (first.match(/\bin\s+([^,.!?]+)$/iu)?.[1] ?? "").trim();
-  const looked = /\bI looked at\b/iu.test(conversation);
-  const subject = clipSubject(first) === "this video" && looked ? "your media" : clipSubject(first);
-  return {
-    subject,
-    place,
-    hook: place ? titledPlace(place) : subject,
-    plan: recommendVideoArchitecture(conversation)
-  };
-}
-
-export function isBriefReadyMessage(text: string): boolean {
-  return text.startsWith("That is enough for");
-}
-
-export function briefReadyMessage(conversation: string): string {
-  if (!conversation.trim()) return BRIEF_READY;
-  const { subject, place, hook, plan } = briefTopic(conversation);
-  const shape = plan.structure === "mystery"
-    ? "mystery"
-    : plan.goal === "promote"
-      ? "promo"
-      : plan.goal === "educate"
-        ? "lesson"
-        : "story";
-  const where = plan.media === "own"
-    ? "your media"
-    : plan.media === "mixed"
-      ? "your media mixed with Pexels"
-      : place
-        ? `moody ${hook} Pexels stock`
-        : "Pexels stock";
-  return `That is enough for a ${plan.tone} ${shape} about ${subject} — about ${plan.durationSeconds} seconds, ${where}.`;
-}
-
-export function briefQuestionFor(
-  id: BriefQuestionId,
-  conversation: string,
-  hasOwnMedia: boolean
-): BriefQuestion {
-  const { subject, place, hook, plan } = briefTopic(conversation);
-  const looked = /\bI looked at\b/iu.test(conversation);
-  const dark = /\bdark\b/iu.test(conversation);
-  const portrait = /\bportrait\b/iu.test(conversation);
-  const lookHint = [dark ? "dark" : "", portrait ? "portrait" : ""].filter(Boolean).join(", ");
-  const about = looked && (subject === "this video" || subject === "your media") ? "your media" : subject;
-  if (id === "intent") {
-    return {
-      id,
-      prompt: lookHint
-        ? `Your media looks ${lookHint}. Is this a story, an explanation, a promotion, or a lesson?`
-        : `Should ${about} be a story, an explanation, a promotion, or a lesson?`,
-      choices: briefChoiceSets.intent
-    };
-  }
-  if (id === "audience") {
-    const prompt = plan.structure === "mystery"
-      ? (place ? `Who is this ${hook} mystery for?` : `Who is this mystery for?`)
-      : looked
-        ? `Who should see this cut of ${about}?`
-        : plan.goal === "promote"
-          ? `Who should see ${about}?`
-          : plan.goal === "educate"
-            ? `Who are you teaching with ${about}?`
-            : `Who is ${about} for?`;
-    return { id, prompt, choices: briefChoiceSets.audience };
-  }
-  if (id === "length") {
-    const preferred = `About ${plan.durationSeconds} seconds`;
-    const choices = [preferred, ...briefChoiceSets.length.filter((choice) => choice !== preferred)];
-    const prompt = plan.audience === "social"
-      ? `For a reel of ${about}, about 15, 30, or 45 seconds?`
-      : looked && portrait
-        ? `These are mostly portrait frames. About 15, 30, or 45 seconds?`
-        : plan.structure === "mystery"
-          ? (place
-            ? `Should the ${hook} mystery be a 15-second hook, a 30-second slow reveal, or 45 seconds?`
-            : `Should this mystery be a 15-second hook, a 30-second slow reveal, or 45 seconds?`)
-          : plan.goal === "promote"
-            ? `How long should ${about} run — about 15, 30, or 45 seconds?`
-            : `About how long should ${about} run?`;
-    return { id, prompt, choices };
-  }
-  const stock = place ? `moody ${hook} stock from Pexels` : "Pexels stock";
-  const prompt = hasOwnMedia
-    ? `Use the photos you added for ${about}, mix in Pexels, or switch to stock only?`
-    : plan.structure === "mystery"
-      ? `Do you have footage, or should we use ${stock}?`
-      : `Where should pictures for ${about} come from?`;
-  return { id, prompt, choices: briefChoiceSets.visuals };
-}
-
-export function answeredBriefQuestions(conversation: string, hasOwnMedia: boolean): Set<BriefQuestionId> {
-  const text = conversation.normalize("NFKC").toLowerCase();
-  const matches = (pattern: RegExp) => pattern.test(text);
-  const answered = new Set<BriefQuestionId>();
-  if (matches(/\b(how to|tutorial|teach|lesson|guide|learn|explain|overview|demonstrate|process|why does|how does|promote|launch|campaign|advertise|advertising|advertisement|product|service|sale|event|story|mystery|murder|tale|narrative)\b/u)) {
-    answered.add("intent");
-  }
-  if (matches(/\b(reel|tiktok|instagram|social media|shorts?|customers?|internal|employees?|colleagues?|our team|staff training|general viewers?)\b/u)) {
-    answered.add("audience");
-  }
-  for (const choice of briefChoiceSets.audience) {
-    if (text.includes(choice.toLowerCase())) answered.add("audience");
-  }
-  if (matches(/\b(15|30|45)[\s-]*(?:seconds?|secs?|s)\b/u)) {
-    answered.add("length");
-  }
-  if (
-    hasOwnMedia
-    || matches(/\b(stock|pexels|open source|generated|ai visuals?)\b/u)
-    || matches(/\b(my|our)\s+(photos?|videos?|footage|media|gallery|assets?|images?)\b/u)
-    || matches(/\bmy own media\b/u)
-  ) {
-    answered.add("visuals");
-  }
-  return answered;
-}
-
-export function nextBriefQuestion(
-  conversation: string,
-  hasOwnMedia: boolean,
-  asked: readonly BriefQuestionId[]
-): BriefQuestion | undefined {
-  if (asked.length >= 4) return undefined;
-  const answered = answeredBriefQuestions(conversation, hasOwnMedia);
-  for (const id of briefQuestionIds) {
-    if (answered.has(id) || asked.includes(id)) continue;
-    return briefQuestionFor(id, conversation, hasOwnMedia);
-  }
-  return undefined;
-}
-
 export function parseBriefChat(raw: string | null): {
   messages: BriefChatMessage[];
   asked: BriefQuestionId[];
@@ -460,9 +286,7 @@ export function parseBriefChat(raw: string | null): {
       ? value.messages.filter((item): item is BriefChatMessage =>
         !!item && typeof item === "object" && (item.role === "assistant" || item.role === "user") && typeof item.text === "string")
       : [];
-    const asked = Array.isArray(value.asked)
-      ? value.asked.filter((item): item is BriefQuestionId => briefQuestionIds.includes(item as BriefQuestionId))
-      : [];
+    const asked = parseBriefAsked(value.asked);
     const composer = typeof value.composer === "string" ? value.composer.slice(0, 500) : "";
     return { messages: messages.length ? messages : opening.messages, asked, composer };
   } catch {
@@ -538,6 +362,53 @@ export class ApiClient {
 
   getProject(projectId: string) {
     return this.request<{ project: ProjectSnapshot; concepts?: Concept[] }>(`/api/projects/${projectId}`);
+  }
+
+  nextBrief(conversation: string, hasOwnMedia: boolean, asked: readonly BriefQuestionId[]) {
+    return this.request<BriefTurn>("/api/briefs/next", {
+      method: "POST",
+      body: JSON.stringify({
+        conversation,
+        has_own_media: hasOwnMedia,
+        asked
+      })
+    });
+  }
+
+  usage() {
+    return this.request<{ balance: number; costs: { preview: number; final: number } }>("/api/me/usage");
+  }
+
+  quoteBulk(quantity: number, kind: "preview" | "final" = "final") {
+    return this.request<{
+      quantity: number;
+      kind: "preview" | "final";
+      unit: "render_unit";
+      per_item: number;
+      total: number;
+      balance?: number;
+      payable?: boolean;
+    }>("/api/quotes/bulk", {
+      method: "POST",
+      body: JSON.stringify({ quantity, kind })
+    });
+  }
+
+  compose(input: {
+    purpose: string;
+    audience?: string;
+    tone?: string;
+    fill_stock?: boolean;
+    render?: "preview" | "final" | "none";
+  }) {
+    return this.request<{
+      project_id: string;
+      next: "preview_ready" | "draft_only" | "needs_media";
+      render?: { job_id: string; phase: string; kind: string; download?: { url: string } };
+    }>("/api/compose", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
   }
 }
 
