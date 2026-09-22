@@ -539,6 +539,15 @@ export class ApiClient {
   getProject(projectId: string) {
     return this.request<{ project: ProjectSnapshot; concepts?: Concept[] }>(`/api/projects/${projectId}`);
   }
+
+  /** Hard-deletes one owned project (DB cascade + best-effort object storage). */
+  deleteProject(projectId: string) {
+    return this.request<{
+      project_id: string;
+      deleted: true;
+      storage_failures: string[];
+    }>(`/api/projects/${projectId}`, { method: "DELETE" });
+  }
 }
 
 export function clampFocus(value: unknown): number {

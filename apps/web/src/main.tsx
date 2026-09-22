@@ -843,6 +843,34 @@ export function App() {
     }
   }
 
+  async function deleteDraft(item: ProjectSummary): Promise<void> {
+    const label = item.brief.purpose.trim() || "Untitled draft";
+    if (!window.confirm(`Delete “${label}” permanently? This cannot be undone.`)) return;
+    setBusy(true);
+    setStatus("Deleting draft…");
+    try {
+      await api.deleteProject(item.id);
+      setDrafts((current) => current.filter((draft) => draft.id !== item.id));
+      if (localStorage.getItem("fengine-project") === item.id) {
+        localStorage.removeItem("fengine-project");
+      }
+      if (project?.id === item.id) {
+        mediaTransition.current += 1;
+        setProject(undefined);
+        setActiveSceneId("");
+        setSceneMedia({});
+      }
+      setStatus("Draft deleted.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.type : undefined;
+      setStatus(type === "conflict"
+        ? "This draft has an active render or generation job. Cancel it, then delete."
+        : "Draft could not be deleted. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function startCreate() {
     mediaTransition.current += 1;
     setProject(undefined);
@@ -2764,10 +2792,20 @@ export function App() {
         <p>Describe what you want to make. F-Motion will recommend a video plan and storyboard.</p>
       </div>}
       <div className="concepts drafts-grid">{drafts.map((item) =>
-        <button key={item.id} className="card draft-card" onClick={() => void openDraft(item.id)}>
-          <strong>{item.brief.purpose || "Untitled draft"}</strong>
-          <span className="draft-meta">Revision {item.revision}</span>
-        </button>)}</div>
+        <article key={item.id} className="card draft-card">
+          <button type="button" className="draft-open" disabled={busy} onClick={() => void openDraft(item.id)}>
+            <strong>{item.brief.purpose || "Untitled draft"}</strong>
+            <span className="draft-meta">Revision {item.revision}</span>
+          </button>
+          <button
+            type="button"
+            className="secondary draft-delete"
+            disabled={busy}
+            onClick={() => void deleteDraft(item)}
+          >
+            Delete
+          </button>
+        </article>)}</div>
       <p role="status">{status}</p>
     </section>}
     {authReady && step === "brief" && <section className="create-brief">

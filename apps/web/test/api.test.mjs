@@ -306,3 +306,34 @@ test("project listing rejects an HTML fallback response instead of crashing the 
     globalThis.fetch = originalFetch;
   }
 });
+
+test("deleteProject hard-deletes via DELETE and returns storage cleanup result", async () => {
+  const originalFetch = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (input, init = {}) => {
+    seen.push({ url: String(input), method: init.method ?? "GET", auth: new Headers(init.headers).get("authorization") });
+    return new Response(JSON.stringify({
+      project_id: "draft-1",
+      deleted: true,
+      storage_failures: ["projects/draft-1/media-sealed/a"]
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  };
+  try {
+    const client = new ApiClient(() => "tok");
+    assert.deepEqual(await client.deleteProject("draft-1"), {
+      project_id: "draft-1",
+      deleted: true,
+      storage_failures: ["projects/draft-1/media-sealed/a"]
+    });
+    assert.deepEqual(seen, [{
+      url: "/api/projects/draft-1",
+      method: "DELETE",
+      auth: "Bearer tok"
+    }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
