@@ -326,8 +326,12 @@ test("build puts marketing at site root with studio under /app", async () => {
   await access(new URL("music/pulse.mp3", dist));
   const home = await readFile(new URL("index.html", dist), "utf8");
   const redirects = await readFile(new URL("_redirects", dist), "utf8");
-  assert.match(home, /Vertical reels from your own media/);
-  assert.match(home, /href="\/app\/"/);
+  assert.match(home, /Turn stills and clips into motion for studio and Fotium reels/);
+  assert.match(home, />Soon</);
+  assert.doesNotMatch(home, /href="\/app\/"/);
+  const czech = await readFile(new URL("cs/index.html", dist), "utf8");
+  assert.match(czech, />Brzy</);
+  assert.match(czech, /Jak to funguje/);
   assert.doesNotMatch(home, /id="root"/);
   assert.doesNotMatch(home, /mkt-cube/);
   const spa = await readFile(new URL("app/index.html", dist), "utf8");
@@ -356,18 +360,18 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   const css = await readFile(new URL("web.css", root), "utf8");
   const motion = await readFile(new URL("web-motion.js", root), "utf8");
   for (const phrase of [
-    "Vertical reels from your own media",
-    "brief → storyboard → preview",
-    "Open studio",
-    "See integration",
-    "Your media, your keys",
-    "./assets/hero-reel.jpg",
-    "./assets/studio-ui.jpg",
-    "./agents.html",
-    "Ask Cursor or OpenClaw"
+    "Turn stills and clips into motion for studio and Fotium reels.",
+    "View on GitHub",
+    "Open Studio",
+    ">Soon<",
+    "How it works",
+    "Sample render. Full demo soon.",
+    "Built for Prague studio workflows and Fotium Make-reel",
+    "href=\"/cs/\""
   ]) {
-    assert.match(home, new RegExp(phrase.replace(/[→]/g, "\\$&")));
+    assert.match(home, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+  assert.doesNotMatch(home, /href="\/login"/);
   assert.match(home, /new URL\("\/app\/"/);
   assert.match(home, /searchParams\.set\("project"/);
   for (const phrase of [
@@ -410,9 +414,7 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.match(css, /font-family:\s*"Syne"|--display:\s*"Syne"/);
   assert.match(css, /syne-700\.woff2/);
   assert.match(css, /\.recipes-quad/);
-  assert.match(home, /data-glitch="rgb-split"/);
-  assert.match(home, /data-glitch="scramble-cascade"/);
-  assert.match(home, /data-glitch="slice-tear"/);
+  assert.doesNotMatch(home, /data-glitch=/);
   assert.match(integrate, /data-glitch="flip-corrupt"/);
   assert.match(integrate, /data-glitch="pulse-shard"/);
   assert.match(motion, /scramble-cascade/);
@@ -422,17 +424,15 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.match(motion, /delayedCall\(gsap\.utils\.random/);
   assert.match(home, /skip-link/);
   assert.match(home, /href="#main"/);
-  assert.match(home, /class="nav-compact"/);
-  assert.match(home, /href="\.\/terms\.html"/);
-  assert.match(home, /href="\.\/privacy\.html"/);
-  assert.match(home, /hero-reel\.webp/);
-  assert.match(home, /type="image\/webp"/);
+  assert.match(home, /launch-frame/);
+  assert.doesNotMatch(home, /<video|\.mp4|\.webm/);
   assert.doesNotMatch(integrate, /ScrambleTextPlugin/);
   assert.match(integrate, /host-diagram\.webp/);
   assert.doesNotMatch(home, /#docs|View docs/);
   assert.doesNotMatch(integrate, /#docs|View docs/);
   assert.match(integrate, /Partner contract/);
-  assert.match(home, /href="\/app\/"/);
+  assert.doesNotMatch(home, /href="\/app\/"/);
+  assert.match(home, /href="https:\/\/github\.com\/ivanillka\/f-motion"/);
   assert.match(integrate, /href="\/app\/"/);
   assert.match(integrate, /href="\.\/terms\.html"/);
   const terms = await readFile(new URL("terms.html", root), "utf8");
