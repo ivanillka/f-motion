@@ -6,6 +6,10 @@ studio under **Settings → What’s new**. Product version lives in root
 
 ## [Unreleased]
 
+### Studio
+
+- Drafts list has a per-item **Delete** control with a confirm step. It calls the existing hard-purge `DELETE /projects/{id}` (project row, cascaded children, outbox rows, and best-effort object-storage blobs).
+
 ### Site
 
 - Public `/` is the soft-launch landing (English, Czech at `/cs/`). Studio stays labeled Soon / Brzy. GitHub is the primary link.
