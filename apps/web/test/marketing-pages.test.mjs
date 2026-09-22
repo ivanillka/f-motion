@@ -66,9 +66,73 @@ test("hosted splash is the static marketing site, not the cube", async () => {
   assert.doesNotMatch(site, /isMarketingPath/);
   assert.doesNotMatch(site, /mkt-cube/);
   assert.match(site, /lazy\(\(\) => import\("\.\/main"\)/);
-  assert.match(home, /Vertical reels from your own media/);
-  assert.match(home, /href="\/app\/"/);
-  assert.match(home, /integrate\.html/);
+  assert.match(home, /Turn stills and clips into motion for studio and Fotium reels/);
+  assert.doesNotMatch(home, /href="\/app\/"/);
+  assert.doesNotMatch(home, /href="\/login"/);
+  assert.match(home, /href="\/cs\/"/);
+});
+
+test("soft-launch home shows approved English and Czech copy", async () => {
+  const home = await readFile(new URL("../public/web/index.html", import.meta.url), "utf8");
+  const cs = await readFile(new URL("../public/web/cs/index.html", import.meta.url), "utf8");
+  const en = [
+    "Turn stills and clips into motion for studio and Fotium reels.",
+    "View on GitHub",
+    "https://github.com/ivanillka/f-motion",
+    "Open Studio",
+    ">Soon<",
+    "1. Import.",
+    "Bring in stills, clips, or a partner feed.",
+    "2. Compose.",
+    "Order beats, timing, and look in the studio.",
+    "3. Render.",
+    "Export a reel ready for Fotium or your own host.",
+    "F-Motion is the motion layer next to Fotium. Studio UI, partner import, reel engine. Self-host when you want the pipeline on your own stack.",
+    "Sample render. Full demo soon.",
+    "Architecture and design contract on GitHub",
+    "Built for Prague studio workflows and Fotium Make-reel",
+    "f-motion.com",
+    "github.com/ivanillka/f-motion"
+  ];
+  const czech = [
+    "Proměň fotky a klipy v motion pro studio i Fotium reels.",
+    ">GitHub<",
+    "Otevřít Studio",
+    ">Brzy<",
+    "Jak to funguje",
+    "Fotky, klipy, partner feed.",
+    "2. Skladba.",
+    "Rytmus, timing, look.",
+    "Reel pro Fotium nebo vlastní host.",
+    "motion vrstva vedle Fotium. Studio, partner import, reel engine. Self-host když chceš pipeline u sebe.",
+    "Ukázkový render. Plné demo brzy.",
+    "Pro pražské studio workflow a Fotium Make-reel"
+  ];
+  for (const phrase of en) assert.match(home, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  for (const phrase of czech) assert.match(cs, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(cs, /href="https:\/\/github\.com\/ivanillka\/f-motion"/);
+  assert.match(cs, /href="\/"/);
+  assert.doesNotMatch(home, /<video|href="\/app\/"|href="\/login"/);
+  assert.doesNotMatch(cs, /<video|href="\/app\/"|href="\/login"/);
+  assert.doesNotMatch(home, /\u2014|\u2013|---/);
+  assert.doesNotMatch(cs, /\u2014|\u2013|---/);
+});
+
+test("soft-launch wordmark is one readable string and the cube has no text", async () => {
+  const css = await readFile(new URL("../public/web/web.css", import.meta.url), "utf8");
+  const markRule = css.match(/\.launch-mark \{[^}]+\}/);
+  assert.ok(markRule);
+  assert.match(markRule[0], /white-space:\s*nowrap/);
+  assert.doesNotMatch(markRule[0], /translateZ|launch-hyphen/);
+  assert.doesNotMatch(css, /\.launch-hyphen/);
+  for (const rel of ["../public/web/index.html", "../public/web/cs/index.html"]) {
+    const html = await readFile(new URL(rel, import.meta.url), "utf8");
+    assert.match(html, /<h1 id="launch-title" class="launch-mark">F-Motion<\/h1>/);
+    const scene = html.match(/<div class="launch-scene"[^>]*>[\s\S]*?<\/div>\s*<\/div>/);
+    assert.ok(scene, rel);
+    assert.equal(scene[0].replace(/<[^>]+>/g, "").trim(), "");
+    assert.doesNotMatch(scene[0], /launch-mark|launch-hyphen|F-Motion/);
+  }
 });
 
 test("every marketing page stays on the splash and animates the swap", async () => {

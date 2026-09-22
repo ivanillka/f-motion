@@ -8,6 +8,7 @@ studio under **Settings → What’s new**. Product version lives in root
 
 ### Site
 
+- Public `/` is the soft-launch landing (English, Czech at `/cs/`). Studio stays labeled Soon / Brzy. GitHub is the primary link.
 - Hosted Login and `/studio` are open again on f-motion.com. Uninvited accounts still get 403. How it works stays coming soon. Set `VITE_STUDIO_COMING_SOON=1` to re-gate the studio.
 - Splash feature buttons are Studio, How it works, GitHub, and Self-host. GitHub opens the agent skill (`skills/fmotion`). Hosted was the same CTA as Studio and is gone; `/hosted` still opens home.
 - Cursor `frontend-design` skill lives in `.cursor/skills/` and follows `DESIGN.md`. The splash is a glass cube in space holding the wordmark on every public page. Stars speed up while the site is loading or swapping pages, then ease back to slow. Fog stays faint and out at the edges. Reduced motion freezes the sky and the cube.
