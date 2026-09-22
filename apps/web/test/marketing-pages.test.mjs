@@ -118,6 +118,23 @@ test("soft-launch home shows approved English and Czech copy", async () => {
   assert.doesNotMatch(cs, /\u2014|\u2013|---/);
 });
 
+test("soft-launch wordmark is one readable string and the cube has no text", async () => {
+  const css = await readFile(new URL("../public/web/web.css", import.meta.url), "utf8");
+  const markRule = css.match(/\.launch-mark \{[^}]+\}/);
+  assert.ok(markRule);
+  assert.match(markRule[0], /white-space:\s*nowrap/);
+  assert.doesNotMatch(markRule[0], /translateZ|launch-hyphen/);
+  assert.doesNotMatch(css, /\.launch-hyphen/);
+  for (const rel of ["../public/web/index.html", "../public/web/cs/index.html"]) {
+    const html = await readFile(new URL(rel, import.meta.url), "utf8");
+    assert.match(html, /<h1 id="launch-title" class="launch-mark">F-Motion<\/h1>/);
+    const scene = html.match(/<div class="launch-scene"[^>]*>[\s\S]*?<\/div>\s*<\/div>/);
+    assert.ok(scene, rel);
+    assert.equal(scene[0].replace(/<[^>]+>/g, "").trim(), "");
+    assert.doesNotMatch(scene[0], /launch-mark|launch-hyphen|F-Motion/);
+  }
+});
+
 test("every marketing page stays on the splash and animates the swap", async () => {
   const pages = await readFile(new URL("../src/MarketingPages.tsx", import.meta.url), "utf8");
   assert.match(pages, /How it works/);

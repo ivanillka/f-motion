@@ -704,7 +704,7 @@ button, .btn {
   }
 }
 
-/* Soft-launch home. Cube holds the wordmark; copy sits under it. */
+/* Soft-launch home. Wireframe cube is decoration; the wordmark is its own line. */
 .launch-visually-hidden {
   position: absolute;
   width: 1px;
@@ -750,6 +750,8 @@ button, .btn {
 .launch-scene {
   perspective: 42rem;
   perspective-origin: 50% 42%;
+  /* Holds the rotated cube so its projection cannot cross the wordmark. */
+  padding: 2.75rem 2.5rem;
 }
 
 .launch-cube {
@@ -828,30 +830,14 @@ button, .btn {
 .launch-shell .launch-face::after { content: none; }
 
 .launch-mark {
-  position: absolute;
-  inset: 0;
   margin: 0;
-  display: grid;
-  place-items: center;
-  transform: translateZ(calc(var(--s) / 2 - 2px));
+  color: var(--text);
   font-family: var(--display);
-  font-size: clamp(1.75rem, 6vw, 2.5rem);
-  font-weight: 500;
+  font-size: clamp(2rem, 6vw, 3rem);
+  font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 1;
   white-space: nowrap;
-}
-
-.launch-hyphen {
-  display: inline-block;
-  width: 2px;
-  height: 0.68em;
-  margin: 0 0.14em;
-  overflow: hidden;
-  color: transparent;
-  background: var(--cyan);
-  box-shadow: 0 0 8px rgba(0, 229, 255, 0.45);
-  vertical-align: -0.04em;
 }
 
 .launch-sub {
