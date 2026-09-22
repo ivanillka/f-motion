@@ -406,14 +406,35 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .draft-card {
   min-height: 120px;
   align-content: space-between;
+  padding: 12px;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 .draft-card:hover {
   background: var(--raised);
   border-color: color-mix(in srgb, var(--accent-soft) 40%, var(--border));
 }
+.draft-card .draft-open {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-height: 72px;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.draft-card .draft-open:disabled { opacity: 0.45; cursor: not-allowed; }
 .draft-card strong { font-size: 1.05rem; }
 .draft-card .draft-meta { color: var(--muted); font-size: 0.8rem; }
+.draft-card .draft-delete {
+  justify-self: start;
+  min-height: 44px;
+}
 .empty-drafts {
   display: grid;
   gap: 12px;
