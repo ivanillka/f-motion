@@ -632,3 +632,199 @@ test("second cancel on stuck running with providerRequestId forces cancelled", a
   );
   assert.equal(confirmed.state, "queued");
 });
+
+test("FAL analyze quote route is body-exact and owner-scoped", async () => {
+  const service = {
+    async quoteImage() { throw new Error("unused"); },
+    async quoteVideo() { throw new Error("unused"); },
+    async quoteSpeech() { throw new Error("unused"); },
+    async quoteAnalyze(ownerId, projectId, sceneId, sourceMediaId) {
+      assert.equal(ownerId, "authenticated-user");
+      assert.equal(sourceMediaId, "11111111-1111-4111-8111-111111111111");
+      return {
+        id: "ajob",
+        project_id: projectId,
+        scene_id: sceneId,
+        kind: "analyze",
+        endpoint_id: "fal-ai/moondream3-preview/query",
+        state: "quoted",
+        cancel_requested: false,
+        prompt: "Analyze attached footage",
+        quote: {
+          endpoint_id: "fal-ai/moondream3-preview/query",
+          unit_price: 0.002,
+          unit: "request",
+          currency: "USD",
+          estimated_total: 0.002
+        },
+        quote_expires_at: new Date(Date.now() + 60_000).toISOString(),
+        source_media_id: sourceMediaId
+      };
+    },
+    async confirm() { throw new Error("unused"); },
+    async get() { return undefined; },
+    async cancel() { throw new Error("unused"); }
+  };
+  const server = createServer(createTestApp({ falGeneration: service }));
+  const origin = await listen(server);
+  try {
+    const ok = await fetch(`${origin}/api/projects/p1/scenes/s1/fal/analyze-quotes`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source_media_id: "11111111-1111-4111-8111-111111111111" })
+    });
+    assert.equal(ok.status, 201);
+    assert.equal((await ok.json()).kind, "analyze");
+    const bad = await fetch(`${origin}/api/projects/p1/scenes/s1/fal/analyze-quotes`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source_media_id: "11111111-1111-4111-8111-111111111111", model: "nope" })
+    });
+    assert.equal(bad.status, 422);
+    const disabled = createServer(createTestApp());
+    const disabledOrigin = await listen(disabled);
+    try {
+      const response = await fetch(`${disabledOrigin}/api/projects/p1/scenes/s1/fal/analyze-quotes`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ source_media_id: "11111111-1111-4111-8111-111111111111" })
+      });
+      assert.equal(response.status, 503);
+    } finally {
+      await new Promise((resolve, reject) => disabled.close((error) => error ? reject(error) : resolve()));
+    }
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("quoteAnalyze persists Moondream still analysis and confirm enqueues generate-fal-analyze", async () => {
+  const sourceId = "11111111-1111-4111-8111-111111111111";
+  const jobs = new Map();
+  const asset = {
+    id: sourceId,
+    state: "ready",
+    declaredType: "image/jpeg",
+    sealedSha256: "abc",
+    sealedObjectKey: "projects/project/media-sealed/still",
+    detected: { type: "image/jpeg", bytes: 12_000, width: 576, height: 1024 }
+  };
+  async function query(sql, params = []) {
+    if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [], rowCount: 0 };
+    if (sql.includes("COUNT(*)") && sql.includes("FROM \"GenerationJob\"")) {
+      return { rows: [{ count: 0 }], rowCount: 1 };
+    }
+    if (sql.includes("FROM \"Project\"")) return { rows: [{ id: params[0] }], rowCount: 1 };
+    if (sql.includes("FROM \"Scene\"")) return { rows: [{ id: params[0] }], rowCount: 1 };
+    if (sql.includes("FROM \"MediaAsset\"")) {
+      if (params[0] !== asset.id) return { rows: [], rowCount: 0 };
+      return { rows: [structuredClone(asset)], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO \"GenerationJob\"") && sql.includes("'analyze'")) {
+      const job = {
+        id: params[0],
+        ownerId: params[1],
+        projectId: params[2],
+        sceneId: params[3],
+        kind: "analyze",
+        endpointId: params[5],
+        prompt: params[6],
+        sourceMediaId: params[7],
+        inputJson: JSON.parse(params[8]),
+        quoteJson: JSON.parse(params[9]),
+        quoteExpiresAt: params[10],
+        state: "quoted",
+        cancelRequested: false,
+        failureCode: null,
+        resultMediaId: null,
+        providerRequestId: null,
+        idempotencyKey: params[11]
+      };
+      jobs.set(job.id, job);
+      return { rowCount: 1 };
+    }
+    if (sql.includes("FROM \"GenerationJob\"") && sql.includes("WHERE id = $1 AND \"ownerId\" = $2")) {
+      const job = jobs.get(params[0]);
+      if (!job || job.ownerId !== params[1]) return { rows: [], rowCount: 0 };
+      return { rows: [structuredClone(job)], rowCount: 1 };
+    }
+    throw new Error(`unexpected sql: ${sql.slice(0, 140)}`);
+  }
+  const pool = {
+    async query(sql, params = []) { return query(sql, params); },
+    async connect() {
+      return { async query(sql, params = []) { return query(sql, params); }, release() {} };
+    }
+  };
+  const fetchImpl = async (url) => {
+    assert.match(String(url), /moondream3-preview%2Fquery/);
+    return new Response(JSON.stringify({
+      prices: [{
+        endpoint_id: "fal-ai/moondream3-preview/query",
+        unit_price: 0.002,
+        unit: "request",
+        currency: "USD"
+      }]
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const quoted = await new PostgresFalGenerationService(pool, stubCredentials, fetchImpl)
+    .quoteAnalyze("owner", "project", "scene", sourceId);
+  assert.equal(quoted.kind, "analyze");
+  assert.equal(quoted.endpoint_id, "fal-ai/moondream3-preview/query");
+  assert.equal(quoted.quote.estimated_total, 0.002);
+  assert.equal(quoted.source_media_id, sourceId);
+
+  asset.declaredType = "video/mp4";
+  asset.sealedObjectKey = "projects/project/media-sealed/clip";
+  asset.detected = { type: "video/mp4", bytes: 80_000, duration_ms: 12_000 };
+  const videoFetch = async (url) => {
+    assert.match(String(url), /video-understanding/);
+    return new Response(JSON.stringify({
+      prices: [{
+        endpoint_id: "fal-ai/video-understanding",
+        unit_price: 0.01,
+        unit: "5 seconds",
+        currency: "USD"
+      }]
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const videoQuoted = await new PostgresFalGenerationService(pool, stubCredentials, videoFetch)
+    .quoteAnalyze("owner", "project", "scene", sourceId);
+  assert.equal(videoQuoted.endpoint_id, "fal-ai/video-understanding");
+  assert.equal(videoQuoted.quote.estimated_total, 0.03);
+  assert.equal([...jobs.values()].at(-1).inputJson.duration_ms, 12_000);
+
+  const confirmPool = generationFakePool([baseJob({
+    state: "quoted",
+    kind: "analyze",
+    endpointId: "fal-ai/moondream3-preview/query",
+    prompt: "Analyze attached footage",
+    sourceMediaId: sourceId,
+    inputJson: {
+      source_media_id: sourceId,
+      sealed_sha256: "abc",
+      declared_type: "image/jpeg",
+      bytes: 12_000
+    }
+  })]);
+  const wrap = (query) => async (sql, params = []) => {
+    if (sql.includes("FROM \"MediaAsset\"") && sql.includes("FOR UPDATE")) {
+      return { rows: [{ sealedSha256: "abc", state: "ready" }], rowCount: 1 };
+    }
+    return query(sql, params);
+  };
+  confirmPool.query = wrap(confirmPool.query.bind(confirmPool));
+  const originalConnect = confirmPool.connect.bind(confirmPool);
+  confirmPool.connect = async () => {
+    const client = await originalConnect();
+    client.query = wrap(client.query.bind(client));
+    return client;
+  };
+  const confirmed = await new PostgresFalGenerationService(confirmPool, stubCredentials).confirm(
+    "owner",
+    "job-1",
+    "11111111-1111-4111-8111-111111111111"
+  );
+  assert.equal(confirmed.state, "queued");
+  assert.equal(confirmPool.outbox[0][1], "generate-fal-analyze");
+});

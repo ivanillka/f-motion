@@ -16,11 +16,19 @@ async function listen(server) {
 }
 
 function pricingFetch(status = 200) {
-  return async () => status === 200
-    ? new Response(JSON.stringify({
-        prices: [{ endpoint_id: "fal-ai/flux/schnell", unit_price: 0.003, unit: "megapixel", currency: "USD" }]
-      }), { status, headers: { "content-type": "application/json" } })
-    : new Response("upstream detail must not escape", { status });
+  return async (url) => {
+    if (String(url).includes("/account/billing")) {
+      return new Response(JSON.stringify({
+        username: "studio",
+        credits: { current_balance: 24.5, currency: "USD" }
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return status === 200
+      ? new Response(JSON.stringify({
+          prices: [{ endpoint_id: "fal-ai/flux/schnell", unit_price: 0.003, unit: "megapixel", currency: "USD" }]
+        }), { status, headers: { "content-type": "application/json" } })
+      : new Response("upstream detail must not escape", { status });
+  };
 }
 
 function fakePool({ activeGenerationCount = 0 } = {}) {
@@ -73,10 +81,13 @@ test("Postgres service encrypts one credential per owner and never projects it",
   const connected = await service.connect("owner", "synthetic:key-1234");
   assert.equal(connected.connected, true);
   assert.equal(connected.hint, "1234");
+  assert.equal(connected.account?.credits?.current_balance, 24.5);
+  assert.equal(connected.account?.username, "studio");
   assert.equal(JSON.stringify(connected).includes("synthetic"), false);
   assert.equal(pool.rows.get("owner").ciphertext.toString("utf8").includes("synthetic"), false);
   assert.deepEqual(await service.status("other"), { provider: "fal", connected: false });
   assert.equal((await service.test("owner")).connected, true);
+  assert.equal((await service.status("owner")).account?.credits?.current_balance, 24.5);
   await service.disconnect("other");
   assert.equal((await service.status("owner")).connected, true);
   await service.disconnect("owner");
@@ -211,4 +222,24 @@ test("credential route maps provider failures without reflecting upstream data",
       await new Promise((resolve, reject) => server.close((closeError) => closeError ? reject(closeError) : resolve()));
     }
   }
+});
+
+test("connected status reports ADMIN billing and maps API-scope 403 without leaking upstream", async () => {
+  const vault = credentialVaultFromEnv({
+    FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION: "1",
+    FENGINE_CREDENTIAL_KEY_V1: Buffer.alloc(32, 9).toString("base64")
+  });
+  const pool = fakePool();
+  const scoped = new PostgresFalCredentialService(pool, vault, async (url) => {
+    if (String(url).includes("/account/billing")) return new Response("admin only", { status: 403 });
+    return new Response(JSON.stringify({
+      prices: [{ endpoint_id: "fal-ai/flux/schnell", unit_price: 0.003, unit: "megapixel", currency: "USD" }]
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+  const connected = await scoped.connect("owner", "synthetic:key-1234");
+  assert.equal(connected.account?.credits_unavailable, "admin_key_required");
+  assert.equal(JSON.stringify(connected).includes("admin only"), false);
+  const status = await scoped.status("owner");
+  assert.equal(status.connected, true);
+  assert.equal(status.account?.credits_unavailable, "admin_key_required");
 });
