@@ -132,10 +132,6 @@ function mediaFileInput(page: Page) {
   return page.locator('input[type="file"][accept*="image/jpeg"]');
 }
 
-function mediaFileInput(page: Page) {
-  return page.locator('input[type="file"][accept*="image/jpeg"]');
-}
-
 async function attachFixtureToScene(page: Page, sceneNumber: number): Promise<void> {
   await page.getByRole("button", { name: `Edit scene ${sceneNumber}` }).click();
   const input = mediaFileInput(page);

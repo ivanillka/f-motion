@@ -75,7 +75,7 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Upload voice-over/);
   assert.match(source, /Generate with FAL/);
   assert.match(source, /Generate voice-over/);
-  assert.match(source, /Use as voice-over/);
+  assert.match(source, /Attach voice-over/);
   assert.match(source, /spoken-word/);
   assert.match(source, /is-current/);
   assert.match(source, /highlight each word/);
