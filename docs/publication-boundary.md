@@ -57,7 +57,7 @@ engine boundary.
 | `docs/contracts/**` | public after neutralization | Host integration contract |
 | `DESIGN.md`, `docs/design/**`, `spikes/**` | private | Product identity, references, and generated evidence |
 | `apps/mobile/**` | private | Product-specific application surface |
-| `fly*.toml`, hosted runbooks, Pages functions, real environment values | private | Deployment topology and identifiers |
+| `deploy/**`, hosted runbooks, Pages functions, real environment values | private | Deployment topology and identifiers |
 | Credentials, certificates, private keys, dumps, backups, downloads, customer data | forbidden | Secrets or personal/customer data must never be exported |
 | `plans/**` | private | Internal execution history and product strategy |
 

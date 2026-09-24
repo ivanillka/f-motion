@@ -1,25 +1,28 @@
-# Hosted private deploy
+# Hosted private deploy (Hetzner)
 
 This is a **private, invite-only** demo deploy — not the public/paid Gate 0
-launch (see `README.md` Gate 0 checklist). Two processes (API, worker) plus a
-statically-hosted web build. Never set `FENGINE_LOCAL_AUTH=1` or
-`VITE_ALLOW_DEMO_AUTH=1` on any of them.
+launch (see `README.md` Gate 0 checklist). f-motion.com runs on a **Hetzner
+VPS** with Docker Compose: API, render worker, and nginx. Cloudflare can
+orange-cloud the DNS names to that VPS. Never set `FENGINE_LOCAL_AUTH=1` or
+`VITE_ALLOW_DEMO_AUTH=1` on any process.
+
+Do not deploy to Fly.io. The old `fly.api.toml` / `fly.worker.toml` files are
+gone. After this stack is healthy, destroy the Fly apps so they stop billing.
 
 ## 0. Prerequisites
 
+- A Hetzner Cloud VPS (Ubuntu 24.04 is enough) with Docker Engine + Compose v2.
+  Open ports 80 (and 443 if you terminate TLS on the box instead of Cloudflare).
 - `Dockerfile`s: `apps/api/Dockerfile` (Node 24.15.0 + FFmpeg 8.1.2; API
-  process never calls FFmpeg, worker process group does),
+  process never calls FFmpeg, worker service does),
   `apps/worker/Dockerfile` (worker-only image, same FFmpeg pin — see
   the Dockerfile header comment for why apt can't supply it yet).
-- Platform config: `fly.api.toml` (API + worker process groups on one Fly
-  app), optional `fly.worker.toml` for a dedicated worker app. Any host that
-  can run the two processes and inject env vars works instead —
-  swap step 5 for that platform's deploy command.
+- Compose: `deploy/hetzner/docker-compose.yml` (API + worker + web/nginx).
 
 ## 1. Provision Postgres (session-mode)
 
-Create a Postgres 17 instance (Supabase Postgres, Fly Postgres, RDS, etc.)
-reachable from both the API and worker. **Use a session-mode connection**,
+Create a Postgres 17 instance (Supabase Postgres, a Hetzner Postgres box, RDS,
+etc.) reachable from both the API and worker. **Use a session-mode connection**,
 not a transaction-mode pooler (e.g. PgBouncer/Supavisor in transaction
 mode): `pg-boss` needs stable, long-lived connections for `LISTEN`-style
 leasing and heartbeats. See `docs/decisions/queue.md` — "Supabase
@@ -159,48 +162,41 @@ If a generation job reaches `submission_uncertain`, tell the user to check
 their FAL dashboard before retrying. The worker never auto-resubmits that job
 (duplicate spend risk). Cancel requests are best-effort after provider accept.
 
-## 5. Deploy the API and worker images
+## 5. Deploy on Hetzner
 
-Using Fly.io with the provided configs (first time only needs `fly launch`
-to register the app name; already-registered apps just need `fly deploy`).
-`fly.api.toml` runs the renderer as a `worker` process group on the API app
-so Export final has a consumer without a second Fly app. `fly.worker.toml`
-stays available for a dedicated worker app.
+On the VPS (from a clone of this repository):
 
 ```sh
-fly launch --config fly.api.toml --no-deploy
-fly secrets set --config fly.api.toml \
-  DATABASE_URL=... SUPABASE_ISSUER=... SUPABASE_AUDIENCE=... SUPABASE_JWKS_URL=... \
-  R2_ENDPOINT=... R2_REGION=... R2_BUCKET=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... \
-  FENGINE_ACCESS_MODE=invite_only \
-  FENGINE_ALLOWED_USER_IDS=<comma-separated-supabase-user-uuids> \
-  FENGINE_PEXELS_BYOK_ENABLED=1 FENGINE_FAL_BYOK_ENABLED=1 \
-  FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION=1 \
-  FENGINE_CREDENTIAL_KEY_V1=<base64-from-openssl>
-fly deploy --config fly.api.toml
+cp deploy/hetzner/.env.example deploy/hetzner/.env
+# fill DATABASE_URL, R2_*, Supabase, invite UUIDs, credential KEK
+bash scripts/hetzner-up.sh
+# equivalent: npm run hetzner:up
 ```
 
-**Do not set `FENGINE_LOCAL_AUTH` as a secret on either app.** The API
-refuses to boot with it set when `NODE_ENV=production` or
-`FENGINE_ENV=hosted` (`apps/api/src/local-auth.ts`); leaving it unset is the
-correct, safest choice on a host regardless.
-
-`fly.api.toml` sets `FENGINE_ENV=hosted` in `[env]` for Fly deploys. On
-non-Fly platforms, export `FENGINE_ENV=hosted` on the API process (alongside
-the secrets above); `FENGINE_LOCAL_AUTH` must still stay unset. In hosted mode,
-the API refuses to start unless `FENGINE_ACCESS_MODE` is explicitly
+The compose file sets `FENGINE_ENV=hosted` on the API and worker. **Do not set
+`FENGINE_LOCAL_AUTH`.** The API refuses to boot with it set when
+`NODE_ENV=production` or `FENGINE_ENV=hosted` (`apps/api/src/local-auth.ts`).
+In hosted mode the API also refuses to start unless `FENGINE_ACCESS_MODE` is
 `invite_only` and `FENGINE_ALLOWED_USER_IDS` is a valid non-empty list. Missing
 configuration never falls back to verified-user provisioning.
 
 `FENGINE_ALLOWED_USER_IDS` is identity configuration, not source code. Keep it
-in protected host configuration and never commit real UUIDs. The API refuses
-to start when invite-only mode has a missing, empty, duplicate, or malformed
-list.
+in `deploy/hetzner/.env` on the VPS and never commit real UUIDs. The API
+refuses to start when invite-only mode has a missing, empty, duplicate, or
+malformed list.
 
-Any platform that can run `apps/api/Dockerfile` / `apps/worker/Dockerfile`
-and inject the same env vars works the same way — swap this step for
-`docker build`/`docker run`/your platform's deploy command and keep steps
-1–4 and 6–7 unchanged.
+### DNS cutover (drop Fly)
+
+1. Point `api.f-motion.com` at the Hetzner VPS (Cloudflare A record, proxied).
+   nginx serves that hostname to the API container, including `/healthz`.
+2. Confirm `curl -f https://api.f-motion.com/healthz` and
+   `curl -f https://api.f-motion.com/readyz`.
+3. If Cloudflare Pages still hosts `f-motion.com`, its `/api` function already
+   forwards to `https://api.f-motion.com` — re-run `npm run smoke:pages -- https://f-motion.com`.
+4. Optionally point `f-motion.com` at the same VPS so nginx serves the SPA
+   (studio at `/studio`, `/app` redirects there). Then Pages is unused.
+5. Destroy the Fly apps (`f-motion-api`, and `f-motion-worker` if it exists).
+   They are not used after this cutover.
 
 ## 6. Build and host the web client
 
@@ -216,15 +212,17 @@ sign-in screen when either is missing; it never falls back to demo auth. Add
 Magic links return a one-time `?code=...`; the official client completes the
 PKCE exchange on the same browser/device and then removes that parameter.
 
-Host `apps/web/dist` on a static host (Fly static, Cloudflare Pages, Netlify,
-nginx, Caddy, etc.). The production web build calls relative `/api/...` paths
+The Hetzner `web` service already hosts `apps/web/dist` behind nginx. Cloudflare
+Pages remains an optional extra static host during DNS cutover. The production
+web build calls relative `/api/...` paths
 (`apps/web/src/api.ts`); Vite's dev proxy is **not** used in production. The
 static host must reverse-proxy `/api` to the API app's origin so the browser
 stays same-origin — the API has no CORS middleware.
 
-The web origin (e.g. `https://app.example.com`) and API origin (e.g.
-`https://api.example.com`) may be different Fly apps or hosts; the **browser**
-only ever talks to the web origin.
+The web origin (`https://f-motion.com`) and API origin
+(`https://api.f-motion.com`) may be the same Hetzner VPS (nginx `server_name`)
+or split during cutover (Pages + Hetzner API). The **browser** only ever talks
+to the web origin.
 
 **Do not set `VITE_ALLOW_DEMO_AUTH`** — its absence plus a production
 (non-`vite dev`) build is what disables the local demo identity fallback
@@ -232,7 +230,11 @@ only ever talks to the web origin.
 
 ### Reverse proxy
 
-Requirements for any proxy in front of `apps/web/dist`:
+`deploy/hetzner/nginx.conf` is the production file: `api.f-motion.com` goes to
+the API container; the default server serves the SPA and same-origin `/api`
+(including `/api/healthz` → `/healthz`) with buffering off.
+
+Requirements for any other proxy in front of `apps/web/dist`:
 
 - Forward `/api/*` (and ideally bare `/api`) to the API origin with the `/api`
   path prefix preserved (`/api/projects` → `https://api.example.com/api/projects`).
@@ -360,9 +362,9 @@ Repository changes do not perform these live actions:
 7. Sign in, confirm drafts still load after an access-token refresh, sign out,
    verify a protected request is rejected, then sign in again.
 
-If rollout fails, restore the previous API image while keeping Supabase sign-up
-disabled. Do not use `provision_verified` as a hosted rollback; it is a local
-compatibility mode.
+If rollout fails, restore the previous Compose image on the VPS while keeping
+Supabase sign-up disabled. Do not use `provision_verified` as a hosted
+rollback; it is a local compatibility mode. Do not fail back to Fly.
 
 Then, from the hosted web origin: request a magic-link email, follow the
 link, create a brief, choose a media source, attach media, render, and download —

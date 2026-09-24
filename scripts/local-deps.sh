@@ -19,15 +19,15 @@ if ! docker container inspect "$minio_container" >/dev/null 2>&1; then
     -e MINIO_ROOT_USER=fengine \
     -e MINIO_ROOT_PASSWORD=fengine-local-secret \
     -p 9000:9000 \
-    quay.io/minio/minio server /data
+    cgr.dev/chainguard/minio:latest server /data
 fi
 
 until docker exec "$postgres_container" pg_isready -U fengine -d fengine >/dev/null; do sleep 1; done
 until curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null; do sleep 1; done
 
-docker run --rm --network "container:$minio_container" quay.io/minio/mc \
+docker run --rm --network "container:$minio_container" cgr.dev/chainguard/minio-client:latest \
   alias set local http://127.0.0.1:9000 fengine fengine-local-secret >/dev/null
-docker run --rm --network "container:$minio_container" quay.io/minio/mc \
+docker run --rm --network "container:$minio_container" cgr.dev/chainguard/minio-client:latest \
   mb --ignore-existing local/fengine-local >/dev/null
 
 echo "PostgreSQL and MinIO are ready (bucket fengine-local)."
