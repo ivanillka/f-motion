@@ -235,8 +235,17 @@ test("estimateSpeech and submitSpeech pin Kokoro without inventing totals", asyn
   assert.equal(seen.url, `https://queue.fal.run/${FAL_SPEECH_ENDPOINT_ID}`);
   assert.deepEqual(JSON.parse(seen.init.body), falSpeechInput("Hello from the storyboard."));
   assert.equal(JSON.parse(seen.init.body).voice, FAL_SPEECH_VOICE);
+  const custom = await submitSpeech("k", { prompt: "Hi", voice: "am_adam" }, async (url, init) => {
+    seen = { url, init };
+    return new Response(JSON.stringify({ request_id: "s2" }), {
+      status: 200, headers: { "content-type": "application/json" }
+    });
+  });
+  assert.equal(custom.request_id, "s2");
+  assert.equal(JSON.parse(seen.init.body).voice, "am_adam");
   assert.throws(() => falSpeechInput(""), (error) => error instanceof FalImageError && error.code === "invalid_request");
   assert.throws(() => falSpeechInput("x".repeat(2001)), (error) => error instanceof FalImageError && error.code === "invalid_request");
+  assert.throws(() => falSpeechInput("ok", "not_a_voice"), (error) => error instanceof FalImageError && error.code === "invalid_request");
 });
 
 test("speech result reads audio.url from fal.media and rejects other hosts", async () => {
