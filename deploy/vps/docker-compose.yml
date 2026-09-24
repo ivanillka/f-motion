@@ -26,7 +26,8 @@ services:
     restart: unless-stopped
 
   minio:
-    image: quay.io/minio/minio:latest
+    # -dev: healthcheck curl + writable paths; CI uses the minimal cgr image instead.
+    image: cgr.dev/chainguard/minio:latest-dev
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-fengine}
@@ -43,7 +44,8 @@ services:
     restart: unless-stopped
 
   minio-init:
-    image: quay.io/minio/mc:latest
+    # -dev: minio-init.sh needs /bin/sh and /tmp for CORS JSON.
+    image: cgr.dev/chainguard/minio-client:latest-dev
     depends_on:
       minio:
         condition: service_healthy

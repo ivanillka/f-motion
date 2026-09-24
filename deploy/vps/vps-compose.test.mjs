@@ -18,8 +18,9 @@ test("VPS compose path is single-seat, BYOK, and Fotium-free", async () => {
   const readme = await readFile(join(root, "README.md"), "utf8");
 
   assert.match(compose, /postgres:/);
-  assert.match(compose, /quay\.io\/minio\/minio/);
-  assert.match(compose, /quay\.io\/minio\/mc/);
+  assert.match(compose, /cgr\.dev\/chainguard\/minio/);
+  assert.match(compose, /cgr\.dev\/chainguard\/minio-client/);
+  assert.doesNotMatch(compose, /quay\.io\/minio/);
   assert.match(compose, /api:/);
   assert.match(compose, /worker:/);
   assert.match(compose, /web:/);
