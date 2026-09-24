@@ -132,6 +132,10 @@ function mediaFileInput(page: Page) {
   return page.locator('input[type="file"][accept*="image/jpeg"]');
 }
 
+function mediaFileInput(page: Page) {
+  return page.locator('input[type="file"][accept*="image/jpeg"]');
+}
+
 async function attachFixtureToScene(page: Page, sceneNumber: number): Promise<void> {
   await page.getByRole("button", { name: `Edit scene ${sceneNumber}` }).click();
   const input = mediaFileInput(page);
@@ -330,7 +334,7 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
 
   const storedSessionValues = await page.evaluate(() =>
     Object.values(sessionStorage));
-  expect(storedSessionValues).not.toContainEqual(expect.stringMatching(/^local-demo-/));
+  expect(storedSessionValues).not.toContainEqual(expect.stringMatching(/^(local-demo-|demo\.)/));
   await expect(page.locator("body")).not.toContainText(/local-demo-|access_token/i);
   await page.getByRole("button", { name: "Settings" }).first().click();
   await page.getByRole("button", { name: "Sign out" }).click();

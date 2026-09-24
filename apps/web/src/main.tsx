@@ -184,7 +184,8 @@ export function App() {
           publicKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
           origin: studioOrigin(location.href),
           allowDemo: Boolean(import.meta.env.DEV) || import.meta.env.VITE_ALLOW_DEMO_AUTH === "1",
-          allowSelfhost: import.meta.env.VITE_SELFHOST_AUTH === "1"
+          allowSelfhost: import.meta.env.VITE_SELFHOST_AUTH === "1",
+          demoEmail: String(import.meta.env.VITE_PARTNER_BRAND_EMAIL ?? "")
         })
       };
     } catch (error) {
@@ -194,6 +195,7 @@ export function App() {
     }
   }, []);
   const tokenRef = useRef("");
+  const credentialLoadId = useRef(0);
   const [token, setToken] = useState("");
   const [authReady, setAuthReady] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
@@ -332,9 +334,21 @@ export function App() {
     setConflictNotice(undefined);
   }
 
+  function clearBrowserStudioCache() {
+    localStorage.removeItem("fengine-draft");
+    localStorage.removeItem("fengine-project");
+    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith("fengine-fal-")) localStorage.removeItem(key);
+    }
+  }
+
   function clearSessionState() {
+    credentialLoadId.current += 1;
     tokenRef.current = "";
     setToken("");
+    clearBrowserStudioCache();
+    setDraft("");
     setProject(undefined);
     setActiveSceneId("");
     setLivePlaying(false);
@@ -369,6 +383,10 @@ export function App() {
     setFalVideoPrompt("");
     setFalVideoJob(undefined);
     setFalVideoBusy(false);
+    setFalSpeechOpen(false);
+    setFalSpeechPrompt("");
+    setFalSpeechJob(undefined);
+    setFalSpeechBusy(false);
     setPexelsCredential(undefined);
     setPexelsUnavailable(false);
     setPexelsKey("");
@@ -378,6 +396,7 @@ export function App() {
     setMusicHits([]);
     setMusicQuery("trendy");
     setMusicOpen(false);
+    setVoiceOpen(false);
     setPreviewingId(undefined);
     setOverlayCaption("");
     setPassword("");
@@ -482,8 +501,18 @@ export function App() {
 
   useEffect(() => {
     if (!token) return;
-    void loadFalCredential();
-    void loadPexelsCredential();
+    const allowed = String(import.meta.env.VITE_PARTNER_BRAND_EMAIL ?? "");
+    if (!showsPartnerBrands(token, allowed)) {
+      credentialLoadId.current += 1;
+      setFalCredential(undefined);
+      setFalUnavailable(false);
+      setPexelsCredential(undefined);
+      setPexelsUnavailable(false);
+      return;
+    }
+    const loadId = ++credentialLoadId.current;
+    void loadFalCredential(loadId);
+    void loadPexelsCredential(loadId);
   }, [token]);
 
   useEffect(() => {
@@ -1571,31 +1600,37 @@ export function App() {
     }
   }
 
-  async function loadFalCredential() {
+  async function loadFalCredential(loadId = ++credentialLoadId.current) {
+    const expectedToken = tokenRef.current;
     setFalBusy(true);
     try {
       const view = await api.request<FalCredentialView>("/api/providers/fal/credential");
+      if (loadId !== credentialLoadId.current || tokenRef.current !== expectedToken) return;
       setFalCredential(view);
       setFalUnavailable(false);
     } catch (error) {
+      if (loadId !== credentialLoadId.current || tokenRef.current !== expectedToken) return;
       setFalCredential(undefined);
       setFalUnavailable(error instanceof ApiResponseError && error.status === 503);
     } finally {
-      setFalBusy(false);
+      if (loadId === credentialLoadId.current) setFalBusy(false);
     }
   }
 
-  async function loadPexelsCredential() {
+  async function loadPexelsCredential(loadId = ++credentialLoadId.current) {
+    const expectedToken = tokenRef.current;
     setPexelsBusy(true);
     try {
       const view = await api.request<PexelsCredentialView>("/api/providers/pexels/credential");
+      if (loadId !== credentialLoadId.current || tokenRef.current !== expectedToken) return;
       setPexelsCredential(view);
       setPexelsUnavailable(false);
     } catch (error) {
+      if (loadId !== credentialLoadId.current || tokenRef.current !== expectedToken) return;
       setPexelsCredential(undefined);
       setPexelsUnavailable(error instanceof ApiResponseError && error.status === 503);
     } finally {
-      setPexelsBusy(false);
+      if (loadId === credentialLoadId.current) setPexelsBusy(false);
     }
   }
 
@@ -2768,29 +2803,32 @@ export function App() {
         <p>Pick up where you left off or start a new video.</p>
       </div>
       <aside className="provider-preview" aria-label="Creation sources">
-        <button className="provider-preview-item" data-locked={!pexelsCredential?.connected} onClick={() => pexelsCredential?.connected ? setStep("settings") : showPexelsLock()}>
-          <strong>Pexels</strong><span>Real stock video · {pexelsCredential?.connected ? "unlocked" : "locked"}</span>
-        </button>
-        <button className="provider-preview-item" data-locked={!falCredential?.connected || falUnavailable} onClick={showFalLock}>
-          <strong>FAL</strong><span>{falCredential?.connected && !falUnavailable ? "AI stills in storyboard" : "AI stills · locked"}</span>
-        </button>
-        {partnerBrands && partnerGalleryUrl ? (
-          <button className="provider-preview-item" type="button" onClick={() => setStep("settings")}>
-            <strong>{partnerGalleryName}</strong><span>Galleries · unlocked</span>
+        {partnerBrands ? <>
+          <button className="provider-preview-item" data-locked={!pexelsCredential?.connected} onClick={() => pexelsCredential?.connected ? setStep("settings") : showPexelsLock()}>
+            <strong>Pexels</strong><span>Real stock video · {pexelsCredential?.connected ? "unlocked" : "locked"}</span>
           </button>
-        ) : partnerBrands ? null : (
+          <button className="provider-preview-item" data-locked={!falCredential?.connected || falUnavailable} onClick={showFalLock}>
+            <strong>FAL</strong><span>{falCredential?.connected && !falUnavailable ? "AI stills in storyboard" : "AI stills · locked"}</span>
+          </button>
+          {partnerGalleryUrl ? (
+            <button className="provider-preview-item" type="button" onClick={() => setStep("settings")}>
+              <strong>{partnerGalleryName}</strong><span>Galleries · unlocked</span>
+            </button>
+          ) : null}
+        </> : (
           <button className="provider-preview-item" data-locked onClick={showFutureLock}>
             <strong>More</strong><span>New providers · locked</span>
           </button>
         )}
         <button className="secondary" onClick={() => setStep("settings")}>Choose video sources</button>
       </aside>
-      <button onClick={startCreate}>Create new video</button>
       {draftsLoading && <p role="status">Loading drafts…</p>}
       {!draftsLoading && drafts.length === 0 && <div className="empty-drafts">
         <p role="status">No drafts yet.</p>
         <p>Describe what you want to make. F-Motion will recommend a video plan and storyboard.</p>
+        <button onClick={startCreate}>Create new video</button>
       </div>}
+      {!draftsLoading && drafts.length > 0 && <button onClick={startCreate}>Create new video</button>}
       <div className="concepts drafts-grid">{drafts.map((item) =>
         <article key={item.id} className="card draft-card">
           <button type="button" className="draft-open" disabled={busy} onClick={() => void openDraft(item.id)}>
@@ -3041,7 +3079,9 @@ export function App() {
             onToggle={(event) => setVoiceOpen(event.currentTarget.open)}
           >
             <summary>{recording ? "Recording voice-over" : voiceover ? "Voice-over" : "Add voice-over"}</summary>
-            <p className="crop-hint">Music ducks under the voice. Voice-over never loops.</p>
+            <p className="crop-hint">{partnerBrands
+              ? "Record, upload, or generate with FAL. Music ducks under the voice. Voice-over never loops."
+              : "Record or upload a voice-over. Music ducks under the voice. Voice-over never loops."}</p>
             <div className="scene-actions">
               <button
                 type="button"
@@ -3052,7 +3092,7 @@ export function App() {
               >{recording ? "Stop recording" : "Record voice-over"}</button>
               {recording ? <button className="secondary" type="button" onClick={() => cancelVoiceRecord()}>Discard</button> : null}
               <button className="secondary" type="button" disabled={busy || recording} onClick={() => voiceUpload.current?.click()}>Upload voice-over</button>
-              <button className="secondary" type="button" disabled={busy || recording} onClick={() => openFalSpeech()}>Generate with FAL</button>
+              {partnerBrands && <button className="secondary" type="button" disabled={busy || recording} onClick={() => openFalSpeech()}>Generate with FAL</button>}
             </div>
             <input ref={voiceUpload} hidden type="file" accept="audio/mpeg,audio/wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a" onChange={(event) => {
               const file = event.target.files?.[0];
@@ -3266,6 +3306,7 @@ export function App() {
           <button className="secondary" onClick={() => void saveScenePatch(activeScene.id, { audio_level: activeScene.audio_level === 0 ? 1 : 0 })}>{activeScene.audio_level === 0 ? `Unmute scene ${activeSceneNumber}` : `Mute scene ${activeSceneNumber}`}</button>
           </div>
           <div className="inspector-block">
+          {partnerBrands && <>
           <button className={!pexelsCredential?.connected ? "locked-feature" : undefined}
             disabled={busy || (Boolean(pexelsCredential?.connected) && !activeScene.visual_prompt)}
             aria-label={activeMedia
@@ -3288,6 +3329,7 @@ export function App() {
               {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Animate this image
             </button>
           )}
+          </>}
           </div>
           <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
             const file = event.target.files?.[0];
@@ -3518,7 +3560,9 @@ export function App() {
     </section>}
     {authReady && step === "settings" && <section>
       <h1>Choose your video sources</h1>
-      <p>Connect only the services you want to use. Each provider stays under your account and uses your own API key.</p>
+      <p>{partnerBrands
+        ? "Connect only the services you want to use. Each provider stays under your account and uses your own API key."
+        : "Partner media sources stay private to the allowlisted studio account. Upload your own media to build a reel."}</p>
       <article className="settings-card" aria-labelledby="whats-new-title">
         <h2 id="whats-new-title">What’s new</h2>
         <p>F-Motion {APP_VERSION} · same notes as the GitHub changelog.</p>
@@ -3531,33 +3575,35 @@ export function App() {
         <a href={githubBlobUrl("CHANGELOG.md")} target="_blank" rel="noreferrer">Full changelog on GitHub</a>
       </article>
       <div className="provider-onboarding" aria-label="Video source options">
-        <article className={`provider-card ${pexelsCredential?.connected ? "provider-live" : "provider-locked"}`}>
-          <span className={`provider-status ${pexelsCredential?.connected ? "" : "provider-soon"}`}>{pexelsCredential?.connected ? "Unlocked" : "Locked"}</span>
-          <h2>Pexels</h2>
-          <strong>Real stock video</strong>
-          <p>Search licensed footage from real creators and select it scene by scene.</p>
-          {pexelsCredential?.connected
-            ? <a href="#pexels-settings-title">Manage Pexels</a>
-            : <button className="lock-trigger" onClick={showPexelsLock}>Why is this locked?</button>}
-        </article>
-        <article className={`provider-card ${falCredential?.connected && !falUnavailable ? "provider-live" : "provider-locked"}`}>
-          <span className={`provider-status ${falCredential?.connected && !falUnavailable ? "" : "provider-soon"}`}>{falCredential?.connected && !falUnavailable ? "Unlocked" : "Locked"}</span>
-          <h2>FAL</h2>
-          <strong>AI stills</strong>
-          <p>Connect your key for AI still generation. Open a storyboard scene and choose Generate AI image to quote, confirm, and review one still.</p>
-          {falCredential?.connected && !falUnavailable
-            ? <a href="#fal-settings-title">Manage FAL</a>
-            : <button className="lock-trigger" onClick={showFalLock}>Why is this locked?</button>}
-        </article>
-        {partnerBrands && partnerGalleryUrl ? (
-          <article className="provider-card provider-live">
-            <span className="provider-status">Unlocked</span>
-            <h2>{partnerGalleryName}</h2>
-            <strong>Your galleries</strong>
-            <p>Imported stills from your gallery host open as F-Motion drafts.</p>
-            <a href={partnerGalleryUrl} target="_blank" rel="noreferrer">Open {partnerGalleryName}</a>
+        {partnerBrands ? <>
+          <article className={`provider-card ${pexelsCredential?.connected ? "provider-live" : "provider-locked"}`}>
+            <span className={`provider-status ${pexelsCredential?.connected ? "" : "provider-soon"}`}>{pexelsCredential?.connected ? "Unlocked" : "Locked"}</span>
+            <h2>Pexels</h2>
+            <strong>Real stock video</strong>
+            <p>Search licensed footage from real creators and select it scene by scene.</p>
+            {pexelsCredential?.connected
+              ? <a href="#pexels-settings-title">Manage Pexels</a>
+              : <button className="lock-trigger" onClick={showPexelsLock}>Why is this locked?</button>}
           </article>
-        ) : partnerBrands ? null : (
+          <article className={`provider-card ${falCredential?.connected && !falUnavailable ? "provider-live" : "provider-locked"}`}>
+            <span className={`provider-status ${falCredential?.connected && !falUnavailable ? "" : "provider-soon"}`}>{falCredential?.connected && !falUnavailable ? "Unlocked" : "Locked"}</span>
+            <h2>FAL</h2>
+            <strong>AI stills</strong>
+            <p>Connect your key for AI still generation. Open a storyboard scene and choose Generate AI image to quote, confirm, and review one still.</p>
+            {falCredential?.connected && !falUnavailable
+              ? <a href="#fal-settings-title">Manage FAL</a>
+              : <button className="lock-trigger" onClick={showFalLock}>Why is this locked?</button>}
+          </article>
+          {partnerGalleryUrl ? (
+            <article className="provider-card provider-live">
+              <span className="provider-status">Unlocked</span>
+              <h2>{partnerGalleryName}</h2>
+              <strong>Your galleries</strong>
+              <p>Imported stills from your gallery host open as F-Motion drafts.</p>
+              <a href={partnerGalleryUrl} target="_blank" rel="noreferrer">Open {partnerGalleryName}</a>
+            </article>
+          ) : null}
+        </> : (
           <article className="provider-card provider-future">
             <span className="provider-status provider-soon">Coming soon</span>
             <h2>More providers</h2>
@@ -3567,6 +3613,7 @@ export function App() {
           </article>
         )}
       </div>
+      {partnerBrands && <>
       <p>Pexels videos require on-product attribution — see “Use video by … · Pexels” in the editor when you add stock footage.</p>
       <article className="settings-card" aria-labelledby="pexels-settings-title">
         <h2 id="pexels-settings-title">Pexels licensed media</h2>
@@ -3615,6 +3662,7 @@ export function App() {
         </div>}
         <a href="https://fal.ai/dashboard/keys" target="_blank" rel="noreferrer">Open FAL API keys</a>
       </article>
+      </>}
       <p>Privacy and terms will ship with Gate 0 launch policy evidence.</p>
       <p role="status" aria-live="polite">{status}</p>
       <button disabled={authBusy} onClick={() => void signOut()}>Sign out</button>
