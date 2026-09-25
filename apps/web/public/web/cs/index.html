@@ -16,21 +16,7 @@
   <title>F-Motion</title>
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="../web.css">
-  <script>
-    (function () {
-      var params = new URLSearchParams(location.search);
-      var hash = new URLSearchParams(location.hash.replace(/^#/, ""));
-      var id = params.get("project") || "";
-      var code = params.get("code") || "";
-      var error = params.get("error_code") || params.get("error") || hash.get("error_code") || hash.get("error") || "";
-      if (!/^[0-9a-f-]{36}$/i.test(id) && !code && !error) return;
-      var next = new URL("/app/", location.origin);
-      if (/^[0-9a-f-]{36}$/i.test(id)) next.searchParams.set("project", id);
-      if (code) next.searchParams.set("code", code);
-      if (error) next.searchParams.set("error_code", error);
-      location.replace(next.pathname + next.search + location.hash);
-    })();
-  </script>
+  <script src="../launch-redirect.js"></script>
 </head>
 <body class="launch">
   <a class="skip-link" href="#main">Přeskočit na obsah</a>
@@ -92,9 +78,16 @@
     <section class="launch-block" aria-labelledby="demo-caption">
       <h2 class="launch-visually-hidden" id="demo-heading">Demo</h2>
       <figure class="launch-demo">
-        <div class="launch-frame" role="img" aria-label="Ukázkový render. Plné demo brzy."></div>
-        <figcaption id="demo-caption">Ukázkový render. Plné demo brzy.</figcaption>
+        <div class="launch-frame">
+          <img class="launch-still" src="../assets/demo-reel.jpg" alt="Studiové fotky vykreslené jako vertikální reel">
+          <video id="demo-reel" autoplay muted loop playsinline preload="metadata" poster="../assets/demo-reel.jpg" aria-label="Studiové fotky vykreslené jako vertikální reel">
+            <source src="../assets/demo-reel.webm" type="video/webm">
+            <source src="../assets/demo-reel.mp4" type="video/mp4">
+          </video>
+        </div>
+        <figcaption id="demo-caption">Studiové fotky vykreslené jako reel.</figcaption>
       </figure>
+      <script src="../demo-reel.js"></script>
     </section>
 
     <section class="launch-block">

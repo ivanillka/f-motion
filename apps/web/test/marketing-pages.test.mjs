@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 
 test("home is a centered title with feature buttons", async () => {
   const source = await readFile(new URL("../src/MarketingPages.tsx", import.meta.url), "utf8");
@@ -88,7 +88,7 @@ test("soft-launch home shows approved English and Czech copy", async () => {
     "3. Render.",
     "Export a reel ready for Fotium or your own host.",
     "F-Motion is the motion layer next to Fotium. Studio UI, partner import, reel engine. Self-host when you want the pipeline on your own stack.",
-    "Sample render. Full demo soon.",
+    "Studio photographs, rendered as a reel.",
     "Architecture and design contract on GitHub",
     "Built for Prague studio workflows and Fotium Make-reel",
     "f-motion.com",
@@ -105,15 +105,25 @@ test("soft-launch home shows approved English and Czech copy", async () => {
     "Rytmus, timing, look.",
     "Reel pro Fotium nebo vlastní host.",
     "motion vrstva vedle Fotium. Studio, partner import, reel engine. Self-host když chceš pipeline u sebe.",
-    "Ukázkový render. Plné demo brzy.",
+    "Studiové fotky vykreslené jako reel.",
     "Pro pražské studio workflow a Fotium Make-reel"
   ];
   for (const phrase of en) assert.match(home, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   for (const phrase of czech) assert.match(cs, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(cs, /href="https:\/\/github\.com\/ivanillka\/f-motion"/);
   assert.match(cs, /href="\/"/);
-  assert.doesNotMatch(home, /<video|href="\/app\/"|href="\/login"/);
-  assert.doesNotMatch(cs, /<video|href="\/app\/"|href="\/login"/);
+  assert.doesNotMatch(home, /href="\/app\/"|href="\/login"/);
+  assert.doesNotMatch(cs, /href="\/app\/"|href="\/login"/);
+  assert.match(home, /<video id="demo-reel" autoplay muted loop playsinline preload="metadata"/);
+  assert.match(cs, /<video id="demo-reel" autoplay muted loop playsinline preload="metadata"/);
+  assert.match(home, /aria-label="Studio photographs rendered as a vertical reel"/);
+  assert.match(cs, /aria-label="Studiové fotky vykreslené jako vertikální reel"/);
+  const homeWebm = home.indexOf("demo-reel.webm");
+  const homeMp4 = home.indexOf("demo-reel.mp4");
+  assert.ok(homeWebm > 0 && homeMp4 > homeWebm);
+  const csWebm = cs.indexOf("demo-reel.webm");
+  const csMp4 = cs.indexOf("demo-reel.mp4");
+  assert.ok(csWebm > 0 && csMp4 > csWebm);
   assert.doesNotMatch(home, /\u2014|\u2013|---/);
   assert.doesNotMatch(cs, /\u2014|\u2013|---/);
 });
@@ -151,6 +161,24 @@ test("hosted studio opens unless VITE_STUDIO_COMING_SOON is set", async () => {
   assert.match(site, /VITE_STUDIO_COMING_SOON === "1"/);
   assert.match(site, /Coming soon on f-motion\.com/);
   assert.doesNotMatch(site, /MarketingSite/);
+});
+
+test("landing demo reel stays in the 9:16 frame and respects reduced motion", async () => {
+  const css = await readFile(new URL("../public/web/web.css", import.meta.url), "utf8");
+  const script = await readFile(new URL("../public/web/demo-reel.js", import.meta.url), "utf8");
+  assert.match(css, /\.launch-frame \{[^}]*aspect-ratio:\s*9\s*\/\s*16/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\.launch-frame video \{ display: none; \}\s*\.launch-still \{ display: block; \}/);
+  assert.match(script, /prefers-reduced-motion: reduce/);
+  assert.match(script, /removeAttribute\("autoplay"\)/);
+  assert.match(script, /\.pause\(\)/);
+  const names = ["demo-reel.mp4", "demo-reel.webm", "demo-reel.jpg"];
+  let total = 0;
+  for (const name of names) {
+    const bytes = (await stat(new URL(`../public/web/assets/${name}`, import.meta.url))).size;
+    assert.ok(bytes > 0, name);
+    total += bytes;
+  }
+  assert.ok(total < 1.5 * 1024 * 1024, `demo reel assets are ${total} bytes`);
 });
 
 test("cube path walks the short way around a ring of any length", () => {

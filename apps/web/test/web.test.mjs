@@ -373,15 +373,20 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
     "Open Studio",
     ">Soon<",
     "How it works",
-    "Sample render. Full demo soon.",
+    "Studio photographs, rendered as a reel.",
     "Built for Prague studio workflows and Fotium Make-reel",
     "href=\"/cs/\""
   ]) {
     assert.match(home, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
   assert.doesNotMatch(home, /href="\/login"/);
-  assert.match(home, /new URL\("\/app\/"/);
-  assert.match(home, /searchParams\.set\("project"/);
+  const redirect = await readFile(new URL("launch-redirect.js", root), "utf8");
+  assert.match(home, /<script src="\.\/launch-redirect\.js"><\/script>/);
+  assert.doesNotMatch(home, /<script(?![^>]*\bsrc=)/);
+  assert.match(redirect, /new URL\("\/app\/"/);
+  assert.match(redirect, /searchParams\.set\("project"/);
+  assert.match(redirect, /params\.get\("code"\)/);
+  assert.match(redirect, /error_code/);
   for (const phrase of [
     "Embed cinematic creation in your product",
     "Integration recipes",
@@ -433,7 +438,9 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.match(home, /skip-link/);
   assert.match(home, /href="#main"/);
   assert.match(home, /launch-frame/);
-  assert.doesNotMatch(home, /<video|\.mp4|\.webm/);
+  assert.match(home, /<source src="\.\/assets\/demo-reel\.webm" type="video\/webm">/);
+  assert.match(home, /<source src="\.\/assets\/demo-reel\.mp4" type="video\/mp4">/);
+  assert.doesNotMatch(home, /Full demo soon/);
   assert.doesNotMatch(integrate, /ScrambleTextPlugin/);
   assert.match(integrate, /host-diagram\.webp/);
   assert.doesNotMatch(home, /#docs|View docs/);
@@ -456,8 +463,6 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.match(headers, /Content-Security-Policy/);
   assert.match(headers, /connect-src[^;]*https:\/\/\*\.supabase\.co/);
   assert.match(headers, /connect-src[^;]*wss:\/\/\*\.supabase\.co/);
-  assert.match(home, /params\.get\("code"\)/);
-  assert.match(home, /error_code/);
   assert.match(headers, /X-Content-Type-Options:\s*nosniff/);
   for (const asset of [
     "hero-reel.jpg",
@@ -481,4 +486,44 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   for (const font of ["syne-600.woff2", "syne-700.woff2", "syne-800.woff2"]) {
     await readFile(new URL(`fonts/${font}`, root));
   }
+});
+
+test("landing CSP matches Pages and both web nginx configs", async () => {
+  const policy = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self' https://*.supabase.co",
+    "img-src 'self' data: blob: https:",
+    "media-src 'self' blob: https:",
+    "font-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "script-src 'self' https://static.cloudflareinsights.com",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cloudflareinsights.com",
+    "upgrade-insecure-requests"
+  ].join("; ");
+  const headers = await readFile(new URL("../public/_headers", import.meta.url), "utf8");
+  const headerLine = headers.split("\n").find((line) => line.includes("Content-Security-Policy:"));
+  assert.equal(headerLine?.replace(/^.*Content-Security-Policy:\s*/, "").trim(), policy);
+  const scriptSrc = policy.match(/script-src[^;]*/)?.[0] ?? "";
+  assert.equal(scriptSrc, "script-src 'self' https://static.cloudflareinsights.com");
+  assert.doesNotMatch(scriptSrc, /unsafe-inline|\*/);
+  assert.match(policy, /media-src 'self'/);
+  assert.match(policy, /img-src 'self'/);
+  for (const rel of ["../../../deploy/hetzner/nginx.conf", "../../../deploy/vps/nginx.conf"]) {
+    const nginx = await readFile(new URL(rel, import.meta.url), "utf8");
+    assert.match(nginx, new RegExp(`add_header Content-Security-Policy "${policy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}" always;`));
+  }
+  const hetzner = await readFile(new URL("../../../deploy/hetzner/nginx.conf", import.meta.url), "utf8");
+  const apiServer = hetzner.split("server {")[1] ?? "";
+  assert.match(apiServer, /server_name api\.f-motion\.com/);
+  assert.doesNotMatch(apiServer, /Content-Security-Policy/);
+  const home = await readFile(new URL("../public/web/index.html", import.meta.url), "utf8");
+  const cs = await readFile(new URL("../public/web/cs/index.html", import.meta.url), "utf8");
+  assert.match(home, /<script src="\.\/launch-redirect\.js"><\/script>/);
+  assert.match(cs, /<script src="\.\.\/launch-redirect\.js"><\/script>/);
+  assert.match(home, /<script src="\.\/demo-reel\.js"><\/script>/);
+  assert.doesNotMatch(home, /<script(?![^>]*\bsrc=)/);
+  assert.doesNotMatch(cs, /<script(?![^>]*\bsrc=)/);
 });

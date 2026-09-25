@@ -15,6 +15,7 @@ test("VPS compose path is single-seat, BYOK, and Fotium-free", async () => {
   const install = await readFile(join(root, "install.sh"), "utf8");
   const webDocker = await readFile(join(root, "apps/web/Dockerfile"), "utf8");
   const guide = await readFile(join(root, "docs/runbooks/vps-self-host.md"), "utf8");
+  const nginx = await readFile(join(vps, "nginx.conf"), "utf8");
   const readme = await readFile(join(root, "README.md"), "utf8");
 
   assert.match(compose, /postgres:/);
@@ -61,6 +62,10 @@ test("VPS compose path is single-seat, BYOK, and Fotium-free", async () => {
   assert.match(guide, /corporate|paid/);
   assert.match(guide, /Fotium/);
   assert.match(guide, /hosted-deploy|Hetzner/);
+  assert.match(nginx, /script-src 'self' https:\/\/static\.cloudflareinsights\.com/);
+  assert.match(nginx, /connect-src[^"]*https:\/\/cloudflareinsights\.com/);
+  assert.match(nginx, /media-src 'self'/);
+  assert.doesNotMatch(nginx, /script-src[^;]*unsafe-inline/);
 });
 
 test("install.sh refuses placeholder env and prints next steps", () => {
