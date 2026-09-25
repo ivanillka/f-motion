@@ -88,7 +88,7 @@ test("soft-launch home shows approved English and Czech copy", async () => {
     "3. Render.",
     "Export a reel ready for Fotium or your own host.",
     "F-Motion is the motion layer next to Fotium. Studio UI, partner import, reel engine. Self-host when you want the pipeline on your own stack.",
-    "Title card from the reel engine.",
+    "Studio photographs, rendered as a reel.",
     "Architecture and design contract on GitHub",
     "Built for Prague studio workflows and Fotium Make-reel",
     "f-motion.com",
@@ -105,7 +105,7 @@ test("soft-launch home shows approved English and Czech copy", async () => {
     "Rytmus, timing, look.",
     "Reel pro Fotium nebo vlastní host.",
     "motion vrstva vedle Fotium. Studio, partner import, reel engine. Self-host když chceš pipeline u sebe.",
-    "Titulní karta z reel enginu.",
+    "Studiové fotky vykreslené jako reel.",
     "Pro pražské studio workflow a Fotium Make-reel"
   ];
   for (const phrase of en) assert.match(home, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -116,8 +116,8 @@ test("soft-launch home shows approved English and Czech copy", async () => {
   assert.doesNotMatch(cs, /href="\/app\/"|href="\/login"/);
   assert.match(home, /<video id="demo-reel" autoplay muted loop playsinline preload="metadata"/);
   assert.match(cs, /<video id="demo-reel" autoplay muted loop playsinline preload="metadata"/);
-  assert.match(home, /aria-label="F-Motion title card reel"/);
-  assert.match(cs, /aria-label="Ukázkový reel s titulní kartou"/);
+  assert.match(home, /aria-label="Studio photographs rendered as a vertical reel"/);
+  assert.match(cs, /aria-label="Studiové fotky vykreslené jako vertikální reel"/);
   const homeWebm = home.indexOf("demo-reel.webm");
   const homeMp4 = home.indexOf("demo-reel.mp4");
   assert.ok(homeWebm > 0 && homeMp4 > homeWebm);

@@ -35,6 +35,9 @@ test("Hetzner hosted compose replaces Fly and keeps invite-only 1080p", async ()
   assert.match(nginx, /proxy_pass http:\/\/api:3000/);
   assert.match(nginx, /location = \/api\/healthz/);
   assert.match(nginx, /proxy_buffering off/);
+  assert.match(nginx, /script-src 'self' https:\/\/static\.cloudflareinsights\.com/);
+  assert.match(nginx, /connect-src[^"]*https:\/\/cloudflareinsights\.com/);
+  assert.doesNotMatch(nginx, /script-src[^;]*unsafe-inline/);
 
   assert.match(script, /deploy\/hetzner/);
   assert.match(script, /FENGINE_ENV=hosted/);
