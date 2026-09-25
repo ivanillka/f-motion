@@ -92,9 +92,16 @@
     <section class="launch-block" aria-labelledby="demo-caption">
       <h2 class="launch-visually-hidden" id="demo-heading">Demo</h2>
       <figure class="launch-demo">
-        <div class="launch-frame" role="img" aria-label="Sample render. Full demo soon."></div>
-        <figcaption id="demo-caption">Sample render. Full demo soon.</figcaption>
+        <div class="launch-frame">
+          <img class="launch-still" src="./assets/demo-reel.jpg" alt="F-Motion title card reel">
+          <video id="demo-reel" autoplay muted loop playsinline preload="metadata" poster="./assets/demo-reel.jpg" aria-label="F-Motion title card reel">
+            <source src="./assets/demo-reel.webm" type="video/webm">
+            <source src="./assets/demo-reel.mp4" type="video/mp4">
+          </video>
+        </div>
+        <figcaption id="demo-caption">Title card from the reel engine.</figcaption>
       </figure>
+      <script src="./demo-reel.js"></script>
     </section>
 
     <section class="launch-block">

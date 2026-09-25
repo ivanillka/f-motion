@@ -373,7 +373,7 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
     "Open Studio",
     ">Soon<",
     "How it works",
-    "Sample render. Full demo soon.",
+    "Title card from the reel engine.",
     "Built for Prague studio workflows and Fotium Make-reel",
     "href=\"/cs/\""
   ]) {
@@ -433,7 +433,9 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.match(home, /skip-link/);
   assert.match(home, /href="#main"/);
   assert.match(home, /launch-frame/);
-  assert.doesNotMatch(home, /<video|\.mp4|\.webm/);
+  assert.match(home, /<source src="\.\/assets\/demo-reel\.webm" type="video\/webm">/);
+  assert.match(home, /<source src="\.\/assets\/demo-reel\.mp4" type="video\/mp4">/);
+  assert.doesNotMatch(home, /Full demo soon/);
   assert.doesNotMatch(integrate, /ScrambleTextPlugin/);
   assert.match(integrate, /host-diagram\.webp/);
   assert.doesNotMatch(home, /#docs|View docs/);

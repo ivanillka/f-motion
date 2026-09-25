@@ -973,13 +973,31 @@ button, .btn {
 }
 
 .launch-frame {
+  position: relative;
   width: min(46vw, 220px);
   aspect-ratio: 9 / 16;
   border-radius: 16px;
   border: 1px solid rgba(0, 229, 255, 0.35);
+  overflow: hidden;
   background:
     radial-gradient(ellipse 80% 42% at 50% 28%, rgba(165, 77, 103, 0.28), transparent 70%),
     var(--surface);
+}
+
+.launch-frame video,
+.launch-still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.launch-still { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .launch-frame video { display: none; }
+  .launch-still { display: block; }
 }
 
 .launch-demo figcaption {
