@@ -142,7 +142,7 @@ test("soft-launch wordmark is the inline plain bar and the cube has no text", as
     assert.match(html, /<h1 id="launch-title" class="launch-mark">/);
     assert.match(html, /<span class="launch-visually-hidden">F-Motion<\/span>/);
     assert.match(html, /<svg class="launch-wordmark" aria-hidden="true" width="262" height="45\.27" viewBox="0 -711 4484 775">/);
-    assert.match(html, /<title>F-Motion<\/title>/);
+    assert.match(html, /<title><\/title>/);
     assert.match(html, /fill="#f1f2f3"/);
     assert.match(html, /fill="#d989a0" d="M725 -711h84v775h-84z"/);
     assert.doesNotMatch(html, /fill="#111213"/);
