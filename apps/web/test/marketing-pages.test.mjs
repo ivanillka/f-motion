@@ -187,7 +187,7 @@ test("landing demo reel stays in the 9:16 frame and respects reduced motion", as
   assert.ok(videoBytes < 1.2 * 1024 * 1024, `demo reel video is ${videoBytes} bytes`);
   const webp = (await stat(new URL("../public/web/assets/demo-reel.webp", import.meta.url))).size;
   const jpg = (await stat(new URL("../public/web/assets/demo-reel.jpg", import.meta.url))).size;
-  assert.ok(webp > 0 && webp < 50 * 1024, `webp poster is ${webp} bytes`);
+  assert.ok(webp > 0 && webp < 48000, `webp poster is ${webp} bytes`);
   assert.ok(jpg > 0 && jpg < 80 * 1024, `jpg poster is ${jpg} bytes`);
 });
 
