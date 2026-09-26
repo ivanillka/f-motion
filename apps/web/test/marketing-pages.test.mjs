@@ -128,7 +128,7 @@ test("soft-launch home shows approved English and Czech copy", async () => {
   assert.doesNotMatch(cs, /\u2014|\u2013|---/);
 });
 
-test("soft-launch hero wordmark is the inline motion trail and the cube has no text", async () => {
+test("soft-launch hero wordmark is the inline flow loop and the cube has no text", async () => {
   const css = await readFile(new URL("../public/web/web.css", import.meta.url), "utf8");
   const markRule = css.match(/\.launch-mark \{[^}]+\}/);
   assert.ok(markRule);
@@ -138,17 +138,26 @@ test("soft-launch hero wordmark is the inline motion trail and the cube has no t
   assert.ok(262 * 775 / 4566 > 32, "hero trail mark must stay above the 32px blur floor");
   assert.doesNotMatch(markRule[0], /translateZ|launch-hyphen/);
   assert.doesNotMatch(css, /\.launch-hyphen/);
+  const flowStart = css.indexOf(".fmt-flo .fmt-flo-el");
+  const flow = css.slice(flowStart, css.indexOf(".launch-sub {", flowStart));
+  assert.ok(flow.length > 0);
+  for (const step of ["s0", "s1", "s2", "s3"]) {
+    assert.match(flow, new RegExp(`fmt-flo-flow-${step} 2800ms linear 0ms infinite`));
+    assert.match(flow, new RegExp(`@keyframes fmt-flo-flow-${step}`));
+  }
+  assert.match(flow, /@media \(prefers-reduced-motion: reduce\) \{ \.fmt-flo \.fmt-flo-el \{ animation: none !important; \} \}/);
+  assert.doesNotMatch(flow, /\b(left|top|width|height|margin|filter|box-shadow)\s*:/);
   for (const rel of ["../public/web/index.html", "../public/web/cs/index.html"]) {
     const html = await readFile(new URL(rel, import.meta.url), "utf8");
     assert.match(html, /<h1 id="launch-title" class="launch-mark">/);
     assert.match(html, /<span class="launch-visually-hidden">F-Motion<\/span>/);
-    assert.match(html, /<svg class="launch-wordmark" aria-hidden="true" width="262" height="44\.46" viewBox="0 -711 4566 775">/);
+    assert.match(html, /<svg class="launch-wordmark fmt-flo" aria-hidden="true" width="262" height="44\.46" viewBox="0 -711 4566 775">/);
     assert.match(html, /<title><\/title>/);
-    assert.match(html, /fill="#f1f2f3"/);
-    assert.match(html, /fill="#d989a0" d="M807 -711h84v775h-84z"/);
-    assert.match(html, /fill-opacity="0\.5" d="M741 -655h46v663h-46z"/);
-    assert.match(html, /fill-opacity="0\.28" d="M693 -591h30v535h-30z"/);
-    assert.match(html, /fill-opacity="0\.14" d="M661 -521h16v395h-16z"/);
+    assert.match(html, /class="fmt-flo-el fmt-flo-f" fill="#f1f2f3"/);
+    assert.match(html, /class="fmt-flo-el fmt-flo-bar" fill="#d989a0" d="M807 -711h84v775h-84z"/);
+    assert.match(html, /class="fmt-flo-el fmt-flo-s1" fill="#d989a0" opacity="0\.5"/);
+    assert.match(html, /class="fmt-flo-el fmt-flo-s0" fill="#d989a0" opacity="0"/);
+    assert.doesNotMatch(html, /<style[\s>]/);
     assert.doesNotMatch(html, /M725 -711h84v775h-84z/);
     assert.doesNotMatch(html, /fill="#111213"|fill="#a54d67"/);
     assert.doesNotMatch(html, /<svg[^>]*\sstyle=/);
