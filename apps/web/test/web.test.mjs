@@ -334,12 +334,14 @@ test("build puts marketing at site root with studio under /app", async () => {
   await access(new URL("music/pulse.mp3", dist));
   const home = await readFile(new URL("index.html", dist), "utf8");
   const redirects = await readFile(new URL("_redirects", dist), "utf8");
-  assert.match(home, /Turn stills and clips into motion for studio and Fotium reels/);
+  assert.match(home, /Turn stills and clips into short motion reels/);
+  assert.doesNotMatch(home, /fotium/i);
   assert.match(home, />Soon</);
   assert.doesNotMatch(home, /href="\/app\/"/);
   const czech = await readFile(new URL("cs/index.html", dist), "utf8");
   assert.match(czech, />Brzy</);
   assert.match(czech, /Jak to funguje/);
+  assert.doesNotMatch(czech, /fotium/i);
   assert.doesNotMatch(home, /id="root"/);
   assert.doesNotMatch(home, /mkt-cube/);
   const spa = await readFile(new URL("app/index.html", dist), "utf8");
@@ -368,13 +370,13 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   const css = await readFile(new URL("web.css", root), "utf8");
   const motion = await readFile(new URL("web-motion.js", root), "utf8");
   for (const phrase of [
-    "Turn stills and clips into motion for studio and Fotium reels.",
+    "Turn stills and clips into short motion reels.",
     "View on GitHub",
     "Open Studio",
     ">Soon<",
     "How it works",
     "Atelier, sitting room, still life, mist.",
-    "Built for Prague studio workflows and Fotium Make-reel",
+    "Built for Prague studio workflows and short motion reels.",
     "href=\"/cs/\""
   ]) {
     assert.match(home, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
