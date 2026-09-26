@@ -79,13 +79,16 @@
       <h2 class="launch-visually-hidden" id="demo-heading">Demo</h2>
       <figure class="launch-demo">
         <div class="launch-frame">
-          <img class="launch-still" src="../assets/demo-reel.jpg" alt="Studiové fotky vykreslené jako vertikální reel">
-          <video id="demo-reel" autoplay muted loop playsinline preload="metadata" poster="../assets/demo-reel.jpg" aria-label="Studiové fotky vykreslené jako vertikální reel">
+          <picture class="launch-still">
+            <source srcset="../assets/demo-reel.webp" type="image/webp">
+            <img src="../assets/demo-reel.jpg" alt="Studiové fotky vykreslené jako vertikální reel">
+          </picture>
+          <video id="demo-reel" autoplay muted loop playsinline preload="metadata" poster="../assets/demo-reel.webp" aria-label="Studiové fotky vykreslené jako vertikální reel">
             <source src="../assets/demo-reel.webm" type="video/webm">
             <source src="../assets/demo-reel.mp4" type="video/mp4">
           </video>
         </div>
-        <figcaption id="demo-caption">Studiové fotky vykreslené jako reel.</figcaption>
+        <figcaption id="demo-caption">Ateliér, obývák, zátiší, mlha.</figcaption>
       </figure>
       <script src="../demo-reel.js"></script>
     </section>

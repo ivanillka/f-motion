@@ -974,7 +974,8 @@ button, .btn {
 
 .launch-frame {
   position: relative;
-  width: min(46vw, 220px);
+  width: 260px;
+  max-width: 100%;
   aspect-ratio: 9 / 16;
   border-radius: 16px;
   border: 1px solid rgba(0, 229, 255, 0.35);
@@ -984,8 +985,13 @@ button, .btn {
     var(--surface);
 }
 
+@media (min-width: 401px) {
+  .launch-frame { width: 220px; }
+}
+
 .launch-frame video,
-.launch-still {
+.launch-still,
+.launch-still img {
   position: absolute;
   inset: 0;
   width: 100%;
