@@ -79,13 +79,16 @@
       <h2 class="launch-visually-hidden" id="demo-heading">Demo</h2>
       <figure class="launch-demo">
         <div class="launch-frame">
-          <img class="launch-still" src="./assets/demo-reel.jpg" alt="Studio photographs rendered as a vertical reel">
-          <video id="demo-reel" autoplay muted loop playsinline preload="metadata" poster="./assets/demo-reel.jpg" aria-label="Studio photographs rendered as a vertical reel">
+          <picture class="launch-still">
+            <source srcset="./assets/demo-reel.webp" type="image/webp">
+            <img src="./assets/demo-reel.jpg" alt="Studio photographs rendered as a vertical reel">
+          </picture>
+          <video id="demo-reel" autoplay muted loop playsinline preload="metadata" poster="./assets/demo-reel.webp" aria-label="Studio photographs rendered as a vertical reel">
             <source src="./assets/demo-reel.webm" type="video/webm">
             <source src="./assets/demo-reel.mp4" type="video/mp4">
           </video>
         </div>
-        <figcaption id="demo-caption">Studio photographs, rendered as a reel.</figcaption>
+        <figcaption id="demo-caption">Atelier, sitting room, still life, mist.</figcaption>
       </figure>
       <script src="./demo-reel.js"></script>
     </section>

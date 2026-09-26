@@ -88,7 +88,7 @@ test("soft-launch home shows approved English and Czech copy", async () => {
     "3. Render.",
     "Export a reel ready for Fotium or your own host.",
     "F-Motion is the motion layer next to Fotium. Studio UI, partner import, reel engine. Self-host when you want the pipeline on your own stack.",
-    "Studio photographs, rendered as a reel.",
+    "Atelier, sitting room, still life, mist.",
     "Architecture and design contract on GitHub",
     "Built for Prague studio workflows and Fotium Make-reel",
     "f-motion.com",
@@ -105,7 +105,7 @@ test("soft-launch home shows approved English and Czech copy", async () => {
     "Rytmus, timing, look.",
     "Reel pro Fotium nebo vlastní host.",
     "motion vrstva vedle Fotium. Studio, partner import, reel engine. Self-host když chceš pipeline u sebe.",
-    "Studiové fotky vykreslené jako reel.",
+    "Ateliér, obývák, zátiší, mlha.",
     "Pro pražské studio workflow a Fotium Make-reel"
   ];
   for (const phrase of en) assert.match(home, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -166,19 +166,29 @@ test("hosted studio opens unless VITE_STUDIO_COMING_SOON is set", async () => {
 test("landing demo reel stays in the 9:16 frame and respects reduced motion", async () => {
   const css = await readFile(new URL("../public/web/web.css", import.meta.url), "utf8");
   const script = await readFile(new URL("../public/web/demo-reel.js", import.meta.url), "utf8");
+  assert.match(css, /\.launch-frame \{[^}]*width:\s*260px/);
   assert.match(css, /\.launch-frame \{[^}]*aspect-ratio:\s*9\s*\/\s*16/);
+  assert.match(css, /\.launch-frame \{[^}]*max-width:\s*100%/);
+  assert.match(css, /@media \(min-width:\s*401px\) \{\s*\.launch-frame \{ width: 220px; \}/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\.launch-frame video \{ display: none; \}\s*\.launch-still \{ display: block; \}/);
   assert.match(script, /prefers-reduced-motion: reduce/);
   assert.match(script, /removeAttribute\("autoplay"\)/);
   assert.match(script, /\.pause\(\)/);
-  const names = ["demo-reel.mp4", "demo-reel.webm", "demo-reel.jpg"];
-  let total = 0;
-  for (const name of names) {
-    const bytes = (await stat(new URL(`../public/web/assets/${name}`, import.meta.url))).size;
-    assert.ok(bytes > 0, name);
-    total += bytes;
+  const home = await readFile(new URL("../public/web/index.html", import.meta.url), "utf8");
+  const cs = await readFile(new URL("../public/web/cs/index.html", import.meta.url), "utf8");
+  assert.match(home, /poster="\.\/assets\/demo-reel\.webp"/);
+  assert.match(cs, /poster="\.\.\/assets\/demo-reel\.webp"/);
+  assert.match(home, /<source srcset="\.\/assets\/demo-reel\.webp" type="image\/webp">/);
+  assert.match(home, /<img src="\.\/assets\/demo-reel\.jpg"/);
+  let videoBytes = 0;
+  for (const name of ["demo-reel.mp4", "demo-reel.webm"]) {
+    videoBytes += (await stat(new URL(`../public/web/assets/${name}`, import.meta.url))).size;
   }
-  assert.ok(total < 1.5 * 1024 * 1024, `demo reel assets are ${total} bytes`);
+  assert.ok(videoBytes < 1.2 * 1024 * 1024, `demo reel video is ${videoBytes} bytes`);
+  const webp = (await stat(new URL("../public/web/assets/demo-reel.webp", import.meta.url))).size;
+  const jpg = (await stat(new URL("../public/web/assets/demo-reel.jpg", import.meta.url))).size;
+  assert.ok(webp > 0 && webp < 50 * 1024, `webp poster is ${webp} bytes`);
+  assert.ok(jpg > 0 && jpg < 80 * 1024, `jpg poster is ${jpg} bytes`);
 });
 
 test("cube path walks the short way around a ring of any length", () => {

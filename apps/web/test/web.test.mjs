@@ -373,7 +373,7 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
     "Open Studio",
     ">Soon<",
     "How it works",
-    "Studio photographs, rendered as a reel.",
+    "Atelier, sitting room, still life, mist.",
     "Built for Prague studio workflows and Fotium Make-reel",
     "href=\"/cs/\""
   ]) {
