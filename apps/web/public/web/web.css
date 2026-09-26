@@ -831,13 +831,17 @@ button, .btn {
 
 .launch-mark {
   margin: 0;
-  color: var(--text);
-  font-family: var(--display);
-  font-size: clamp(2rem, 6vw, 3rem);
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 1;
-  white-space: nowrap;
+  width: 262px;
+  max-width: 100%;
+  aspect-ratio: 4484 / 775;
+  line-height: 0;
+}
+
+.launch-wordmark {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4484 / 775;
 }
 
 .launch-sub {

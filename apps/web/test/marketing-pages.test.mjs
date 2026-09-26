@@ -128,16 +128,26 @@ test("soft-launch home shows approved English and Czech copy", async () => {
   assert.doesNotMatch(cs, /\u2014|\u2013|---/);
 });
 
-test("soft-launch wordmark is one readable string and the cube has no text", async () => {
+test("soft-launch wordmark is the inline plain bar and the cube has no text", async () => {
   const css = await readFile(new URL("../public/web/web.css", import.meta.url), "utf8");
   const markRule = css.match(/\.launch-mark \{[^}]+\}/);
   assert.ok(markRule);
-  assert.match(markRule[0], /white-space:\s*nowrap/);
+  assert.match(markRule[0], /width:\s*262px/);
+  assert.match(markRule[0], /max-width:\s*100%/);
+  assert.match(markRule[0], /aspect-ratio:\s*4484\s*\/\s*775/);
   assert.doesNotMatch(markRule[0], /translateZ|launch-hyphen/);
   assert.doesNotMatch(css, /\.launch-hyphen/);
   for (const rel of ["../public/web/index.html", "../public/web/cs/index.html"]) {
     const html = await readFile(new URL(rel, import.meta.url), "utf8");
-    assert.match(html, /<h1 id="launch-title" class="launch-mark">F-Motion<\/h1>/);
+    assert.match(html, /<h1 id="launch-title" class="launch-mark">/);
+    assert.match(html, /<span class="launch-visually-hidden">F-Motion<\/span>/);
+    assert.match(html, /<svg class="launch-wordmark" aria-hidden="true" width="262" height="45\.27" viewBox="0 -711 4484 775">/);
+    assert.match(html, /<title>F-Motion<\/title>/);
+    assert.match(html, /fill="#f1f2f3"/);
+    assert.match(html, /fill="#d989a0" d="M725 -711h84v775h-84z"/);
+    assert.doesNotMatch(html, /fill="#111213"/);
+    assert.doesNotMatch(html, /<svg[^>]*\sstyle=/);
+    assert.match(html, /rel="icon" href="\/icon\.svg"/);
     const scene = html.match(/<div class="launch-scene"[^>]*>[\s\S]*?<\/div>\s*<\/div>/);
     assert.ok(scene, rel);
     assert.equal(scene[0].replace(/<[^>]+>/g, "").trim(), "");
