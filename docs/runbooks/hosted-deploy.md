@@ -13,7 +13,7 @@ gone. After this stack is healthy, destroy the Fly apps so they stop billing.
 
 - A Hetzner Cloud VPS (Ubuntu 24.04 is enough) with Docker Engine + Compose v2.
   Open ports 80 (and 443 if you terminate TLS on the box instead of Cloudflare).
-- `Dockerfile`s: `apps/api/Dockerfile` (Node 24.15.0 + FFmpeg 8.1.2; API
+- `Dockerfile`s: `apps/api/Dockerfile` (Node 24.15.0 + FFmpeg 8.1.3; API
   process never calls FFmpeg, worker service does),
   `apps/worker/Dockerfile` (worker-only image, same FFmpeg pin — see
   the Dockerfile header comment for why apt can't supply it yet).
