@@ -994,6 +994,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .scene-actions button { width: auto; }
 .editor-foot { display: flex; flex-wrap: wrap; gap: 8px; }
 .editor-foot button { width: auto; min-height: 36px; padding: 6px 12px; }
+.templates-panel { margin: 16px 0 8px; }
+.templates-panel h2 { margin: 0 0 4px; font-size: 1.1rem; }
+.templates-panel > p { margin: 0 0 12px; opacity: 0.8; }
 .candidates { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .candidate { display: grid; gap: 10px; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
 .candidate-preview { position: relative; }

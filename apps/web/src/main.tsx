@@ -65,6 +65,14 @@ import { APP_VERSION, RELEASE_NOTES } from "./release";
 import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOrigin } from "./auth";
 import { clearImportedProject, isImportedProjectId, rememberImportedProject } from "./imported-project";
 import { githubBlobUrl } from "./repo";
+import {
+  deleteStoryboardTemplate,
+  readStoryboardTemplates,
+  scenesFromTemplate,
+  snapshotToTemplate,
+  upsertStoryboardTemplate,
+  type StoryboardTemplate
+} from "./storyboard-templates";
 import "./style.css";
 
 type Step = "sign-in" | "drafts" | "brief" | "media" | "editor" | "render" | "settings";
@@ -223,6 +231,11 @@ export function App() {
   briefDraftRef.current = draft;
   briefAskedRef.current = briefAsked;
   const [project, setProject] = useState<ProjectSnapshot>();
+  const [templates, setTemplates] = useState<StoryboardTemplate[]>(() => readStoryboardTemplates());
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [editingTemplateId, setEditingTemplateId] = useState<string>();
   const [activeSceneId, setActiveSceneId] = useState("");
   const [cropFocus, setCropFocus] = useState({ x: 0.5, y: 0.5 });
   const [livePlaying, setLivePlaying] = useState(false);
@@ -1438,36 +1451,111 @@ export function App() {
     }
   }
 
+  async function openProjectFromStripMediaSource(source: {
+    brief: ProjectSnapshot["brief"];
+    selected_concept_id?: string;
+    scenes: Scene[];
+  }, doneStatus: string): Promise<boolean> {
+    setBusy(true);
+    setStatus("Opening template…");
+    try {
+      const brief = source.brief;
+      const body = await api.request<{ project: ProjectSnapshot }>("/api/projects", {
+        method: "POST",
+        body: JSON.stringify(brief)
+      });
+      let updated = body.project;
+      const conceptId = source.selected_concept_id
+        ?? conceptsFor(brief).find(({ id }) => id === "story")?.id
+        ?? conceptsFor(brief)[0].id;
+      updated = await api.command(updated.id, updated.revision, "select_concept", { concept_id: conceptId });
+      const scenes = (source.scenes.length ? source.scenes : buildStoryboardDraft(brief.purpose, newCommandId)).map((scene, order) => {
+        const { media_id: _mediaId, ...withoutMedia } = scene;
+        return {
+          ...withoutMedia,
+          id: newCommandId(),
+          order,
+          visual_prompt: scene.visual_prompt || `${brief.purpose.slice(0, 210).trim()} — scene ${order + 1}`
+        };
+      });
+      updated = await api.command(updated.id, updated.revision, "replace_storyboard", { scenes });
+      setSceneMedia({});
+      setProject(updated);
+      setActiveSceneId(updated.scenes[0]?.id ?? "");
+      setDraft(updated.brief.purpose);
+      if (updated.brief.architecture) setArchitecture(updated.brief.architecture);
+      if (updated.brief.media_glance) setMediaGlance(updated.brief.media_glance);
+      localStorage.setItem("fengine-project", updated.id);
+      dismissConflict();
+      setTemplatesOpen(false);
+      setStep("editor");
+      setStatus(doneStatus);
+      return true;
+    } catch {
+      setStatus("Template could not be applied. Please try again.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveAsNewProject() {
     const source = conflict ?? project;
     if (!source) return;
-    const brief = source.brief;
-    setStatus("Saving as new project…");
-    const body = await api.request<{ project: ProjectSnapshot }>("/api/projects", {
-      method: "POST",
-      body: JSON.stringify(brief)
-    });
-    let updated = body.project;
-    const conceptId = source.selected_concept_id
-      ?? conceptsFor(brief).find(({ id }) => id === "story")?.id
-      ?? conceptsFor(brief)[0].id;
-    updated = await api.command(updated.id, updated.revision, "select_concept", { concept_id: conceptId });
-    const scenes = (source.scenes.length ? source.scenes : buildStoryboardDraft(brief.purpose, newCommandId)).map((scene, order) => {
-      const { media_id: _mediaId, ...withoutMedia } = scene;
-      return {
-        ...withoutMedia,
-        id: newCommandId(),
-        order,
-        visual_prompt: scene.visual_prompt || `${brief.purpose.slice(0, 210).trim()} — scene ${order + 1}`
-      };
-    });
-    updated = await api.command(updated.id, updated.revision, "replace_storyboard", { scenes });
-    setProject(updated);
-    setActiveSceneId(updated.scenes[0]?.id ?? "");
-    localStorage.setItem("fengine-project", updated.id);
-    dismissConflict();
-    setStep("editor");
-    setStatus("Saved as a new project (media not copied).");
+    await openProjectFromStripMediaSource(source, "Saved as a new project (media not copied).");
+  }
+
+  function openSaveTemplate(existing?: StoryboardTemplate) {
+    if (!project?.scenes.length && !existing) {
+      setStatus("Add scenes before saving a template.");
+      return;
+    }
+    setEditingTemplateId(existing?.id);
+    setTemplateName(existing?.name || project?.brief.purpose?.trim() || "Storyboard template");
+    setSaveTemplateOpen(true);
+  }
+
+  function commitSaveTemplate() {
+    if (!project?.scenes.length) {
+      setStatus("Add scenes before saving a template.");
+      return;
+    }
+    const name = templateName.trim();
+    if (!name) {
+      setStatus("Name the template before saving.");
+      return;
+    }
+    const saved = snapshotToTemplate(project, name, editingTemplateId);
+    setTemplates(upsertStoryboardTemplate(saved));
+    setSaveTemplateOpen(false);
+    setEditingTemplateId(undefined);
+    setStatus(editingTemplateId ? `Template “${saved.name}” updated (media not stored).` : `Template “${saved.name}” saved (media not stored).`);
+  }
+
+  async function applyStoryboardTemplate(template: StoryboardTemplate) {
+    const scenes = scenesFromTemplate(template, newCommandId);
+    await openProjectFromStripMediaSource({
+      brief: template.brief,
+      selected_concept_id: template.selected_concept_id,
+      scenes
+    }, `Applied template “${template.name}” (add media to each scene).`);
+  }
+
+  function renameStoryboardTemplate(template: StoryboardTemplate) {
+    const nextName = window.prompt("Rename template", template.name)?.trim();
+    if (!nextName) return;
+    setTemplates(upsertStoryboardTemplate({
+      ...template,
+      name: nextName,
+      updatedAt: new Date().toISOString()
+    }));
+    setStatus(`Template renamed to “${nextName}”.`);
+  }
+
+  function removeStoryboardTemplate(template: StoryboardTemplate) {
+    if (!window.confirm(`Delete template “${template.name}”? This cannot be undone.`)) return;
+    setTemplates(deleteStoryboardTemplate(template.id));
+    setStatus(`Template “${template.name}” deleted.`);
   }
 
   async function followRender(id: string, lastEventId = "") {
@@ -2580,6 +2668,7 @@ export function App() {
         const nextId = nextLiveSceneId(project.scenes.map(({ id }) => id), current.id);
         sceneClock.current = { startedAt: now, elapsedAtPause: 0 };
         setPlaySceneId(nextId);
+        setActiveSceneId(nextId);
       }
       setPlayTick(now);
     };
@@ -2786,10 +2875,24 @@ export function App() {
         <button className="secondary" onClick={() => setStep("settings")}>Choose video sources</button>
       </aside>
       <button onClick={startCreate}>Create new video</button>
+      <button type="button" className="secondary" onClick={() => setTemplatesOpen(true)}>Templates</button>
       {draftsLoading && <p role="status">Loading drafts…</p>}
       {!draftsLoading && drafts.length === 0 && <div className="empty-drafts">
         <p role="status">No drafts yet.</p>
         <p>Describe what you want to make. F-Motion will recommend a video plan and storyboard.</p>
+      </div>}
+      {templates.length > 0 && <div className="templates-panel" aria-label="Storyboard templates">
+        <h2>Templates</h2>
+        <p>Reuse captions, timing, and overlay looks without media footage.</p>
+        <div className="concepts drafts-grid">{templates.map((item) =>
+          <article key={item.id} className="card draft-card">
+            <button type="button" className="draft-open" disabled={busy} onClick={() => void applyStoryboardTemplate(item)}>
+              <strong>{item.name}</strong>
+              <span className="draft-meta">{item.scenes.length} scenes · media not stored</span>
+            </button>
+            <button type="button" className="secondary" disabled={busy} onClick={() => renameStoryboardTemplate(item)}>Rename</button>
+            <button type="button" className="secondary draft-delete" disabled={busy} onClick={() => removeStoryboardTemplate(item)}>Delete</button>
+          </article>)}</div>
       </div>}
       <div className="concepts drafts-grid">{drafts.map((item) =>
         <article key={item.id} className="card draft-card">
@@ -3313,9 +3416,41 @@ export function App() {
 
       <div className="editor-foot">
       {downloadUrl && <button className="secondary" onClick={() => setStep("render")}>{renderKind === "final" ? "View final export" : "View accurate preview"}{previewRevision !== project.revision ? " · older" : ""}</button>}
+      <button className="secondary" disabled={busy || !project.scenes.length} onClick={() => openSaveTemplate()}>Save as template</button>
+      <button className="secondary" disabled={busy} onClick={() => setTemplatesOpen(true)}>Templates</button>
       <button className="secondary" onClick={() => setStep("brief")}>Start a different description</button>
       <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
       </div>
+      {saveTemplateOpen && project && <dialog open aria-labelledby="save-template-title">
+        <h2 id="save-template-title">{editingTemplateId ? "Update template" : "Save as template"}</h2>
+        <p>Stores captions, timing, motion, and overlay looks. Media footage is not saved.</p>
+        <label htmlFor="template-name">Template name
+          <input id="template-name" maxLength={80} value={templateName} onChange={(event) => setTemplateName(event.target.value)} />
+        </label>
+        <div className="dialog-actions">
+          <button disabled={busy || !templateName.trim()} onClick={commitSaveTemplate}>{editingTemplateId ? "Update template" : "Save template"}</button>
+          <button className="secondary" onClick={() => { setSaveTemplateOpen(false); setEditingTemplateId(undefined); }}>Cancel</button>
+        </div>
+      </dialog>}
+      {templatesOpen && <dialog open aria-labelledby="templates-title">
+        <h2 id="templates-title">Templates</h2>
+        <p>Apply a saved text scheme to a new draft. Footage stays empty so you can attach a new gallery.</p>
+        {templates.length === 0 ? <p role="status">No templates yet. Save one from the storyboard.</p> : (
+          <div className="concepts drafts-grid">{templates.map((item) =>
+            <article key={item.id} className="card draft-card">
+              <button type="button" className="draft-open" disabled={busy} onClick={() => void applyStoryboardTemplate(item)}>
+                <strong>{item.name}</strong>
+                <span className="draft-meta">{item.scenes.length} scenes · media not stored</span>
+              </button>
+              {project ? <button type="button" className="secondary" disabled={busy || !project.scenes.length} onClick={() => { setTemplatesOpen(false); openSaveTemplate(item); }}>Overwrite from this draft</button> : null}
+              <button type="button" className="secondary" disabled={busy} onClick={() => renameStoryboardTemplate(item)}>Rename</button>
+              <button type="button" className="secondary draft-delete" disabled={busy} onClick={() => removeStoryboardTemplate(item)}>Delete</button>
+            </article>)}</div>
+        )}
+        <div className="dialog-actions">
+          <button className="secondary" onClick={() => setTemplatesOpen(false)}>Close</button>
+        </div>
+      </dialog>}
       {falGenOpen && activeScene && <dialog open aria-labelledby="fal-gen-title">
         <h2 id="fal-gen-title">Generate AI image for scene {activeSceneNumber}</h2>
         <p>Optional fallback after your own media or licensed Pexels search. One still uses Flux Schnell on FAL. Charged directly to your FAL account. F-Motion copies the result into private storage within an hour and does not keep FAL CDN copies longer than that preference.</p>

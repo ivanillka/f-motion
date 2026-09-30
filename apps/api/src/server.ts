@@ -338,7 +338,17 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const generatedScenes = buildStoryboardDraft(draft.brief.purpose, randomUUID, draft.architecture, draft.source);
       const allowedMediaUrls = draft.mediaUrls.filter((url) => externalMediaUrlAllowed(url, integration.mediaOrigins));
       if (allowedMediaUrls.length !== draft.mediaUrls.length) {
-        console.error("external import skipped origins", draft.externalId, draft.mediaUrls.length - allowedMediaUrls.length);
+        const skippedHosts = [...new Set(draft.mediaUrls
+          .filter((url) => !externalMediaUrlAllowed(url, integration.mediaOrigins))
+          .map((url) => {
+            try { return new URL(url).host; } catch { return "(invalid)"; }
+          }))];
+        console.error(
+          "external import skipped origins",
+          draft.externalId,
+          draft.mediaUrls.length - allowedMediaUrls.length,
+          skippedHosts.join(",") || "(none)"
+        );
       }
       const importedMediaIds: string[] = [];
       if (allowedMediaUrls.length && options.media) {
@@ -365,8 +375,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         && legacyAutoPrompts
         && project.scenes.some((scene) => scene.caption.includes("https://") || scene.visual_prompt?.startsWith("use secondary image"));
       // Queue Edit must land on the host's current media pick, not a stale attach.
+      // Assign uniquely by index — never wrap one still across every beat.
+      const expectedMediaId = (index: number) => importedMediaIds[index];
       const hostMediaMismatch = importedMediaIds.length > 0 && project.scenes.length > 0 && project.scenes.some((scene, index) =>
-        scene.media_id !== importedMediaIds[index % importedMediaIds.length]);
+        scene.media_id !== expectedMediaId(index));
       const hostCopyMismatch = project.scenes.length > 0 && generatedScenes.some((scene, index) =>
         scene.caption !== project.scenes[index]?.caption
         || scene.overlay_look !== project.scenes[index]?.overlay_look
@@ -380,10 +392,15 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           }))
         : project.scenes.length ? project.scenes : generatedScenes;
       const scenes = currentScenes.map((scene, index) => {
-        const mediaId = importedMediaIds[index % importedMediaIds.length];
-        return mediaId && (!scene.media_id || rebuildImportedDraft || !project.scenes.length)
-          ? { ...scene, media_id: mediaId, visual_prompt: `Selected gallery image ${index + 1}` }
-          : scene;
+        const mediaId = expectedMediaId(index);
+        if (mediaId && (!scene.media_id || rebuildImportedDraft || !project.scenes.length)) {
+          return { ...scene, media_id: mediaId, visual_prompt: `Selected gallery image ${index + 1}` };
+        }
+        if (rebuildImportedDraft && !mediaId) {
+          const { media_id: _drop, ...withoutMedia } = scene;
+          return { ...withoutMedia, visual_prompt: `Selected gallery image ${index + 1}` };
+        }
+        return scene;
       });
       const storyboardChanged = scenes.length !== project.scenes.length || scenes.some((scene, index) => {
         const priorScene = project.scenes[index];
