@@ -331,9 +331,9 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     const project = projects.get(ownerId, projectId);
     assert.equal(project.revision, 2);
     assert.equal(project.scenes.length, 4);
-    assert.ok(project.scenes.every((scene) => scene.media_id));
+    assert.ok(project.scenes.slice(0, 2).every((scene) => scene.media_id));
+    assert.ok(project.scenes.slice(2).every((scene) => !scene.media_id));
     assert.notEqual(project.scenes[0].media_id, project.scenes[1].media_id);
-    assert.equal(project.scenes[0].media_id, project.scenes[2].media_id);
     assert.match(project.scenes.map(({ caption }) => caption).join(" "), /One final look/);
     assert.doesNotMatch(project.scenes.map(({ caption }) => caption).join(" "), /https:\/\//);
     await waitFor(() => stored.length === 4 && [...assets.values()].every((asset) => asset.state === "ready"), "gallery stills ready");
@@ -371,8 +371,9 @@ test("a repeated trusted import securely ingests and attaches existing gallery m
     const partial = await unreachable.json();
     assert.match(partial.project_url, /\/app\/\?project=/);
     const partialProject = projects.get(ownerId, partial.project_id);
-    assert.ok(partialProject.scenes.every((scene) => scene.media_id));
-    assert.equal(new Set(partialProject.scenes.map((scene) => scene.media_id)).size, 2);
+    assert.equal(partialProject.scenes.filter((scene) => scene.media_id).length, 2);
+    assert.equal(new Set(partialProject.scenes.map((scene) => scene.media_id).filter(Boolean)).size, 2);
+    assert.ok(partialProject.scenes.slice(2).every((scene) => !scene.media_id));
 
     const storeBroke = await request({
       ...baseBody,
@@ -535,7 +536,9 @@ test("trusted import returns the draft URL before host stills finish copying", a
     const body = await response.json();
     assert.match(body.project_url, /\/app\/\?project=/);
     const project = projects.get(ownerId, body.project_id);
-    assert.ok(project.scenes.every((scene) => scene.media_id));
+    assert.equal(project.scenes.filter((scene) => scene.media_id).length, 1);
+    assert.ok(project.scenes[0]?.media_id);
+    assert.ok(project.scenes.slice(1).every((scene) => !scene.media_id));
     assert.ok([...assets.values()].every((asset) => asset.state === "admitted"));
   } finally {
     release();

@@ -2668,6 +2668,7 @@ export function App() {
         const nextId = nextLiveSceneId(project.scenes.map(({ id }) => id), current.id);
         sceneClock.current = { startedAt: now, elapsedAtPause: 0 };
         setPlaySceneId(nextId);
+        setActiveSceneId(nextId);
       }
       setPlayTick(now);
     };

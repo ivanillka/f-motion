@@ -92,6 +92,8 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Voice-over never loops/);
   assert.match(source, /previewMediaShouldLoop\(/);
   assert.match(source, /previewVideoRef\.current\?\.pause\(\)/);
+  assert.match(source, /setPlaySceneId\(nextId\)/);
+  assert.match(source, /setActiveSceneId\(nextId\)/);
   assert.doesNotMatch(source, /loop=\{!livePlaying\}/);
   assert.match(source, /Message F-Motion/);
   assert.match(source, /sendBrief\(/);
