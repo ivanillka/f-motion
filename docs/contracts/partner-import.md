@@ -84,7 +84,7 @@ Rules:
   skipped; the draft is still created. Items may be strings or `{ "url": "…" }`.
   Send at least as many accepted URLs as storyboard scenes when every beat
   needs footage. F-Motion attaches **one unique** imported still per scene by
-  index and does **not** wrap a short list across later beats — overflow scenes
+  index and does **not** wrap a short list across later beats; overflow scenes
   stay empty for upload/stock.
 - Import owner is always `FENGINE_IMPORT_OWNER_ID` (invite-only allowlist).
 - `notify_url` is optional. When present it must be HTTPS on
