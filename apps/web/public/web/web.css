@@ -748,10 +748,32 @@ button, .btn {
 .launch-hero::after { right: 0; }
 
 .launch-scene {
-  perspective: 42rem;
+  width: 100%;
+  /* Clip outside the perspective element so the projected cube cannot paint on the wordmark. */
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  padding: 5.75rem 0 6rem;
+  touch-action: none;
+}
+
+.launch-stage {
+  perspective: 84rem;
   perspective-origin: 50% 42%;
-  /* Holds the rotated cube so its projection cannot cross the wordmark. */
-  padding: 2.75rem 2.5rem;
+}
+
+@media (max-width: 799px) {
+  .launch-scene {
+    width: calc(100% + 32px);
+    margin-inline: -16px;
+  }
+}
+
+.launch-tilt {
+  transform-style: preserve-3d;
+  transform: rotateX(0deg) rotateY(0deg);
+  transition: transform 720ms cubic-bezier(0.22, 0.7, 0.24, 1);
+  pointer-events: none;
 }
 
 .launch-cube {
@@ -760,48 +782,38 @@ button, .btn {
   height: var(--s);
   position: relative;
   transform-style: preserve-3d;
-  animation: launchDrift 14s ease-in-out infinite;
+  pointer-events: none;
+  transform: rotateX(16deg) rotateY(-24deg) rotateZ(-3deg);
+  animation: launchTumble 36s linear infinite;
 }
 
 .launch-face {
   position: absolute;
   inset: 0;
   border: 1px solid rgba(0, 229, 255, 0.22);
-  background: rgba(241, 242, 243, 0.02);
+  background-color: rgba(241, 242, 243, 0.02);
   pointer-events: none;
 }
 
 .launch-face[data-side="front"] {
   transform: translateZ(calc(var(--s) / 2));
   border-color: rgba(0, 229, 255, 0.38);
-  background: linear-gradient(180deg, rgba(241, 242, 243, 0.05), rgba(241, 242, 243, 0.012));
-}
-
-.launch-face[data-side="front"]::after {
-  content: "";
-  position: absolute;
-  top: -20%;
-  right: 0;
-  width: 1px;
-  height: 70%;
-  background: linear-gradient(180deg, transparent 10%, #00e5ff 50%, transparent 90%);
-  opacity: 0.8;
-  animation: launchGlint 11s ease-in-out infinite;
+  background-color: rgba(241, 242, 243, 0.04);
 }
 
 .launch-face[data-side="back"] {
   transform: rotateY(180deg) translateZ(calc(var(--s) / 2));
-  background: rgba(17, 18, 19, 0.2);
+  background-color: rgba(17, 18, 19, 0.2);
 }
 
 .launch-face[data-side="right"] {
   transform: rotateY(90deg) translateZ(calc(var(--s) / 2));
-  background: rgba(17, 18, 19, 0.28);
+  background-color: rgba(17, 18, 19, 0.28);
 }
 
 .launch-face[data-side="left"] {
   transform: rotateY(-90deg) translateZ(calc(var(--s) / 2));
-  background: rgba(17, 18, 19, 0.22);
+  background-color: rgba(17, 18, 19, 0.22);
 }
 
 .launch-face[data-side="top"] {
@@ -811,8 +823,32 @@ button, .btn {
 
 .launch-face[data-side="bottom"] {
   transform: rotateX(-90deg) translateZ(calc(var(--s) / 2));
-  background: rgba(17, 18, 19, 0.45);
+  background-color: rgba(17, 18, 19, 0.45);
 }
+
+/* Hairline sits inside the face. No offset, so it cannot paint past the cube. */
+.launch-cube > .launch-face::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    118deg,
+    transparent 42%,
+    rgba(0, 229, 255, 0.1) 48.6%,
+    rgba(0, 229, 255, 0.72) 50%,
+    rgba(0, 229, 255, 0.1) 51.4%,
+    transparent 58%
+  );
+  opacity: 0;
+  animation: launchSweep 9s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.launch-cube > .launch-face[data-side="right"]::after { animation-delay: -1.5s; }
+.launch-cube > .launch-face[data-side="back"]::after { animation-delay: -3s; }
+.launch-cube > .launch-face[data-side="left"]::after { animation-delay: -4.5s; }
+.launch-cube > .launch-face[data-side="top"]::after { animation-delay: -6s; }
+.launch-cube > .launch-face[data-side="bottom"]::after { animation-delay: -7.5s; }
 
 .launch-shell {
   position: absolute;
@@ -826,8 +862,6 @@ button, .btn {
   border-color: rgba(241, 242, 243, 0.1);
   background: rgba(17, 18, 19, 0.1);
 }
-
-.launch-shell .launch-face::after { content: none; }
 
 .launch-mark {
   margin: 0;
@@ -1191,6 +1225,7 @@ button, .btn {
 @media (prefers-reduced-motion: reduce) {
   .launch-frame video { display: none; }
   .launch-still { display: block; }
+  .launch-cube > .launch-face::after { content: none; }
 }
 
 .launch-demo figcaption {
@@ -1219,14 +1254,21 @@ button, .btn {
   text-underline-offset: 0.18em;
 }
 
-@keyframes launchDrift {
-  0%, 100% { transform: rotateX(14deg) rotateY(-18deg); }
-  50% { transform: rotateX(17deg) rotateY(-12deg); }
+@keyframes launchTumble {
+  0% { transform: rotateX(16deg) rotateY(0deg) rotateZ(-3deg); }
+  12.5% { transform: rotateX(18deg) rotateY(45deg) rotateZ(-1deg); }
+  25% { transform: rotateX(16deg) rotateY(90deg) rotateZ(2deg); }
+  37.5% { transform: rotateX(13deg) rotateY(135deg) rotateZ(3deg); }
+  50% { transform: rotateX(15deg) rotateY(180deg) rotateZ(1deg); }
+  62.5% { transform: rotateX(18deg) rotateY(225deg) rotateZ(-2deg); }
+  75% { transform: rotateX(16deg) rotateY(270deg) rotateZ(-3deg); }
+  87.5% { transform: rotateX(13deg) rotateY(315deg) rotateZ(-1deg); }
+  100% { transform: rotateX(16deg) rotateY(360deg) rotateZ(-3deg); }
 }
 
-@keyframes launchGlint {
-  0%, 100% { transform: translateY(0); opacity: 0.2; }
-  50% { transform: translateY(130%); opacity: 0.85; }
+@keyframes launchSweep {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
 }
 
 @media (max-width: 800px) {
