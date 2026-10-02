@@ -190,6 +190,37 @@ test("hosted studio opens unless VITE_STUDIO_COMING_SOON is set", async () => {
   assert.doesNotMatch(site, /MarketingSite/);
 });
 
+test("landing cube tumbles inside a clipped scene and freezes when motion is reduced", async () => {
+  const css = await readFile(new URL("../public/web/web.css", import.meta.url), "utf8");
+  const script = await readFile(new URL("../public/web/launch-cube.js", import.meta.url), "utf8");
+  const scene = css.match(/\.launch-scene \{[^}]+\}/);
+  assert.ok(scene);
+  assert.match(scene[0], /overflow:\s*hidden/);
+  const tumble = css.match(/animation:\s*launchTumble (\d+)s linear infinite/);
+  assert.ok(tumble);
+  assert.ok(Number(tumble[1]) >= 24, "tumble stays slow enough to read as a mark");
+  assert.match(css, /@keyframes launchTumble \{[^]*rotateY\(360deg\)/);
+  assert.match(css, /@keyframes launchSweep/);
+  assert.match(css, /background-position:\s*0% 50%/);
+  assert.doesNotMatch(css, /@keyframes launchDrift|@keyframes launchGlint|translateY\(130%\)/);
+  assert.match(css, /animation:\s*none !important/);
+  assert.match(css, /\.launch-cube > \.launch-face \{ background-image: none; \}/);
+  assert.match(script, /if \(reduce\.matches\) return;/);
+  assert.ok(script.indexOf("prefers-reduced-motion") < script.indexOf("addEventListener"));
+  assert.match(script, /pointerType !== "touch"/);
+  assert.match(script, /pointerleave/);
+  assert.doesNotMatch(script, /eval\(|WebAssembly|new Worker|blob:/);
+  for (const rel of ["../public/web/index.html", "../public/web/cs/index.html"]) {
+    const html = await readFile(new URL(rel, import.meta.url), "utf8");
+    assert.match(html, /class="launch-stage"/);
+  assert.match(html, /class="launch-tilt"/);
+    assert.match(html, /<script src="(?:\.\/|\.\.\/)launch-cube\.js"><\/script>/);
+    assert.doesNotMatch(html, /<style[\s>]/);
+    assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)/);
+    assert.doesNotMatch(html, /<svg[^>]*\sstyle=/);
+  }
+});
+
 test("landing demo reel stays in the 9:16 frame and respects reduced motion", async () => {
   const css = await readFile(new URL("../public/web/web.css", import.meta.url), "utf8");
   const script = await readFile(new URL("../public/web/demo-reel.js", import.meta.url), "utf8");
