@@ -201,10 +201,10 @@ test("landing cube tumbles inside a clipped scene and freezes when motion is red
   assert.ok(Number(tumble[1]) >= 24, "tumble stays slow enough to read as a mark");
   assert.match(css, /@keyframes launchTumble \{[^]*rotateY\(360deg\)/);
   assert.match(css, /@keyframes launchSweep/);
-  assert.match(css, /background-position:\s*0% 50%/);
-  assert.doesNotMatch(css, /@keyframes launchDrift|@keyframes launchGlint|translateY\(130%\)/);
+  assert.match(css, /\.launch-cube > \.launch-face::after \{[^}]*inset:\s*0/);
+  assert.doesNotMatch(css, /@keyframes launchDrift|@keyframes launchGlint|translateY\(130%\)|background-size:\s*400%/);
   assert.match(css, /animation:\s*none !important/);
-  assert.match(css, /\.launch-cube > \.launch-face \{ background-image: none; \}/);
+  assert.match(css, /\.launch-cube > \.launch-face::after \{ content: none; \}/);
   assert.match(script, /if \(reduce\.matches\) return;/);
   assert.ok(script.indexOf("prefers-reduced-motion") < script.indexOf("addEventListener"));
   assert.match(script, /pointerType !== "touch"/);
