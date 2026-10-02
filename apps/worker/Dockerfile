@@ -6,16 +6,16 @@
 #
 # .dockerignore keeps .env* and node_modules out of the build context.
 
-# FFmpeg 8.1.2 is not packaged by Debian bookworm/trixie apt repos yet
+# FFmpeg 8.1.3 is not packaged by Debian bookworm/trixie apt repos yet
 # (bookworm ships 5.1.x, trixie ships 7.1.x as of 2026-07). Pin the static
 # BtbN/FFmpeg-Builds "gpl" release build instead — it only links against
 # glibc/libgcc, so it drops into bookworm-slim with no extra apt packages.
 # BtbN autobuild tags are pruned after about a week; re-pin from
 # https://github.com/BtbN/FFmpeg-Builds/releases if the curl 404s.
 FROM debian:bookworm-slim AS ffmpeg
-ARG FFMPEG_VERSION=n8.1.2-44-g7c533d0f86
-ARG FFMPEG_RELEASE_TAG=autobuild-2026-08-16-13-00
-ARG FFMPEG_SHA256=17780994c4679806fb227676f66a0af30c6379afc770324829f48f2a379be558
+ARG FFMPEG_VERSION=n8.1.3
+ARG FFMPEG_RELEASE_TAG=autobuild-2026-09-24-14-14
+ARG FFMPEG_SHA256=30e87bab39f0153a85d96abec439e2f697ff2ef3ba5e3a141cd2b0acb5428043
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
  && rm -rf /var/lib/apt/lists/*
