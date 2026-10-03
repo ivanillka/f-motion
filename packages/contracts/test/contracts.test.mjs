@@ -73,7 +73,24 @@ test("title and overlay_place are additive and bounded", () => {
   assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, title: "x".repeat(61) }] }), false);
   assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, overlay_place: "left" }] }), false);
   assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, overlay_look: "poster" }] }), true);
+  assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, overlay_look: "spoken" }] }), true);
   assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, overlay_look: "neon" }] }), false);
+});
+test("brief cta and brand mark are optional and bounded", () => {
+  const base = snapshotWithPrompt("remote island");
+  assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, cta: "What would you add?" } }), true);
+  assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, brand_mark: true } }), true);
+  assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, cta: " padded" } }), false);
+  assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, cta: "" } }), false);
+  assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, brand_mark: false } }), false);
+  assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, frame: "reel" } }), true);
+  assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, frame: "desktop" } }), true);
+  assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, frame: "both" } }), true);
+  assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, frame: "square" } }), false);
+  assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, mix: true } }), true);
+  assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, mix: false } }), false);
+  assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...base.scenes[0], picture: "document" }] }), true);
+  assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...base.scenes[0], picture: "clip" }] }), false);
 });
 
 test("brief soundtrack is optional and validated when present", () => {

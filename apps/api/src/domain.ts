@@ -330,6 +330,11 @@ export class PostgresProjectRepository implements ProjectRepository {
       await client.query(`UPDATE "Project" SET brief = $1 WHERE id = $2`, [updated.brief, command.project_id]);
       return;
     }
+    if (command.kind === "update_reel") {
+      await this.syncScenes(client, command.project_id, updated.scenes);
+      await client.query(`UPDATE "Project" SET brief = $1 WHERE id = $2`, [updated.brief, command.project_id]);
+      return;
+    }
     if (command.kind !== "reorder_scene") throw new Error("unsupported command persistence");
     await client.query(`UPDATE "Scene" SET position = -position - 1 WHERE "projectId" = $1`, [command.project_id]);
     for (const scene of updated.scenes) {

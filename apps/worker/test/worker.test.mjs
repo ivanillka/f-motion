@@ -355,6 +355,88 @@ test("caption ass builder freezes the safe-area layout", () => {
   assert.match(ass, /&H61000000/, "pill BackColour alpha 0x61 is ~62% opaque, matching the editor overlay");
   assert.match(ass, /^Dialogue: 0,0:00:00\.00,0:00:00\.50,Caption,,0,0,0,,\{\\k\d+\}Project \{\\k\d+\}caption$/m);
 });
+test("spoken overlay is large sentence-case karaoke in the center", () => {
+  const ass = buildCaptionAss(
+    [{ text: "What would you add?", start_ms: 0, end_ms: 1600 }],
+    { look: "spoken", caption: "What would you add?", place: "center", durationMs: 1600 }
+  );
+  assert.match(ass, /Style: Caption,Inter Display ExtraBold,68,/);
+  assert.match(ass, /Style: Caption,.*,5,80,80,0,1$/m);
+  assert.match(ass, /\\an5\\k\d+\}What \{\\k\d+\}would \{\\k\d+\}you \{\\k\d+\}add\?/);
+  assert.doesNotMatch(ass, /WHAT WOULD YOU ADD/);
+  assert.doesNotMatch(ass, /Style: Caption,.*&H61000000/);
+});
+test("brand mark overlays the tumbling cube in the top right and stays off unless asked", () => {
+  const plain = buildRenderJob(snapshot, "preview.mp4", {}, "/tmp/job");
+  assert.doesNotMatch(plain.concatArgs.join(" "), /f-motion-mark\.webm/);
+  const marked = buildRenderJob({
+    ...snapshot,
+    brief: { ...snapshot.brief, brand_mark: true }
+  }, "preview.mp4", {}, "/tmp/job");
+  const args = marked.concatArgs.join(" ");
+  assert.match(args, /f-motion-mark\.webm/);
+  assert.match(args, /-c:v libvpx-vp9 -stream_loop -1 -i .*f-motion-mark\.webm/);
+  assert.match(args, /scale=302:-1:flags=lanczos,format=yuva420p\[mark\]/);
+  assert.match(args, /overlay=main_w-overlay_w-43:64:shortest=1:format=auto/);
+  assert.doesNotMatch(args, /drawtext=text='F-Motion'/);
+  assert.doesNotMatch(args, /Fotium/i);
+  const finalMark = buildRenderJobWithProfile({
+    ...snapshot,
+    brief: { ...snapshot.brief, brand_mark: true }
+  }, "final.mp4", {}, "/tmp/job", { width: 1080, height: 1920 });
+  const finalArgs = finalMark.concatArgs.join(" ");
+  assert.match(finalArgs, /scale=454:-1:flags=lanczos,format=yuva420p\[mark\]/);
+  assert.match(finalArgs, /overlay=main_w-overlay_w-65:96:shortest=1/);
+  assert.match(finalArgs, /-c:v h264/);
+  assert.doesNotMatch(finalArgs, /-c:v copy/);
+});
+test("brand mark asset tumbles instead of sitting still", async () => {
+  const path = fileURLToPath(new URL("../assets/brand/f-motion-mark.webm", import.meta.url));
+  const hashAt = (ss) => new Promise((resolve, reject) => {
+    const child = spawn("ffmpeg", [
+      "-v", "error", "-ss", ss, "-i", path,
+      "-frames:v", "1", "-f", "hash", "-hash", "sha256", "-"
+    ], { stdio: ["ignore", "pipe", "ignore"] });
+    let stdout = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.once("error", reject);
+    child.once("exit", (code) => code === 0 ? resolve(stdout.trim()) : reject(new Error(`ffmpeg exited ${code}`)));
+  });
+  const start = await hashAt("0");
+  const later = await hashAt("9");
+  assert.notEqual(start, later);
+});
+test("rendered brand mark reads in the top right and leaves the center clear", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fengine-brand-mark-"));
+  const output = join(directory, "marked.mp4");
+  const marked = {
+    ...snapshot,
+    brief: { ...snapshot.brief, brand_mark: true },
+    scenes: [{ ...snapshot.scenes[0], caption: "", duration_ms: 500 }]
+  };
+  await renderPreviewWithProfile(output, marked, undefined, {}, { width: 720, height: 1280 });
+  const raw = await new Promise((resolve, reject) => {
+    const child = spawn("ffmpeg", [
+      "-v", "error", "-ss", "0.2", "-i", output,
+      "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"
+    ], { stdio: ["ignore", "pipe", "ignore"] });
+    const chunks = [];
+    child.stdout.on("data", (chunk) => chunks.push(chunk));
+    child.once("error", reject);
+    child.once("exit", (code) => code === 0 ? resolve(Buffer.concat(chunks)) : reject(new Error(`ffmpeg exited ${code}`)));
+  });
+  const px = (x, y) => {
+    const i = (y * 720 + x) * 3;
+    return [raw[i], raw[i + 1], raw[i + 2]];
+  };
+  const near = (color, expected, slack) => color.every((channel, index) => Math.abs(channel - expected[index]) < slack);
+  assert.ok(near(px(360, 640), [32, 32, 39], 12), `center should stay clear, got ${px(360, 640)}`);
+  assert.ok(near(px(390, 70), [32, 32, 39], 18), `mark padding should stay transparent, got ${px(390, 70)}`);
+  const word = px(560, 110);
+  const gap = Math.abs(word[0] - 32) + Math.abs(word[1] - 32) + Math.abs(word[2] - 39);
+  assert.ok(gap > 80, `wordmark should read in the top right, got ${word}`);
+});
 test("title overlay burns above the caption and honors place", () => {
   const stacked = buildCaptionAss(
     [{ text: "Open the full gallery.", start_ms: 0, end_ms: 500 }],
@@ -466,6 +548,33 @@ test("render job maps video audio from 0:a when hasAudio is true", () => {
   const args = job.clips[0].args.join(" ");
   assert.match(args, /-map 0:a/);
   assert.doesNotMatch(args, /anullsrc=/);
+});
+test("landscape frame cover-crops to 16:9 instead of stretching", () => {
+  const withMedia = {
+    ...snapshot,
+    scenes: [{
+      ...snapshot.scenes[0],
+      media_id: "asset-1",
+      caption: "Wide line",
+      overlay_look: "spoken"
+    }]
+  };
+  const job = buildRenderJobWithProfile(withMedia, "preview.mp4", {
+    "asset-1": { path: "/tmp/media.mp4", type: "video/mp4" }
+  }, "/tmp/job", { width: 1920, height: 1080 });
+  const args = job.clips[0].args.join(" ");
+  assert.match(args, /scale=1920:1080:force_original_aspect_ratio=increase/);
+  assert.match(args, /crop=1920:1080:/);
+  assert.match(job.clips[0].assContents, /PlayResX: 1920/);
+  assert.match(job.clips[0].assContents, /PlayResY: 1080/);
+});
+test("portrait captions keep the 720x1280 play resolution", () => {
+  const job = buildRenderJob({
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], overlay_look: "spoken", caption: "Hello there" }]
+  }, "preview.mp4", {}, "/tmp/job");
+  assert.match(job.clips[0].assContents, /PlayResX: 720/);
+  assert.match(job.clips[0].assContents, /PlayResY: 1280/);
 });
 test("render job clip crops around the scene's focal point", () => {
   const withFocal = {
@@ -906,6 +1015,8 @@ test("hosted Hetzner compose runs a worker process that can render", async () =>
   const workerDocker = await readFile(new URL("../Dockerfile", import.meta.url), "utf8");
   assert.match(workerDocker, /packages\/fal-host\/dist/);
   assert.match(workerDocker, /apps\/worker\/assets\/fonts/);
+  assert.match(workerDocker, /apps\/worker\/assets\/brand/);
+  assert.match(docker, /apps\/worker\/assets\/brand/);
   assert.equal(
     docker.match(/ARG FFMPEG_SHA256=.*/)?.[0],
     workerDocker.match(/ARG FFMPEG_SHA256=.*/)?.[0]

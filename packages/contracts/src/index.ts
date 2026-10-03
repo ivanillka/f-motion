@@ -4,8 +4,10 @@ export type AccountState = "active" | "suspended" | "deletion_pending";
 export type MotionPreset = "none" | "push" | "zoom";
 export const overlayPlaces = ["bottom", "center", "top"] as const;
 export type OverlayPlace = (typeof overlayPlaces)[number];
-export const overlayLooks = ["caption", "title", "poster"] as const;
+export const overlayLooks = ["caption", "title", "poster", "spoken"] as const;
 export type OverlayLook = (typeof overlayLooks)[number];
+export const pictureKinds = ["stock", "footage", "document"] as const;
+export type PictureKind = (typeof pictureKinds)[number];
 
 export interface CaptionCue {
   text: string;
@@ -34,6 +36,8 @@ export interface Scene {
   overlay_place?: OverlayPlace;
   /** Visual treatment; omitted means caption pill. */
   overlay_look?: OverlayLook;
+  /** Mix reels only. Stock footage, AI footage, or a documental diagram. */
+  picture?: PictureKind;
 }
 
 export const stockBeds = [
@@ -91,6 +95,14 @@ export interface ProjectBrief {
   voiceover?: Voiceover;
   architecture?: VideoArchitecture;
   media_glance?: MediaGlanceHints;
+  /** Spoken closing line. The last thing heard and seen. */
+  cta?: string;
+  /** Landing cube lockup in the top-right corner. Absent means off. */
+  brand_mark?: boolean;
+  /** Output frame. Absent means a vertical reel. Both renders each frame, cover-cropped. */
+  frame?: "reel" | "desktop" | "both";
+  /** Stock footage, AI footage, and documental diagrams in one reel. Absent means off. */
+  mix?: true;
 }
 
 export type CommandKind =
@@ -101,7 +113,8 @@ export type CommandKind =
   | "add_scene"
   | "remove_scene"
   | "update_soundtrack"
-  | "update_voiceover";
+  | "update_voiceover"
+  | "update_reel";
 
 export interface ProjectSnapshot {
   schema_version: 1;
@@ -189,7 +202,7 @@ function isOverlayPlace(value: unknown): value is OverlayPlace {
 }
 
 function isOverlayLook(value: unknown): value is OverlayLook {
-  return value === "caption" || value === "title" || value === "poster";
+  return value === "caption" || value === "title" || value === "poster" || value === "spoken";
 }
 
 function isCaptionCue(value: unknown, durationMs: number, previousEnd: number): value is CaptionCue {
@@ -239,6 +252,9 @@ function isScene(value: unknown, order: number): value is Scene {
   }
   if ("overlay_place" in value && !isOverlayPlace(value.overlay_place)) return false;
   if ("overlay_look" in value && !isOverlayLook(value.overlay_look)) return false;
+  if ("picture" in value && value.picture !== "stock" && value.picture !== "footage" && value.picture !== "document") {
+    return false;
+  }
   if (!("caption_cues" in value)) return true;
   if (!Array.isArray(value.caption_cues)) return false;
   let previousEnd = 0;
@@ -340,7 +356,14 @@ export function isProjectBrief(value: unknown): value is ProjectBrief {
     || ("soundtrack" in value && value.soundtrack != null && !isSoundtrack(value.soundtrack))
     || ("voiceover" in value && value.voiceover != null && !isVoiceover(value.voiceover))
     || ("architecture" in value && value.architecture != null && !isVideoArchitecture(value.architecture))
-    || ("media_glance" in value && value.media_glance != null && !isMediaGlanceHints(value.media_glance))) {
+    || ("media_glance" in value && value.media_glance != null && !isMediaGlanceHints(value.media_glance))
+    || ("cta" in value && (typeof value.cta !== "string"
+      || !value.cta.trim()
+      || value.cta !== value.cta.trim()
+      || value.cta.length > 180))
+    || ("brand_mark" in value && value.brand_mark !== true)
+    || ("frame" in value && value.frame !== "reel" && value.frame !== "desktop" && value.frame !== "both")
+    || ("mix" in value && value.mix !== true)) {
     return false;
   }
   return true;

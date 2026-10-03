@@ -1085,6 +1085,10 @@ components:
         voiceover: { type: object }
         architecture: { $ref: "#/components/schemas/VideoArchitecture" }
         media_glance: { $ref: "#/components/schemas/MediaGlanceHints" }
+        cta: { type: string, minLength: 1, maxLength: 180 }
+        brand_mark: { type: boolean, const: true }
+        frame: { type: string, enum: [reel, desktop, both] }
+        mix: { type: boolean, const: true }
     VideoArchitecture:
       type: object
       required: [goal, audience, structure, tone, pace, durationSeconds, media]
@@ -1164,7 +1168,8 @@ components:
           items: { $ref: "#/components/schemas/CaptionCue" }
         title: { type: string, minLength: 1, maxLength: 60 }
         overlay_place: { type: string, enum: [bottom, center, top] }
-        overlay_look: { type: string, enum: [caption, title, poster] }
+        overlay_look: { type: string, enum: [caption, title, poster, spoken] }
+        picture: { type: string, enum: [stock, footage, document] }
       additionalProperties: true
     CaptionCue:
       type: object
@@ -1183,7 +1188,7 @@ components:
         client_timestamp: { type: string }
         kind:
           type: string
-          enum: [select_concept, update_scene, reorder_scene, replace_storyboard, add_scene, remove_scene, update_soundtrack, update_voiceover]
+          enum: [select_concept, update_scene, reorder_scene, replace_storyboard, add_scene, remove_scene, update_soundtrack, update_voiceover, update_reel]
         payload:
           oneOf:
             - $ref: "#/components/schemas/SelectConceptPayload"
@@ -1194,6 +1199,7 @@ components:
             - $ref: "#/components/schemas/RemoveScenePayload"
             - $ref: "#/components/schemas/UpdateSoundtrackPayload"
             - $ref: "#/components/schemas/UpdateVoiceoverPayload"
+            - $ref: "#/components/schemas/UpdateReelPayload"
     SelectConceptPayload:
       type: object
       required: [concept_id]
@@ -1244,6 +1250,14 @@ components:
         voiceover:
           nullable: true
           type: object
+    UpdateReelPayload:
+      type: object
+      properties:
+        cta:
+          nullable: true
+          type: string
+          maxLength: 180
+        brand_mark: { type: boolean }
     UploadDeclaration:
       type: object
       required: [content_type, byte_length]
@@ -1370,6 +1384,14 @@ components:
         revision: { type: integer, minimum: 0 }
         kind: { type: string, enum: [preview, final] }
         state: { type: string }
+        frames:
+          type: array
+          items:
+            type: object
+            required: [frame, job_id]
+            properties:
+              frame: { type: string, enum: [reel, desktop] }
+              job_id: { type: string }
     RenderJobState:
       type: object
       required: [job_id, state]

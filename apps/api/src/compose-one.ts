@@ -31,6 +31,12 @@ export type ComposeOneResult = {
     phase: string;
     kind: string;
     download?: { url: string; expires_at: string; kind: string };
+    frames?: Array<{
+      frame: string;
+      job_id: string;
+      phase: string;
+      download?: { url: string; expires_at: string; kind: string };
+    }>;
   };
 };
 
@@ -63,7 +69,11 @@ export type ComposeOneDeps = {
     ownerId: string,
     projectId: string,
     kind: RenderKind
-  ) => Promise<{ job_id: string; kind: string }>;
+  ) => Promise<{
+    job_id: string;
+    kind: string;
+    frames?: Array<{ frame: "reel" | "desktop"; job_id: string }>;
+  }>;
   waitRender?: (ownerId: string, jobId: string) => Promise<{ phase: string }>;
   download?: (ownerId: string, jobId: string) => Promise<{ url: string; expires_at: string; kind: string }>;
   purge?: (ownerId: string, projectId: string) => Promise<ProjectPurgeResult | { deleted: boolean; storage_failures: string[] } | undefined>;
@@ -141,11 +151,28 @@ export async function composeOne(
       const download = waited.phase === "complete" && deps.download
         ? await deps.download(ownerId, job.job_id)
         : undefined;
+      const extras = [];
+      for (const frame of (job.frames ?? []).filter((item) => item.job_id !== job.job_id)) {
+        const extraWaited = await deps.waitRender(ownerId, frame.job_id);
+        const extraDownload = extraWaited.phase === "complete" && deps.download
+          ? await deps.download(ownerId, frame.job_id)
+          : undefined;
+        extras.push({
+          frame: frame.frame,
+          job_id: frame.job_id,
+          phase: extraWaited.phase,
+          ...(extraDownload ? { download: extraDownload } : {})
+        });
+      }
+      if (extras.some((frame) => frame.phase !== "complete" || (deps.download && !frame.download))) {
+        throw new ComposeIncompleteError("render did not complete");
+      }
       result.render = {
         job_id: job.job_id,
         phase: waited.phase,
         kind: job.kind,
-        ...(download ? { download } : {})
+        ...(download ? { download } : {}),
+        ...(extras.length ? { frames: extras } : {})
       };
     }
     return result;

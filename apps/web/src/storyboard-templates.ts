@@ -15,6 +15,7 @@ export interface StoryboardTemplateScene {
   title?: string;
   overlay_place?: Scene["overlay_place"];
   overlay_look?: Scene["overlay_look"];
+  picture?: Scene["picture"];
 }
 
 export interface StoryboardTemplate {
@@ -38,7 +39,11 @@ export function templateBriefFromProject(brief: ProjectSnapshot["brief"]): Proje
     audience: brief.audience,
     tone: brief.tone,
     ...(brief.architecture ? { architecture: brief.architecture } : {}),
-    ...(brief.media_glance ? { media_glance: brief.media_glance } : {})
+    ...(brief.media_glance ? { media_glance: brief.media_glance } : {}),
+    ...(brief.cta ? { cta: brief.cta } : {}),
+    ...(brief.brand_mark ? { brand_mark: true } : {}),
+    ...(brief.frame ? { frame: brief.frame } : {}),
+    ...(brief.mix ? { mix: true } : {})
   };
   if (brief.soundtrack?.kind === "stock" && brief.soundtrack.stock_id) {
     next.soundtrack = {
@@ -72,7 +77,8 @@ export function templateScenesFromProject(scenes: Scene[]): StoryboardTemplateSc
       ...(rest.visual_prompt !== undefined ? { visual_prompt: rest.visual_prompt } : {}),
       ...(rest.title !== undefined ? { title: rest.title } : {}),
       ...(rest.overlay_place !== undefined ? { overlay_place: rest.overlay_place } : {}),
-      ...(rest.overlay_look !== undefined ? { overlay_look: rest.overlay_look } : {})
+      ...(rest.overlay_look !== undefined ? { overlay_look: rest.overlay_look } : {}),
+      ...(rest.picture !== undefined ? { picture: rest.picture } : {})
     };
   });
 }
@@ -111,7 +117,8 @@ export function scenesFromTemplate(
       || `${template.brief.purpose.slice(0, 210).trim()} — scene ${order + 1}`,
     ...(scene.title !== undefined ? { title: scene.title } : {}),
     ...(scene.overlay_place !== undefined ? { overlay_place: scene.overlay_place } : {}),
-    ...(scene.overlay_look !== undefined ? { overlay_look: scene.overlay_look } : {})
+    ...(scene.overlay_look !== undefined ? { overlay_look: scene.overlay_look } : {}),
+    ...(scene.picture !== undefined ? { picture: scene.picture } : {})
   }));
 }
 

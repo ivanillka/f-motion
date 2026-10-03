@@ -316,9 +316,14 @@ function assStyle(
   borderStyle: 1 | 3,
   outline: number,
   shadow: number,
-  secondary = "&H00AAAAAA"
+  secondary = "&H00AAAAAA",
+  box: { align?: number; l?: number; r?: number; v?: number } = {}
 ): string {
-  return `Style: ${name},${font},${size},${ASS_WHITE},${secondary},${ASS_BLACK},${back},0,0,0,0,100,100,${spacing},0,${borderStyle},${outline},${shadow},2,40,40,140,1`;
+  const align = box.align ?? 2;
+  const marginL = box.l ?? 40;
+  const marginR = box.r ?? 40;
+  const marginV = box.v ?? 140;
+  return `Style: ${name},${font},${size},${ASS_WHITE},${secondary},${ASS_BLACK},${back},0,0,0,0,100,100,${spacing},0,${borderStyle},${outline},${shadow},${align},${marginL},${marginR},${marginV},1`;
 }
 
 function overlayAssStyles(look: OverlayLook): { title: string; caption: string } {
@@ -334,6 +339,14 @@ function overlayAssStyles(look: OverlayLook): { title: string; caption: string }
       caption: assStyle("Caption", CAPTION_FONT, 26, ASS_BLACK, 0, 1, 0, 1)
     };
   }
+  if (look === "spoken") {
+    return {
+      title: assStyle("Title", TITLE_FONT, 68, ASS_BLACK, -1, 1, 3, 2),
+      caption: assStyle("Caption", TITLE_FONT, 68, ASS_BLACK, -1, 1, 3, 2, "&H80FFFFFF", {
+        align: 5, l: 80, r: 80, v: 0
+      })
+    };
+  }
   return {
     title: assStyle("Title", TITLE_FONT, 64, ASS_BLACK, -2, 1, 2, 3),
     caption: assStyle("Caption", CAPTION_FONT, 26, CAPTION_PILL, 0, 3, 8, 0)
@@ -346,14 +359,15 @@ function overlayLayout(
   hasCaption: boolean,
   look: OverlayLook
 ) {
+  if (look === "spoken") return { an: 5, titleV: 0, captionV: 0, marginL: 80, marginR: 80 };
   if (look === "poster") {
-    if (place === "top") return { an: 7, titleV: 36, captionV: hasTitle ? 110 : 36 };
-    if (place === "center") return { an: 4, titleV: hasCaption ? 24 : 0, captionV: hasTitle ? 24 : 0 };
-    return { an: 1, titleV: hasCaption ? 96 : 36, captionV: 36 };
+    if (place === "top") return { an: 7, titleV: 36, captionV: hasTitle ? 110 : 36, marginL: 0, marginR: 0 };
+    if (place === "center") return { an: 4, titleV: hasCaption ? 24 : 0, captionV: hasTitle ? 24 : 0, marginL: 0, marginR: 0 };
+    return { an: 1, titleV: hasCaption ? 96 : 36, captionV: 36, marginL: 0, marginR: 0 };
   }
-  if (place === "top") return { an: 8, titleV: 88, captionV: hasTitle ? 176 : 88 };
-  if (place === "center") return { an: 8, titleV: hasCaption ? 500 : 560, captionV: hasTitle ? 590 : 560 };
-  return { an: 2, titleV: hasCaption ? 228 : 0, captionV: 0 };
+  if (place === "top") return { an: 8, titleV: 88, captionV: hasTitle ? 176 : 88, marginL: 0, marginR: 0 };
+  if (place === "center") return { an: 8, titleV: hasCaption ? 500 : 560, captionV: hasTitle ? 590 : 560, marginL: 0, marginR: 0 };
+  return { an: 2, titleV: hasCaption ? 228 : 0, captionV: 0, marginL: 0, marginR: 0 };
 }
 
 function assDialogue(
@@ -372,7 +386,9 @@ function assKaraokeDialogue(
   style: string,
   words: SpokenWord[],
   marginV: number,
-  an: number
+  an: number,
+  marginL = 0,
+  marginR = 0
 ): string {
   const startMs = words[0]?.start_ms ?? 0;
   const endMs = words[words.length - 1]?.end_ms ?? 0;
@@ -382,7 +398,7 @@ function assKaraokeDialogue(
     const open = index === 0 && align ? `{${align}\\k${cs}}` : `{\\k${cs}}`;
     return `${open}${escapeAssText(word.text)}`;
   }).join(" ");
-  return `Dialogue: 0,${assTimestamp(startMs)},${assTimestamp(endMs)},${style},,0,0,${marginV},,${text}`;
+  return `Dialogue: 0,${assTimestamp(startMs)},${assTimestamp(endMs)},${style},,${marginL},${marginR},${marginV},,${text}`;
 }
 
 /** Formats milliseconds as an ASS timestamp: `h:mm:ss.cc` (centiseconds). */
@@ -399,8 +415,10 @@ function assTimestamp(ms: number): string {
 
 /**
  * Deterministic ASS subtitle document with one `Dialogue` line per timed
- * cue. Safe area: PlayRes 720x1280, 40px side margins, text bottom-anchored
- * 140px above the frame bottom so it clears the watermark band.
+ * cue. Portrait stays PlayRes 720x1280. A landscape plan uses its own
+ * PlayRes so captions are not mapped through a portrait script.
+ * 40px side margins, text bottom-anchored 140px above the frame bottom
+ * so it clears the watermark band.
  */
 export function buildCaptionAss(
   cues: CaptionCue[],
@@ -410,11 +428,15 @@ export function buildCaptionAss(
     place?: OverlayPlace;
     look?: OverlayLook;
     durationMs?: number;
-  } = {}
+  } = {},
+  playRes?: { width: number; height: number }
 ): string {
-  const look = overlay.look === "title" || overlay.look === "poster" ? overlay.look : "caption";
+  const look = overlay.look === "title" || overlay.look === "poster" || overlay.look === "spoken"
+    ? overlay.look
+    : "caption";
   let title = overlay.title?.trim() ?? "";
   let captionCues = cues;
+  if (look === "spoken") title = "";
   if (look === "title" && !title) {
     title = overlay.caption?.trim() ?? "";
     captionCues = [];
@@ -428,13 +450,15 @@ export function buildCaptionAss(
   const captionWords = spokenWordsForCues(captionCues);
   const dialogues = [
     ...(title && titleEnd > 0 ? [assDialogue("Title", 0, titleEnd, title, layout.titleV, layout.an)] : []),
-    ...(captionWords.length ? [assKaraokeDialogue("Caption", captionWords, layout.captionV, layout.an)] : [])
+    ...(captionWords.length
+      ? [assKaraokeDialogue("Caption", captionWords, layout.captionV, layout.an, layout.marginL, layout.marginR)]
+      : [])
   ];
   return [
     "[Script Info]",
     "ScriptType: v4.00+",
-    "PlayResX: 720",
-    "PlayResY: 1280",
+    `PlayResX: ${playRes && playRes.width > playRes.height ? playRes.width : 720}`,
+    `PlayResY: ${playRes && playRes.width > playRes.height ? playRes.height : 1280}`,
     "WrapStyle: 0",
     "ScaledBorderAndShadow: yes",
     "",
@@ -466,14 +490,27 @@ function watermarkFilters(watermark: string): string[] {
   ];
 }
 
+/** Wordmark with the small tumbling cube beside it. Loop is the 36s splash tumble. */
+export function brandMarkAssetPath(): string {
+  return fileURLToPath(new URL("../assets/brand/f-motion-mark.webm", import.meta.url));
+}
+
+export function brandMarkOverlay(width: number, height: number): { width: number; x: number; y: number } {
+  return {
+    width: Math.max(96, Math.round(width * 0.42)),
+    x: Math.round(width * 0.06),
+    y: Math.round(height * 0.05)
+  };
+}
+
 // `h264` lets FFmpeg select the available software encoder (libx264 in the
 // production GPL build and OpenH264 in the local development image).
 // ponytail: OpenH264 rejects `-crf`; raise bitrate instead. 8M is for 1080×1920.
 const clipVideoEncode = ["-c:v", "h264", "-b:v", "8M", "-pix_fmt", "yuv420p", "-movflags", "+faststart"];
 const clipAudioEncode = ["-c:a", "aac", "-ar", "44100", "-ac", "2"];
 
-function concatOutputArgs(watermark: string | undefined, mixdown?: boolean): string[] {
-  if (watermark) return [...clipVideoEncode, ...clipAudioEncode];
+function concatOutputArgs(encodeVideo: boolean, mixdown?: boolean): string[] {
+  if (encodeVideo) return [...clipVideoEncode, ...clipAudioEncode];
   if (mixdown) return ["-c:v", "copy", ...clipAudioEncode, "-movflags", "+faststart"];
   return ["-c:v", "copy", "-c:a", "copy", "-movflags", "+faststart"];
 }
@@ -603,6 +640,16 @@ function soundtrackMetadata(mix: SoundtrackMix): string[] {
   ];
 }
 
+function brandVideoChain(mark: { width: number; x: number; y: number }, draws: string[]): { filter: string; label: string } {
+  const parts = [
+    `[1:v]scale=${mark.width}:-1:flags=lanczos,format=yuva420p[mark]`,
+    `[0:v][mark]overlay=main_w-overlay_w-${mark.x}:${mark.y}:shortest=1:format=auto[branded]`
+  ];
+  if (!draws.length) return { filter: parts.join(";"), label: "branded" };
+  parts.push(`[branded]${draws.join(",")}[vout]`);
+  return { filter: parts.join(";"), label: "vout" };
+}
+
 export function concatArguments(
   listPath: string,
   plan: RenderPlan,
@@ -612,23 +659,25 @@ export function concatArguments(
   voiceover?: SoundtrackMix
 ): string[] {
   const comment = `comment=project ${snapshot.id} revision ${snapshot.revision}`;
-  const videoFilters = plan.watermark ? watermarkFilters(plan.watermark) : [];
-  if (!soundtrack && !voiceover) {
+  const draws = plan.watermark ? watermarkFilters(plan.watermark) : [];
+  const mark = snapshot.brief.brand_mark ? brandMarkOverlay(plan.width, plan.height) : undefined;
+  const encodeVideo = draws.length > 0 || Boolean(mark);
+  if (!soundtrack && !voiceover && !mark) {
     return [
       "-y",
       "-f", "concat",
       "-safe", "0",
       "-i", listPath,
-      ...vfArgs(videoFilters),
+      ...vfArgs(draws),
       "-metadata", comment,
-      ...concatOutputArgs(plan.watermark, false),
+      ...concatOutputArgs(encodeVideo, false),
       outputPath
     ];
   }
   const extras: string[] = [];
   const chains: string[] = [];
   const mixInputs = ["[0:a]"];
-  let next = 1;
+  let next = mark ? 2 : 1;
   if (soundtrack) {
     const duck = voiceover && voiceover.level > 0 ? VOICEOVER_DUCK : 1;
     const level = Math.round(Math.min(1, Math.max(0, soundtrack.level)) * duck * 1000) / 1000;
@@ -645,20 +694,26 @@ export function concatArguments(
     chains.push(`[${next}:a]volume=${level}[vo]`);
     mixInputs.push("[vo]");
   }
-  const videoChain = videoFilters.length ? `[0:v]${videoFilters.join(",")}[v];` : "";
-  const audioChain = `${chains.join(";")};${mixInputs.join("")}amix=inputs=${mixInputs.length}:duration=first:dropout_transition=0:normalize=0[a]`;
+  const branded = mark ? brandVideoChain(mark, draws) : undefined;
+  const drawn = !branded && draws.length ? { filter: `[0:v]${draws.join(",")}[vout]`, label: "vout" } : undefined;
+  const video = branded ?? drawn;
+  const audioChain = soundtrack || voiceover
+    ? `${chains.join(";")};${mixInputs.join("")}amix=inputs=${mixInputs.length}:duration=first:dropout_transition=0:normalize=0[a]`
+    : "";
+  const filter = [video?.filter, audioChain].filter(Boolean).join(";");
   return [
     "-y",
     "-f", "concat",
     "-safe", "0",
     "-i", listPath,
+    ...(mark ? ["-c:v", "libvpx-vp9", "-stream_loop", "-1", "-i", brandMarkAssetPath()] : []),
     ...extras,
-    "-filter_complex", `${videoChain}${audioChain}`,
-    "-map", videoFilters.length ? "[v]" : "0:v",
-    "-map", "[a]",
+    "-filter_complex", filter,
+    "-map", video ? `[${video.label}]` : "0:v",
+    "-map", audioChain ? "[a]" : "0:a",
     "-metadata", comment,
     ...(soundtrack ? soundtrackMetadata(soundtrack) : []),
-    ...concatOutputArgs(plan.watermark, true),
+    ...concatOutputArgs(encodeVideo, Boolean(soundtrack || voiceover)),
     outputPath
   ];
 }
@@ -704,15 +759,16 @@ export function buildRenderJob(
     const cues = scene.caption_cues ?? [];
     const title = scene.title?.trim();
     const look = scene.overlay_look;
-    const assPath = title || look === "title" || cues.length ? join(tempDir, `scene-${index}.ass`) : undefined;
-    const assContents = title || look === "title" || cues.length
+    const burnCaption = Boolean(title || look === "title" || look === "spoken" || cues.length);
+    const assPath = burnCaption ? join(tempDir, `scene-${index}.ass`) : undefined;
+    const assContents = burnCaption
       ? buildCaptionAss(cues, {
         title,
         caption: scene.caption,
         place: scene.overlay_place,
         look,
         durationMs: scene.duration_ms
-      })
+      }, { width: plan.width, height: plan.height })
       : undefined;
     return {
       scene,

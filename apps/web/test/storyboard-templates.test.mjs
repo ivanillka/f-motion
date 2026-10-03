@@ -47,7 +47,11 @@ const sampleProject = {
       pace: "balanced",
       durationSeconds: 30,
       media: "own"
-    }
+    },
+    cta: "What would you add?",
+    brand_mark: true,
+    frame: "both",
+    mix: true
   },
   scenes: [
     {
@@ -63,7 +67,8 @@ const sampleProject = {
       media_id: "media-cover",
       visual_prompt: "Selected gallery image 1",
       overlay_look: "title",
-      overlay_place: "center"
+      overlay_place: "center",
+      picture: "document"
     },
     {
       id: "s1",
@@ -88,6 +93,11 @@ test("template snapshot strips media footage and keeps text scheme", () => {
   assert.equal(template.brief.voiceover, undefined);
   assert.equal(template.brief.soundtrack, undefined);
   assert.equal(template.brief.architecture?.durationSeconds, 30);
+  assert.equal(template.brief.cta, "What would you add?");
+  assert.equal(template.brief.brand_mark, true);
+  assert.equal(template.brief.frame, "both");
+  assert.equal(template.brief.mix, true);
+  assert.equal(template.scenes[0].picture, "document");
   assert.equal(template.scenes.length, 2);
   assert.equal(template.scenes[0].caption, "Apartment light.");
   assert.equal(template.scenes[0].overlay_look, "title");

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildStoryboardDraft, conceptsFor } from "@f-engine/reel-engine";
+import { buildStoryboardDraft, conceptsFor, outputFrames, sceneUsesStock } from "@f-engine/reel-engine";
 import type { CommandEnvelope } from "@f-engine/contracts";
 import { isMediaGlanceHints, isVideoArchitecture, type MediaGlanceHints, type VideoArchitecture } from "@f-engine/contracts";
 import {
@@ -52,6 +52,7 @@ import {
   RenderCapacityError,
   RenderInputIncompleteError,
   type RenderEnqueueOptions,
+  type RenderJobRecord,
   type RenderKind
 } from "./render-repository.js";
 import type { AccessPolicy } from "./access-policy.js";
@@ -191,7 +192,7 @@ function commandEnvelope(value: unknown, projectId: string): CommandEnvelope {
     || !command.command_id
     || !Number.isInteger(command.base_revision)
     || typeof command.client_timestamp !== "string"
-    || !["select_concept", "update_scene", "reorder_scene", "replace_storyboard", "add_scene", "remove_scene", "update_soundtrack", "update_voiceover"].includes(String(command.kind))
+    || !["select_concept", "update_scene", "reorder_scene", "replace_storyboard", "add_scene", "remove_scene", "update_soundtrack", "update_voiceover", "update_reel"].includes(String(command.kind))
     || !command.payload
     || typeof command.payload !== "object"
     || Array.isArray(command.payload)) {
@@ -207,6 +208,10 @@ function commandEnvelope(value: unknown, projectId: string): CommandEnvelope {
     kind: command.kind as CommandEnvelope["kind"],
     payload: command.payload as Record<string, unknown>
   };
+}
+
+function outputFrameChoice(value: unknown): "reel" | "desktop" | "both" | undefined {
+  return value === "reel" || value === "desktop" || value === "both" ? value : undefined;
 }
 
 function projectBrief(value: unknown) {
@@ -227,12 +232,17 @@ function projectBrief(value: unknown) {
   };
   const architecture = body.architecture;
   const media_glance = body.media_glance;
+  const frame = outputFrameChoice(body.frame);
+  if (body.frame !== undefined && !frame) throw new ValidationError("invalid brief");
+  if (body.mix !== undefined && body.mix !== true) throw new ValidationError("invalid brief");
   return {
     purpose,
     audience: field("audience", "Customers"),
     tone: field("tone", "Warm"),
     ...(architecture !== undefined && isVideoArchitecture(architecture) ? { architecture } : {}),
-    ...(media_glance !== undefined && isMediaGlanceHints(media_glance) ? { media_glance } : {})
+    ...(media_glance !== undefined && isMediaGlanceHints(media_glance) ? { media_glance } : {}),
+    ...(frame ? { frame } : {}),
+    ...(body.mix === true ? { mix: true as const } : {})
   };
 }
 
@@ -577,9 +587,12 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       }
     } : undefined,
     requestRender: options.renders ? async (owner, projectId, kind) => {
+      const project = await projects.get(owner, projectId);
+      if (!project) throw new Error("not found");
+      const frameCount = outputFrames(project.brief.frame).length;
       if (options.hostUsage) {
         const usage = await options.hostUsage.status(owner);
-        const cost = kind === "final" ? usage.costs.final : usage.costs.preview;
+        const cost = (kind === "final" ? usage.costs.final : usage.costs.preview) * frameCount;
         if (usage.balance < cost) {
           const error = new QuotaExceededError();
           Object.assign(error, { type: "quota_exceeded" });
@@ -588,18 +601,21 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       }
       const job = await options.renders!.create(owner, projectId, kind);
       if (!job) throw new Error("not found");
+      const outputs = job.outputs?.length ? job.outputs : [job];
       if (options.hostUsage) {
-        try {
-          await options.hostUsage.consumeRender(owner, kind, job.jobId);
-        } catch (error) {
-          if (error instanceof QuotaExceededError) {
-            await options.renders!.cancel(owner, job.jobId);
-            Object.assign(error, { type: "quota_exceeded" });
+        for (const output of outputs) {
+          try {
+            await options.hostUsage.consumeRender(owner, kind, output.jobId);
+          } catch (error) {
+            if (error instanceof QuotaExceededError) {
+              await options.renders!.cancel(owner, output.jobId);
+              Object.assign(error, { type: "quota_exceeded" });
+            }
+            throw error;
           }
-          throw error;
         }
       }
-      return { job_id: job.jobId, kind: job.kind };
+      return { job_id: job.jobId, kind: job.kind, frames: acceptedFrames(job) };
     } : undefined,
     waitRender: options.renders ? async (owner, jobId) => {
       const deadline = Date.now() + 15 * 60_000;
@@ -1298,6 +1314,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           results.push({ scene_id: scene.id, state: "skipped", message: "scene already has media" });
           continue;
         }
+        if (!sceneUsesStock(scene)) {
+          results.push({ scene_id: scene.id, state: "skipped", message: "mix scene uses generated media" });
+          continue;
+        }
         const description = scene.visual_prompt?.trim() || scene.caption.trim() || project.brief.purpose;
         const intent = await resolveSceneStockIntent(
           project.brief.purpose,
@@ -1434,9 +1454,12 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       if (typeof externalRaw === "string" && externalRaw.trim()) {
         enqueue.externalId = externalRaw.trim().slice(0, 128);
       }
+      const project = await projects.get(ownerId, request.params.projectId);
+      if (!project) return response.status(404).json({ type: "not_found", message: "not found" });
+      const frameCount = outputFrames(project.brief.frame).length;
       if (options.hostUsage) {
         const usage = await options.hostUsage.status(ownerId);
-        const cost = kind === "final" ? usage.costs.final : usage.costs.preview;
+        const cost = (kind === "final" ? usage.costs.final : usage.costs.preview) * frameCount;
         if (usage.balance < cost) {
           return response.status(402).json({
             type: "quota_exceeded",
@@ -1449,18 +1472,21 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       }
       const job = await options.renders.create(ownerId, request.params.projectId, kind, enqueue);
       if (!job) return response.status(404).json({ type: "not_found", message: "not found" });
+      const outputs = job.outputs?.length ? job.outputs : [job];
       if (options.hostUsage) {
-        try {
-          await options.hostUsage.consumeRender(ownerId, kind, job.jobId);
-        } catch (error) {
-          if (error instanceof QuotaExceededError) {
-            await options.renders.cancel(ownerId, job.jobId);
-            return response.status(402).json({
-              type: "quota_exceeded",
-              message: "host usage quota exceeded"
-            });
+        for (const output of outputs) {
+          try {
+            await options.hostUsage.consumeRender(ownerId, kind, output.jobId);
+          } catch (error) {
+            if (error instanceof QuotaExceededError) {
+              await options.renders.cancel(ownerId, output.jobId);
+              return response.status(402).json({
+                type: "quota_exceeded",
+                message: "host usage quota exceeded"
+              });
+            }
+            throw error;
           }
-          throw error;
         }
       }
       response.status(202).json({
@@ -1468,7 +1494,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         project_id: job.projectId,
         revision: job.revision,
         kind: job.kind,
-        state: job.state
+        state: job.state,
+        frames: acceptedFrames(job)
       });
     } catch (error) {
       if (error instanceof RenderCapacityError) {
@@ -1578,6 +1605,17 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     } catch (error) { next(error); }
   });
   return app;
+}
+
+function acceptedFrames(job: RenderJobRecord): Array<{ frame: "reel" | "desktop"; job_id: string }> {
+  const outputs = job.outputs?.length ? job.outputs : [job];
+  return outputs.flatMap((output) => {
+    if (!output?.jobId) return [];
+    const width = output.renderProfile?.width;
+    const height = output.renderProfile?.height;
+    const frame = typeof width === "number" && typeof height === "number" && width > height ? "desktop" : "reel";
+    return [{ frame, job_id: output.jobId }];
+  });
 }
 
 export function createApp(options: AppOptions) {

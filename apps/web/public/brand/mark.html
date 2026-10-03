@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>F-Motion</title>
+  <style>
+    /* Reel corner lockup. The wordmark is the mark. The cube is smaller, beside it. */
+    :root {
+      --lock-w: 960px;
+      --lock-h: 200px;
+      --s: 64px;
+    }
+    html, body {
+      margin: 0;
+      width: var(--lock-w);
+      height: var(--lock-h);
+      background: transparent;
+      overflow: hidden;
+    }
+    .lockup {
+      box-sizing: border-box;
+      width: var(--lock-w);
+      height: var(--lock-h);
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      padding-right: 22px;
+    }
+    .stage {
+      position: relative;
+      width: 120px;
+      height: 120px;
+      flex: none;
+      perspective: 336px;
+      perspective-origin: 50% 42%;
+      display: grid;
+      place-items: center;
+    }
+    .cube-shadow {
+      position: absolute;
+      left: 50%;
+      bottom: 18%;
+      width: 70%;
+      height: 16%;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.42);
+      filter: blur(8px);
+      pointer-events: none;
+    }
+    .launch-cube {
+      width: var(--s);
+      height: var(--s);
+      position: relative;
+      z-index: 1;
+      transform-style: preserve-3d;
+      transform: rotateX(16deg) rotateY(-24deg) rotateZ(-3deg);
+      animation: launchTumble 36s linear infinite;
+    }
+    .launch-face {
+      position: absolute;
+      inset: 0;
+      border: 2px solid rgba(0, 229, 255, 0.42);
+      background-color: rgba(241, 242, 243, 0.04);
+      pointer-events: none;
+    }
+    .launch-face[data-side="front"] {
+      transform: translateZ(calc(var(--s) / 2));
+      border-color: rgba(0, 229, 255, 0.62);
+      background-color: rgba(241, 242, 243, 0.06);
+    }
+    .launch-face[data-side="back"] {
+      transform: rotateY(180deg) translateZ(calc(var(--s) / 2));
+      background-color: rgba(17, 18, 19, 0.28);
+    }
+    .launch-face[data-side="right"] {
+      transform: rotateY(90deg) translateZ(calc(var(--s) / 2));
+      background-color: rgba(17, 18, 19, 0.34);
+    }
+    .launch-face[data-side="left"] {
+      transform: rotateY(-90deg) translateZ(calc(var(--s) / 2));
+      background-color: rgba(17, 18, 19, 0.3);
+    }
+    .launch-face[data-side="top"] {
+      transform: rotateX(90deg) translateZ(calc(var(--s) / 2));
+      border-color: rgba(0, 229, 255, 0.7);
+    }
+    .launch-face[data-side="bottom"] {
+      transform: rotateX(-90deg) translateZ(calc(var(--s) / 2));
+      background-color: rgba(17, 18, 19, 0.5);
+    }
+    .launch-cube > .launch-face::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        118deg,
+        transparent 42%,
+        rgba(0, 229, 255, 0.1) 48.6%,
+        rgba(0, 229, 255, 0.72) 50%,
+        rgba(0, 229, 255, 0.1) 51.4%,
+        transparent 58%
+      );
+      opacity: 0;
+      animation: launchSweep 9s ease-in-out infinite;
+      pointer-events: none;
+    }
+    .launch-cube > .launch-face[data-side="right"]::after { animation-delay: -1.5s; }
+    .launch-cube > .launch-face[data-side="back"]::after { animation-delay: -3s; }
+    .launch-cube > .launch-face[data-side="left"]::after { animation-delay: -4.5s; }
+    .launch-cube > .launch-face[data-side="top"]::after { animation-delay: -6s; }
+    .launch-cube > .launch-face[data-side="bottom"]::after { animation-delay: -7.5s; }
+    .launch-shell {
+      position: absolute;
+      inset: 0;
+      transform: scale3d(0.84, 0.84, 0.84);
+      transform-style: preserve-3d;
+      pointer-events: none;
+    }
+    .launch-shell .launch-face {
+      border-color: rgba(241, 242, 243, 0.22);
+      background: rgba(17, 18, 19, 0.16);
+    }
+    .wordmark {
+      display: block;
+      width: 760px;
+      height: auto;
+      flex: none;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55)) drop-shadow(0 3px 8px rgba(0, 0, 0, 0.4));
+    }
+    html.is-frame .launch-cube {
+      animation-play-state: paused;
+      animation-delay: calc(var(--frame) * -1s);
+    }
+    html.is-frame .launch-cube > .launch-face::after {
+      animation-play-state: paused;
+      animation-delay: calc(var(--frame) * -1s);
+    }
+    html.is-frame .launch-cube > .launch-face[data-side="right"]::after { animation-delay: calc(var(--frame) * -1s - 1.5s); }
+    html.is-frame .launch-cube > .launch-face[data-side="back"]::after { animation-delay: calc(var(--frame) * -1s - 3s); }
+    html.is-frame .launch-cube > .launch-face[data-side="left"]::after { animation-delay: calc(var(--frame) * -1s - 4.5s); }
+    html.is-frame .launch-cube > .launch-face[data-side="top"]::after { animation-delay: calc(var(--frame) * -1s - 6s); }
+    html.is-frame .launch-cube > .launch-face[data-side="bottom"]::after { animation-delay: calc(var(--frame) * -1s - 7.5s); }
+    @media (prefers-reduced-motion: reduce) {
+      html:not(.is-frame) .launch-cube,
+      html:not(.is-frame) .launch-cube > .launch-face::after { animation: none; }
+    }
+    @keyframes launchTumble {
+      0% { transform: rotateX(16deg) rotateY(0deg) rotateZ(-3deg); }
+      12.5% { transform: rotateX(18deg) rotateY(45deg) rotateZ(-1deg); }
+      25% { transform: rotateX(16deg) rotateY(90deg) rotateZ(2deg); }
+      37.5% { transform: rotateX(13deg) rotateY(135deg) rotateZ(3deg); }
+      50% { transform: rotateX(15deg) rotateY(180deg) rotateZ(1deg); }
+      62.5% { transform: rotateX(18deg) rotateY(225deg) rotateZ(-2deg); }
+      75% { transform: rotateX(16deg) rotateY(270deg) rotateZ(-3deg); }
+      87.5% { transform: rotateX(13deg) rotateY(315deg) rotateZ(-1deg); }
+      100% { transform: rotateX(16deg) rotateY(360deg) rotateZ(-3deg); }
+    }
+    @keyframes launchSweep {
+      0%, 100% { opacity: 0; }
+      50% { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <script src="./mark.js"></script>
+  <div class="lockup">
+    <div class="stage">
+      <div class="cube-shadow"></div>
+      <div class="launch-cube">
+        <span class="launch-face" data-side="front"></span>
+        <span class="launch-face" data-side="back"></span>
+        <span class="launch-face" data-side="right"></span>
+        <span class="launch-face" data-side="left"></span>
+        <span class="launch-face" data-side="top"></span>
+        <span class="launch-face" data-side="bottom"></span>
+        <span class="launch-shell">
+          <span class="launch-face" data-side="front"></span>
+          <span class="launch-face" data-side="back"></span>
+          <span class="launch-face" data-side="right"></span>
+          <span class="launch-face" data-side="left"></span>
+          <span class="launch-face" data-side="top"></span>
+          <span class="launch-face" data-side="bottom"></span>
+        </span>
+      </div>
+    </div>
+    <svg class="wordmark" aria-hidden="true" viewBox="0 -711 4566 775">
+      <path fill="#f1f2f3" d="M631 -647V-536H133V-362H541V-258H133V0H0V-647Z"/>
+      <path fill="#f1f2f3" d="M1502 -66H1439L1811 -647H1944V0H1811V-470L1843 -461L1546 0H1397L1100 -459L1132 -468V0H999V-647H1132Z M2334 12Q2240 12 2168.5 -18Q2097 -48 2057 -105.5Q2017 -163 2017 -247Q2017 -331 2057 -389.5Q2097 -448 2168.5 -478Q2240 -508 2334 -508Q2428 -508 2498.5 -478Q2569 -448 2609 -389.5Q2649 -331 2649 -247Q2649 -163 2609 -105.5Q2569 -48 2498.5 -18Q2428 12 2334 12ZM2334 -88Q2386 -88 2427.5 -106.5Q2469 -125 2493 -160.5Q2517 -196 2517 -247Q2517 -298 2493 -334.5Q2469 -371 2428 -390Q2387 -409 2334 -409Q2282 -409 2240 -390Q2198 -371 2173.5 -335Q2149 -299 2149 -247Q2149 -196 2173 -160.5Q2197 -125 2239 -106.5Q2281 -88 2334 -88Z M2670 -497H3056V-396H2670ZM2798 -633H2928V0H2798Z M3248 -715V-601H3097V-715ZM3107 -497H3237V0H3107Z M3620 12Q3526 12 3454.5 -18Q3383 -48 3343 -105.5Q3303 -163 3303 -247Q3303 -331 3343 -389.5Q3383 -448 3454.5 -478Q3526 -508 3620 -508Q3714 -508 3784.5 -478Q3855 -448 3895 -389.5Q3935 -331 3935 -247Q3935 -163 3895 -105.5Q3855 -48 3784.5 -18Q3714 12 3620 12ZM3620 -88Q3672 -88 3713.5 -106.5Q3755 -125 3779 -160.5Q3803 -196 3803 -247Q3803 -298 3779 -334.5Q3755 -371 3714 -390Q3673 -409 3620 -409Q3568 -409 3526 -390Q3484 -371 3459.5 -335Q3435 -299 3435 -247Q3435 -196 3459 -160.5Q3483 -125 3525 -106.5Q3567 -88 3620 -88Z M3991 -497H4121V0H3991ZM4352 -508Q4398 -508 4437 -496Q4476 -484 4505 -459Q4534 -434 4550 -395.5Q4566 -357 4566 -304V0H4436V-281Q4436 -344 4405.5 -373.5Q4375 -403 4306 -403Q4254 -403 4212 -383Q4170 -363 4144 -332.5Q4118 -302 4114 -269L4113 -320Q4118 -355 4136 -388Q4154 -421 4184.5 -448.5Q4215 -476 4257 -492Q4299 -508 4352 -508Z"/>
+      <path fill="#d989a0" d="M807 -711h84v775h-84z"/>
+    </svg>
+  </div>
+</body>
+</html>
