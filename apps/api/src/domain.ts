@@ -26,6 +26,7 @@ export interface ProjectRepository {
   delete(ownerId: string, projectId: string): boolean | Promise<boolean>;
   bindHostImport(ownerId: string, projectId: string, binding: HostImportBinding): void | Promise<void>;
   hostImportBinding(ownerId: string, projectId: string): HostImportBinding | undefined | Promise<HostImportBinding | undefined>;
+  findByExternalId(ownerId: string, externalId: string): ProjectSnapshot | undefined | Promise<ProjectSnapshot | undefined>;
 }
 
 export class ProjectService implements ProjectRepository {
@@ -100,6 +101,15 @@ export class ProjectService implements ProjectRepository {
   hostImportBinding(ownerId: string, projectId: string): HostImportBinding | undefined {
     const binding = this.#hostImports.get(`${ownerId}:${projectId}`);
     return binding && { ...binding };
+  }
+
+  findByExternalId(ownerId: string, externalId: string): ProjectSnapshot | undefined {
+    const prefix = `${ownerId}:`;
+    for (const [key, binding] of this.#hostImports) {
+      if (!key.startsWith(prefix) || binding.externalId !== externalId) continue;
+      return this.get(ownerId, key.slice(prefix.length));
+    }
+    return undefined;
   }
 }
 
@@ -229,6 +239,16 @@ export class PostgresProjectRepository implements ProjectRepository {
       externalId: row.externalId,
       ...(row.notifyUrl ? { notifyUrl: row.notifyUrl } : {})
     };
+  }
+
+  async findByExternalId(ownerId: string, externalId: string): Promise<ProjectSnapshot | undefined> {
+    const result = await this.pool.query<ProjectRow>(
+      `SELECT id, "ownerId", revision, brief
+         FROM "Project" WHERE "ownerId" = $1 AND "externalId" = $2`,
+      [ownerId, externalId]
+    );
+    const project = result.rows[0];
+    return project && projectSnapshot(this.pool, project);
   }
 
   async command(ownerId: string, command: CommandEnvelope): Promise<ProjectSnapshot> {

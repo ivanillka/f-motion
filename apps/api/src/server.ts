@@ -51,6 +51,7 @@ import {
   PostgresRenderRepository,
   RenderCapacityError,
   RenderInputIncompleteError,
+  type PortraitPreviewFile,
   type RenderEnqueueOptions,
   type RenderJobRecord,
   type RenderKind
@@ -76,6 +77,7 @@ import {
   mediaIdForExternalImport,
   parseExternalDraft,
   projectIdForExternalImport,
+  sanitizeExternalId,
   type ExternalImportConfig
 } from "./external-import.js";
 import { ApiKeyValidationError, type ApiKeyService } from "./api-keys.js";
@@ -102,7 +104,9 @@ export type HostUsageService = Pick<PostgresHostUsageService, "status" | "consum
 interface AppBaseOptions {
   projects: ProjectRepository;
   media?: MediaDependencies;
-  renders?: Pick<PostgresRenderRepository, "create" | "cancel" | "events" | "result">;
+  renders?: Pick<PostgresRenderRepository, "create" | "cancel" | "events" | "result"> & {
+    latestPortraitPreview?(ownerId: string, projectId: string): Promise<PortraitPreviewFile | undefined>;
+  };
   ready?: () => boolean | Promise<boolean>;
   workerOrigin?: string;
   externalImports?: ExternalImportConfig;
@@ -309,6 +313,155 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     response.status(503).json(body);
   });
   const integration = options.externalImports;
+
+  function requestedExternalId(value: unknown): string | undefined {
+    if (Array.isArray(value)) return requestedExternalId(value[0]);
+    if (typeof value !== "string" || !value.trim()) return undefined;
+    return sanitizeExternalId(value);
+  }
+
+  async function portraitPreview(ownerId: string, projectId: string, revision: number) {
+    const found = await options.renders?.latestPortraitPreview?.(ownerId, projectId);
+    if (!found || found.height <= found.width || found.revision !== revision || !options.media) return undefined;
+    const url = await options.media.store.signedGet(found.objectKey);
+    return {
+      job_id: found.jobId,
+      play_url: url,
+      download_url: url,
+      width: found.width,
+      height: found.height,
+      expires_at: new Date(Date.now() + 300_000).toISOString(),
+      kind: "preview" as const
+    };
+  }
+
+  function nextCallForPreview(projectId: string, externalId: string, queued: boolean) {
+    if (!options.renders) {
+      return {
+        method: "POST" as const,
+        path: `/v1/projects/${projectId}/render`,
+        body: { kind: "preview" as const },
+        auth: "Authorization: Bearer <owner API key>",
+        then: "GET /v1/render-jobs/{job_id}/download"
+      };
+    }
+    if (queued) {
+      return {
+        method: "GET" as const,
+        path: "/v1/integrations/project-imports",
+        query: { external_id: externalId },
+        auth: "Authorization: Bearer <FENGINE_IMPORT_TOKEN>"
+      };
+    }
+    return {
+      method: "POST" as const,
+      path: "/v1/integrations/project-imports/preview",
+      body: { external_id: externalId },
+      auth: "Authorization: Bearer <FENGINE_IMPORT_TOKEN>"
+    };
+  }
+
+  async function hostDraftBody(
+    ownerId: string,
+    webOrigin: string,
+    project: { id: string; revision: number },
+    created: boolean,
+    externalId: string,
+    queued = false
+  ) {
+    const projectUrl = externalProjectUrl(webOrigin, project.id);
+    const preview = await portraitPreview(ownerId, project.id, project.revision);
+    return {
+      created,
+      project_id: project.id,
+      project_url: projectUrl,
+      projectUrl,
+      revision: project.revision,
+      preview: preview ?? null,
+      ...(preview ? {} : { next_call: nextCallForPreview(project.id, externalId, queued) })
+    };
+  }
+
+  if (integration) app.get("/api/integrations/project-imports", async (request, response, next) => {
+    if (!authenticatesExternalImport(request.header("authorization"), integration.token)) {
+      return response.status(401).json({ type: "unauthorized", message: "authentication required" });
+    }
+    const externalId = requestedExternalId(request.query.external_id ?? request.query.externalId);
+    if (!externalId) {
+      return response.status(422).json({ type: "validation", message: "external_id is required" });
+    }
+    try {
+      const project = await projects.findByExternalId(integration.ownerId, externalId);
+      if (!project) {
+        return response.status(404).json({ type: "not_found", message: "No draft is bound to that external id." });
+      }
+      response.json(await hostDraftBody(integration.ownerId, integration.webOrigin, project, false, externalId));
+    } catch (error) { next(error); }
+  });
+  if (integration) app.post("/api/integrations/project-imports/preview", async (request, response, next) => {
+    if (!authenticatesExternalImport(request.header("authorization"), integration.token)) {
+      return response.status(401).json({ type: "unauthorized", message: "authentication required" });
+    }
+    const body = request.body && typeof request.body === "object" && !Array.isArray(request.body)
+      ? request.body as Record<string, unknown>
+      : {};
+    const externalId = requestedExternalId(body.external_id ?? body.externalId);
+    if (!externalId) {
+      return response.status(422).json({ type: "validation", message: "external_id is required" });
+    }
+    try {
+      const project = await projects.findByExternalId(integration.ownerId, externalId);
+      if (!project) {
+        return response.status(404).json({ type: "not_found", message: "No draft is bound to that external id." });
+      }
+      if (!options.renders) {
+        return response.json(await hostDraftBody(integration.ownerId, integration.webOrigin, project, false, externalId));
+      }
+      // Fotium bills one download token (admins free). Do not debit host render units here.
+      const job = await options.renders.create(integration.ownerId, project.id, "preview", { externalId });
+      if (!job) {
+        return response.status(404).json({ type: "not_found", message: "No draft is bound to that external id." });
+      }
+      const portrait = (job.outputs?.length ? job.outputs : [job]).find((output) =>
+        (output.renderProfile?.height ?? 0) > (output.renderProfile?.width ?? 0)) ?? job;
+      const payload = await hostDraftBody(
+        integration.ownerId,
+        integration.webOrigin,
+        project,
+        false,
+        externalId,
+        true
+      );
+      response.status(payload.preview ? 200 : 202).json({
+        ...payload,
+        job_id: portrait.jobId,
+        state: portrait.state
+      });
+    } catch (error) {
+      if (error instanceof RenderInputIncompleteError || error instanceof RenderCapacityError) {
+        let project: { id: string } | undefined;
+        try {
+          project = await projects.findByExternalId(integration.ownerId, externalId);
+        } catch {
+          project = undefined;
+        }
+        const projectUrl = project ? externalProjectUrl(integration.webOrigin, project.id) : undefined;
+        if (error instanceof RenderCapacityError) {
+          return response.status(429).json({
+            type: "render_capacity",
+            message: "Finish or cancel an existing render before starting another.",
+            ...(project && projectUrl ? { project_id: project.id, projectUrl, project_url: projectUrl } : {})
+          });
+        }
+        return response.status(422).json({
+          type: "render_input_incomplete",
+          message: error.message,
+          ...(project && projectUrl ? { project_id: project.id, projectUrl, project_url: projectUrl } : {})
+        });
+      }
+      next(error);
+    }
+  });
   if (integration) app.post("/api/integrations/project-imports", async (request, response, next) => {
     if (!authenticatesExternalImport(request.header("authorization"), integration.token)) {
       return response.status(401).json({ type: "unauthorized", message: "authentication required" });
@@ -325,23 +478,22 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       }
     }
     console.error("external import received", draft.externalId);
-    const reply = (project: { id: string; revision: number }, created: boolean, imported: number, allowed: number) => {
-      const projectUrl = externalProjectUrl(integration.webOrigin, project.id);
+    const reply = async (project: { id: string; revision: number }, created: boolean, imported: number, allowed: number) => {
       console.error("external import accepted", draft.externalId, `${imported}/${allowed}`);
-      response.status(created ? 201 : 200).json({
+      response.status(created ? 201 : 200).json(await hostDraftBody(
+        integration.ownerId,
+        integration.webOrigin,
+        project,
         created,
-        project_id: project.id,
-        project_url: projectUrl,
-        // Hosts opening a browser tab should prefer camelCase projectUrl.
-        projectUrl,
-        revision: project.revision
-      });
+        draft.externalId
+      ));
     };
     try {
-      const projectId = projectIdForExternalImport(integration.ownerId, draft.externalId);
-      const prior = await projects.get(integration.ownerId, projectId);
-      let project = await projects.create(integration.ownerId, draft.brief, projectId);
-      await projects.bindHostImport(integration.ownerId, projectId, {
+      const bound = await projects.findByExternalId(integration.ownerId, draft.externalId);
+      const projectId = bound?.id ?? projectIdForExternalImport(integration.ownerId, draft.externalId);
+      const prior = bound ?? await projects.get(integration.ownerId, projectId);
+      let project = prior ?? await projects.create(integration.ownerId, draft.brief, projectId);
+      await projects.bindHostImport(integration.ownerId, project.id, {
         externalId: draft.externalId,
         ...(storedNotifyUrl ? { notifyUrl: storedNotifyUrl } : {})
       });
@@ -432,7 +584,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           console.error("external import storyboard skipped", error instanceof Error ? error.message : error);
         }
       }
-      reply(project, !prior, importedMediaIds.length, allowedMediaUrls.length);
+      await reply(project, !prior, importedMediaIds.length, allowedMediaUrls.length);
       if (allowedMediaUrls.length && importedMediaIds.length && options.media) {
         const media = options.media;
         void mapLimit(allowedMediaUrls, 2, async (url) => {
@@ -466,11 +618,12 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       }
       // After a valid token, always hand back a draft URL.
       try {
-        const projectId = projectIdForExternalImport(integration.ownerId, draft.externalId);
-        const prior = await projects.get(integration.ownerId, projectId);
+        const bound = await projects.findByExternalId(integration.ownerId, draft.externalId);
+        const projectId = bound?.id ?? projectIdForExternalImport(integration.ownerId, draft.externalId);
+        const prior = bound ?? await projects.get(integration.ownerId, projectId);
         const project = prior ?? await projects.create(integration.ownerId, draft.brief, projectId);
         console.error("external import salvaged", draft.externalId, error instanceof Error ? error.message : error);
-        reply(project, !prior, 0, 0);
+        await reply(project, !prior, 0, 0);
       } catch (salvageError) {
         console.error("external import salvage failed", salvageError instanceof Error ? salvageError.message : salvageError);
         next(salvageError);

@@ -106,6 +106,17 @@ Rules:
 Hosts **must** prefer `projectUrl` (camelCase) when opening a browser tab.
 `project_url` remains for snake_case clients.
 
+The same `external_id` always returns that draft. A second import does not
+create a second project. `GET /v1/integrations/project-imports?external_id=`
+reads the draft and does not create one. `404` means no draft is bound yet.
+
+When a completed 9:16 preview exists, the body includes `preview.play_url`
+(use it as a video `src`) and `preview.download_url` (the same MP4 file).
+Otherwise `preview` is `null` and `next_call` is the exact request that
+produces the file. A preview file is a render. This API does not invent pixels
+and does not charge a download token. The host bills that (one download, one
+token, admins free).
+
 ## Edit in F-Motion
 
 Button / deep link: open `projectUrl` (already includes `?project=`).
@@ -115,6 +126,45 @@ Button / deep link: open `projectUrl` (already includes `?project=`).
   (today: the import owner).
 
 Do not iframe the editor until auth/session handoff exists. Link-out first.
+
+## Preview file
+
+After the host confirms settings, queue a 9:16 preview for the draft that
+`external_id` already opened:
+
+```http
+POST /v1/integrations/project-imports/preview
+Authorization: Bearer <FENGINE_IMPORT_TOKEN>
+Content-Type: application/json
+
+{ "external_id": "cms:gallery:slug-or-id" }
+```
+
+This does not create a project. Unknown ids return `404`. The call does not
+debit F-Motion render units.
+
+Then poll:
+
+```http
+GET /v1/integrations/project-imports?external_id=cms:gallery:slug-or-id
+Authorization: Bearer <FENGINE_IMPORT_TOKEN>
+```
+
+Until `preview.play_url` and `preview.download_url` are set. Both are the same
+9:16 MP4: play the first, save the second.
+
+If this API process has no render worker, that POST still returns the existing
+`projectUrl` and sets `next_call` to the owner render:
+
+```http
+POST /v1/projects/{project_id}/render
+Authorization: Bearer <owner API key>
+Content-Type: application/json
+
+{ "kind": "preview" }
+```
+
+Then `GET /v1/render-jobs/{job_id}/download`. Edit still uses `projectUrl`.
 
 ## Return webhook (`render.complete`)
 

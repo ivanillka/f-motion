@@ -4,7 +4,9 @@
     { "method": "GET", "path": "/readyz", "auth": false }
   ],
   "versioned": [
+    { "method": "GET", "path": "/integrations/project-imports", "auth": "integration_token" },
     { "method": "POST", "path": "/integrations/project-imports", "auth": "integration_token" },
+    { "method": "POST", "path": "/integrations/project-imports/preview", "auth": "integration_token" },
     { "method": "GET", "path": "/providers/fal/credential", "auth": "bearer" },
     { "method": "PUT", "path": "/providers/fal/credential", "auth": "bearer" },
     { "method": "POST", "path": "/providers/fal/credential/test", "auth": "bearer" },

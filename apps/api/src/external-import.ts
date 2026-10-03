@@ -152,7 +152,7 @@ export function parseExternalDraft(value: unknown): ExternalDraft {
   const notifyUrl = optionalText(field(body, "notify_url", "notifyUrl"), 2_048);
   return {
     externalId,
-    brief: { purpose, audience, tone: `${architecture.tone}, ${architecture.pace}` },
+    brief: { purpose, audience, tone: `${architecture.tone}, ${architecture.pace}`, frame: "reel" },
     architecture,
     source: { ...(caption ? { caption } : {}), ...(callToAction ? { callToAction } : {}), ...(visualHint ? { visualHint } : {}) },
     mediaUrls: parsedMediaUrls,

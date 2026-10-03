@@ -36,11 +36,28 @@ curl -sS -X POST "$FMOTION_API_ORIGIN/v1/integrations/project-imports" \
   }'
 ```
 
-1. Host POSTs the payload above. Idempotent on `external_id`.
+1. Host POSTs the payload above. Idempotent on `external_id`. Edit opens that
+   same draft, not a second project.
 2. Open returned `projectUrl` (new tab).
-3. User signs in on f-motion.com if needed. The draft opens.
-4. User attaches or adjusts scenes, runs a preview, downloads or continues later.
-5. If `notify_url` was accepted, F-Motion POSTs signed `render.complete` when
+3. After settings are confirmed, queue the 9:16 preview with the import token.
+   This does not bill a second token here:
+
+```sh
+curl -sS -X POST "$FMOTION_API_ORIGIN/v1/integrations/project-imports/preview" \
+  -H "Authorization: Bearer $FENGINE_IMPORT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"external_id":"cms:gallery:weekend"}'
+```
+
+Poll `GET /v1/integrations/project-imports?external_id=cms:gallery:weekend`
+until `preview.play_url` and `preview.download_url` are set. That MP4 is the
+playable preview and the downloadable 9:16 file. If the API has no render
+worker, `next_call` names `POST /v1/projects/{project_id}/render` with
+`{"kind":"preview"}` and the owner API key, then
+`GET /v1/render-jobs/{job_id}/download`.
+4. User signs in on f-motion.com if needed. The draft opens.
+5. User attaches or adjusts scenes, runs a preview, downloads or continues later.
+6. If `notify_url` was accepted, F-Motion POSTs signed `render.complete` when
    that project's render finishes. Verify `X-F-Motion-Signature`, then GET
    `download_path` with the owner API key.
 

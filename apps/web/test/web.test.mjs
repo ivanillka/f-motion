@@ -65,6 +65,8 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /VITE_PARTNER_BRAND_EMAIL/);
   assert.match(source, /partner-brands/);
   assert.match(source, /Your galleries/);
+  assert.match(source, /Reels start on the host/);
+  assert.doesNotMatch(source, /Galleries · unlocked/);
   assert.doesNotMatch(source, /100\.121\.204|tailf28d35|ubuntu-8gb-hel1/);
   assert.match(source, /VITE_PARTNER_GALLERY_URL/);
   assert.doesNotMatch(source, /Fotium Motion|Fotium Studio/);
