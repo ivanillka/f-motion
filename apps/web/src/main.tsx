@@ -1666,8 +1666,10 @@ export function App() {
       method: "POST",
       body: JSON.stringify({ kind })
     });
-    const frames = job.frames?.length ? job.frames : [{ frame: "reel" as const, job_id: job.job_id }];
-    setJobId(frames[0].job_id);
+    const fallback = { frame: "reel" as const, job_id: job.job_id };
+    const frames = job.frames?.length ? job.frames : [fallback];
+    const primaryJob = frames[0] ?? fallback;
+    setJobId(primaryJob.job_id);
     setFrameJobs(frames);
     setStep("render");
     const urls: Record<string, string> = {};
@@ -1676,7 +1678,7 @@ export function App() {
       if (url) urls[frame.job_id] = url;
     }
     setFrameDownloads(urls);
-    if (urls[frames[0].job_id]) setProgress({ phase: "complete", percent: 100 });
+    if (urls[primaryJob.job_id]) setProgress({ phase: "complete", percent: 100 });
     if (frames.some((frame) => !urls[frame.job_id]) && Object.keys(urls).length) {
       setStatus("One frame did not finish. Download the frame that did.");
     }
