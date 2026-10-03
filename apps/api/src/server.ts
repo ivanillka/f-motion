@@ -439,7 +439,12 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       });
     } catch (error) {
       if (error instanceof RenderInputIncompleteError || error instanceof RenderCapacityError) {
-        const project = await projects.findByExternalId(integration.ownerId, externalId).catch(() => undefined);
+        let project: { id: string } | undefined;
+        try {
+          project = await projects.findByExternalId(integration.ownerId, externalId);
+        } catch {
+          project = undefined;
+        }
         const projectUrl = project ? externalProjectUrl(integration.webOrigin, project.id) : undefined;
         if (error instanceof RenderCapacityError) {
           return response.status(429).json({
