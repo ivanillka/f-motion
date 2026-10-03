@@ -1088,6 +1088,7 @@ components:
         cta: { type: string, minLength: 1, maxLength: 180 }
         brand_mark: { type: boolean, const: true }
         frame: { type: string, enum: [reel, desktop, both] }
+        mix: { type: boolean, const: true }
     VideoArchitecture:
       type: object
       required: [goal, audience, structure, tone, pace, durationSeconds, media]
@@ -1168,6 +1169,7 @@ components:
         title: { type: string, minLength: 1, maxLength: 60 }
         overlay_place: { type: string, enum: [bottom, center, top] }
         overlay_look: { type: string, enum: [caption, title, poster, spoken] }
+        picture: { type: string, enum: [stock, footage, document] }
       additionalProperties: true
     CaptionCue:
       type: object

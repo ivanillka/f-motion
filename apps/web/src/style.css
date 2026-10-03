@@ -1131,6 +1131,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   padding: 0;
   accent-color: var(--accent);
 }
+label.mix-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 2px;
+}
+label.mix-choice input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
 .brief-title {
   position: absolute;
   width: 1px;

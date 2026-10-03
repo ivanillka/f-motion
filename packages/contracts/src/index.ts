@@ -6,6 +6,8 @@ export const overlayPlaces = ["bottom", "center", "top"] as const;
 export type OverlayPlace = (typeof overlayPlaces)[number];
 export const overlayLooks = ["caption", "title", "poster", "spoken"] as const;
 export type OverlayLook = (typeof overlayLooks)[number];
+export const pictureKinds = ["stock", "footage", "document"] as const;
+export type PictureKind = (typeof pictureKinds)[number];
 
 export interface CaptionCue {
   text: string;
@@ -34,6 +36,8 @@ export interface Scene {
   overlay_place?: OverlayPlace;
   /** Visual treatment; omitted means caption pill. */
   overlay_look?: OverlayLook;
+  /** Mix reels only. Stock footage, AI footage, or a documental diagram. */
+  picture?: PictureKind;
 }
 
 export const stockBeds = [
@@ -97,6 +101,8 @@ export interface ProjectBrief {
   brand_mark?: boolean;
   /** Output frame. Absent means a vertical reel. Both renders each frame, cover-cropped. */
   frame?: "reel" | "desktop" | "both";
+  /** Stock footage, AI footage, and documental diagrams in one reel. Absent means off. */
+  mix?: true;
 }
 
 export type CommandKind =
@@ -246,6 +252,9 @@ function isScene(value: unknown, order: number): value is Scene {
   }
   if ("overlay_place" in value && !isOverlayPlace(value.overlay_place)) return false;
   if ("overlay_look" in value && !isOverlayLook(value.overlay_look)) return false;
+  if ("picture" in value && value.picture !== "stock" && value.picture !== "footage" && value.picture !== "document") {
+    return false;
+  }
   if (!("caption_cues" in value)) return true;
   if (!Array.isArray(value.caption_cues)) return false;
   let previousEnd = 0;
@@ -353,7 +362,8 @@ export function isProjectBrief(value: unknown): value is ProjectBrief {
       || value.cta !== value.cta.trim()
       || value.cta.length > 180))
     || ("brand_mark" in value && value.brand_mark !== true)
-    || ("frame" in value && value.frame !== "reel" && value.frame !== "desktop" && value.frame !== "both")) {
+    || ("frame" in value && value.frame !== "reel" && value.frame !== "desktop" && value.frame !== "both")
+    || ("mix" in value && value.mix !== true)) {
     return false;
   }
   return true;

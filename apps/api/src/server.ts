@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildStoryboardDraft, conceptsFor, outputFrames } from "@f-engine/reel-engine";
+import { buildStoryboardDraft, conceptsFor, outputFrames, sceneUsesStock } from "@f-engine/reel-engine";
 import type { CommandEnvelope } from "@f-engine/contracts";
 import { isMediaGlanceHints, isVideoArchitecture, type MediaGlanceHints, type VideoArchitecture } from "@f-engine/contracts";
 import {
@@ -234,13 +234,15 @@ function projectBrief(value: unknown) {
   const media_glance = body.media_glance;
   const frame = outputFrameChoice(body.frame);
   if (body.frame !== undefined && !frame) throw new ValidationError("invalid brief");
+  if (body.mix !== undefined && body.mix !== true) throw new ValidationError("invalid brief");
   return {
     purpose,
     audience: field("audience", "Customers"),
     tone: field("tone", "Warm"),
     ...(architecture !== undefined && isVideoArchitecture(architecture) ? { architecture } : {}),
     ...(media_glance !== undefined && isMediaGlanceHints(media_glance) ? { media_glance } : {}),
-    ...(frame ? { frame } : {})
+    ...(frame ? { frame } : {}),
+    ...(body.mix === true ? { mix: true as const } : {})
   };
 }
 
@@ -1310,6 +1312,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       for (const scene of [...project.scenes].sort((a, b) => a.order - b.order)) {
         if (scene.media_id) {
           results.push({ scene_id: scene.id, state: "skipped", message: "scene already has media" });
+          continue;
+        }
+        if (!sceneUsesStock(scene)) {
+          results.push({ scene_id: scene.id, state: "skipped", message: "mix scene uses generated media" });
           continue;
         }
         const description = scene.visual_prompt?.trim() || scene.caption.trim() || project.brief.purpose;

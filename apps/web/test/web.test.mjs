@@ -81,6 +81,9 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Reel 9:16/);
   assert.match(source, /Desktop 16:9/);
   assert.match(source, /name="output-frame"/);
+  assert.match(source, /Mix stock, AI footage, and diagrams/);
+  assert.match(source, /This shot is AI footage/);
+  assert.match(source, /This shot is a diagram/);
   assert.match(source, /Download desktop/);
   assert.match(source, /reel-mark/);
   assert.match(source, /className="reel-mark"/);
@@ -297,6 +300,7 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.preview \.reel-mark \{[\s\S]*aspect-ratio:\s*960 \/ 200/);
   assert.match(css, /\.preview\.is-desktop \{[^}]*aspect-ratio:\s*16 \/ 9/);
   assert.match(css, /\.frame-choice label \{[\s\S]*min-height:\s*44px/);
+  assert.match(css, /label\.mix-choice \{[\s\S]*min-height:\s*44px/);
   const mark = await readFile(new URL("../public/brand/mark.html", import.meta.url), "utf8");
   assert.match(mark, /flex-direction:\s*row/);
   assert.doesNotMatch(mark, /flex-direction:\s*column/);

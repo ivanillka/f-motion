@@ -398,6 +398,40 @@ export function conceptsFor(brief: ProjectSnapshot["brief"]): [Concept, Concept,
  * ponytail: formulaic concept→architecture mapping is the ceiling; upgrade to a
  * host-owned planner only after this licensed-stock journey is measured.
  */
+export type PictureKind = "stock" | "footage" | "document";
+
+/** Hook is stock. Later shots rotate through AI footage and a documental diagram. */
+export function mixPicture(order: number): PictureKind {
+  const kinds: PictureKind[] = ["stock", "footage", "document"];
+  return kinds[((order % 3) + 3) % 3] ?? "stock";
+}
+
+/** Stock fill must leave AI footage and diagram shots for generation. */
+export function sceneUsesStock(scene: { picture?: string }): boolean {
+  return scene.picture !== "footage" && scene.picture !== "document";
+}
+
+function clipPrompt(text: string): string {
+  const trimmed = text.trim().replace(/\s+/gu, " ");
+  if (trimmed.length <= 240) return trimmed;
+  const cut = trimmed.slice(0, 240).replace(/\s+\S*$/u, "").trim();
+  return cut || trimmed.slice(0, 240);
+}
+
+export function picturePrompt(picture: PictureKind, visual: string): string {
+  const base = visual.trim() || "the subject";
+  if (picture === "stock") return clipPrompt(base);
+  const prefix = picture === "document"
+    ? "Simple drawn diagram, scheme, or plan of "
+    : "Moving shot of ";
+  return clipPrompt(`${prefix}${base}`);
+}
+
+function applyMix(scene: Scene): Scene {
+  const picture = mixPicture(scene.order);
+  return { ...scene, picture, visual_prompt: picturePrompt(picture, scene.visual_prompt ?? scene.caption) };
+}
+
 export function planStoryboardScenes(
   brief: ProjectSnapshot["brief"],
   conceptId: string,
@@ -416,10 +450,11 @@ export function planStoryboardScenes(
     durationSeconds: concept.duration_seconds,
     media: "stock" as const
   };
-  return buildStoryboardDraft(brief.purpose, makeId, resolved, {
+  const scenes = buildStoryboardDraft(brief.purpose, makeId, resolved, {
     ...source,
     glance: source.glance ?? brief.media_glance
   });
+  return brief.mix === true ? scenes.map(applyMix) : scenes;
 }
 
 function boundedScene(scene: Scene): Scene {
@@ -446,6 +481,9 @@ function boundedScene(scene: Scene): Scene {
   }
   if (scene.overlay_look !== undefined && !isOverlayLookValue(scene.overlay_look)) {
     throw new Error("invalid overlay look");
+  }
+  if (scene.picture !== undefined && scene.picture !== "stock" && scene.picture !== "footage" && scene.picture !== "document") {
+    throw new Error("invalid picture");
   }
   if (scene.caption_cues && scene.caption_cues.length) validateCues(scene.caption_cues, scene.duration_ms);
   return scene;

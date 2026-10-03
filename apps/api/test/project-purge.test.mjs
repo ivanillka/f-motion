@@ -104,6 +104,19 @@ test("creating a project keeps the chosen output frame", async () => {
     });
     assert.equal(created.status, 201);
     assert.equal((await created.json()).project.brief.frame, "both");
+    const mixed = await fetch(`${origin}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "Mix reel", mix: true })
+    });
+    assert.equal(mixed.status, 201);
+    assert.equal((await mixed.json()).project.brief.mix, true);
+    const rejected = await fetch(`${origin}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "Mix reel", mix: false })
+    });
+    assert.equal(rejected.status, 422);
     const square = await fetch(`${origin}/api/projects`, {
       method: "POST",
       headers: { "content-type": "application/json" },

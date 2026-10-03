@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief } from "../dist/index.js";
+import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief, mixPicture, sceneUsesStock, picturePrompt } from "../dist/index.js";
 
 const snapshot = {
   schema_version: 1, id: "p1", owner_id: "u1", revision: 0,
@@ -543,4 +543,35 @@ test("output frames keep each side's pixel budget and cover-crop both", () => {
     [1920, 1080]
   ]);
   assert.equal(renderProfilesForBrief({ width: 720, height: 720 }, "both").length, 1);
+});
+test("a mix reel assigns stock, AI footage, and a diagram without dropping the reel shape", () => {
+  const architecture = {
+    goal: "promote", audience: "customers", structure: "problem_solution",
+    tone: "energetic", pace: "fast", durationSeconds: 15, media: "stock"
+  };
+  const scenes = planStoryboardScenes({
+    purpose: "Launch the harbor product for customers",
+    audience: "Customers",
+    tone: "Warm",
+    mix: true,
+    architecture
+  }, "direct", () => "scene");
+  assert.deepEqual(scenes.map((scene) => scene.picture), ["stock", "footage", "document", "stock"]);
+  assert.equal(scenes[0].picture, "stock");
+  assert.equal(scenes.at(-1).overlay_look, "spoken");
+  assert.equal(scenes.at(-1).caption, "What would you add?");
+  assert.match(scenes[1].visual_prompt, /^Moving shot of /);
+  assert.match(scenes[2].visual_prompt, /diagram, scheme, or plan/);
+  assert.equal(sceneUsesStock(scenes[0]), true);
+  assert.equal(sceneUsesStock(scenes[1]), false);
+  assert.equal(sceneUsesStock(scenes[2]), false);
+  assert.equal(mixPicture(3), "stock");
+  assert.match(picturePrompt("document", "harbor"), /diagram/);
+  const plain = planStoryboardScenes({
+    purpose: "Launch the harbor product for customers",
+    audience: "Customers",
+    tone: "Warm",
+    architecture
+  }, "direct", () => "scene");
+  assert.equal(plain[0].picture, undefined);
 });

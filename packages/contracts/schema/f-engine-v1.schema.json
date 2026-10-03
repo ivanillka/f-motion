@@ -153,7 +153,8 @@
         "caption_cues": { "type": "array" },
         "title": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^\\S(?:.*\\S)?$" },
         "overlay_place": { "enum": ["bottom", "center", "top"] },
-        "overlay_look": { "enum": ["caption", "title", "poster", "spoken"] }
+        "overlay_look": { "enum": ["caption", "title", "poster", "spoken"] },
+        "picture": { "enum": ["stock", "footage", "document"] }
       },
       "additionalProperties": true
     }

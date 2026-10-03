@@ -7,6 +7,8 @@ import {
   newCommandId,
   buildStoryboardDraft,
   conceptIdForArchitecture,
+  mixPicture,
+  picturePrompt,
   conceptsFor,
   clampFocus,
   clampBpm,
@@ -309,6 +311,9 @@ export function App() {
   const [outputFrame, setOutputFrame] = useState<"reel" | "desktop" | "both">("reel");
   const outputFrameRef = useRef(outputFrame);
   outputFrameRef.current = outputFrame;
+  const [mixReel, setMixReel] = useState(false);
+  const mixReelRef = useRef(mixReel);
+  mixReelRef.current = mixReel;
   const [previewFrame, setPreviewFrame] = useState<"reel" | "desktop">("reel");
   const [frameJobs, setFrameJobs] = useState<Array<{ frame: "reel" | "desktop"; job_id: string }>>([]);
   const [frameDownloads, setFrameDownloads] = useState<Record<string, string>>({});
@@ -662,7 +667,8 @@ export function App() {
       tone: `${plan.tone}, ${plan.pace}`,
       architecture: plan,
       ...(mediaGlance ? { media_glance: mediaGlance } : {}),
-      frame: outputFrameRef.current
+      frame: outputFrameRef.current,
+      ...(mixReelRef.current ? { mix: true as const } : {})
     };
   }
 
@@ -764,7 +770,8 @@ export function App() {
         }
       }
       const storedFrame = current?.brief.frame ?? "reel";
-      if (!current || current.scenes.length || current.brief.purpose !== brief.purpose || storedFrame !== brief.frame) {
+      const storedMix = current?.brief.mix === true;
+      if (!current || current.scenes.length || current.brief.purpose !== brief.purpose || storedFrame !== brief.frame || storedMix !== (brief.mix === true)) {
         const body = await api.request<{ project: ProjectSnapshot }>("/api/projects", {
           method: "POST",
           body: JSON.stringify(brief)
@@ -1322,9 +1329,12 @@ export function App() {
     setProject(refreshed);
     setSceneMedia(await loadSceneMediaViews(api, refreshed));
     const readyCount = refreshed.scenes.filter((scene) => scene.media_id).length;
-    setStatus(readyCount === refreshed.scenes.length
-      ? "Licensed media attached for every scene. Review attribution, then render."
-      : `${readyCount} of ${refreshed.scenes.length} scenes have media.`);
+    const generated = refreshed.scenes.filter((scene) => scene.picture === "footage" || scene.picture === "document").length;
+    setStatus(generated
+      ? `${readyCount} of ${refreshed.scenes.length} scenes have media. ${generated} mix shots still need an AI diagram or footage.`
+      : readyCount === refreshed.scenes.length
+        ? "Licensed media attached for every scene. Review attribution, then render."
+        : `${readyCount} of ${refreshed.scenes.length} scenes have media.`);
   }
 
   async function moveScene(sceneId: string, to: number) {
@@ -1348,10 +1358,13 @@ export function App() {
   async function addScene() {
     if (!project || project.scenes.length >= 8) return;
     const activeIndex = Math.max(0, project.scenes.findIndex(({ id }) => id === activeSceneId));
+    const picture = project.brief.mix ? mixPicture(activeIndex + 1) : undefined;
+    const beat = `${project.brief.purpose.slice(0, 180).trim()} — additional visual beat`;
     const scene: Scene = {
       id: newCommandId(), order: activeIndex + 1, caption: "",
-      visual_prompt: `${project.brief.purpose.slice(0, 210).trim()} — additional visual beat`,
-      duration_ms: 3000, focal_x: 0.5, focal_y: 0.5, motion: "zoom", audio_level: 1, ducking: false
+      visual_prompt: picture ? picturePrompt(picture, beat) : beat,
+      duration_ms: 3000, focal_x: 0.5, focal_y: 0.5, motion: "zoom", audio_level: 1, ducking: false,
+      ...(picture ? { picture } : {})
     };
     try {
       const updated = await api.command(project.id, project.revision, "add_scene", { scene, at: activeIndex + 1 });
@@ -2986,6 +2999,14 @@ export function App() {
             {label}
           </label>)}
       </fieldset>
+      <label className="mix-choice">
+        <input
+          type="checkbox"
+          checked={mixReel}
+          onChange={(event) => setMixReel(event.target.checked)}
+        />
+        Mix stock, AI footage, and diagrams
+      </label>
       <div ref={briefChatPane} className="brief-chat" aria-label="Create chat" aria-live="polite" aria-busy={mediaLooking || undefined}>
         {briefChat.map((message, index) =>
           <div key={`${message.role}:${index}:${message.text.slice(0, 24)}`} className={`brief-chat-msg is-${message.role}`}>
@@ -3099,7 +3120,7 @@ export function App() {
                       : media ? "Media processing" : "No media"}
               </span>
             )}
-          <strong>Scene {scene.order + 1} · {(scene.duration_ms / 1000).toFixed(1)}s</strong>
+          <strong>Scene {scene.order + 1} · {(scene.duration_ms / 1000).toFixed(1)}s{scene.picture === "stock" ? " · Stock" : scene.picture === "footage" ? " · AI footage" : scene.picture === "document" ? " · Diagram" : ""}</strong>
           <span>{scene.caption || scene.visual_prompt}</span>
           {preparing ? (
             <span className="scene-progress scene-preparing">{videoPreparing ? "Animating…" : "Generating…"}</span>
@@ -3484,6 +3505,9 @@ export function App() {
           <button className="secondary" onClick={() => void saveScenePatch(activeScene.id, { audio_level: activeScene.audio_level === 0 ? 1 : 0 })}>{activeScene.audio_level === 0 ? `Unmute scene ${activeSceneNumber}` : `Mute scene ${activeSceneNumber}`}</button>
           </div>
           <div className="inspector-block">
+          {activeScene.picture === "stock" ? <p>This shot is stock footage.</p> : null}
+          {activeScene.picture === "footage" ? <p>This shot is AI footage. Generate a still, then animate it.</p> : null}
+          {activeScene.picture === "document" ? <p>This shot is a diagram: a simple drawn scheme or plan. Generate an AI image.</p> : null}
           <button className={!pexelsCredential?.connected ? "locked-feature" : undefined}
             disabled={busy || (Boolean(pexelsCredential?.connected) && !activeScene.visual_prompt)}
             aria-label={activeMedia

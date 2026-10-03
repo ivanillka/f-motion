@@ -87,6 +87,10 @@ test("brief cta and brand mark are optional and bounded", () => {
   assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, frame: "desktop" } }), true);
   assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, frame: "both" } }), true);
   assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, frame: "square" } }), false);
+  assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, mix: true } }), true);
+  assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, mix: false } }), false);
+  assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...base.scenes[0], picture: "document" }] }), true);
+  assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...base.scenes[0], picture: "clip" }] }), false);
 });
 
 test("brief soundtrack is optional and validated when present", () => {
