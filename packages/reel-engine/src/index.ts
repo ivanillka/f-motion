@@ -185,15 +185,42 @@ function tailoredCallToAction(callToAction: string | undefined, title: string): 
   return stripOverlayNoise(trimmed).slice(0, 180);
 }
 
-function overlayHeadline(brief: string): string | undefined {
-  const parts = splitTitleParts(brief.trim());
-  if (parts.length > 1 && parts[0] && parts[0].length <= 60) return parts[0];
-  return undefined;
+/** Short question that invites a comment. The reel ends on this line. */
+export const COMMENT_CTA = "What would you add?";
+
+function sentenceCase(value: string): string {
+  const text = stripOverlayNoise(value);
+  if (!text) return "";
+  const normalized = text === text.toLocaleUpperCase() ? text.toLocaleLowerCase() : text;
+  return `${normalized.charAt(0).toLocaleUpperCase()}${normalized.slice(1)}`.slice(0, 180);
 }
 
-function fillCaptions(brief: string, source: StoryboardSource, sceneCount: number): string[] {
-  const lastCta = tailoredCallToAction(source.callToAction, brief);
-  const bodyCount = lastCta ? sceneCount - 1 : sceneCount;
+function resolveCta(source: StoryboardSource, brief: string): string {
+  if (!source.callToAction?.trim()) return COMMENT_CTA;
+  return tailoredCallToAction(source.callToAction, brief) ?? COMMENT_CTA;
+}
+
+const LIST_MARK = /^(?:[-*•]|\d+[.)])\s+/u;
+
+/** Bullet or numbered lines. A paragraph is not a checklist. */
+function checklistLines(brief: string): string[] {
+  const lines = brief.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+  const marked = lines.filter((line) => LIST_MARK.test(line));
+  if (marked.length < 2) return [];
+  return marked
+    .map((line) => sentenceCase(line.replace(LIST_MARK, "")))
+    .filter((line) => line.length >= 2)
+    .slice(0, 7);
+}
+
+/** Spoken length of one line. About 2.6 words a second, clamped to a scene. */
+function shotMsForLine(line: string): number {
+  const words = line.trim().split(/\s+/u).filter(Boolean).length || 1;
+  return Math.min(15_000, Math.max(500, words * 380));
+}
+
+function fillCaptions(brief: string, source: StoryboardSource, sceneCount: number, cta: string): string[] {
+  const bodyCount = Math.max(0, sceneCount - 1);
   const unwrapped = unwrapHostCopy(source.caption ?? "", brief);
   const narrative = unwrapped || brief.trim();
   const fragments = narrative
@@ -223,7 +250,7 @@ function fillCaptions(brief: string, source: StoryboardSource, sceneCount: numbe
   for (let order = 0; order < bodyCount; order += 1) {
     captions.push(unique[order] ?? "");
   }
-  if (lastCta) captions.push(lastCta);
+  if (cta) captions.push(cta);
   return captions;
 }
 
@@ -233,6 +260,28 @@ function promptWithRole(brief: string, role: string): string {
   return `${subject.slice(0, 240 - suffix.length).trim()}${suffix}`;
 }
 
+function spokenScene(
+  id: string,
+  order: number,
+  caption: string,
+  visual_prompt: string,
+  duration_ms: number
+): Scene {
+  return {
+    id,
+    order,
+    caption,
+    visual_prompt,
+    duration_ms,
+    focal_x: 0.5,
+    focal_y: 0.5,
+    motion: "zoom",
+    audio_level: 1,
+    ducking: false,
+    ...(caption ? { overlay_look: "spoken" as const, overlay_place: "center" as const } : {})
+  };
+}
+
 /** Deterministic host-neutral storyboard used by browser and trusted imports. */
 export function buildStoryboardDraft(
   brief: string,
@@ -240,6 +289,17 @@ export function buildStoryboardDraft(
   architecture?: VideoArchitecture,
   source: StoryboardSource = {}
 ): Scene[] {
+  const cta = resolveCta(source, brief);
+  const items = checklistLines(brief);
+  if (items.length >= 2) {
+    const lines = [...items, cta].slice(0, 8);
+    lines[lines.length - 1] = cta;
+    return lines.map((caption, order) => {
+      const closing = order === lines.length - 1;
+      const visual = (closing ? `${items[0]} closing wide` : caption).slice(0, 240).trim();
+      return spokenScene(makeId(), order, caption, visual || "Closing question", shotMsForLine(caption));
+    });
+  }
   const narrative = unwrapHostCopy(source.caption ?? "", brief) || brief;
   const visualSubject = [source.visualHint?.trim(), brief].filter(Boolean).join(" ");
   const fragments = narrative
@@ -261,43 +321,33 @@ export function buildStoryboardDraft(
       ? fragments.map((fragment) => fragment.slice(0, 240).trim())
       : STORY_ROLES.map((role) => promptWithRole(visualSubject, role));
   const words = narrative.trim() ? narrative.trim().split(/\s+/u) : [];
-  const base = Math.floor(words.length / visualPrompts.length);
-  let remainder = words.length % visualPrompts.length;
+  const bodySlots = Math.max(1, visualPrompts.length - 1);
+  const base = Math.floor(words.length / bodySlots);
+  let remainder = words.length % bodySlots;
   let cursor = 0;
   const totalDurationMs = (architecture?.durationSeconds ?? visualPrompts.length * 3) * 1000;
-  const durationBase = Math.floor(totalDurationMs / visualPrompts.length);
-  const overlayCaptions = architecture ? fillCaptions(brief, source, visualPrompts.length) : [];
-  const headline = architecture ? overlayHeadline(brief) : undefined;
-  return visualPrompts.map((visual_prompt, order) => {
+  const overlayCaptions = architecture ? fillCaptions(brief, source, visualPrompts.length, cta) : [];
+  const captions = visualPrompts.map((_, order) => {
     const count = base + (remainder-- > 0 ? 1 : 0);
     const isLast = order === visualPrompts.length - 1;
-    let caption: string;
-    if (architecture) {
-      caption = overlayCaptions[order] ?? "";
-    } else if (isLast && source.callToAction?.trim()) {
-      caption = tailoredCallToAction(source.callToAction, brief) ?? source.callToAction.trim().slice(0, 180);
-    } else if (base < 2) {
+    if (architecture) return overlayCaptions[order] ?? "";
+    if (isLast) return cta;
+    if (base < 2) {
       // Fewer than two words per beat: keep the phrase speakable on scene 1.
-      caption = order === 0 ? words.join(" ").slice(0, 180) : "";
-    } else {
-      caption = words.slice(cursor, cursor + count).join(" ").slice(0, 180);
-      cursor += count;
+      return order === 0 ? words.join(" ").slice(0, 180) : "";
     }
-    const titled = Boolean(headline && order === 0);
-    return {
-      id: makeId(),
-      order,
-      caption,
-      visual_prompt,
-      duration_ms: durationBase + (order < totalDurationMs % visualPrompts.length ? 1 : 0),
-      focal_x: 0.5,
-      focal_y: 0.5,
-      motion: "zoom",
-      audio_level: 1,
-      ducking: false,
-      ...(titled ? { overlay_look: "title" as const, overlay_place: "center" as const } : {})
-    };
+    const caption = words.slice(cursor, cursor + count).join(" ").slice(0, 180);
+    cursor += count;
+    return caption;
   });
+  const durations = fitShotDurations(captions, totalDurationMs);
+  return visualPrompts.map((visual_prompt, order) => spokenScene(
+    makeId(),
+    order,
+    captions[order] ?? "",
+    visual_prompt,
+    durations[order] ?? 500
+  ));
 }
 
 export function conceptIdForArchitecture(architecture: Pick<VideoArchitecture, "durationSeconds">): "direct" | "story" | "rhythm" {
@@ -394,8 +444,7 @@ function boundedScene(scene: Scene): Scene {
     && scene.overlay_place !== "center" && scene.overlay_place !== "top") {
     throw new Error("invalid overlay place");
   }
-  if (scene.overlay_look !== undefined && scene.overlay_look !== "caption"
-    && scene.overlay_look !== "title" && scene.overlay_look !== "poster") {
+  if (scene.overlay_look !== undefined && !isOverlayLookValue(scene.overlay_look)) {
     throw new Error("invalid overlay look");
   }
   if (scene.caption_cues && scene.caption_cues.length) validateCues(scene.caption_cues, scene.duration_ms);
@@ -457,6 +506,37 @@ function proportionalDurations(weights: number[], total_ms: number): number[] {
     durations[index] = (durations[index] ?? 0) + 1;
   }
   return durations;
+}
+
+/** Word-weighted shot lengths that still sum to the reel budget. */
+function fitShotDurations(lines: string[], totalMs: number): number[] {
+  if (!lines.length) return [];
+  const weights = lines.map((line) => Math.max(1, line.trim().split(/\s+/u).filter(Boolean).length));
+  const fitted = proportionalDurations(weights, totalMs).map((ms) => Math.min(15_000, Math.max(500, ms)));
+  let drift = fitted.reduce((sum, ms) => sum + ms, 0) - totalMs;
+  const byRoom = (direction: "spare" | "weight") => fitted
+    .map((_, index) => index)
+    .sort((a, b) => direction === "weight"
+      ? (weights[b] ?? 0) - (weights[a] ?? 0)
+      : (fitted[b] ?? 0) - (fitted[a] ?? 0));
+  if (drift > 0) {
+    for (const index of byRoom("spare")) {
+      if (drift <= 0) break;
+      const current = fitted[index] ?? 500;
+      const take = Math.min(current - 500, drift);
+      fitted[index] = current - take;
+      drift -= take;
+    }
+  } else if (drift < 0) {
+    for (const index of byRoom("weight")) {
+      if (drift >= 0) break;
+      const current = fitted[index] ?? 500;
+      const add = Math.min(15_000 - current, -drift);
+      fitted[index] = current + add;
+      drift += add;
+    }
+  }
+  return fitted;
 }
 
 function deriveCues(caption: string, duration_ms: number): CaptionCue[] {
@@ -572,6 +652,10 @@ export function spokenWordIndex(words: SpokenWord[], elapsedMs: number): number 
 /** Music-bed gain while a voice-over is attached. ponytail: constant duck; upgrade to sidechain. */
 export const VOICEOVER_DUCK = 0.22;
 
+function isOverlayLookValue(value: unknown): boolean {
+  return value === "caption" || value === "title" || value === "poster" || value === "spoken";
+}
+
 function isValidCueShape(value: unknown): boolean {
   return Array.isArray(value) && value.every((cue) =>
     cue
@@ -601,8 +685,7 @@ function validatedScene(value: unknown): Scene {
     || ("title" in scene && typeof scene.title !== "string")
     || ("overlay_place" in scene && scene.overlay_place !== "bottom"
       && scene.overlay_place !== "center" && scene.overlay_place !== "top")
-    || ("overlay_look" in scene && scene.overlay_look !== "caption"
-      && scene.overlay_look !== "title" && scene.overlay_look !== "poster")
+    || ("overlay_look" in scene && !isOverlayLookValue(scene.overlay_look))
     || ("caption_cues" in scene && !isValidCueShape(scene.caption_cues))) {
     throw new Error("invalid scene");
   }
@@ -638,19 +721,22 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
       ? command.payload.media_glance
       : snapshot.brief.media_glance;
     let sceneSerial = 0;
-    const scenes = snapshot.scenes.length
-      ? snapshot.scenes
-      : planStoryboardScenes(
+    const seeding = snapshot.scenes.length === 0;
+    const scenes = seeding
+      ? planStoryboardScenes(
         snapshot.brief,
         conceptId,
         () => `${snapshot.id}-scene-${++sceneSerial}`,
         architecture,
         { glance: media_glance }
-      );
+      )
+      : snapshot.scenes;
+    const cta = seeding ? scenes.at(-1)?.caption.trim() : undefined;
     const brief = {
       ...snapshot.brief,
       ...(architecture ? { architecture } : {}),
-      ...(media_glance ? { media_glance } : {})
+      ...(media_glance ? { media_glance } : {}),
+      ...(cta ? { cta } : {})
     };
     return { ...snapshot, selected_concept_id: conceptId, brief, scenes, revision: snapshot.revision + 1 };
   }
@@ -730,7 +816,92 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
     }
     return { ...snapshot, brief, revision: snapshot.revision + 1 };
   }
+  if (command.kind === "update_reel") {
+    return applyReel(snapshot, command.payload);
+  }
   throw new Error("unknown command");
+}
+
+function closingPrompt(purpose: string, fallback?: string): string {
+  const prompt = (fallback?.trim() || purpose.trim() || "Closing question").replace(/\s+/gu, " ").trim().slice(0, 240);
+  return prompt || "Closing question";
+}
+
+function freshSceneId(scenes: Scene[], base: string): string {
+  const ids = new Set(scenes.map((scene) => scene.id));
+  let id = base;
+  let n = 2;
+  while (ids.has(id)) {
+    id = `${base}-${n}`;
+    n += 1;
+  }
+  return id;
+}
+
+function applyReel(snapshot: ProjectSnapshot, payload: Record<string, unknown>): ProjectSnapshot {
+  if (!("cta" in payload) && !("brand_mark" in payload)) throw new Error("invalid reel options");
+  const brief = { ...snapshot.brief };
+  let scenes = snapshot.scenes.map(copyScene);
+  if ("brand_mark" in payload) {
+    if (payload.brand_mark === true) brief.brand_mark = true;
+    else if (payload.brand_mark === false) delete brief.brand_mark;
+    else throw new Error("invalid brand mark");
+  }
+  if ("cta" in payload) {
+    const raw = payload.cta;
+    if (raw === null) {
+      const previous = brief.cta;
+      delete brief.cta;
+      const last = scenes.at(-1);
+      if (previous && last && last.caption === previous && scenes.length > 1) {
+        scenes = scenes.slice(0, -1).map((scene, order) => ({ ...scene, order }));
+      }
+    } else if (typeof raw === "string") {
+      const text = raw.trim().replace(/\s+/gu, " ");
+      if (!text || text.length > 180) throw new Error("invalid cta");
+      const cta = `${text.charAt(0).toLocaleUpperCase()}${text.slice(1)}`;
+      const previous = brief.cta;
+      brief.cta = cta;
+      const last = scenes.at(-1);
+      const outro = {
+        caption: cta,
+        overlay_look: "spoken" as const,
+        overlay_place: "center" as const,
+        duration_ms: shotMsForLine(cta)
+      };
+      if (last && previous && last.caption === previous) {
+        scenes[scenes.length - 1] = {
+          ...last,
+          ...outro,
+          duration_ms: last.caption === cta ? last.duration_ms : outro.duration_ms
+        };
+      } else if (last && last.caption === cta) {
+        scenes[scenes.length - 1] = {
+          ...last,
+          ...outro,
+          duration_ms: last.duration_ms
+        };
+      } else if (scenes.length >= 8 && last) {
+        // ponytail: the storyboard holds 8 scenes, so the outro replaces the last beat.
+        scenes[scenes.length - 1] = { ...last, ...outro };
+      } else {
+        scenes.push({
+          id: freshSceneId(scenes, `${snapshot.id}-cta`),
+          order: scenes.length,
+          visual_prompt: closingPrompt(snapshot.brief.purpose, last?.visual_prompt),
+          focal_x: 0.5,
+          focal_y: 0.5,
+          motion: "zoom",
+          audio_level: 1,
+          ducking: false,
+          ...outro
+        });
+      }
+    } else {
+      throw new Error("invalid cta");
+    }
+  }
+  return { ...snapshot, brief, scenes, revision: snapshot.revision + 1 };
 }
 
 export function coverCropFilter(width: number, height: number, focal_x: number, focal_y: number): string[] {
@@ -738,6 +909,35 @@ export function coverCropFilter(width: number, height: number, focal_x: number, 
     `scale=${width}:${height}:force_original_aspect_ratio=increase`,
     `crop=${width}:${height}:(iw-ow)*${focal_x}:(ih-oh)*${focal_y}`
   ];
+}
+
+export type OutputFrame = "reel" | "desktop";
+
+/** Absent frame stays a vertical reel. Both is two cover crops, not one stretched picture. */
+export function outputFrames(frame: "reel" | "desktop" | "both" | undefined): OutputFrame[] {
+  if (frame === "desktop") return ["desktop"];
+  if (frame === "both") return ["reel", "desktop"];
+  return ["reel"];
+}
+
+/** Swap the configured sides so each frame keeps the same pixel budget. */
+export function frameRenderProfile(base: RenderProfile, frame: OutputFrame): RenderProfile {
+  const long = Math.max(base.width, base.height);
+  const short = Math.min(base.width, base.height);
+  return validateRenderProfile({
+    ...base,
+    width: frame === "desktop" ? long : short,
+    height: frame === "desktop" ? short : long
+  });
+}
+
+export function renderProfilesForBrief(
+  base: RenderProfile,
+  frame: "reel" | "desktop" | "both" | undefined
+): RenderProfile[] {
+  const profiles = outputFrames(frame).map((item) => frameRenderProfile(base, item));
+  return profiles.filter((profile, index) =>
+    profiles.findIndex((other) => other.width === profile.width && other.height === profile.height) === index);
 }
 
 export function validateRenderProfile(profile: RenderProfile): RenderProfile {

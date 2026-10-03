@@ -81,6 +81,52 @@ async function listen(server) {
   return `http://127.0.0.1:${address.port}`;
 }
 
+test("composeOne waits for every frame and keeps the first job", async () => {
+  const projects = new ProjectService();
+  const waited = [];
+  const result = await composeOne({
+    projects,
+    async fillStock(ownerId, projectId) {
+      let project = await projects.get(ownerId, projectId);
+      for (const scene of [...project.scenes]) {
+        project = await projects.get(ownerId, projectId);
+        const current = project.scenes.find((item) => item.id === scene.id);
+        await projects.command(ownerId, {
+          command_id: crypto.randomUUID(),
+          project_id: projectId,
+          base_revision: project.revision,
+          client_timestamp: new Date().toISOString(),
+          kind: "update_scene",
+          payload: { scene: { ...current, media_id: "ready-1" } }
+        });
+      }
+    },
+    async requestRender() {
+      return {
+        job_id: "reel-job",
+        kind: "final",
+        frames: [
+          { frame: "reel", job_id: "reel-job" },
+          { frame: "desktop", job_id: "desktop-job" }
+        ]
+      };
+    },
+    async waitRender(_owner, jobId) {
+      waited.push(jobId);
+      return { phase: "complete" };
+    },
+    async download(_owner, jobId) {
+      return { url: `https://download.example/${jobId}.mp4`, expires_at: "2099-01-01T00:00:00.000Z", kind: "final" };
+    }
+  }, "owner", { purpose: "Both frames", fillStock: true, render: "final" });
+  assert.deepEqual(waited, ["reel-job", "desktop-job"]);
+  assert.equal(result.render.job_id, "reel-job");
+  assert.equal(result.render.download.url, "https://download.example/reel-job.mp4");
+  assert.equal(result.render.frames.length, 1);
+  assert.equal(result.render.frames[0].job_id, "desktop-job");
+  assert.equal(result.render.frames[0].frame, "desktop");
+});
+
 test("POST /v1/batches is registered and loops composeOne", async () => {
   const server = createServer(createTestApp({ ownerId: "owner", projects: new ProjectService() }));
   const origin = await listen(server);

@@ -4,7 +4,7 @@ export type AccountState = "active" | "suspended" | "deletion_pending";
 export type MotionPreset = "none" | "push" | "zoom";
 export const overlayPlaces = ["bottom", "center", "top"] as const;
 export type OverlayPlace = (typeof overlayPlaces)[number];
-export const overlayLooks = ["caption", "title", "poster"] as const;
+export const overlayLooks = ["caption", "title", "poster", "spoken"] as const;
 export type OverlayLook = (typeof overlayLooks)[number];
 
 export interface CaptionCue {
@@ -91,6 +91,12 @@ export interface ProjectBrief {
   voiceover?: Voiceover;
   architecture?: VideoArchitecture;
   media_glance?: MediaGlanceHints;
+  /** Spoken closing line. The last thing heard and seen. */
+  cta?: string;
+  /** Landing cube lockup in the top-right corner. Absent means off. */
+  brand_mark?: boolean;
+  /** Output frame. Absent means a vertical reel. Both renders each frame, cover-cropped. */
+  frame?: "reel" | "desktop" | "both";
 }
 
 export type CommandKind =
@@ -101,7 +107,8 @@ export type CommandKind =
   | "add_scene"
   | "remove_scene"
   | "update_soundtrack"
-  | "update_voiceover";
+  | "update_voiceover"
+  | "update_reel";
 
 export interface ProjectSnapshot {
   schema_version: 1;
@@ -189,7 +196,7 @@ function isOverlayPlace(value: unknown): value is OverlayPlace {
 }
 
 function isOverlayLook(value: unknown): value is OverlayLook {
-  return value === "caption" || value === "title" || value === "poster";
+  return value === "caption" || value === "title" || value === "poster" || value === "spoken";
 }
 
 function isCaptionCue(value: unknown, durationMs: number, previousEnd: number): value is CaptionCue {
@@ -340,7 +347,13 @@ export function isProjectBrief(value: unknown): value is ProjectBrief {
     || ("soundtrack" in value && value.soundtrack != null && !isSoundtrack(value.soundtrack))
     || ("voiceover" in value && value.voiceover != null && !isVoiceover(value.voiceover))
     || ("architecture" in value && value.architecture != null && !isVideoArchitecture(value.architecture))
-    || ("media_glance" in value && value.media_glance != null && !isMediaGlanceHints(value.media_glance))) {
+    || ("media_glance" in value && value.media_glance != null && !isMediaGlanceHints(value.media_glance))
+    || ("cta" in value && (typeof value.cta !== "string"
+      || !value.cta.trim()
+      || value.cta !== value.cta.trim()
+      || value.cta.length > 180))
+    || ("brand_mark" in value && value.brand_mark !== true)
+    || ("frame" in value && value.frame !== "reel" && value.frame !== "desktop" && value.frame !== "both")) {
     return false;
   }
   return true;

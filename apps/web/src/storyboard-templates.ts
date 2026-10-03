@@ -38,7 +38,10 @@ export function templateBriefFromProject(brief: ProjectSnapshot["brief"]): Proje
     audience: brief.audience,
     tone: brief.tone,
     ...(brief.architecture ? { architecture: brief.architecture } : {}),
-    ...(brief.media_glance ? { media_glance: brief.media_glance } : {})
+    ...(brief.media_glance ? { media_glance: brief.media_glance } : {}),
+    ...(brief.cta ? { cta: brief.cta } : {}),
+    ...(brief.brand_mark ? { brand_mark: true } : {}),
+    ...(brief.frame ? { frame: brief.frame } : {})
   };
   if (brief.soundtrack?.kind === "stock" && brief.soundtrack.stock_id) {
     next.soundtrack = {

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { isProjectSnapshot, type ProjectSnapshot } from "@f-engine/contracts";
 import { renderNotifyQueue } from "@f-engine/contracts/host-notify";
-import { validateRenderProfile, type RenderProfile } from "@f-engine/reel-engine";
+import { renderProfilesForBrief, validateRenderProfile, type RenderProfile } from "@f-engine/reel-engine";
 import type { Pool, PoolClient } from "pg";
 
 export type RenderKind = "preview" | "final";
@@ -35,6 +35,8 @@ export interface RenderJobRecord {
   state: "queued" | "running" | "cancelled" | "complete" | "failed";
   notifyUrl?: string;
   externalId?: string;
+  /** Every frame enqueued for this request. The record itself is the first. */
+  outputs?: RenderJobRecord[];
 }
 
 export interface RenderEnqueueOptions {
@@ -61,6 +63,44 @@ export class RenderInputIncompleteError extends Error {
   constructor(message = "Every scene needs ready media before rendering.") {
     super(message);
   }
+}
+
+const CANONICAL_RENDER_CONSTRAINTS = new Set([
+  "RenderJob_canonical_revision_kind_key",
+  "RenderJob_canonical_revision_kind_frame_key"
+]);
+
+function isCanonicalRenderConflict(error: unknown): boolean {
+  const row = error as { code?: string; constraint?: string };
+  return row.code === "23505"
+    && typeof row.constraint === "string"
+    && CANONICAL_RENDER_CONSTRAINTS.has(row.constraint);
+}
+
+type StoredRenderJobRow = {
+  id: string;
+  ownerId: string;
+  projectId: string;
+  revision: number;
+  kind: RenderKind;
+  renderProfile: RenderProfile;
+  state: RenderJobRecord["state"];
+  notifyUrl: string | null;
+  externalId: string | null;
+};
+
+function recordFromRow(row: StoredRenderJobRow, notifyUrl?: string, externalId?: string): RenderJobRecord {
+  return {
+    jobId: row.id,
+    ownerId: row.ownerId,
+    projectId: row.projectId,
+    revision: row.revision,
+    kind: row.kind,
+    renderProfile: row.renderProfile,
+    state: row.state,
+    ...(notifyUrl ? { notifyUrl } : {}),
+    ...(externalId ? { externalId } : {})
+  };
 }
 
 async function enqueueRenderNotify(
@@ -108,6 +148,7 @@ export class PostgresRenderRepository {
   ): Promise<RenderJobRecord | undefined> {
     const client = await this.pool.connect();
     let attemptedRevision: number | undefined;
+    let profiles: RenderProfile[] = [structuredClone(this.profiles[kind])];
     try {
       await client.query("BEGIN");
       const owner = await client.query(
@@ -138,64 +179,56 @@ export class PostgresRenderRepository {
       attemptedRevision = projectRow.revision;
       const notifyUrl = options.notifyUrl ?? projectRow.notifyUrl ?? undefined;
       const externalId = options.externalId ?? projectRow.externalId ?? undefined;
-      const existing = await client.query<{
-        id: string;
-        ownerId: string;
-        projectId: string;
-        revision: number;
-        kind: RenderKind;
-        renderProfile: RenderProfile;
-        state: RenderJobRecord["state"];
-        notifyUrl: string | null;
-        externalId: string | null;
-      }>(
+      profiles = renderProfilesForBrief(this.profiles[kind], projectRow.brief?.frame);
+      const existing = await client.query<StoredRenderJobRow>(
         `SELECT id, "ownerId", "projectId", revision, kind, "renderProfile", state, "notifyUrl", "externalId"
            FROM "RenderJob"
           WHERE "ownerId" = $1 AND "projectId" = $2 AND revision = $3
             AND kind = $4
-            AND state IN ('queued', 'running', 'complete')
-          LIMIT 1`,
+            AND state IN ('queued', 'running', 'complete')`,
         [ownerId, projectId, projectRow.revision, kind]
       );
-      const existingRow = existing.rows[0];
-      if (existingRow) {
-        const resolvedNotify = notifyUrl ?? existingRow.notifyUrl ?? undefined;
-        const resolvedExternal = externalId ?? existingRow.externalId ?? undefined;
-        if (resolvedNotify && resolvedNotify !== existingRow.notifyUrl) {
+      const planned = profiles.map((profile) => ({
+        profile,
+        row: existing.rows.find((row) =>
+          row.renderProfile?.width === profile.width && row.renderProfile?.height === profile.height)
+      }));
+      const finishExisting = async (row: StoredRenderJobRow): Promise<RenderJobRecord> => {
+        const resolvedNotify = notifyUrl ?? row.notifyUrl ?? undefined;
+        const resolvedExternal = externalId ?? row.externalId ?? undefined;
+        if (resolvedNotify && resolvedNotify !== row.notifyUrl) {
           await client.query(
             `UPDATE "RenderJob" SET "notifyUrl" = $1, "externalId" = COALESCE($2, "externalId")
               WHERE id = $3`,
-            [resolvedNotify, resolvedExternal ?? null, existingRow.id]
+            [resolvedNotify, resolvedExternal ?? null, row.id]
           );
         }
-        if (existingRow.state === "complete" && resolvedNotify) {
+        if (row.state === "complete" && resolvedNotify) {
           await enqueueRenderNotify(client, {
-            jobId: existingRow.id,
-            projectId: existingRow.projectId,
-            kind: existingRow.kind,
+            jobId: row.id,
+            projectId: row.projectId,
+            kind: row.kind,
             notifyUrl: resolvedNotify,
             ...(resolvedExternal ? { externalId: resolvedExternal } : {})
           });
         }
-        await client.query("COMMIT");
-        return {
-          jobId: existingRow.id,
-          ownerId: existingRow.ownerId,
-          projectId: existingRow.projectId,
-          revision: existingRow.revision,
-          kind: existingRow.kind,
-          renderProfile: existingRow.renderProfile,
-          state: existingRow.state,
-          ...(resolvedNotify ? { notifyUrl: resolvedNotify } : {}),
-          ...(resolvedExternal ? { externalId: resolvedExternal } : {})
-        };
-      }
+        return recordFromRow(row, resolvedNotify, resolvedExternal);
+      };
       const active = await client.query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM "RenderJob"
           WHERE "ownerId" = $1 AND state IN ('queued', 'running')`,
         [ownerId]
       );
-      if (Number(active.rows[0]?.count ?? 0) >= 3) {
+      const fresh = planned.filter((item) => !item.row).length;
+      if (fresh === 0) {
+        const outputs: RenderJobRecord[] = [];
+        for (const item of planned) outputs.push(await finishExisting(item.row!));
+        await client.query("COMMIT");
+        const first = outputs[0];
+        if (!first) throw new Error("render frame missing");
+        return { ...first, outputs };
+      }
+      if (Number(active.rows[0]?.count ?? 0) + fresh > 3) {
         throw new RenderCapacityError();
       }
       const selected = await client.query<{ conceptId: string }>(
@@ -242,71 +275,86 @@ export class PostgresRenderRepository {
           throw new RenderInputIncompleteError("Every scene needs ready media before rendering.");
         }
       }
-      const jobId = randomUUID();
-      const job: RenderJobRecord = {
-        jobId,
-        ownerId,
-        projectId,
-        revision: renderInput.revision,
-        kind,
-        renderProfile: structuredClone(this.profiles[kind]),
-        state: "queued",
-        ...(notifyUrl ? { notifyUrl } : {}),
-        ...(externalId ? { externalId } : {})
-      };
-      await client.query(
-        `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, kind, "renderProfile", "renderInput", state, "notifyUrl", "externalId")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued', $8, $9)`,
-        [jobId, ownerId, projectId, job.revision, job.kind, job.renderProfile, renderInput, notifyUrl ?? null, externalId ?? null]
-      );
-      await client.query(
-        `INSERT INTO "WorkOutbox" (id, kind, "dedupeKey", payload)
-         VALUES ($1, 'render-preview', $2, $3)`,
-        [randomUUID(), `render-preview:${projectId}:${job.revision}:${kind}:${jobId}`, {
+      const outputs: RenderJobRecord[] = [];
+      for (const item of planned) {
+        if (item.row) {
+          outputs.push(await finishExisting(item.row));
+          continue;
+        }
+        const jobId = randomUUID();
+        const job: RenderJobRecord = {
           jobId,
           ownerId,
           projectId,
-          revision: job.revision,
-          kind
-        }]
-      );
-      await insertEvent(client, jobId, "queued", 0);
+          revision: renderInput.revision,
+          kind,
+          renderProfile: item.profile,
+          state: "queued",
+          ...(notifyUrl ? { notifyUrl } : {}),
+          ...(externalId ? { externalId } : {})
+        };
+        await client.query("SAVEPOINT render_job_insert");
+        try {
+          await client.query(
+            `INSERT INTO "RenderJob" (id, "ownerId", "projectId", revision, kind, "renderProfile", "renderInput", state, "notifyUrl", "externalId")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued', $8, $9)`,
+            [jobId, ownerId, projectId, job.revision, job.kind, job.renderProfile, renderInput, notifyUrl ?? null, externalId ?? null]
+          );
+          await client.query(
+            `INSERT INTO "WorkOutbox" (id, kind, "dedupeKey", payload)
+             VALUES ($1, 'render-preview', $2, $3)`,
+            [randomUUID(), `render-preview:${projectId}:${job.revision}:${kind}:${jobId}`, {
+              jobId,
+              ownerId,
+              projectId,
+              revision: job.revision,
+              kind
+            }]
+          );
+          await insertEvent(client, jobId, "queued", 0);
+          await client.query("RELEASE SAVEPOINT render_job_insert");
+          outputs.push(job);
+        } catch (error) {
+          await client.query("ROLLBACK TO SAVEPOINT render_job_insert");
+          if (!isCanonicalRenderConflict(error)) throw error;
+          const raced = await client.query<StoredRenderJobRow>(
+            `SELECT id, "ownerId", "projectId", revision, kind, "renderProfile", state, "notifyUrl", "externalId"
+               FROM "RenderJob"
+              WHERE "ownerId" = $1 AND "projectId" = $2 AND revision = $3
+                AND kind = $4
+                AND state IN ('queued', 'running', 'complete')
+                AND ("renderProfile"->>'width')::int = $5
+                AND ("renderProfile"->>'height')::int = $6
+              LIMIT 1`,
+            [ownerId, projectId, job.revision, kind, item.profile.width, item.profile.height]
+          );
+          const row = raced.rows[0];
+          if (!row) throw error;
+          outputs.push(await finishExisting(row));
+        }
+      }
       await client.query("COMMIT");
-      return job;
+      const first = outputs[0];
+      if (!first) throw new Error("render frame missing");
+      return { ...first, outputs };
     } catch (error) {
       await client.query("ROLLBACK");
-      if ((error as { code?: string; constraint?: string }).code === "23505"
-        && (error as { constraint?: string }).constraint === "RenderJob_canonical_revision_kind_key"
-        && attemptedRevision !== undefined) {
-        const canonical = await client.query<{
-          id: string;
-          ownerId: string;
-          projectId: string;
-          revision: number;
-          kind: RenderKind;
-          renderProfile: RenderProfile;
-          state: RenderJobRecord["state"];
-        }>(
-          `SELECT id, "ownerId", "projectId", revision, kind, "renderProfile", state
+      if (isCanonicalRenderConflict(error) && attemptedRevision !== undefined) {
+        const canonical = await client.query<StoredRenderJobRow>(
+          `SELECT id, "ownerId", "projectId", revision, kind, "renderProfile", state, "notifyUrl", "externalId"
              FROM "RenderJob"
             WHERE "ownerId" = $1 AND "projectId" = $2 AND revision = $3
               AND kind = $4
-              AND state IN ('queued', 'running', 'complete')
-            LIMIT 1`,
+              AND state IN ('queued', 'running', 'complete')`,
           [ownerId, projectId, attemptedRevision, kind]
         );
-        const row = canonical.rows[0];
-        if (row) {
-          return {
-            jobId: row.id,
-            ownerId: row.ownerId,
-            projectId: row.projectId,
-            revision: row.revision,
-            kind: row.kind,
-            renderProfile: row.renderProfile,
-            state: row.state
-          };
-        }
+        const outputs = profiles.flatMap((profile) => {
+          const row = canonical.rows.find((item) =>
+            item.renderProfile?.width === profile.width && item.renderProfile?.height === profile.height);
+          return row ? [recordFromRow(row, row.notifyUrl ?? undefined, row.externalId ?? undefined)] : [];
+        });
+        const first = outputs[0];
+        if (outputs.length === profiles.length && first) return { ...first, outputs };
       }
       throw error;
     } finally {

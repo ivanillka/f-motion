@@ -19,7 +19,8 @@ const renderMigrations = [
   "../../../prisma/migrations/20260731000000_seal_inspected_media/migration.sql",
   "../../../prisma/migrations/20260801000000_coalesce_render_jobs/migration.sql",
     "../../../prisma/migrations/20260801120000_render_kind_profile/migration.sql",
-    "../../../prisma/migrations/20260915120000_host_render_notify/migration.sql"
+    "../../../prisma/migrations/20260915120000_host_render_notify/migration.sql",
+    "../../../prisma/migrations/20261003180000_render_frame_key/migration.sql"
   ];
 
 async function listen(server) {

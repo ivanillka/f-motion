@@ -564,6 +564,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   width: min(100%, 440px);
   justify-self: center;
 }
+.preview-panel.is-desktop { width: min(100%, 760px); }
 .preview {
   position: relative;
   width: 100%;
@@ -581,6 +582,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   touch-action: none;
   user-select: none;
 }
+.preview.is-desktop { aspect-ratio: 16 / 9; }
+.frame-preview { display: flex; gap: 8px; }
+.frame-preview button { width: auto; }
+.frame-preview button[aria-pressed="true"] { border-color: var(--accent); }
 .preview.is-frameable { cursor: grab; }
 .preview.is-panning { cursor: grabbing; }
 .preview.is-preparing img,
@@ -695,6 +700,35 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   border-radius: 4px;
   box-shadow: 0 0 0 2px #d989a0;
   text-shadow: none;
+}
+.preview .reel-mark {
+  position: absolute;
+  z-index: 3;
+  top: 5%;
+  right: 6%;
+  left: auto;
+  width: 42%;
+  height: auto;
+  aspect-ratio: 960 / 200;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+  color-scheme: normal;
+}
+.preview .look-spoken {
+  align-self: center;
+  max-width: 78%;
+}
+.preview .look-spoken .overlay-caption {
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  font-size: clamp(1.7rem, 8vw, 2.7rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  text-transform: none;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.72);
 }
 .preview .look-title {
   max-width: 92%;
@@ -940,7 +974,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .scene-controls button { min-height: 32px; padding: 5px 8px; font-size: 0.76rem; }
 .overlay-looks {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 6px;
 }
 .scene-controls .overlay-look-tile {
@@ -967,6 +1001,24 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   font-weight: 800;
   letter-spacing: -0.03em;
   text-transform: uppercase;
+}
+.overlay-look-tile.look-spoken {
+  align-content: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  text-transform: none;
+}
+.reel-options {
+  display: grid;
+  gap: 8px;
+}
+.reel-mark-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 0.85rem;
 }
 .overlay-look-tile.look-poster {
   justify-items: start;
@@ -1041,6 +1093,43 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   gap: 12px;
   flex: 1;
   min-height: 0;
+}
+.frame-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.frame-choice legend {
+  flex-basis: 100%;
+  margin: 0 0 2px;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.frame-choice label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.frame-choice label:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface));
+}
+.frame-choice input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
 }
 .brief-title {
   position: absolute;

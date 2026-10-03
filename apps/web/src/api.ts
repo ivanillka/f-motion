@@ -12,6 +12,7 @@ import {
   spokenWordIndex,
   spokenWordsForCues,
   VOICEOVER_DUCK,
+  COMMENT_CTA,
   type Concept,
   type MediaGlanceHints,
   type MediaIntentAdapter,
@@ -32,7 +33,7 @@ export interface Scene {
   visual_prompt?: string;
   title?: string;
   overlay_place?: "bottom" | "center" | "top";
-  overlay_look?: "caption" | "title" | "poster";
+  overlay_look?: "caption" | "title" | "poster" | "spoken";
 }
 
 export interface Soundtrack {
@@ -61,6 +62,9 @@ export interface ProjectSnapshot {
     voiceover?: Voiceover;
     architecture?: VideoArchitecture;
     media_glance?: MediaGlanceHints;
+    cta?: string;
+    brand_mark?: boolean;
+    frame?: "reel" | "desktop" | "both";
   };
   selected_concept_id?: string;
   scenes: Scene[];
@@ -110,6 +114,7 @@ export {
   recommendVideoArchitecture,
   setMediaIntentAdapter,
   VOICEOVER_DUCK,
+  COMMENT_CTA,
   type Concept,
   type MediaGlanceHints,
   type MediaIntentAdapter,

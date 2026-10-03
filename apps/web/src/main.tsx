@@ -51,6 +51,7 @@ import {
   spokenWordIndex,
   spokenWordsForCues,
   VOICEOVER_DUCK,
+  COMMENT_CTA,
   type ProjectSnapshot,
   type ProjectSummary,
   type Scene,
@@ -103,6 +104,7 @@ interface MixkitMatch {
 }
 const overlayLooks = [
   ["Caption", "caption", "bottom"],
+  ["Spoken", "spoken", "center"],
   ["Title", "title", "center"],
   ["Lower third", "poster", "bottom"]
 ] as const;
@@ -266,6 +268,7 @@ export function App() {
   const [recording, setRecording] = useState(false);
   const [previewingId, setPreviewingId] = useState<number>();
   const [overlayCaption, setOverlayCaption] = useState("");
+  const [ctaDraft, setCtaDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const [status, setStatus] = useState("");
@@ -303,6 +306,12 @@ export function App() {
   const [conflict, setConflict] = useState<ProjectSnapshot>();
   const [conflictNotice, setConflictNotice] = useState<{ sceneId?: string; operation: string }>();
   const [jobId, setJobId] = useState("");
+  const [outputFrame, setOutputFrame] = useState<"reel" | "desktop" | "both">("reel");
+  const outputFrameRef = useRef(outputFrame);
+  outputFrameRef.current = outputFrame;
+  const [previewFrame, setPreviewFrame] = useState<"reel" | "desktop">("reel");
+  const [frameJobs, setFrameJobs] = useState<Array<{ frame: "reel" | "desktop"; job_id: string }>>([]);
+  const [frameDownloads, setFrameDownloads] = useState<Record<string, string>>({});
   const [renderKind, setRenderKind] = useState<"preview" | "final">("preview");
   const [progress, setProgress] = useState({ phase: "queued", percent: 0 });
   const [downloadUrl, setDownloadUrl] = useState("");
@@ -328,6 +337,8 @@ export function App() {
   const renderLabel = renderKind === "final" ? "final export" : previewRenderLabel;
   const renderHeading = renderKind === "final" ? "Final export" : "Accurate preview";
   const downloadLabel = renderKind === "final" ? "Download export" : "Download preview";
+  const previewIsDesktop = project?.brief.frame === "desktop"
+    || (project?.brief.frame === "both" && previewFrame === "desktop");
   const renderFailedLabel = renderKind === "final"
     ? "Final export failed — try again or keep editing."
     : "Accurate preview failed — try again or keep editing.";
@@ -650,7 +661,8 @@ export function App() {
       audience: plan.audience,
       tone: `${plan.tone}, ${plan.pace}`,
       architecture: plan,
-      ...(mediaGlance ? { media_glance: mediaGlance } : {})
+      ...(mediaGlance ? { media_glance: mediaGlance } : {}),
+      frame: outputFrameRef.current
     };
   }
 
@@ -751,7 +763,8 @@ export function App() {
           localStorage.removeItem("fengine-project");
         }
       }
-      if (!current || current.scenes.length || current.brief.purpose !== brief.purpose) {
+      const storedFrame = current?.brief.frame ?? "reel";
+      if (!current || current.scenes.length || current.brief.purpose !== brief.purpose || storedFrame !== brief.frame) {
         const body = await api.request<{ project: ProjectSnapshot }>("/api/projects", {
           method: "POST",
           body: JSON.stringify(brief)
@@ -996,6 +1009,26 @@ export function App() {
         return false;
       }
       setStatus("Voice-over could not be saved.");
+      return false;
+    }
+  }
+
+  async function saveReel(patch: { cta?: string | null; brand_mark?: boolean }) {
+    if (!project) return false;
+    setStatus("Saving…");
+    try {
+      const updated = await api.command(project.id, project.revision, "update_reel", patch);
+      setProject(updated);
+      setStatus("✓ All changes saved");
+      return true;
+    } catch (error) {
+      if (error instanceof ApiResponseError && error.status === 409) {
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          operation: "reel options"
+        });
+        return false;
+      }
+      setStatus("Reel options could not be saved.");
       return false;
     }
   }
@@ -1558,7 +1591,7 @@ export function App() {
     setStatus(`Template “${template.name}” deleted.`);
   }
 
-  async function followRender(id: string, lastEventId = "") {
+  async function followRender(id: string, lastEventId = "", primary = true): Promise<string | undefined> {
     const deadline = Date.now() + 15 * 60_000;
     while (Date.now() < deadline) {
       const response = await fetch(`/api/render-jobs/${id}/events`, {
@@ -1595,10 +1628,12 @@ export function App() {
           setProgress(event);
           if (event.phase === "complete") {
             const result = await api.request<{ url: string; metadata?: Record<string, string | number | boolean | null> }>(`/api/render-jobs/${id}/download`);
-            setDownloadUrl(result.url);
-            setPreviewMetadata(result.metadata ?? {});
-            setPreviewRevision(project?.revision);
-            return;
+            if (primary) {
+              setDownloadUrl(result.url);
+              setPreviewMetadata(result.metadata ?? {});
+              setPreviewRevision(project?.revision);
+            }
+            return result.url;
           }
           if (event.phase === "cancelled" || event.phase === "failed") return;
         }
@@ -1612,14 +1647,26 @@ export function App() {
     if (!project) return;
     setRenderKind(kind);
     setDownloadUrl("");
+    setFrameDownloads({});
     setProgress({ phase: "queued", percent: 0 });
-    const job = await api.request<{ job_id: string }>(`/api/projects/${project.id}/render`, {
+    const job = await api.request<{ job_id: string; frames?: Array<{ frame: "reel" | "desktop"; job_id: string }> }>(`/api/projects/${project.id}/render`, {
       method: "POST",
       body: JSON.stringify({ kind })
     });
-    setJobId(job.job_id);
+    const frames = job.frames?.length ? job.frames : [{ frame: "reel" as const, job_id: job.job_id }];
+    setJobId(frames[0].job_id);
+    setFrameJobs(frames);
     setStep("render");
-    await followRender(job.job_id);
+    const urls: Record<string, string> = {};
+    for (const [index, frame] of frames.entries()) {
+      const url = await followRender(frame.job_id, "", index === 0);
+      if (url) urls[frame.job_id] = url;
+    }
+    setFrameDownloads(urls);
+    if (urls[frames[0].job_id]) setProgress({ phase: "complete", percent: 100 });
+    if (frames.some((frame) => !urls[frame.job_id]) && Object.keys(urls).length) {
+      setStatus("One frame did not finish. Download the frame that did.");
+    }
   }
 
   async function retryRender() {
@@ -1641,8 +1688,9 @@ export function App() {
   }
 
   async function cancelRender() {
-    if (!jobId) return;
-    await api.request(`/api/render-jobs/${jobId}/cancel`, { method: "POST" });
+    const ids = frameJobs.length ? frameJobs.map((item) => item.job_id) : (jobId ? [jobId] : []);
+    if (!ids.length) return;
+    await Promise.all(ids.map((id) => api.request(`/api/render-jobs/${id}/cancel`, { method: "POST" })));
     setProgress({ phase: "cancelled", percent: 0 });
   }
 
@@ -2428,6 +2476,9 @@ export function App() {
   useEffect(() => {
     setOverlayCaption(activeScene?.caption ?? "");
   }, [activeScene?.id, activeScene?.title, activeScene?.caption]);
+  useEffect(() => {
+    setCtaDraft(project?.brief.cta ?? "");
+  }, [project?.id, project?.brief.cta]);
   const allScenesHaveMedia = Boolean(project?.scenes.length && project.scenes.every(({ media_id }) =>
     media_id && sceneMedia[media_id]?.state === "ready"));
   const allScenesHavePreview = Boolean(project?.scenes.length && project.scenes.every((scene) =>
@@ -2436,12 +2487,16 @@ export function App() {
   const previewScene = previewHeld
     ? (project?.scenes.find(({ id }) => id === playSceneId) ?? activeScene)
     : activeScene;
-  const overlayLook = previewScene?.overlay_look === "title" || previewScene?.overlay_look === "poster"
+  const overlayLook = previewScene?.overlay_look === "title"
+    || previewScene?.overlay_look === "poster"
+    || previewScene?.overlay_look === "spoken"
     ? previewScene.overlay_look
     : "caption";
-  const overlayPlace = previewScene?.overlay_place === "top" || previewScene?.overlay_place === "center"
-    ? previewScene.overlay_place
-    : overlayLook === "title" ? "center" : "bottom";
+  const overlayPlace = overlayLook === "spoken"
+    ? "center"
+    : previewScene?.overlay_place === "top" || previewScene?.overlay_place === "center"
+      ? previewScene.overlay_place
+      : overlayLook === "title" ? "center" : "bottom";
   const liveOverlay = previewScene?.id === activeScene?.id;
   const shownCaption = (liveOverlay ? overlayCaption : previewScene?.caption ?? "").trim();
   const overlayGhost = !shownCaption && !livePlaying;
@@ -2913,6 +2968,24 @@ export function App() {
     </section>}
     {authReady && step === "brief" && <section className="create-brief">
       <h1 className="brief-title">Create</h1>
+      <fieldset className="frame-choice">
+        <legend>Frame</legend>
+        {([
+          ["reel", "Reel 9:16"],
+          ["desktop", "Desktop 16:9"],
+          ["both", "Both"]
+        ] as const).map(([value, label]) =>
+          <label key={value}>
+            <input
+              type="radio"
+              name="output-frame"
+              value={value}
+              checked={outputFrame === value}
+              onChange={() => setOutputFrame(value)}
+            />
+            {label}
+          </label>)}
+      </fieldset>
       <div ref={briefChatPane} className="brief-chat" aria-label="Create chat" aria-live="polite" aria-busy={mediaLooking || undefined}>
         {briefChat.map((message, index) =>
           <div key={`${message.role}:${index}:${message.text.slice(0, 24)}`} className={`brief-chat-msg is-${message.role}`}>
@@ -3046,9 +3119,15 @@ export function App() {
       </nav>
 
       <div className="editor-grid" key={`${activeScene.id}:${project.revision}`}>
-        <div className="preview-panel">
+        <div className={`preview-panel${previewIsDesktop ? " is-desktop" : ""}`}>
+          {project.brief.frame === "both" ? (
+            <div className="frame-preview" role="group" aria-label="Preview frame">
+              <button type="button" className="secondary" aria-pressed={previewFrame !== "desktop"} onClick={() => setPreviewFrame("reel")}>Reel</button>
+              <button type="button" className="secondary" aria-pressed={previewFrame === "desktop"} onClick={() => setPreviewFrame("desktop")}>Desktop</button>
+            </div>
+          ) : null}
           <div
-            className={`preview${previewHeld ? " is-live" : ""}${previewPanning ? " is-panning" : ""}${previewUrl ? " is-frameable" : ""}${activePreparing && !previewHeld ? " is-preparing" : ""}`}
+            className={`preview${previewIsDesktop ? " is-desktop" : ""}${previewHeld ? " is-live" : ""}${previewPanning ? " is-panning" : ""}${previewUrl ? " is-frameable" : ""}${activePreparing && !previewHeld ? " is-preparing" : ""}`}
             aria-label={previewHeld
               ? `Live preview · scene ${(previewScene?.order ?? 0) + 1}`
               : `Live preview for scene ${activeSceneNumber}`}
@@ -3068,6 +3147,15 @@ export function App() {
               </span>
             ) : null}
             <span className="preview-grade" aria-hidden="true" />
+            {project.brief.brand_mark ? (
+              <iframe
+                className="reel-mark"
+                title="F-Motion"
+                src={`${import.meta.env.BASE_URL}brand/mark.html`}
+                tabIndex={-1}
+                aria-hidden="true"
+              />
+            ) : null}
             {(overlayHeadline || overlayLine) ? (
               <div className={`caption-burn look-${overlayLook} overlay-${overlayPlace}${overlayGhost ? " is-ghost" : ""}`}>
                 {overlayHeadline ? <strong className="overlay-title">{overlayHeadline}</strong> : null}
@@ -3128,6 +3216,32 @@ export function App() {
                 </span>;
               })}
             </div>
+            <div className="reel-options">
+              <label htmlFor="reel-cta">Closing question
+                <input
+                  id="reel-cta"
+                  maxLength={180}
+                  value={ctaDraft}
+                  placeholder={COMMENT_CTA}
+                  onChange={(event) => setCtaDraft(event.target.value)}
+                  onBlur={() => {
+                    const next = ctaDraft.trim();
+                    if (next === (project.brief.cta ?? "")) return;
+                    void saveReel({ cta: next ? next : null });
+                  }}
+                />
+              </label>
+              <label className="reel-mark-toggle" htmlFor="reel-mark">
+                <input
+                  id="reel-mark"
+                  type="checkbox"
+                  checked={Boolean(project.brief.brand_mark)}
+                  onChange={(event) => void saveReel({ brand_mark: event.target.checked })}
+                />
+                F-Motion mark
+              </label>
+            </div>
+            <p className="crop-hint">The last shot is this question, large in the center, in time with the voice. The F-Motion wordmark sits in the top right, with the cube turning beside it.</p>
             {soundtrack ? (
             <div className="music-lane" aria-label="Music bed">
               {beatMarks.map((mark, index) =>
@@ -3326,6 +3440,7 @@ export function App() {
                 onClick={() => void saveScenePatch(activeScene.id, { overlay_look: look, overlay_place: place })}
               >
                 {look === "title" ? <strong>Title</strong> : null}
+                {look === "spoken" ? <strong>Spoken</strong> : null}
                 {look === "poster" ? <><strong>Title</strong><span>Lower third</span></> : null}
                 {look === "caption" ? <span>Caption</span> : null}
               </button>)}
@@ -3648,6 +3763,10 @@ export function App() {
         <button disabled={progress.phase === "complete" || progress.phase === "cancelled" || progress.phase === "failed"} onClick={() => void cancelRender()}>Cancel render</button>
         {(progress.phase === "failed" || progress.phase === "cancelled") && <button onClick={() => void retryRender()}>Retry</button>}
         <a href={downloadUrl} download><button disabled={!downloadUrl || progress.phase === "failed"}>{downloadLabel}</button></a>
+        {frameJobs.filter((frame) => frame.job_id !== jobId && frameDownloads[frame.job_id]).map((frame) =>
+          <a key={frame.job_id} href={frameDownloads[frame.job_id]} download>
+            <button type="button">{frame.frame === "desktop" ? "Download desktop" : "Download reel"}</button>
+          </a>)}
       </div>
       <button className="secondary" onClick={() => setStep("editor")}>Keep editing</button>
     </section>}

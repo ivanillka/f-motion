@@ -93,6 +93,28 @@ test("in-memory DELETE /api/projects/:id removes the draft and later GET is 404"
   }
 });
 
+test("creating a project keeps the chosen output frame", async () => {
+  const server = createServer(createTestApp({ ownerId: "owner" }));
+  const origin = await listen(server);
+  try {
+    const created = await fetch(`${origin}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "Both frames", audience: "Customers", tone: "Warm", frame: "both" })
+    });
+    assert.equal(created.status, 201);
+    assert.equal((await created.json()).project.brief.frame, "both");
+    const square = await fetch(`${origin}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "Square", frame: "square" })
+    });
+    assert.equal(square.status, 422);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("DELETE refuses another owner's project", async () => {
   const projects = new ProjectService();
   const ownerA = createServer(createTestApp({ ownerId: "owner-a", projects }));

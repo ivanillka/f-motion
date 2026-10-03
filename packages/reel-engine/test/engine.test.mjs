@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore } from "../dist/index.js";
+import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief } from "../dist/index.js";
 
 const snapshot = {
   schema_version: 1, id: "p1", owner_id: "u1", revision: 0,
@@ -134,7 +134,9 @@ test("imported galleries do not share queue-template overlay copy", () => {
     callToAction: "Open the full gallery."
   });
   assert.equal(girl[0].caption, "Anonym Girl");
-  assert.equal(girl[0].overlay_look, "title");
+  assert.equal(girl[0].overlay_look, "spoken");
+  assert.equal(girl[0].overlay_place, "center");
+  assert.equal(girl[0].title, undefined);
   assert.equal(girl[1].caption, "December 2021");
   assert.equal(girl.at(-1).caption, "See Anonym Girl.");
   assert.deepEqual(girl.map(({ caption, title }) => ({ caption, title })), recap.map(({ caption, title }) => ({ caption, title })));
@@ -458,4 +460,87 @@ test("update_voiceover stores uploaded narration on the brief and can clear it",
     () => applyCommand(snapshot, command("update_voiceover", { voiceover: { media_id: "", offset_ms: 0, level: 1 } })),
     /invalid voiceover/
   );
+});
+test("a planned reel ends on a spoken question and does not open with a title card", () => {
+  let id = 0;
+  const scenes = planStoryboardScenes(
+    { purpose: "Calm studio introduction for a product launch", audience: "Customers", tone: "Warm" },
+    "direct",
+    () => `cta-${++id}`
+  );
+  assert.equal(scenes.at(-1).caption, "What would you add?");
+  assert.equal(scenes.at(-1).overlay_look, "spoken");
+  assert.equal(scenes.at(-1).overlay_place, "center");
+  assert.equal(scenes[0].overlay_look, "spoken");
+  assert.ok(scenes.every((scene) => scene.overlay_look !== "title"));
+  assert.equal(scenes.reduce((sum, scene) => sum + scene.duration_ms, 0), 15_000);
+  const durations = scenes.map((scene) => scene.duration_ms);
+  assert.ok(new Set(durations).size > 1, "shot length follows the line");
+});
+test("a checklist is one shot per line, not equal slides", () => {
+  let id = 0;
+  const scenes = buildStoryboardDraft(
+    "- Hi there friend\n- This is a much longer checklist line about the safe zone and the voice",
+    () => `list-${++id}`,
+    {
+      goal: "explain", audience: "social", structure: "problem_solution", tone: "calm",
+      pace: "balanced", durationSeconds: 30, media: "stock"
+    }
+  );
+  assert.equal(scenes.length, 3);
+  assert.equal(scenes[0].caption, "Hi there friend");
+  assert.match(scenes[1].caption, /safe zone/i);
+  assert.equal(scenes.at(-1).caption, "What would you add?");
+  assert.ok(scenes[1].duration_ms > scenes[0].duration_ms);
+  assert.ok(scenes.every((scene) => scene.overlay_place === "center" && scene.overlay_look === "spoken"));
+  assert.ok(scenes.every((scene) => scene.title === undefined));
+});
+test("select_concept stores the closing question on the brief", () => {
+  const result = applyCommand({ ...snapshot, scenes: [] }, {
+    command_id: "seed-cta",
+    project_id: "p1",
+    base_revision: 0,
+    client_timestamp: "diagnostic",
+    kind: "select_concept",
+    payload: { concept_id: "direct" }
+  });
+  assert.equal(result.brief.cta, "What would you add?");
+  assert.equal(result.scenes.at(-1).caption, result.brief.cta);
+  assert.equal(result.brief.brand_mark, undefined);
+});
+test("update_reel stores the closing question and the corner mark", () => {
+  const marked = applyCommand(snapshot, command("update_reel", {
+    brand_mark: true,
+    cta: "what would you add?"
+  }));
+  assert.equal(marked.brief.brand_mark, true);
+  assert.equal(marked.brief.cta, "What would you add?");
+  assert.equal(marked.scenes.at(-1).caption, "What would you add?");
+  assert.equal(marked.scenes.at(-1).overlay_look, "spoken");
+  assert.equal(marked.scenes.at(-1).overlay_place, "center");
+  assert.ok(marked.scenes.at(-1).duration_ms >= 500);
+  assert.equal(marked.scenes[0].caption, "Hello");
+  const cleared = applyCommand(marked, command("update_reel", { brand_mark: false, cta: null }, 1));
+  assert.equal(cleared.brief.brand_mark, undefined);
+  assert.equal(cleared.brief.cta, undefined);
+  assert.equal(cleared.scenes.length, 1);
+  assert.equal(cleared.scenes[0].caption, "Hello");
+  assert.throws(
+    () => applyCommand(snapshot, command("update_reel", { brand_mark: "yes" })),
+    /brand mark/
+  );
+});
+test("output frames keep each side's pixel budget and cover-crop both", () => {
+  const base = { width: 1080, height: 1920, watermark: "F-Motion" };
+  assert.deepEqual(outputFrames(undefined), ["reel"]);
+  assert.deepEqual(outputFrames("reel"), ["reel"]);
+  assert.deepEqual(outputFrames("desktop"), ["desktop"]);
+  assert.deepEqual(outputFrames("both"), ["reel", "desktop"]);
+  assert.deepEqual(frameRenderProfile(base, "reel"), base);
+  assert.deepEqual(frameRenderProfile(base, "desktop"), { width: 1920, height: 1080, watermark: "F-Motion" });
+  assert.deepEqual(renderProfilesForBrief(base, "both").map((profile) => [profile.width, profile.height]), [
+    [1080, 1920],
+    [1920, 1080]
+  ]);
+  assert.equal(renderProfilesForBrief({ width: 720, height: 720 }, "both").length, 1);
 });
