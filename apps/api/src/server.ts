@@ -1608,10 +1608,14 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
 }
 
 function acceptedFrames(job: RenderJobRecord): Array<{ frame: "reel" | "desktop"; job_id: string }> {
-  return (job.outputs?.length ? job.outputs : [job]).map((output) => ({
-    frame: output.renderProfile.width > output.renderProfile.height ? "desktop" : "reel",
-    job_id: output.jobId
-  }));
+  const outputs = job.outputs?.length ? job.outputs : [job];
+  return outputs.flatMap((output) => {
+    if (!output?.jobId) return [];
+    const width = output.renderProfile?.width;
+    const height = output.renderProfile?.height;
+    const frame = typeof width === "number" && typeof height === "number" && width > height ? "desktop" : "reel";
+    return [{ frame, job_id: output.jobId }];
+  });
 }
 
 export function createApp(options: AppOptions) {

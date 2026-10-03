@@ -3264,7 +3264,7 @@ export function App() {
                 F-Motion mark
               </label>
             </div>
-            <p className="crop-hint">The last shot is this question, large in the center, in time with the voice. The F-Motion wordmark sits in the top right, with the cube turning beside it.</p>
+            <p className="crop-hint">Leave this blank to skip a closing question. When you add one, it is the last shot, large in the center, in time with the voice. The F-Motion wordmark sits in the top right, with the cube turning beside it.</p>
             {soundtrack ? (
             <div className="music-lane" aria-label="Music bed">
               {beatMarks.map((mark, index) =>

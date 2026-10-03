@@ -195,9 +195,11 @@ function sentenceCase(value: string): string {
   return `${normalized.charAt(0).toLocaleUpperCase()}${normalized.slice(1)}`.slice(0, 180);
 }
 
+/** Empty until the brief or import supplies a closing line. */
 function resolveCta(source: StoryboardSource, brief: string): string {
-  if (!source.callToAction?.trim()) return COMMENT_CTA;
-  return tailoredCallToAction(source.callToAction, brief) ?? COMMENT_CTA;
+  const raw = source.callToAction?.trim();
+  if (!raw) return "";
+  return tailoredCallToAction(raw, brief) ?? raw.slice(0, 180);
 }
 
 const LIST_MARK = /^(?:[-*•]|\d+[.)])\s+/u;
@@ -220,7 +222,7 @@ function shotMsForLine(line: string): number {
 }
 
 function fillCaptions(brief: string, source: StoryboardSource, sceneCount: number, cta: string): string[] {
-  const bodyCount = Math.max(0, sceneCount - 1);
+  const bodyCount = cta ? Math.max(0, sceneCount - 1) : sceneCount;
   const unwrapped = unwrapHostCopy(source.caption ?? "", brief);
   const narrative = unwrapped || brief.trim();
   const fragments = narrative
@@ -292,10 +294,10 @@ export function buildStoryboardDraft(
   const cta = resolveCta(source, brief);
   const items = checklistLines(brief);
   if (items.length >= 2) {
-    const lines = [...items, cta].slice(0, 8);
-    lines[lines.length - 1] = cta;
+    const lines = (cta ? [...items, cta] : items).slice(0, 8);
+    if (cta) lines[lines.length - 1] = cta;
     return lines.map((caption, order) => {
-      const closing = order === lines.length - 1;
+      const closing = Boolean(cta) && order === lines.length - 1;
       const visual = (closing ? `${items[0]} closing wide` : caption).slice(0, 240).trim();
       return spokenScene(makeId(), order, caption, visual || "Closing question", shotMsForLine(caption));
     });
@@ -321,26 +323,28 @@ export function buildStoryboardDraft(
       ? fragments.map((fragment) => fragment.slice(0, 240).trim())
       : STORY_ROLES.map((role) => promptWithRole(visualSubject, role));
   const words = narrative.trim() ? narrative.trim().split(/\s+/u) : [];
-  const bodySlots = Math.max(1, visualPrompts.length - 1);
-  const base = Math.floor(words.length / bodySlots);
-  let remainder = words.length % bodySlots;
+  const wordSlots = cta ? Math.max(1, visualPrompts.length - 1) : visualPrompts.length;
+  const base = Math.floor(words.length / wordSlots);
+  let remainder = words.length % wordSlots;
   let cursor = 0;
   const totalDurationMs = (architecture?.durationSeconds ?? visualPrompts.length * 3) * 1000;
+  const durationBase = Math.floor(totalDurationMs / visualPrompts.length);
+  const durationExtra = totalDurationMs % visualPrompts.length;
   const overlayCaptions = architecture ? fillCaptions(brief, source, visualPrompts.length, cta) : [];
   const captions = visualPrompts.map((_, order) => {
-    const count = base + (remainder-- > 0 ? 1 : 0);
     const isLast = order === visualPrompts.length - 1;
     if (architecture) return overlayCaptions[order] ?? "";
-    if (isLast) return cta;
+    if (isLast && cta) return cta;
     if (base < 2) {
       // Fewer than two words per beat: keep the phrase speakable on scene 1.
       return order === 0 ? words.join(" ").slice(0, 180) : "";
     }
+    const count = base + (remainder-- > 0 ? 1 : 0);
     const caption = words.slice(cursor, cursor + count).join(" ").slice(0, 180);
     cursor += count;
     return caption;
   });
-  const durations = fitShotDurations(captions, totalDurationMs);
+  const durations = visualPrompts.map((_, order) => durationBase + (order < durationExtra ? 1 : 0));
   return visualPrompts.map((visual_prompt, order) => spokenScene(
     makeId(),
     order,
@@ -452,6 +456,7 @@ export function planStoryboardScenes(
   };
   const scenes = buildStoryboardDraft(brief.purpose, makeId, resolved, {
     ...source,
+    ...(!source.callToAction?.trim() && brief.cta ? { callToAction: brief.cta } : {}),
     glance: source.glance ?? brief.media_glance
   });
   return brief.mix === true ? scenes.map(applyMix) : scenes;
@@ -544,37 +549,6 @@ function proportionalDurations(weights: number[], total_ms: number): number[] {
     durations[index] = (durations[index] ?? 0) + 1;
   }
   return durations;
-}
-
-/** Word-weighted shot lengths that still sum to the reel budget. */
-function fitShotDurations(lines: string[], totalMs: number): number[] {
-  if (!lines.length) return [];
-  const weights = lines.map((line) => Math.max(1, line.trim().split(/\s+/u).filter(Boolean).length));
-  const fitted = proportionalDurations(weights, totalMs).map((ms) => Math.min(15_000, Math.max(500, ms)));
-  let drift = fitted.reduce((sum, ms) => sum + ms, 0) - totalMs;
-  const byRoom = (direction: "spare" | "weight") => fitted
-    .map((_, index) => index)
-    .sort((a, b) => direction === "weight"
-      ? (weights[b] ?? 0) - (weights[a] ?? 0)
-      : (fitted[b] ?? 0) - (fitted[a] ?? 0));
-  if (drift > 0) {
-    for (const index of byRoom("spare")) {
-      if (drift <= 0) break;
-      const current = fitted[index] ?? 500;
-      const take = Math.min(current - 500, drift);
-      fitted[index] = current - take;
-      drift -= take;
-    }
-  } else if (drift < 0) {
-    for (const index of byRoom("weight")) {
-      if (drift >= 0) break;
-      const current = fitted[index] ?? 500;
-      const add = Math.min(15_000 - current, -drift);
-      fitted[index] = current + add;
-      drift += add;
-    }
-  }
-  return fitted;
 }
 
 function deriveCues(caption: string, duration_ms: number): CaptionCue[] {
@@ -769,12 +743,10 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
         { glance: media_glance }
       )
       : snapshot.scenes;
-    const cta = seeding ? scenes.at(-1)?.caption.trim() : undefined;
     const brief = {
       ...snapshot.brief,
       ...(architecture ? { architecture } : {}),
-      ...(media_glance ? { media_glance } : {}),
-      ...(cta ? { cta } : {})
+      ...(media_glance ? { media_glance } : {})
     };
     return { ...snapshot, selected_concept_id: conceptId, brief, scenes, revision: snapshot.revision + 1 };
   }
