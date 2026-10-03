@@ -66,7 +66,7 @@ import {
 import { glanceLocalMedia } from "./local-media";
 import { APP_VERSION, RELEASE_NOTES } from "./release";
 import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOrigin } from "./auth";
-import { clearImportedProject, isImportedProjectId, rememberImportedProject } from "./imported-project";
+import { clearImportedProject, isImportedProjectId, rememberImportedProject, storyboardProjectAction } from "./imported-project";
 import { githubBlobUrl } from "./repo";
 import {
   deleteStoryboardTemplate,
@@ -332,9 +332,11 @@ export function App() {
   const recorder = useRef<MediaRecorder | null>(null);
   const recordChunks = useRef<Blob[]>([]);
   const importedProjectRef = useRef("");
+  const importEditLock = useRef(false);
   const [pendingImportId, setPendingImportId] = useState(() => {
     if (typeof sessionStorage === "undefined") return "";
-    return rememberImportedProject(location.href, sessionStorage);
+    const mirror = typeof localStorage === "undefined" ? undefined : localStorage;
+    return rememberImportedProject(location.href, sessionStorage, mirror);
   });
   const partnerGalleryUrl = import.meta.env.VITE_PARTNER_GALLERY_URL?.trim();
   const partnerGalleryName = import.meta.env.VITE_PARTNER_GALLERY_NAME?.trim() || "Partner gallery";
@@ -523,7 +525,7 @@ export function App() {
   }, [step]);
 
   useEffect(() => {
-    const pendingId = rememberImportedProject(location.href, sessionStorage);
+    const pendingId = rememberImportedProject(location.href, sessionStorage, localStorage);
     setPendingImportId(pendingId);
     if (!token) {
       if (pendingId && authReady) {
@@ -533,9 +535,13 @@ export function App() {
     }
     if (!isImportedProjectId(pendingId) || importedProjectRef.current === pendingId) return;
     importedProjectRef.current = pendingId;
+    importEditLock.current = true;
     void openDraft(pendingId).then((opened) => {
-      if (!opened) return;
-      clearImportedProject(sessionStorage);
+      if (!opened || importedProjectRef.current !== pendingId) {
+        if (importedProjectRef.current === pendingId) importEditLock.current = false;
+        return;
+      }
+      clearImportedProject(sessionStorage, localStorage);
       setPendingImportId("");
       const url = new URL(location.href);
       url.searchParams.delete("project");
@@ -760,6 +766,24 @@ export function App() {
     setStatus("Building the storyboard…");
     try {
       let current = project;
+      if (storyboardProjectAction(importEditLock.current, importedProjectRef.current) === "reuse") {
+        const importedId = importedProjectRef.current;
+        try {
+          const { project: opened } = await api.getProject(importedId);
+          setProject(opened);
+          localStorage.setItem("fengine-project", opened.id);
+          if (!opened.scenes.length) {
+            await buildStoryboard(opened, plan);
+          } else {
+            setActiveSceneId(opened.scenes[0]?.id ?? "");
+            setStep("editor");
+            setStatus("");
+          }
+        } catch {
+          setStatus("Draft could not be opened.");
+        }
+        return;
+      }
       const storedId = localStorage.getItem("fengine-project");
       if (!current && storedId) {
         try {
@@ -905,6 +929,14 @@ export function App() {
   }
 
   function startCreate() {
+    importEditLock.current = false;
+    importedProjectRef.current = "";
+    clearImportedProject(sessionStorage, localStorage);
+    const url = new URL(location.href);
+    if (url.searchParams.has("project")) {
+      url.searchParams.delete("project");
+      history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    }
     mediaTransition.current += 1;
     setProject(undefined);
     setActiveSceneId("");
@@ -2933,11 +2965,7 @@ export function App() {
         <button className="provider-preview-item" data-locked={!falCredential?.connected || falUnavailable} onClick={showFalLock}>
           <strong>FAL</strong><span>{falCredential?.connected && !falUnavailable ? "AI stills in storyboard" : "AI stills · locked"}</span>
         </button>
-        {partnerBrands && partnerGalleryUrl ? (
-          <button className="provider-preview-item" type="button" onClick={() => setStep("settings")}>
-            <strong>{partnerGalleryName}</strong><span>Galleries · unlocked</span>
-          </button>
-        ) : partnerBrands ? null : (
+        {partnerBrands ? null : (
           <button className="provider-preview-item" data-locked onClick={showFutureLock}>
             <strong>More</strong><span>New providers · locked</span>
           </button>
@@ -3834,7 +3862,7 @@ export function App() {
             <span className="provider-status">Unlocked</span>
             <h2>{partnerGalleryName}</h2>
             <strong>Your galleries</strong>
-            <p>Imported stills from your gallery host open as F-Motion drafts.</p>
+            <p>Reels start on the host. Edit there opens the existing draft.</p>
             <a href={partnerGalleryUrl} target="_blank" rel="noreferrer">Open {partnerGalleryName}</a>
           </article>
         ) : partnerBrands ? null : (

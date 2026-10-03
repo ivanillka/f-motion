@@ -38,6 +38,24 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ReadyStatus" }
   /integrations/project-imports:
+    get:
+      operationId: getExternalProjectImport
+      security: [{ IntegrationToken: [] }]
+      summary: Read the draft bound to a host external id
+      description: >
+        Does not create a project. Returns play_url and download_url when a
+        completed 9:16 preview exists. Otherwise next_call is the request that
+        produces that file.
+      parameters:
+        - in: query
+          name: external_id
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        "200": { $ref: "#/components/responses/ExternalImportResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
     post:
       operationId: importExternalProject
       security: [{ IntegrationToken: [] }]
@@ -59,6 +77,40 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
         "502": { $ref: "#/components/responses/UpstreamError" }
         "503": { $ref: "#/components/responses/Unavailable" }
+  /integrations/project-imports/preview:
+    post:
+      operationId: previewExternalProjectImport
+      security: [{ IntegrationToken: [] }]
+      summary: Queue a 9:16 preview for an existing host draft
+      description: >
+        Does not create a project and does not debit host render units.
+        Token billing stays on the host. When the render is already complete,
+        preview.play_url and preview.download_url are the same 9:16 MP4.
+        When no render worker is configured, next_call names
+        POST /v1/projects/{project_id}/render with kind preview, then
+        GET /v1/render-jobs/{job_id}/download.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [external_id]
+              properties:
+                external_id: { type: string, minLength: 1, maxLength: 128 }
+                externalId: { type: string, minLength: 1, maxLength: 128 }
+              additionalProperties: true
+      responses:
+        "200": { $ref: "#/components/responses/ExternalImportResult" }
+        "202": { $ref: "#/components/responses/ExternalImportResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429":
+          description: Owner render capacity reached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TypedError" }
   /providers/fal/credential:
     get:
       operationId: getFalCredential
@@ -943,6 +995,33 @@ components:
           format: uri
           description: CamelCase alias. Hosts should prefer this when opening a tab.
         revision: { type: integer, minimum: 0 }
+        preview:
+          type: object
+          nullable: true
+          description: Completed 9:16 preview. play_url and download_url are the same MP4.
+          required: [job_id, play_url, download_url, width, height, expires_at, kind]
+          properties:
+            job_id: { type: string }
+            play_url: { type: string, format: uri }
+            download_url: { type: string, format: uri }
+            width: { type: integer }
+            height: { type: integer }
+            expires_at: { type: string, format: date-time }
+            kind: { type: string, const: preview }
+        next_call:
+          type: object
+          description: Exact request to run when preview is null.
+          properties:
+            method: { type: string, enum: [GET, POST] }
+            path: { type: string }
+            auth: { type: string }
+            then: { type: string }
+            query:
+              type: object
+              additionalProperties: { type: string }
+            body:
+              type: object
+              additionalProperties: true
     EnqueueRenderRequest:
       type: object
       required: [kind]

@@ -72,6 +72,7 @@ test("external drafts validate structured architecture and preserve distinct vis
     architecture: { duration_seconds: 30, goal: "promote", audience: "social", structure: "story_arc", tone: "cinematic", pace: "balanced", media: "stock" }
   });
   assert.equal(draft.architecture.durationSeconds, 30);
+  assert.equal(draft.brief.frame, "reel");
   assert.equal(parseExternalDraft({
     external_id: "queue:youtube",
     title: "YouTube launch",
@@ -636,6 +637,118 @@ test("render enqueue validates notify_url and forwards it with the host external
       notifyUrl: "https://cms.example.com/hooks/fmotion",
       externalId: "cms:gallery:weekend"
     });
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("the same external id reopens one draft and the host can play and download its 9:16 preview", async () => {
+  const ownerId = "11111111-1111-4111-8111-111111111111";
+  const token = "trusted-import-token-that-is-long-enough";
+  const externalId = "fotium:post:42";
+  const existingId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const projects = new ProjectService();
+  projects.create(ownerId, {
+    purpose: "Kept draft",
+    audience: "Social audience",
+    tone: "cinematic, balanced",
+    frame: "reel"
+  }, existingId);
+  projects.bindHostImport(ownerId, existingId, { externalId });
+  let billed = 0;
+  const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+  const server = createServer(createTestApp({
+    projects,
+    hostUsage: {
+      async status() {
+        return { unit: "render_unit", balance: 0, free_grant: 0, costs: { preview: 1, final: 2 } };
+      },
+      async consumeRender() {
+        billed += 1;
+        return 0;
+      },
+      async ensureFreeGrant() {}
+    },
+    renders: {
+      async create(_owner, projectId, kind) {
+        assert.equal(projectId, existingId);
+        assert.equal(kind, "preview");
+        const project = projects.get(ownerId, projectId);
+        return {
+          jobId: "job-portrait",
+          ownerId,
+          projectId,
+          revision: project.revision,
+          kind,
+          renderProfile: { width: 540, height: 960 },
+          state: "complete"
+        };
+      },
+      async latestPortraitPreview(_owner, projectId) {
+        const project = projects.get(ownerId, projectId);
+        return {
+          jobId: "job-portrait",
+          objectKey: "projects/preview.mp4",
+          width: 540,
+          height: 960,
+          revision: project.revision
+        };
+      }
+    },
+    media: {
+      repository: {},
+      store: { async signedGet(key) { return `https://signed.example/${key}`; } }
+    },
+    externalImports: { token, ownerId, webOrigin: "https://f-motion.example", mediaOrigins: [] }
+  }));
+  const origin = await listen(server);
+  try {
+    assert.equal((await fetch(`${origin}/v1/integrations/project-imports?external_id=missing:post`, {
+      headers: { authorization: `Bearer ${token}` }
+    })).status, 404);
+    assert.equal(projects.list(ownerId).length, 1);
+
+    const opened = await fetch(`${origin}/v1/integrations/project-imports`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ external_id: externalId, title: "Post 42" })
+    });
+    assert.equal(opened.status, 200);
+    const draft = await opened.json();
+    assert.equal(draft.created, false);
+    assert.equal(draft.project_id, existingId);
+    assert.equal(draft.projectUrl, `https://f-motion.example/app/?project=${existingId}`);
+    assert.equal(projects.list(ownerId).length, 1);
+    assert.equal(projects.get(ownerId, existingId).brief.frame, "reel");
+
+    const preview = await fetch(`${origin}/v1/integrations/project-imports/preview`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ external_id: externalId })
+    });
+    assert.equal(preview.status, 200);
+    const file = await preview.json();
+    assert.equal(file.project_id, existingId);
+    assert.equal(file.preview.play_url, "https://signed.example/projects/preview.mp4");
+    assert.equal(file.preview.download_url, file.preview.play_url);
+    assert.equal(file.preview.width, 540);
+    assert.equal(file.preview.height, 960);
+    assert.ok(file.preview.height > file.preview.width);
+    assert.equal(billed, 0);
+    assert.equal(projects.list(ownerId).length, 1);
+
+    const again = await fetch(
+      `${origin}/api/integrations/project-imports?external_id=${encodeURIComponent(externalId)}`,
+      { headers: { authorization: `Bearer ${token}` } }
+    );
+    assert.equal(again.status, 200);
+    assert.equal((await again.json()).project_id, existingId);
+    assert.equal((await fetch(`${origin}/v1/integrations/project-imports/preview`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ external_id: "missing:post" })
+    })).status, 404);
+    assert.equal(projects.list(ownerId).length, 1);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

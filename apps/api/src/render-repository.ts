@@ -52,6 +52,15 @@ export interface RenderResultRecord {
   stale: boolean;
 }
 
+/** Completed preview whose profile is taller than it is wide (9:16). */
+export interface PortraitPreviewFile {
+  jobId: string;
+  objectKey: string;
+  width: number;
+  height: number;
+  revision: number;
+}
+
 export class RenderCapacityError extends Error {
   constructor() {
     super("render capacity reached");
@@ -489,5 +498,31 @@ export class PostgresRenderRepository {
       [ownerId, jobId]
     );
     return result.rows[0];
+  }
+
+  async latestPortraitPreview(ownerId: string, projectId: string): Promise<PortraitPreviewFile | undefined> {
+    const result = await this.pool.query<{
+      jobId: string;
+      objectKey: string;
+      renderProfile: RenderProfile;
+      revision: number;
+    }>(
+      `SELECT j.id AS "jobId", r."objectKey", j."renderProfile", j.revision
+         FROM "RenderJob" j
+         JOIN "RenderResult" r ON r."jobId" = j.id
+        WHERE j."ownerId" = $1 AND j."projectId" = $2
+          AND j.kind = 'preview' AND j.state = 'complete'
+        ORDER BY j.revision DESC
+        LIMIT 12`,
+      [ownerId, projectId]
+    );
+    for (const row of result.rows) {
+      const width = row.renderProfile?.width;
+      const height = row.renderProfile?.height;
+      if (typeof width === "number" && typeof height === "number" && height > width) {
+        return { jobId: row.jobId, objectKey: row.objectKey, width, height, revision: row.revision };
+      }
+    }
+    return undefined;
   }
 }
