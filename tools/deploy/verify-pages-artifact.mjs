@@ -20,12 +20,46 @@ async function requireFile(path, label) {
   }
 }
 
+function studioScriptPath(appDir, src) {
+  const cleaned = src.split("?")[0].split("#")[0];
+  if (cleaned.startsWith("/app/")) return resolve(appDir, cleaned.slice("/app/".length));
+  if (!cleaned.startsWith("/")) return resolve(appDir, cleaned);
+  throw new Error(`Studio entry script is outside /app/: ${src}`);
+}
+
+/** The public /app entry must load the studio, not a compiled coming-soon gate. */
+export async function verifyStudioEntry(root = repositoryRoot) {
+  const appDir = resolve(root, "apps/web/dist/app");
+  const appIndex = resolve(appDir, "index.html");
+  await requireFile(appIndex, "Studio entry");
+  const html = await readFile(appIndex, "utf8");
+  const src = html.match(/<script type="module"[^>]*\ssrc="([^"]+)"/)?.[1];
+  if (!src) throw new Error("Studio entry does not load a module script");
+  const scriptPath = studioScriptPath(appDir, src);
+  await requireFile(scriptPath, "Studio script");
+  const script = await readFile(scriptPath, "utf8");
+  if (script.includes("Coming soon on f-motion.com.")) {
+    throw new Error("Studio entry renders Coming soon instead of the studio");
+  }
+  const mainImport = script.match(/import\((?:"|')(\.\/main-[^"']+)(?:"|')/);
+  const applicationPath = mainImport
+    ? resolve(dirname(scriptPath), mainImport[1])
+    : scriptPath;
+  if (mainImport) await requireFile(applicationPath, "Studio application");
+  const application = applicationPath === scriptPath ? script : await readFile(applicationPath, "utf8");
+  if (!application.includes("Email me a magic link") || !application.includes("Reel 9:16")) {
+    throw new Error("Studio application is missing sign-in or Create controls");
+  }
+  return { appIndex, scriptPath, applicationPath };
+}
+
 export async function verifyPagesArtifact(root = repositoryRoot) {
   const indexPath = resolve(root, "apps/web/dist/index.html");
   const functionPath = resolve(root, "apps/web/functions/api/[[path]].js");
 
   await requireFile(indexPath, "Pages build entrypoint");
   await requireFile(functionPath, "Pages API Function");
+  await verifyStudioEntry(root);
 
   const source = await readFile(functionPath, "utf8");
   const exportsOnRequest = /\bexport\s+(?:async\s+)?function\s+onRequest\b/.test(source)
