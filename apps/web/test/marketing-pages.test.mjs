@@ -183,10 +183,11 @@ test("every marketing page stays on the splash and animates the swap", async () 
   assert.match(pages, /prefers-reduced-motion/);
 });
 
-test("hosted studio opens unless VITE_STUDIO_COMING_SOON is set", async () => {
+test("hosted /app mounts the studio instead of a coming soon screen", async () => {
   const site = await readFile(new URL("../src/site.tsx", import.meta.url), "utf8");
-  assert.match(site, /VITE_STUDIO_COMING_SOON === "1"/);
-  assert.match(site, /Coming soon on f-motion\.com/);
+  assert.match(site, /return <Studio \/>/);
+  assert.doesNotMatch(site, /VITE_STUDIO_COMING_SOON/);
+  assert.doesNotMatch(site, /Coming soon on f-motion\.com/);
   assert.doesNotMatch(site, /MarketingSite/);
 });
 
@@ -266,8 +267,7 @@ test("cube path walks the short way around a ring of any length", () => {
 
 test("site router keeps self-host on studio-only App", async () => {
   const source = await readFile(new URL("../src/site.tsx", import.meta.url), "utf8");
-  assert.match(source, /VITE_SELFHOST_AUTH === "1"/);
-  assert.match(source, /studioComingSoon/);
+  assert.match(source, /return <Studio \/>/);
   assert.match(source, /lazy\(\(\) => import\("\.\/main"\)/);
   assert.doesNotMatch(source, /import \{ App \} from "\.\/main"/);
   assert.doesNotMatch(source, /MarketingSite/);

@@ -11,33 +11,7 @@ function Studio() {
   );
 }
 
-function studioComingSoon(): boolean {
-  return import.meta.env.VITE_STUDIO_COMING_SOON === "1";
-}
-
-function ComingSoon() {
-  return (
-    <div style={{
-      minHeight: "100dvh",
-      background: "#111213",
-      color: "#f1f2f3",
-      display: "grid",
-      placeItems: "center",
-      padding: "2rem",
-      textAlign: "center"
-    }}
-    >
-      <div>
-        <p>Coming soon on f-motion.com.</p>
-        <p><a href="/" style={{ color: "#a54d67" }}>Home</a></p>
-      </div>
-    </div>
-  );
-}
-
 function SiteRoot() {
-  if (import.meta.env.VITE_SELFHOST_AUTH === "1") return <Studio />;
-  if (studioComingSoon()) return <ComingSoon />;
   return <Studio />;
 }
 
