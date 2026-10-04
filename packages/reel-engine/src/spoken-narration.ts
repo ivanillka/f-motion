@@ -2,6 +2,17 @@ import type { Scene } from "@f-engine/contracts";
 
 type SpokenScene = Pick<Scene, "caption" | "duration_ms" | "overlay_look">;
 
+/**
+ * The only spoken voice. First line and later lines share this engine,
+ * voice, and speed. The line key includes it, so a different engine cannot
+ * reuse the take.
+ */
+export const SPOKEN_VOICE = {
+  endpoint: "fal-ai/kokoro/american-english",
+  voice: "af_heart",
+  speed: 1
+} as const;
+
 /** Caption text that should be spoken. Other overlay looks stay silent. */
 export function spokenCaption(scene: Pick<Scene, "caption" | "overlay_look">): string {
   if (scene.overlay_look !== "spoken") return "";
@@ -13,9 +24,10 @@ function sceneMs(durationMs: number): number {
   return Math.min(15_000, Math.max(500, Math.round(durationMs)));
 }
 
-/** Stable id for one Spoken line. Case and repeated spaces do not mint a new line. */
+/** Stable id for one Spoken line in SPOKEN_VOICE. Case and repeated spaces do not mint a new line. */
 export function spokenLineKey(text: string): string {
-  return fnv1a(text.replace(/\s+/gu, " ").trim().toLowerCase());
+  const normalized = text.replace(/\s+/gu, " ").trim().toLowerCase();
+  return fnv1a(`${SPOKEN_VOICE.endpoint}\n${SPOKEN_VOICE.voice}\n${SPOKEN_VOICE.speed}\n${normalized}`);
 }
 
 /**
@@ -31,7 +43,8 @@ export function spokenMixKey(scenes: readonly SpokenScene[]): string {
     if (text) parts.push(`${start}:${duration}:${spokenLineKey(text)}`);
     start += duration;
   }
-  return parts.length ? fnv1a(parts.join("|")) : "";
+  if (!parts.length) return "";
+  return fnv1a(`${SPOKEN_VOICE.endpoint}\n${SPOKEN_VOICE.voice}\n${SPOKEN_VOICE.speed}\n${parts.join("|")}`);
 }
 
 export interface SpokenLineSlot {

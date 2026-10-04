@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { ProjectSnapshot, SpokenAudioRef, Voiceover } from "@f-engine/contracts";
 import {
+  SPOKEN_VOICE,
   spokenLineSlots,
   spokenLinesToGenerate,
   spokenMixKey,
@@ -8,7 +9,26 @@ import {
   spokenTimelineMs
 } from "@f-engine/reel-engine";
 import type { PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
-import { mixSpokenTimeline, synthesizeSpeech } from "./speech-wav.js";
+import { mixSpokenTimeline } from "./speech-wav.js";
+
+/** One spoken line, always SPOKEN_VOICE. Callers do not pick another engine. */
+export interface SpokenSynthesisRequest {
+  text: string;
+  endpoint: typeof SPOKEN_VOICE.endpoint;
+  voice: typeof SPOKEN_VOICE.voice;
+  speed: typeof SPOKEN_VOICE.speed;
+}
+
+export type SpokenSynthesizer = (request: SpokenSynthesisRequest) => Promise<Uint8Array>;
+
+export class SpokenVoiceUnavailableError extends Error {
+  constructor() {
+    super("spoken voice unavailable");
+    this.name = "SpokenVoiceUnavailableError";
+  }
+}
+
+const inflightLines = new Map<string, Promise<{ mediaId: string; bytes: Uint8Array }>>();
 
 export interface SpokenAudioStore {
   putWav(ownerId: string, projectId: string, bytes: Uint8Array): Promise<string>;
@@ -81,10 +101,20 @@ function nextSpokenAudio(
   return [...lines, ...kept.slice(0, room), mix];
 }
 
+function voiceRequest(text: string): SpokenSynthesisRequest {
+  return {
+    text,
+    endpoint: SPOKEN_VOICE.endpoint,
+    voice: SPOKEN_VOICE.voice,
+    speed: SPOKEN_VOICE.speed
+  };
+}
+
 /**
  * Attach timeline narration for Spoken captions.
- * A second call with the same lines does not synthesize or store audio.
- * User-owned voice-over (no spoken_key) is left in place.
+ * Each line is SPOKEN_VOICE speaking that caption. A stored line is reused,
+ * so a second open does not synthesize. User-owned voice-over (no spoken_key)
+ * is left in place.
  */
 export async function ensureSpokenVoiceover(
   ownerId: string,
@@ -92,56 +122,99 @@ export async function ensureSpokenVoiceover(
   audio: SpokenAudioStore,
   save: (
     base: ProjectSnapshot,
-    voiceover: Voiceover,
+    voiceover: Voiceover | null,
     spokenAudio: SpokenAudioRef[]
   ) => ProjectSnapshot | Promise<ProjectSnapshot>,
-  synthesize: (text: string) => Uint8Array = synthesizeSpeech
+  synthesize?: SpokenSynthesizer
 ): Promise<{ project: ProjectSnapshot; generated: number }> {
   if (spokenNarrationReady(project)) return { project, generated: 0 };
   const mixKey = spokenMixKey(project.scenes);
   const slots = spokenLineSlots(project.scenes);
   const previousMix = project.brief.spoken_audio?.find((item) => item.role === "mix" && item.key === mixKey);
   const voice = project.brief.voiceover;
+  const offset_ms = voice?.spoken_key ? voice.offset_ms : 0;
+  const level = voice?.spoken_key ? voice.level : 1;
   if (previousMix) {
     const saved = await save(project, {
       media_id: previousMix.media_id,
-      offset_ms: voice?.spoken_key ? voice.offset_ms : 0,
-      level: voice?.spoken_key ? voice.level : 1,
+      offset_ms,
+      level,
       spoken_key: mixKey
     }, project.brief.spoken_audio ?? []);
     return { project: saved, generated: 0 };
   }
-  const cache = cachedLines(project);
+  let snapshot = project;
+  const cache = cachedLines(snapshot);
   const missing = new Set(spokenLinesToGenerate(slots, [...cache.keys()]));
+  if (missing.size > 0 && !synthesize) throw new SpokenVoiceUnavailableError();
   const wavs = new Map<string, Uint8Array>();
   let generated = 0;
   for (const slot of slots) {
     if (wavs.has(slot.key)) continue;
     const mediaId = cache.get(slot.key);
     const stored = !missing.has(slot.key) && mediaId
-      ? await audio.readWav(ownerId, project.id, mediaId)
+      ? await audio.readWav(ownerId, snapshot.id, mediaId)
       : undefined;
     if (stored) {
       wavs.set(slot.key, stored);
       continue;
     }
-    const fresh = synthesize(slot.text);
-    cache.set(slot.key, await audio.putWav(ownerId, project.id, fresh));
-    wavs.set(slot.key, fresh);
+    const fresh = await speakLine(ownerId, snapshot.id, slot.key, slot.text, audio, synthesize!);
+    cache.set(slot.key, fresh.mediaId);
+    wavs.set(slot.key, fresh.bytes);
     generated += 1;
+    const lines = lineRefs(cache, slots);
+    snapshot = await save(
+      snapshot,
+      null,
+      nextSpokenAudio(snapshot.brief.spoken_audio ?? [], lines, { role: "mix", key: mixKey, media_id: fresh.mediaId })
+        .filter((item) => item.role === "line")
+    );
   }
-  const mixed = mixSpokenTimeline(spokenTimelineMs(project.scenes), slots, wavs);
-  const mixId = await audio.putWav(ownerId, project.id, mixed);
-  const lines = [...wavs.keys()].map((key) => ({
-    role: "line" as const,
-    key,
-    media_id: cache.get(key)!
-  }));
-  const saved = await save(project, {
+  const mixed = mixSpokenTimeline(spokenTimelineMs(snapshot.scenes), slots, wavs);
+  const mixId = await audio.putWav(ownerId, snapshot.id, mixed);
+  const lines = lineRefs(cache, slots);
+  const saved = await save(snapshot, {
     media_id: mixId,
-    offset_ms: voice?.spoken_key ? voice.offset_ms : 0,
-    level: voice?.spoken_key ? voice.level : 1,
+    offset_ms,
+    level,
     spoken_key: mixKey
-  }, nextSpokenAudio(project.brief.spoken_audio ?? [], lines, { role: "mix", key: mixKey, media_id: mixId }));
+  }, nextSpokenAudio(snapshot.brief.spoken_audio ?? [], lines, { role: "mix", key: mixKey, media_id: mixId }));
   return { project: saved, generated };
+}
+
+function lineRefs(cache: Map<string, string>, slots: readonly { key: string }[]): SpokenAudioRef[] {
+  const lines: SpokenAudioRef[] = [];
+  const seen = new Set<string>();
+  for (const slot of slots) {
+    if (seen.has(slot.key)) continue;
+    seen.add(slot.key);
+    const mediaId = cache.get(slot.key);
+    if (mediaId) lines.push({ role: "line", key: slot.key, media_id: mediaId });
+  }
+  return lines;
+}
+
+/** One provider call per line, shared by overlapping opens. The stored bytes are the take. */
+function speakLine(
+  ownerId: string,
+  projectId: string,
+  key: string,
+  text: string,
+  audio: SpokenAudioStore,
+  synthesize: SpokenSynthesizer
+): Promise<{ mediaId: string; bytes: Uint8Array }> {
+  const id = `${ownerId}:${projectId}:${key}`;
+  const existing = inflightLines.get(id);
+  if (existing) return existing;
+  const pending = (async () => {
+    const bytes = await synthesize(voiceRequest(text));
+    const mediaId = await audio.putWav(ownerId, projectId, bytes);
+    return { mediaId, bytes };
+  })();
+  inflightLines.set(id, pending);
+  pending.finally(() => {
+    if (inflightLines.get(id) === pending) inflightLines.delete(id);
+  }).catch(() => undefined);
+  return pending;
 }

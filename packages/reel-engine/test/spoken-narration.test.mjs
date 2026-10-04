@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { applyCommand } from "../dist/index.js";
 import {
+  SPOKEN_VOICE,
   spokenLineKey,
   spokenLinesToGenerate,
   spokenMixKey,
@@ -25,6 +26,15 @@ const spoken = (id, caption, duration_ms = 6000) => ({
 
 test("spoken line keys ignore case and a second open of the same line needs no new speech", () => {
   const scenes = [spoken("s5", "Read the full post.")];
+  assert.deepEqual(SPOKEN_VOICE, {
+    endpoint: "fal-ai/kokoro/american-english",
+    voice: "af_heart",
+    speed: 1
+  });
+  const first = spokenLineKey("A room that agreed to forget the street for a while.");
+  const later = spokenLineKey("The night already had a script.");
+  assert.notEqual(first, later);
+  assert.equal(spokenLineKey("A room that agreed to forget the street for a while."), first);
   const key = spokenLineKey("Read the full post.");
   assert.equal(spokenLineKey("  read   the full post. "), key);
   assert.equal(spokenLinesToGenerate(

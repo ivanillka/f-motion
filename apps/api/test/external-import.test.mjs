@@ -10,6 +10,8 @@ import {
 } from "../dist/external-import.js";
 import { RenderInputIncompleteError } from "../dist/render-repository.js";
 import { createTestApp } from "../dist/server.js";
+import { SPOKEN_VOICE } from "@f-engine/reel-engine";
+import { encodeWav, synthesizeSpeech, wavPcm } from "../dist/speech-wav.js";
 
 async function listen(server) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -808,6 +810,7 @@ function countingSpeech(assets) {
   let puts = 0;
   return {
     puts: () => puts,
+    files,
     async putWav(_owner, _project, bytes) {
       puts += 1;
       const id = `wav-${puts}`;
@@ -1012,9 +1015,17 @@ test("partner preview speaks Spoken lines once and leaves a user voice-over in p
   });
 
   let billed = 0;
+  const spokenCalls = [];
+  const spokenSynthesizer = async (request) => {
+    spokenCalls.push(request);
+    const samples = new Int16Array(2_400);
+    samples.fill(9_000);
+    return encodeWav(samples, 24_000);
+  };
   const server = createServer(createTestApp({
     projects,
     spokenAudio: speech,
+    spokenSynthesizer,
     hostUsage: {
       async status() {
         return { unit: "render_unit", balance: 0, free_grant: 0, costs: { preview: 1, final: 2 } };
@@ -1057,6 +1068,12 @@ test("partner preview speaks Spoken lines once and leaves a user voice-over in p
     assert.equal(first.playback.scenes[1].overlay_look, "spoken");
     assert.equal(first.playback.scenes[1].words[0].text, "Read");
     assert.equal(first.playback.scenes[0].media.muted, true);
+    assert.deepEqual(spokenCalls.map((call) => call.text), ["Read the full post."]);
+    assert.ok(spokenCalls.every((call) => call.voice === SPOKEN_VOICE.voice
+      && call.speed === SPOKEN_VOICE.speed
+      && call.endpoint === SPOKEN_VOICE.endpoint));
+    const played = speech.files.get(projects.findByExternalId(ownerId, spokenId).brief.voiceover.media_id);
+    assert.notEqual(wavPcm(played).sampleRate, wavPcm(synthesizeSpeech("Read the full post.")).sampleRate);
     assert.ok(speech.puts() > 0);
     const puts = speech.puts();
     const voiceUrl = first.playback.voiceover.url;
@@ -1065,6 +1082,7 @@ test("partner preview speaks Spoken lines once and leaves a user voice-over in p
     assert.equal(secondResponse.status, 200);
     const second = await secondResponse.json();
     assert.equal(speech.puts(), puts);
+    assert.equal(spokenCalls.length, 1);
     assert.equal(second.playback.voiceover.url, voiceUrl);
     assert.equal(second.revision, first.revision);
 
