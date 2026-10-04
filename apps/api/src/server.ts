@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildStoryboardDraft, conceptsFor, outputFrames, sceneUsesStock } from "@f-engine/reel-engine";
-import type { CommandEnvelope } from "@f-engine/contracts";
+import { buildStoryboardDraft, conceptsFor, cuesForScene, outputFrames, sceneUsesStock, spokenWordsForCues } from "@f-engine/reel-engine";
+import type { CommandEnvelope, ProjectSnapshot, Voiceover } from "@f-engine/contracts";
 import { isMediaGlanceHints, isVideoArchitecture, type MediaGlanceHints, type VideoArchitecture } from "@f-engine/contracts";
 import {
   AccountUnavailableError,
@@ -338,6 +338,129 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     };
   }
 
+  interface PartnerPlayback {
+    expires_at: string;
+    total_ms: number;
+    scenes: Array<{
+      id: string;
+      order: number;
+      duration_ms: number;
+      start_ms: number;
+      caption: string;
+      overlay_look: "caption" | "title" | "poster" | "spoken";
+      overlay_place: "bottom" | "center" | "top";
+      focal_x: number;
+      focal_y: number;
+      motion: ProjectSnapshot["scenes"][number]["motion"];
+      media: { url: string; type?: string; muted: true } | null;
+      words: Array<{ text: string; start_ms: number; end_ms: number }>;
+    }>;
+    voiceover: { url: string; offset_ms: number; level: number } | null;
+  }
+
+  function partnerSpokenAudio() {
+    if (options.spokenAudio) return options.spokenAudio;
+    const repository = options.media?.repository;
+    if (!repository || !options.media?.store || !("pool" in repository) || !repository.pool) return undefined;
+    return spokenAudioFromMedia(repository, options.media.store);
+  }
+
+  function saveSpokenNarration(ownerId: string, base: ProjectSnapshot, voiceover: Voiceover, spokenAudio: ProjectSnapshot["brief"]["spoken_audio"]) {
+    return projects.command(ownerId, {
+      command_id: randomUUID(),
+      project_id: base.id,
+      base_revision: base.revision,
+      client_timestamp: new Date().toISOString(),
+      kind: "update_voiceover",
+      payload: { voiceover, spoken_audio: spokenAudio ?? [] }
+    });
+  }
+
+  /** Spoken lines are mixed here so a host can play them before the studio is opened. */
+  async function ensurePartnerNarration(ownerId: string, project: ProjectSnapshot): Promise<ProjectSnapshot> {
+    const audio = partnerSpokenAudio();
+    if (!audio) return project;
+    const save = (base: ProjectSnapshot, voiceover: Voiceover, spokenAudio: NonNullable<ProjectSnapshot["brief"]["spoken_audio"]>) =>
+      saveSpokenNarration(ownerId, base, voiceover, spokenAudio);
+    try {
+      return (await ensureSpokenVoiceover(ownerId, project, audio, save)).project;
+    } catch (error) {
+      if (!(error instanceof ConflictError)) throw error;
+      const current = await projects.get(ownerId, project.id);
+      if (!current) throw error;
+      return (await ensureSpokenVoiceover(ownerId, current, audio, save)).project;
+    }
+  }
+
+  function playbackOverlay(scene: ProjectSnapshot["scenes"][number]): {
+    overlay_look: PartnerPlayback["scenes"][number]["overlay_look"];
+    overlay_place: PartnerPlayback["scenes"][number]["overlay_place"];
+  } {
+    const overlay_look = scene.overlay_look === "title"
+      || scene.overlay_look === "poster"
+      || scene.overlay_look === "spoken"
+      ? scene.overlay_look
+      : "caption";
+    const overlay_place = overlay_look === "spoken"
+      ? "center"
+      : scene.overlay_place === "top" || scene.overlay_place === "center"
+        ? scene.overlay_place
+        : overlay_look === "title" ? "center" : "bottom";
+    return { overlay_look, overlay_place };
+  }
+
+  async function playbackMedia(ownerId: string, projectId: string, mediaId: string | undefined) {
+    const repository = options.media?.repository;
+    if (!mediaId || !repository || typeof repository.get !== "function" || !options.media) return null;
+    const asset = await repository.get(ownerId, projectId, mediaId);
+    if (!asset) return null;
+    const signed = asset.state === "ready" && asset.sealedObjectKey
+      ? await options.media.store.signedGet(asset.sealedObjectKey)
+      : undefined;
+    const view = sceneMediaView(asset, signed);
+    const url = view.previewUrl ?? view.attribution?.previewUrl;
+    if (!url) return null;
+    return {
+      url,
+      ...(view.detected?.type ? { type: view.detected.type } : {}),
+      muted: true as const
+    };
+  }
+
+  /** The center player: muted scene media, caption words, and a separate voice clip. No render. */
+  async function partnerPlayback(ownerId: string, project: ProjectSnapshot): Promise<PartnerPlayback> {
+    let start = 0;
+    const scenes: PartnerPlayback["scenes"] = [];
+    for (const scene of project.scenes) {
+      const overlay = playbackOverlay(scene);
+      scenes.push({
+        id: scene.id,
+        order: scene.order,
+        duration_ms: scene.duration_ms,
+        start_ms: start,
+        caption: scene.caption,
+        overlay_look: overlay.overlay_look,
+        overlay_place: overlay.overlay_place,
+        focal_x: scene.focal_x,
+        focal_y: scene.focal_y,
+        motion: scene.motion,
+        media: await playbackMedia(ownerId, project.id, scene.media_id),
+        words: spokenWordsForCues(cuesForScene(scene))
+      });
+      start += scene.duration_ms;
+    }
+    const voice = project.brief.voiceover;
+    const voiceMedia = voice ? await playbackMedia(ownerId, project.id, voice.media_id) : null;
+    return {
+      expires_at: new Date(Date.now() + 300_000).toISOString(),
+      total_ms: start,
+      scenes,
+      voiceover: voice && voiceMedia
+        ? { url: voiceMedia.url, offset_ms: voice.offset_ms, level: voice.level }
+        : null
+    };
+  }
+
   function nextCallForPreview(projectId: string, externalId: string, queued: boolean) {
     if (!options.renders) {
       return {
@@ -370,7 +493,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     project: { id: string; revision: number },
     created: boolean,
     externalId: string,
-    queued = false
+    queued = false,
+    playback?: PartnerPlayback
   ) {
     const projectUrl = externalProjectUrl(webOrigin, project.id);
     const preview = await portraitPreview(ownerId, project.id, project.revision);
@@ -381,7 +505,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       projectUrl,
       revision: project.revision,
       preview: preview ?? null,
-      ...(preview ? {} : { next_call: nextCallForPreview(project.id, externalId, queued) })
+      ...(preview ? {} : { next_call: nextCallForPreview(project.id, externalId, queued) }),
+      ...(playback ? { playback } : {})
     };
   }
 
@@ -394,11 +519,13 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       return response.status(422).json({ type: "validation", message: "external_id is required" });
     }
     try {
-      const project = await projects.findByExternalId(integration.ownerId, externalId);
-      if (!project) {
+      const found = await projects.findByExternalId(integration.ownerId, externalId);
+      if (!found) {
         return response.status(404).json({ type: "not_found", message: "No draft is bound to that external id." });
       }
-      response.json(await hostDraftBody(integration.ownerId, integration.webOrigin, project, false, externalId));
+      const project = await ensurePartnerNarration(integration.ownerId, found);
+      const playback = await partnerPlayback(integration.ownerId, project);
+      response.json(await hostDraftBody(integration.ownerId, integration.webOrigin, project, false, externalId, false, playback));
     } catch (error) { next(error); }
   });
   if (integration) app.post("/api/integrations/project-imports/preview", async (request, response, next) => {
@@ -412,15 +539,26 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     if (!externalId) {
       return response.status(422).json({ type: "validation", message: "external_id is required" });
     }
+    let playback: PartnerPlayback | undefined;
     try {
-      const project = await projects.findByExternalId(integration.ownerId, externalId);
-      if (!project) {
+      const found = await projects.findByExternalId(integration.ownerId, externalId);
+      if (!found) {
         return response.status(404).json({ type: "not_found", message: "No draft is bound to that external id." });
       }
+      const project = await ensurePartnerNarration(integration.ownerId, found);
+      playback = await partnerPlayback(integration.ownerId, project);
       if (!options.renders) {
-        return response.json(await hostDraftBody(integration.ownerId, integration.webOrigin, project, false, externalId));
+        return response.json(await hostDraftBody(
+          integration.ownerId,
+          integration.webOrigin,
+          project,
+          false,
+          externalId,
+          false,
+          playback
+        ));
       }
-      // Fotium bills one download token (admins free). Do not debit host render units here.
+      // Host download billing stays with the host. Do not debit render units here.
       const job = await options.renders.create(integration.ownerId, project.id, "preview", { externalId });
       if (!job) {
         return response.status(404).json({ type: "not_found", message: "No draft is bound to that external id." });
@@ -433,7 +571,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         project,
         false,
         externalId,
-        true
+        true,
+        playback
       );
       response.status(payload.preview ? 200 : 202).json({
         ...payload,
@@ -453,13 +592,15 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           return response.status(429).json({
             type: "render_capacity",
             message: "Finish or cancel an existing render before starting another.",
-            ...(project && projectUrl ? { project_id: project.id, projectUrl, project_url: projectUrl } : {})
+            ...(project && projectUrl ? { project_id: project.id, projectUrl, project_url: projectUrl } : {}),
+            ...(playback ? { playback } : {})
           });
         }
         return response.status(422).json({
           type: "render_input_incomplete",
           message: error.message,
-          ...(project && projectUrl ? { project_id: project.id, projectUrl, project_url: projectUrl } : {})
+          ...(project && projectUrl ? { project_id: project.id, projectUrl, project_url: projectUrl } : {}),
+          ...(playback ? { playback } : {})
         });
       }
       next(error);

@@ -11,6 +11,7 @@ import { assertSelfhostConfig, engineEnv, PostgresSelfhostOwner } from "./selfho
 import { PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
 import { PostgresRenderRepository, renderProfilesFromEnv } from "./render-repository.js";
 import { purgeProject } from "./project-purge.js";
+import { apiDatabasePoolMax } from "./db-pool.js";
 import { createApp, createTestApp } from "./server.js";
 import {
   assertNoSharedFalCredential,
@@ -47,7 +48,10 @@ const accessPolicy = accessPolicyFromEnv(process.env);
 const externalImports = externalImportConfigFromEnv(process.env);
 const renderNotify = renderNotifyConfigFromEnv(process.env);
 
-const pool = new pg.Pool({ connectionString: required("DATABASE_URL") });
+const pool = new pg.Pool({
+  connectionString: required("DATABASE_URL"),
+  max: apiDatabasePoolMax
+});
 // pg.Pool emits "error" for idle-client connection drops (DB restart, network
 // blip); without a listener that is an unhandled exception that kills the
 // whole process. Log it and let the next /readyz check report 503 instead.

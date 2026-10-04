@@ -8,6 +8,7 @@ import {
   parseExternalDraft,
   projectIdForExternalImport
 } from "../dist/external-import.js";
+import { RenderInputIncompleteError } from "../dist/render-repository.js";
 import { createTestApp } from "../dist/server.js";
 
 async function listen(server) {
@@ -749,6 +750,377 @@ test("the same external id reopens one draft and the host can play and download 
       body: JSON.stringify({ external_id: "missing:post" })
     })).status, 404);
     assert.equal(projects.list(ownerId).length, 1);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+function playbackScene(id, caption, extra = {}) {
+  return {
+    id,
+    order: 0,
+    caption,
+    visual_prompt: "A painted figure",
+    duration_ms: 3000,
+    focal_x: 0.4,
+    focal_y: 0.6,
+    motion: "zoom",
+    audio_level: 1,
+    ducking: false,
+    overlay_look: "caption",
+    overlay_place: "bottom",
+    ...extra
+  };
+}
+
+function playbackMediaStore() {
+  const assets = new Map();
+  return {
+    assets,
+    add(id, type = "image/jpeg") {
+      assets.set(id, {
+        id,
+        state: "ready",
+        sealedObjectKey: `projects/media/${id}`,
+        declaredType: type,
+        ownerId: "owner",
+        projectId: "project",
+        quarantineObjectKey: "q",
+        maxBytes: 10,
+        detected: { type, bytes: 10, width: 1080, height: 1920 }
+      });
+    },
+    repository: {
+      async get(_owner, _project, id) {
+        return assets.get(id);
+      }
+    },
+    store: {
+      async signedGet(key) {
+        return `https://signed.example/${key}`;
+      }
+    }
+  };
+}
+
+function countingSpeech(assets) {
+  const files = new Map();
+  let puts = 0;
+  return {
+    puts: () => puts,
+    async putWav(_owner, _project, bytes) {
+      puts += 1;
+      const id = `wav-${puts}`;
+      files.set(id, bytes);
+      assets.set(id, {
+        id,
+        state: "ready",
+        sealedObjectKey: `projects/media/${id}`,
+        declaredType: "audio/wav",
+        ownerId: "owner",
+        projectId: "project",
+        quarantineObjectKey: "q",
+        maxBytes: bytes.byteLength,
+        detected: { type: "audio/wav", bytes: bytes.byteLength }
+      });
+      return id;
+    },
+    async readWav(_owner, _project, id) {
+      return files.get(id);
+    }
+  };
+}
+
+test("partner preview plays scene media without a voiceover and keeps the MP4 fields", async () => {
+  const token = "p".repeat(32);
+  const ownerId = "11111111-1111-4111-8111-111111111111";
+  const externalId = "cms:gallery:silent";
+  const projects = new ProjectService();
+  const created = projects.create(ownerId, {
+    purpose: "Quiet frames",
+    audience: "Viewers",
+    tone: "Calm"
+  });
+  projects.bindHostImport(ownerId, created.id, { externalId });
+  projects.command(ownerId, {
+    command_id: "board",
+    project_id: created.id,
+    base_revision: created.revision,
+    client_timestamp: "t",
+    kind: "replace_storyboard",
+    payload: {
+      scenes: [
+        playbackScene("s1", "Quiet frames from the day.", { media_id: "still-1", duration_ms: 3000, order: 0 }),
+        playbackScene("s2", "Hold on the last frame.", { media_id: "still-2", duration_ms: 4000, order: 1 })
+      ]
+    }
+  });
+  const waitingId = "cms:gallery:waiting";
+  const waiting = projects.create(ownerId, {
+    purpose: "Waiting on a file",
+    audience: "Viewers",
+    tone: "Calm"
+  });
+  projects.bindHostImport(ownerId, waiting.id, { externalId: waitingId });
+  projects.command(ownerId, {
+    command_id: "board-waiting",
+    project_id: waiting.id,
+    base_revision: waiting.revision,
+    client_timestamp: "t",
+    kind: "replace_storyboard",
+    payload: {
+      scenes: [playbackScene("w1", "Still waiting.", { media_id: "still-1" })]
+    }
+  });
+  const media = playbackMediaStore();
+  media.add("still-1");
+  media.add("still-2", "video/mp4");
+  const speech = countingSpeech(media.assets);
+  let billed = 0;
+  let renders = 0;
+  const server = createServer(createTestApp({
+    projects,
+    spokenAudio: speech,
+    hostUsage: {
+      async status() {
+        return { unit: "render_unit", balance: 0, free_grant: 0, costs: { preview: 1, final: 2 } };
+      },
+      async consumeRender() {
+        billed += 1;
+        return 0;
+      },
+      async ensureFreeGrant() {}
+    },
+    renders: {
+      async create() {
+        renders += 1;
+        return {
+          jobId: "job-queued",
+          state: "queued",
+          renderProfile: { width: 540, height: 960 }
+        };
+      },
+      async latestPortraitPreview(_owner, projectId) {
+        const project = projects.get(ownerId, projectId);
+        if (project.brief.purpose === "Waiting on a file") return undefined;
+        return {
+          jobId: "job-portrait",
+          objectKey: "projects/preview.mp4",
+          width: 540,
+          height: 960,
+          revision: project.revision
+        };
+      }
+    },
+    media: { repository: media.repository, store: media.store },
+    externalImports: { token, ownerId, webOrigin: "https://f-motion.example", mediaOrigins: [] }
+  }));
+  const origin = await listen(server);
+  try {
+    const response = await fetch(`${origin}/v1/integrations/project-imports/preview`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ external_id: externalId })
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.preview.play_url, "https://signed.example/projects/preview.mp4");
+    assert.equal(body.preview.download_url, body.preview.play_url);
+    assert.equal(body.preview.width, 540);
+    assert.equal(body.preview.height, 960);
+    assert.equal(body.playback.voiceover, null);
+    assert.equal(body.playback.total_ms, 7000);
+    assert.equal(body.playback.scenes.length, 2);
+    assert.equal(body.playback.scenes[0].media.url, "https://signed.example/projects/media/still-1");
+    assert.equal(body.playback.scenes[0].media.type, "image/jpeg");
+    assert.equal(body.playback.scenes[0].media.muted, true);
+    assert.equal(body.playback.scenes[0].words[0].text, "Quiet");
+    assert.equal(body.playback.scenes[0].start_ms, 0);
+    assert.equal(body.playback.scenes[1].media.url, "https://signed.example/projects/media/still-2");
+    assert.equal(body.playback.scenes[1].media.type, "video/mp4");
+    assert.equal(body.playback.scenes[1].start_ms, 3000);
+    assert.equal(speech.puts(), 0);
+    assert.equal(billed, 0);
+    assert.equal(renders, 1);
+
+    const waitingResponse = await fetch(`${origin}/v1/integrations/project-imports/preview`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ external_id: waitingId })
+    });
+    assert.equal(waitingResponse.status, 202);
+    const waitingBody = await waitingResponse.json();
+    assert.equal(waitingBody.preview, null);
+    assert.equal(waitingBody.job_id, "job-queued");
+    assert.equal(waitingBody.playback.voiceover, null);
+    assert.equal(waitingBody.playback.scenes[0].media.url, "https://signed.example/projects/media/still-1");
+    assert.equal(waitingBody.playback.scenes[0].media.muted, true);
+    assert.equal(billed, 0);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("partner preview speaks Spoken lines once and leaves a user voice-over in place", async () => {
+  const token = "v".repeat(32);
+  const ownerId = "11111111-1111-4111-8111-111111111111";
+  const spokenId = "cms:gallery:spoken";
+  const ownedId = "cms:gallery:owned";
+  const projects = new ProjectService();
+  const media = playbackMediaStore();
+  media.add("still-1");
+  media.add("user-take", "audio/wav");
+  const speech = countingSpeech(media.assets);
+
+  function bind(externalId, purpose) {
+    const created = projects.create(ownerId, { purpose, audience: "Viewers", tone: "Calm" });
+    projects.bindHostImport(ownerId, created.id, { externalId });
+    return projects.command(ownerId, {
+      command_id: `board-${externalId}`,
+      project_id: created.id,
+      base_revision: created.revision,
+      client_timestamp: "t",
+      kind: "replace_storyboard",
+      payload: {
+        scenes: [
+          playbackScene("s1", "Selected gallery image 4", {
+            media_id: "still-1",
+            overlay_look: "caption",
+            duration_ms: 3000,
+            order: 0
+          }),
+          playbackScene("s2", "Read the full post.", {
+            overlay_look: "spoken",
+            overlay_place: "center",
+            order: 1,
+            duration_ms: 4000
+          })
+        ]
+      }
+    });
+  }
+
+  bind(spokenId, "The night already had a script");
+  const owned = bind(ownedId, "A voice the user kept");
+  projects.command(ownerId, {
+    command_id: "user-voice",
+    project_id: owned.id,
+    base_revision: owned.revision,
+    client_timestamp: "t",
+    kind: "update_voiceover",
+    payload: { voiceover: { media_id: "user-take", offset_ms: 120, level: 0.8 } }
+  });
+
+  let billed = 0;
+  const server = createServer(createTestApp({
+    projects,
+    spokenAudio: speech,
+    hostUsage: {
+      async status() {
+        return { unit: "render_unit", balance: 0, free_grant: 0, costs: { preview: 1, final: 2 } };
+      },
+      async consumeRender() {
+        billed += 1;
+        return 0;
+      },
+      async ensureFreeGrant() {}
+    },
+    media: { repository: media.repository, store: media.store },
+    externalImports: { token, ownerId, webOrigin: "https://f-motion.example", mediaOrigins: [] }
+  }));
+  const origin = await listen(server);
+  const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+  const preview = (externalId) => fetch(`${origin}/v1/integrations/project-imports/preview`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ external_id: externalId })
+  });
+  try {
+    const ownedResponse = await preview(ownedId);
+    assert.equal(ownedResponse.status, 200);
+    const ownedBody = await ownedResponse.json();
+    assert.equal(ownedBody.job_id, undefined);
+    assert.equal(ownedBody.preview, null);
+    assert.equal(ownedBody.playback.voiceover.url, "https://signed.example/projects/media/user-take");
+    assert.equal(ownedBody.playback.voiceover.offset_ms, 120);
+    assert.equal(ownedBody.playback.voiceover.level, 0.8);
+    assert.equal(speech.puts(), 0);
+    assert.equal(projects.findByExternalId(ownerId, ownedId).brief.voiceover.media_id, "user-take");
+
+    const firstResponse = await preview(spokenId);
+    assert.equal(firstResponse.status, 200);
+    const first = await firstResponse.json();
+    assert.equal(first.job_id, undefined);
+    assert.ok(first.playback.voiceover.url.startsWith("https://signed.example/projects/media/wav-"));
+    assert.equal(first.playback.voiceover.offset_ms, 0);
+    assert.equal(first.playback.voiceover.level, 1);
+    assert.equal(first.playback.scenes[1].overlay_look, "spoken");
+    assert.equal(first.playback.scenes[1].words[0].text, "Read");
+    assert.equal(first.playback.scenes[0].media.muted, true);
+    assert.ok(speech.puts() > 0);
+    const puts = speech.puts();
+    const voiceUrl = first.playback.voiceover.url;
+
+    const secondResponse = await preview(spokenId);
+    assert.equal(secondResponse.status, 200);
+    const second = await secondResponse.json();
+    assert.equal(speech.puts(), puts);
+    assert.equal(second.playback.voiceover.url, voiceUrl);
+    assert.equal(second.revision, first.revision);
+
+    const refreshed = await fetch(
+      `${origin}/v1/integrations/project-imports?external_id=${encodeURIComponent(spokenId)}`,
+      { headers: { authorization: `Bearer ${token}` } }
+    );
+    assert.equal(refreshed.status, 200);
+    assert.equal((await refreshed.json()).playback.voiceover.url, voiceUrl);
+    assert.equal(speech.puts(), puts);
+    assert.equal(billed, 0);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("partner playback is returned when a render cannot start", async () => {
+  const token = "r".repeat(32);
+  const ownerId = "11111111-1111-4111-8111-111111111111";
+  const externalId = "cms:gallery:incomplete";
+  const projects = new ProjectService();
+  const created = projects.create(ownerId, { purpose: "Quiet frames", audience: "Viewers", tone: "Calm" });
+  projects.bindHostImport(ownerId, created.id, { externalId });
+  projects.command(ownerId, {
+    command_id: "board",
+    project_id: created.id,
+    base_revision: created.revision,
+    client_timestamp: "t",
+    kind: "replace_storyboard",
+    payload: { scenes: [playbackScene("s1", "Quiet frames from the day.", { media_id: "still-1" })] }
+  });
+  const media = playbackMediaStore();
+  media.add("still-1");
+  const server = createServer(createTestApp({
+    projects,
+    renders: {
+      async create() {
+        throw new RenderInputIncompleteError("Every scene needs ready media before rendering.");
+      }
+    },
+    media: { repository: media.repository, store: media.store },
+    externalImports: { token, ownerId, webOrigin: "https://f-motion.example", mediaOrigins: [] }
+  }));
+  const origin = await listen(server);
+  try {
+    const response = await fetch(`${origin}/v1/integrations/project-imports/preview`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ external_id: externalId })
+    });
+    assert.equal(response.status, 422);
+    const body = await response.json();
+    assert.equal(body.type, "render_input_incomplete");
+    assert.equal(body.playback.voiceover, null);
+    assert.equal(body.playback.scenes[0].media.url, "https://signed.example/projects/media/still-1");
+    assert.equal(body.playback.scenes[0].media.muted, true);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
