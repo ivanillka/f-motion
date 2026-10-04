@@ -70,6 +70,8 @@ test("private package tarballs install and run outside the monorepo without regi
       "dist/index.js",
       "dist/media-intent.d.ts",
       "dist/media-intent.js",
+      "dist/spoken-narration.d.ts",
+      "dist/spoken-narration.js",
       "package.json"
     ]
   );
