@@ -2,6 +2,7 @@ import {
   isMediaGlanceHints,
   isSoundtrack,
   isVideoArchitecture,
+  isSpokenAudio,
   isVoiceover,
   isStoryboardScenes,
   type CaptionCue,
@@ -40,6 +41,16 @@ export {
   type SceneMediaIntent,
   type SceneMediaIntentInput
 } from "./media-intent.js";
+export {
+  spokenCaption,
+  spokenLineKey,
+  spokenLineSlots,
+  spokenLinesToGenerate,
+  spokenMixKey,
+  spokenNarrationReady,
+  spokenTimelineMs
+} from "./spoken-narration.js";
+export type { SpokenLineSlot } from "./spoken-narration.js";
 export type { MediaGlanceHints, VideoArchitecture } from "@f-engine/contracts";
 
 const MAX_STORYBOARD_SCENES = 8;
@@ -823,6 +834,12 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
       brief.voiceover = raw;
     } else {
       throw new Error("invalid voiceover");
+    }
+    if ("spoken_audio" in command.payload) {
+      const audio = command.payload.spoken_audio;
+      if (audio === null) delete brief.spoken_audio;
+      else if (isSpokenAudio(audio)) brief.spoken_audio = audio.map((item) => ({ ...item }));
+      else throw new Error("invalid spoken audio");
     }
     return { ...snapshot, brief, revision: snapshot.revision + 1 };
   }

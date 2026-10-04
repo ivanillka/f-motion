@@ -61,11 +61,20 @@ export interface Soundtrack {
   media_id?: string;
 }
 
-/** User-owned narration mixed over the cut. No generated TTS. */
+/** Narration mixed over the cut. `spoken_key` is set when this file was stored for Spoken captions. */
 export interface Voiceover {
   media_id: string;
   offset_ms: number;
   level: number;
+  /** Fingerprint of the Spoken lines this file was mixed for. Absent means the file is user-owned. */
+  spoken_key?: string;
+}
+
+/** Stored speech for one Spoken line, or the timeline mix of those lines. */
+export interface SpokenAudioRef {
+  role: "line" | "mix";
+  key: string;
+  media_id: string;
 }
 
 export interface VideoArchitecture {
@@ -103,6 +112,8 @@ export interface ProjectBrief {
   frame?: "reel" | "desktop" | "both";
   /** Stock footage, AI footage, and documental diagrams in one reel. Absent means off. */
   mix?: true;
+  /** Cached Spoken-line audio. Absent until the studio has prepared narration. */
+  spoken_audio?: SpokenAudioRef[];
 }
 
 export type CommandKind =
@@ -184,6 +195,22 @@ export function isSoundtrack(value: unknown): value is Soundtrack {
   return false;
 }
 
+const spokenKeyPattern = /^[a-f0-9]{8,64}$/;
+
+export function isSpokenAudio(value: unknown): value is SpokenAudioRef[] {
+  if (!Array.isArray(value) || value.length > 24) return false;
+  const seen = new Set<string>();
+  return value.every((item) => {
+    if (!isRecord(item) || (item.role !== "line" && item.role !== "mix")) return false;
+    if (typeof item.key !== "string" || !spokenKeyPattern.test(item.key)) return false;
+    if (typeof item.media_id !== "string" || !item.media_id || item.media_id.length > 80) return false;
+    const id = `${item.role}:${item.key}`;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
 export function isVoiceover(value: unknown): value is Voiceover {
   return isRecord(value)
     && typeof value.media_id === "string"
@@ -194,7 +221,8 @@ export function isVoiceover(value: unknown): value is Voiceover {
     && value.offset_ms <= 600_000
     && isFiniteNumber(value.level)
     && value.level >= 0
-    && value.level <= 1;
+    && value.level <= 1
+    && (!("spoken_key" in value) || (typeof value.spoken_key === "string" && spokenKeyPattern.test(value.spoken_key)));
 }
 
 function isOverlayPlace(value: unknown): value is OverlayPlace {
@@ -363,7 +391,8 @@ export function isProjectBrief(value: unknown): value is ProjectBrief {
       || value.cta.length > 180))
     || ("brand_mark" in value && value.brand_mark !== true)
     || ("frame" in value && value.frame !== "reel" && value.frame !== "desktop" && value.frame !== "both")
-    || ("mix" in value && value.mix !== true)) {
+    || ("mix" in value && value.mix !== true)
+    || ("spoken_audio" in value && value.spoken_audio != null && !isSpokenAudio(value.spoken_audio))) {
     return false;
   }
   return true;

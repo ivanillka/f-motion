@@ -90,6 +90,7 @@ import {
 } from "./selfhost-auth.js";
 import { ProjectBusyError, type ProjectPurgeResult } from "./project-purge.js";
 import { composeOne, runBatch, type ComposeOneDeps } from "./compose-one.js";
+import { ensureSpokenVoiceover, spokenAudioFromMedia, type SpokenAudioStore } from "./spoken-narration.js";
 
 export interface MediaDependencies {
   repository: PostgresMediaRepository;
@@ -121,6 +122,8 @@ interface AppBaseOptions {
   ownerAuth?: SelfhostOwnerAuth;
   /** Hosted/self-host path: collect object keys, refuse busy jobs, cascade DB, then S3. */
   purgeProject?: (ownerId: string, projectId: string) => Promise<ProjectPurgeResult | undefined>;
+  /** Test double. Hosted startup uses the project media store. */
+  spokenAudio?: SpokenAudioStore;
 }
 
 export interface AppOptions extends AppBaseOptions {
@@ -1064,6 +1067,43 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       if (project.scenes.length === 0) body.concepts = conceptsFor(project.brief);
       response.json(body);
     } catch (error) {
+      next(error);
+    }
+  });
+  app.post("/api/projects/:projectId/spoken-narration", async (request, response, next) => {
+    try {
+      if (!emptyBody(request.body)) {
+        return response.status(422).json({ type: "validation", message: "This request does not accept fields." });
+      }
+      const audio = options.spokenAudio
+        ?? (options.media ? spokenAudioFromMedia(options.media.repository, options.media.store) : undefined);
+      if (!audio) {
+        return response.status(503).json({ type: "unavailable", message: "Spoken narration is not enabled on this deployment." });
+      }
+      const ownerId = String(response.locals.ownerId);
+      const project = await projects.get(ownerId, request.params.projectId);
+      if (!project) return response.status(404).json({ type: "not_found", message: "not found" });
+      const result = await ensureSpokenVoiceover(ownerId, project, audio, (base, voiceover, spokenAudio) =>
+        projects.command(ownerId, {
+          command_id: randomUUID(),
+          project_id: base.id,
+          base_revision: base.revision,
+          client_timestamp: new Date().toISOString(),
+          kind: "update_voiceover",
+          payload: { voiceover, spoken_audio: spokenAudio }
+        }));
+      response.json(result);
+    } catch (error) {
+      if (error instanceof ConflictError) {
+        return response.status(409).json({
+          type: "conflict",
+          message: error.message,
+          authoritative_snapshot: error.authoritativeSnapshot
+        });
+      }
+      if (error instanceof ValidationError) {
+        return response.status(422).json({ type: "validation", message: error.message });
+      }
       next(error);
     }
   });
