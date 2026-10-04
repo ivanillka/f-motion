@@ -117,6 +117,9 @@ produces the file. A preview file is a render. This API does not invent pixels
 and does not charge a download token. The host bills that (one download, one
 token, admins free).
 
+GET and the preview POST also include `playback`, the center player, without
+waiting for that file. See [Studio playback](#studio-playback).
+
 ## Edit in F-Motion
 
 Button / deep link: open `projectUrl` (already includes `?project=`).
@@ -165,6 +168,50 @@ Content-Type: application/json
 ```
 
 Then `GET /v1/render-jobs/{job_id}/download`. Edit still uses `projectUrl`.
+
+## Studio playback
+
+`preview` stays the rendered 9:16 MP4 when one exists. The same GET and
+`POST /v1/integrations/project-imports/preview` responses also include
+`playback`. That is the center player: muted scene media, the caption word
+timeline, and a voiceover URL when one is attached.
+
+`playback` does not require a render job and does not debit render units.
+Use it to play the cut while `preview` is still null.
+
+```json
+"playback": {
+  "expires_at": "2026-10-04T21:00:00.000Z",
+  "total_ms": 7000,
+  "scenes": [
+    {
+      "id": "scene-1",
+      "order": 0,
+      "duration_ms": 3000,
+      "start_ms": 0,
+      "caption": "Quiet frames from the day.",
+      "overlay_look": "caption",
+      "overlay_place": "bottom",
+      "focal_x": 0.5,
+      "focal_y": 0.5,
+      "motion": "zoom",
+      "media": { "url": "https://signed.example/still.jpg", "type": "image/jpeg", "muted": true },
+      "words": [{ "text": "Quiet", "start_ms": 0, "end_ms": 500 }]
+    }
+  ],
+  "voiceover": { "url": "https://signed.example/voice.wav", "offset_ms": 0, "level": 1 }
+}
+```
+
+Play each scene's `media.url` muted for `duration_ms`. Word times are local
+to that scene. If `voiceover` is set, play that file from the start of the
+cut, shifted by `offset_ms`, at `level`. Signed URLs expire at `expires_at`.
+Call the same preview request again to refresh them.
+
+When the draft has Spoken lines and no user-owned voice-over, the first
+preview prepares the spoken mix. A later request for the same lines reuses
+that file and does not synthesize again. A voice-over the user recorded or
+uploaded is left in place. `voiceover` is null when none is attached.
 
 ## Return webhook (`render.complete`)
 

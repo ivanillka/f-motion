@@ -51,6 +51,40 @@ interface OutboxRow {
 const defaultOutboxRetentionHours = 7 * 24;
 const outboxCleanupIntervalMs = 60 * 60 * 1000;
 
+/**
+ * Sessions for one worker process. See apps/api/src/db-pool.ts.
+ * pg-boss also keeps one LISTEN client outside this max.
+ * ponytail: fixed split, not a setting. Raise these together if the pooler limit grows.
+ */
+export const workerDatabasePoolMax = 3;
+export const queueDatabasePoolMax = 4;
+
+const guardedPools = new WeakSet<object>();
+const guardedQueues = new WeakSet<object>();
+
+/** Idle client errors are events. Without a listener, Node exits the process. */
+export function guardDatabasePool(pool: pg.Pool): pg.Pool {
+  if (guardedPools.has(pool)) return pool;
+  guardedPools.add(pool);
+  pool.on("error", (error) => {
+    console.error("postgres pool error", error);
+  });
+  return pool;
+}
+
+/** pg-boss forwards pool failures as an error event. No listener exits the process. */
+export function guardQueue(boss: PgBoss): void {
+  if (guardedQueues.has(boss)) return;
+  guardedQueues.add(boss);
+  boss.on("error", (error) => {
+    console.error("queue error", error);
+  });
+}
+
+function queueError(error: unknown): Error {
+  return error instanceof Error ? error : new Error("queue dispatch failed");
+}
+
 export function outboxRetentionHoursFromEnv(
   env: Record<string, string | undefined>
 ): number {
@@ -115,17 +149,33 @@ export async function cleanupDispatchedOutbox(
   return deleted.rowCount ?? 0;
 }
 
+/** A refused session must not reject the dispatch timer. The queue logs it and keeps polling. */
+export async function dispatchOutboxSafely(pool: pg.Pool, boss: PgBoss): Promise<void> {
+  try {
+    await dispatchOutbox(pool, boss);
+  } catch (error) {
+    try {
+      boss.emit("error", queueError(error));
+    } catch (emitError) {
+      console.error("queue error", emitError);
+    }
+  }
+}
+
 export async function startQueueRuntime(
   connectionString: string,
   handlers: QueueHandlers,
-  pool = new pg.Pool({ connectionString }),
+  pool = guardDatabasePool(new pg.Pool({ connectionString, max: workerDatabasePoolMax })),
   outboxRetentionHours = defaultOutboxRetentionHours
 ) {
+  guardDatabasePool(pool);
   const boss = await new PgBoss({
     connectionString,
+    max: queueDatabasePoolMax,
     maintenanceIntervalSeconds: 1,
     monitorIntervalSeconds: 10
   }).start();
+  guardQueue(boss);
   await boss.createQueue(inspectionQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 60 });
   await boss.createQueue(renderQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 300 });
   await boss.createQueue(falImageQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 600 });
@@ -170,17 +220,26 @@ export async function startQueueRuntime(
       return handlers.generateFalSpeech!(job.data, job.signal);
     });
   }
-  await dispatchOutbox(pool, boss);
-  await cleanupDispatchedOutbox(pool, outboxRetentionHours);
+  await dispatchOutboxSafely(pool, boss);
+  try {
+    await cleanupDispatchedOutbox(pool, outboxRetentionHours);
+  } catch (error) {
+    boss.emit("error", queueError(error));
+  }
   const dispatchTimer = setInterval(
-    () => void dispatchOutbox(pool, boss).catch((error) => boss.emit("error", error)),
+    () => void dispatchOutboxSafely(pool, boss),
     1000
   );
   // ponytail: one 250-row batch per hour caps cleanup work but may lag a large
   // backlog. Upgrade after measuring cleanup count and oldest-undispatched age.
   const cleanupTimer = setInterval(
-    () => void cleanupDispatchedOutbox(pool, outboxRetentionHours)
-      .catch((error) => boss.emit("error", error)),
+    () => void cleanupDispatchedOutbox(pool, outboxRetentionHours).catch((error) => {
+      try {
+        boss.emit("error", queueError(error));
+      } catch (emitError) {
+        console.error("queue error", emitError);
+      }
+    }),
     outboxCleanupIntervalMs
   );
   dispatchTimer.unref();

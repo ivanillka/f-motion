@@ -51,10 +51,13 @@ curl -sS -X POST "$FMOTION_API_ORIGIN/v1/integrations/project-imports/preview" \
 
 Poll `GET /v1/integrations/project-imports?external_id=cms:gallery:weekend`
 until `preview.play_url` and `preview.download_url` are set. That MP4 is the
-playable preview and the downloadable 9:16 file. If the API has no render
-worker, `next_call` names `POST /v1/projects/{project_id}/render` with
-`{"kind":"preview"}` and the owner API key, then
-`GET /v1/render-jobs/{job_id}/download`.
+downloadable 9:16 file. The same response includes `playback` immediately:
+muted scene media, caption words, and `playback.voiceover.url` when a
+voice-over is attached. Play that without waiting for the MP4. It does not
+debit render units. Spoken lines are prepared on the first request and reused
+after that. If the API has no render worker, `next_call` names
+`POST /v1/projects/{project_id}/render` with `{"kind":"preview"}` and the
+owner API key, then `GET /v1/render-jobs/{job_id}/download`.
 4. User signs in on f-motion.com if needed. The draft opens.
 5. User attaches or adjusts scenes, runs a preview, downloads or continues later.
 6. If `notify_url` was accepted, F-Motion POSTs signed `render.complete` when
