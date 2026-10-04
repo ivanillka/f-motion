@@ -9,6 +9,8 @@ import {
   resolveSceneMediaIntent,
   sceneMediaIntent,
   setMediaIntentAdapter,
+  spokenMixKey,
+  spokenNarrationReady,
   spokenWordIndex,
   spokenWordsForCues,
   VOICEOVER_DUCK,
@@ -21,6 +23,8 @@ import {
   type MediaIntentAdapter,
   type VideoArchitecture
 } from "@f-engine/reel-engine";
+
+export { spokenMixKey, spokenNarrationReady };
 
 export interface Scene {
   id: string;
@@ -53,6 +57,8 @@ export interface Voiceover {
   media_id: string;
   offset_ms: number;
   level: number;
+  /** Set when this file was stored for the current Spoken captions. */
+  spoken_key?: string;
 }
 
 export interface ProjectSnapshot {

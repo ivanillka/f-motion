@@ -183,7 +183,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { clampBpm, clampFocus, clampOffsetMs, defaultVoiceoverPrompt, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, previewMediaShouldLoop, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, stockBedUrl, voiceoverPlayback } = await vite.ssrLoadModule("/src/api.ts");
+    const { clampBpm, clampFocus, clampOffsetMs, defaultVoiceoverPrompt, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, previewMediaShouldLoop, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, spokenNarrationReady, stockBedUrl, voiceoverPlayback } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -261,6 +261,14 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
     assert.match(source, /setSceneMedia\(\{\}\);\s+setStatus\("Opening draft/);
     assert.match(source, /setStatus\(hydrationFailed \? "Draft media details could not be loaded\."/);
+    assert.match(source, /attachSpokenVoice\(found\.project\)/);
+    assert.match(source, /\/spoken-narration/);
+    const play = source.slice(source.indexOf("function playLivePreview"), source.indexOf("function pauseLivePreview"));
+    assert.doesNotMatch(play, /spoken-narration/);
+    assert.equal(spokenNarrationReady({
+      scenes: [{ overlay_look: "spoken", caption: "Read the full post.", duration_ms: 6000 }],
+      brief: {}
+    }), false);
   } finally {
     await vite.close();
   }

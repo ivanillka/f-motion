@@ -112,10 +112,24 @@ test("brief voiceover is optional and validated when present", () => {
   const base = snapshotWithPrompt("remote island");
   assert.equal(isVoiceover({ media_id: "vo-1", offset_ms: 0, level: 1 }), true);
   assert.equal(isVoiceover({ media_id: "", offset_ms: 0, level: 1 }), false);
+  assert.equal(isVoiceover({ media_id: "vo-1", offset_ms: 0, level: 1, spoken_key: "abcdef0123456789" }), true);
+  assert.equal(isVoiceover({ media_id: "vo-1", offset_ms: 0, level: 1, spoken_key: "nope" }), false);
   assert.equal(isProjectSnapshot({
     ...base,
     brief: { ...base.brief, voiceover: { media_id: "vo-1", offset_ms: 0, level: 0.9 } }
   }), true);
+  assert.equal(isProjectSnapshot({
+    ...base,
+    brief: {
+      ...base.brief,
+      voiceover: { media_id: "vo-1", offset_ms: 0, level: 1, spoken_key: "abcdef0123456789" },
+      spoken_audio: [{ role: "line", key: "abcdef0123456789", media_id: "line-1" }]
+    }
+  }), true);
+  assert.equal(isProjectSnapshot({
+    ...base,
+    brief: { ...base.brief, spoken_audio: [{ role: "bed", key: "abcdef0123456789", media_id: "line-1" }] }
+  }), false);
   assert.equal(isProjectSnapshot({
     ...base,
     brief: { ...base.brief, voiceover: { media_id: "vo-1", offset_ms: -1, level: 1 } }

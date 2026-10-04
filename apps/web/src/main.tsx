@@ -32,6 +32,8 @@ import {
   focusFromPoint,
   formatPlayTime,
   livePlayhead,
+  spokenMixKey,
+  spokenNarrationReady,
   voiceoverPlayback,
   liveTimeline,
   loadSceneMediaViews,
@@ -769,15 +771,21 @@ export function App() {
       if (storyboardProjectAction(importEditLock.current, importedProjectRef.current) === "reuse") {
         const importedId = importedProjectRef.current;
         try {
-          const { project: opened } = await api.getProject(importedId);
+          const { project: imported } = await api.getProject(importedId);
+          const opened = await attachSpokenVoice(imported);
           setProject(opened);
           localStorage.setItem("fengine-project", opened.id);
           if (!opened.scenes.length) {
             await buildStoryboard(opened, plan);
           } else {
+            try {
+              setSceneMedia(await loadSceneMediaViews(api, opened));
+            } catch {
+              setStatus("Draft media details could not be loaded.");
+            }
             setActiveSceneId(opened.scenes[0]?.id ?? "");
             setStep("editor");
-            setStatus("");
+            if (spokenNarrationReady(opened)) setStatus("");
           }
         } catch {
           setStatus("Draft could not be opened.");
@@ -827,8 +835,17 @@ export function App() {
         ...(mediaGlance ? { media_glance: mediaGlance } : {})
       });
     }
+    current = await attachSpokenVoice(current);
     setProject(current);
     setActiveSceneId(current.scenes[0]?.id ?? "");
+    if (current.brief.voiceover?.media_id) {
+      try {
+        const views = await loadSceneMediaViews(api, current);
+        setSceneMedia((existing) => ({ ...existing, ...views }));
+      } catch {
+        if (spokenNarrationReady(current)) setStatus("Draft media details could not be loaded.");
+      }
+    }
     setStep("editor");
     if (pendingFiles.length) {
       setStatus("Uploading your media…");
@@ -861,7 +878,7 @@ export function App() {
     setStatus("Opening draft…");
     try {
       const found = await api.getProject(projectId);
-      const opened = found.project;
+      const opened = await attachSpokenVoice(found.project);
       if (transition !== mediaTransition.current) return false;
       setProject(opened);
       setActiveSceneId(opened.scenes[0]?.id ?? "");
@@ -892,7 +909,11 @@ export function App() {
       }
       if (transition !== mediaTransition.current) return false;
       setStep("editor");
-      setStatus(hydrationFailed ? "Draft media details could not be loaded." : "");
+      if (!spokenNarrationReady(opened)) {
+        if (!hydrationFailed) setStatus("Spoken voice could not be prepared.");
+      } else {
+        setStatus(hydrationFailed ? "Draft media details could not be loaded." : "");
+      }
       return true;
     } catch {
       if (transition === mediaTransition.current) setStatus("Draft could not be opened.");
@@ -1029,6 +1050,21 @@ export function App() {
       }
       setStatus("Music bed could not be saved.");
       return false;
+    }
+  }
+
+  async function attachSpokenVoice(snapshot: ProjectSnapshot): Promise<ProjectSnapshot> {
+    if (spokenNarrationReady(snapshot)) return snapshot;
+    setStatus("Preparing spoken voice…");
+    try {
+      const body = await api.request<{ project: ProjectSnapshot; generated: number }>(
+        `/api/projects/${snapshot.id}/spoken-narration`,
+        { method: "POST" }
+      );
+      return body.project;
+    } catch {
+      setStatus("Spoken voice could not be prepared.");
+      return snapshot;
     }
   }
 
@@ -2598,6 +2634,7 @@ export function App() {
       : soundtrackMedia?.attribution?.title ?? "Uploaded music";
   const voiceover = project?.brief.voiceover;
   const voiceoverUrl = voiceover?.media_id ? scenePreviewUrl(sceneMedia[voiceover.media_id]) : undefined;
+  const spokenScriptKey = project ? spokenMixKey(project.scenes) : "";
   const spoken = previewScene ? spokenWordsForCues(cuesForScene(previewScene)) : [];
   const spokenIndex = previewHeld ? spokenWordIndex(spoken, playhead.sceneElapsedMs) : -1;
   const overlayHeadline = overlayLook === "title"
@@ -2837,6 +2874,28 @@ export function App() {
     audio.addEventListener("loadedmetadata", apply);
     return () => audio.removeEventListener("loadedmetadata", apply);
   }, [livePlaying, voiceoverUrl, voiceover?.level, voiceover?.offset_ms, bedSeek]);
+  useEffect(() => {
+    if (step !== "editor" || !project) return;
+    const voice = project.brief.voiceover;
+    if (!spokenScriptKey || !voice?.spoken_key || voice.spoken_key === spokenScriptKey) return;
+    let cancelled = false;
+    const projectId = project.id;
+    void (async () => {
+      try {
+        const body = await api.request<{ project: ProjectSnapshot; generated: number }>(
+          `/api/projects/${projectId}/spoken-narration`,
+          { method: "POST" }
+        );
+        if (cancelled) return;
+        setProject(body.project);
+        const views = await loadSceneMediaViews(api, body.project);
+        if (!cancelled) setSceneMedia((current) => ({ ...current, ...views }));
+      } catch {
+        if (!cancelled) setStatus("Spoken voice could not be prepared.");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [api, step, project, spokenScriptKey]);
   useEffect(() => {
     if (!recording) return;
     const started = Date.now();
