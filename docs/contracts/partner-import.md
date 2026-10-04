@@ -209,9 +209,11 @@ cut, shifted by `offset_ms`, at `level`. Signed URLs expire at `expires_at`.
 Call the same preview request again to refresh them.
 
 When the draft has Spoken lines and no user-owned voice-over, the first
-preview prepares the spoken mix. A later request for the same lines reuses
-that file and does not synthesize again. A voice-over the user recorded or
-uploaded is left in place. `voiceover` is null when none is attached.
+preview prepares one voice for those lines. Each clip says that spoken
+caption and is fitted to its scene. A later request for the same line reuses
+that file and does not synthesize or charge again. A voice-over the user
+recorded or uploaded is left in place. `voiceover` is null when none is
+attached, including when the owner has no voice provider connected.
 
 ## Return webhook (`render.complete`)
 

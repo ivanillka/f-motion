@@ -686,6 +686,51 @@ export async function cancelSpeech(
   }
 }
 
+function isWavHeader(bytes: Uint8Array): boolean {
+  return bytes.length >= 12
+    && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+    && bytes[8] === 0x57 && bytes[9] === 0x41 && bytes[10] === 0x56 && bytes[11] === 0x45;
+}
+
+/**
+ * One Kokoro line. The prompt is that line, voice af_heart, speed 1.
+ * The bytes are the take. Fitting them to a scene happens after this returns.
+ */
+export async function speakKokoroLine(
+  credential: string,
+  text: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = 60_000,
+  signal?: AbortSignal
+): Promise<Uint8Array> {
+  const submitted = await submitSpeech(credential, { prompt: text }, fetchImpl, timeoutMs, signal);
+  const deadline = Date.now() + timeoutMs;
+  let completed = false;
+  while (Date.now() < deadline) {
+    if (signal?.aborted) throw new FalImageError("provider_unavailable");
+    const status = await speechStatus(credential, submitted.request_id, fetchImpl, timeoutMs, signal);
+    if (status.status === "FAILED") throw new FalImageError(status.failureCode);
+    if (status.status === "COMPLETED") {
+      completed = true;
+      break;
+    }
+    const wait = Math.min(250, Math.max(0, deadline - Date.now()));
+    if (wait === 0) break;
+    await new Promise((resolve) => setTimeout(resolve, wait));
+  }
+  if (!completed) throw new FalImageError("provider_unavailable");
+  const result = await speechResult(credential, submitted.request_id, fetchImpl, timeoutMs, signal);
+  const response = await fetchImpl(result.url, { redirect: "error", signal });
+  if (!response.ok) throw new FalImageError("provider_unavailable");
+  const declared = Number(response.headers.get("content-length") ?? NaN);
+  if (Number.isFinite(declared) && declared > FAL_SPEECH_MAX_BYTES) throw new FalImageError("unsafe_output");
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength === 0 || bytes.byteLength > FAL_SPEECH_MAX_BYTES || !isWavHeader(bytes)) {
+    throw new FalImageError("unsafe_output");
+  }
+  return bytes;
+}
+
 export interface CredentialVault {
   activeVersion: number;
   keys: ReadonlyMap<number, Uint8Array>;

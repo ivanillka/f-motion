@@ -1,8 +1,10 @@
 /**
- * Local formant speech for Spoken captions.
- * ponytail: rule-based English, not a neural voice. Ceiling: intelligible short
- * lines at 16 kHz. Upgrade: a confirmed provider voice, still keyed by spokenLineKey
- * so a reopen does not synthesize again.
+ * WAV helpers for spoken narration, plus the retired formant mixer.
+ * Playback does not call synthesizeSpeech. That robot voice stays here so a
+ * test can prove the file you hear is not this mix.
+ * ponytail: fitTakeToScene linearly resamples a take that is longer than the
+ * scene, which shifts pitch. Ceiling: the whole take, including the tail, lands
+ * in the scene. Upgrade: pitch-preserving time-stretch.
  */
 
 export const SPEECH_SAMPLE_RATE = 16_000;
@@ -412,15 +414,87 @@ export function encodeWav(samples: Int16Array, sampleRate = SPEECH_SAMPLE_RATE):
   return bytes;
 }
 
+function ascii(bytes: Uint8Array, offset: number, length: number): string {
+  let text = "";
+  for (let i = 0; i < length; i += 1) text += String.fromCharCode(bytes[offset + i] ?? 0);
+  return text;
+}
+
 export function wavPcm(bytes: Uint8Array): { sampleRate: number; samples: Int16Array } {
-  if (bytes.length < 44) throw new Error("wav too small");
+  if (bytes.length < 12) throw new Error("wav too small");
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const sampleRate = view.getUint32(24, true);
-  const dataBytes = view.getUint32(40, true);
-  const count = Math.min(dataBytes, bytes.length - 44) / 2;
-  const samples = new Int16Array(count);
-  for (let i = 0; i < count; i += 1) samples[i] = view.getInt16(44 + i * 2, true);
+  if (ascii(bytes, 0, 4) !== "RIFF" || ascii(bytes, 8, 4) !== "WAVE") throw new Error("not wav");
+  let sampleRate = 0;
+  let channels = 0;
+  let bits = 0;
+  let dataOffset = -1;
+  let dataBytes = 0;
+  let offset = 12;
+  while (offset + 8 <= bytes.length) {
+    const id = ascii(bytes, offset, 4);
+    const size = view.getUint32(offset + 4, true);
+    const start = offset + 8;
+    if (id === "fmt " && size >= 16 && start + 16 <= bytes.length) {
+      const format = view.getUint16(start, true);
+      channels = view.getUint16(start + 2, true);
+      sampleRate = view.getUint32(start + 4, true);
+      bits = view.getUint16(start + 14, true);
+      if (format !== 1) throw new Error("wav not pcm");
+    } else if (id === "data") {
+      dataOffset = start;
+      dataBytes = Math.min(size, Math.max(0, bytes.length - start));
+    }
+    offset = start + size + (size % 2);
+  }
+  if (!sampleRate || channels < 1 || bits !== 16 || dataOffset < 0) throw new Error("wav missing pcm");
+  const frame = channels * 2;
+  const frames = Math.floor(dataBytes / frame);
+  const samples = new Int16Array(frames);
+  for (let i = 0; i < frames; i += 1) {
+    let sum = 0;
+    for (let channel = 0; channel < channels; channel += 1) {
+      sum += view.getInt16(dataOffset + i * frame + channel * 2, true);
+    }
+    samples[i] = Math.max(-32767, Math.min(32767, Math.round(sum / channels)));
+  }
   return { sampleRate, samples };
+}
+
+function resampleMono(samples: Int16Array, count: number): Int16Array {
+  if (count <= 0) return new Int16Array(0);
+  if (count === samples.length) return samples;
+  const out = new Int16Array(count);
+  if (samples.length === 0) return out;
+  if (samples.length === 1 || count === 1) {
+    out.fill(samples[0] ?? 0);
+    return out;
+  }
+  const last = samples.length - 1;
+  for (let i = 0; i < count; i += 1) {
+    const pos = (i * last) / (count - 1);
+    const left = Math.floor(pos);
+    const right = Math.min(last, left + 1);
+    const frac = pos - left;
+    const value = samples[left]! * (1 - frac) + samples[right]! * frac;
+    out[i] = Math.max(-32767, Math.min(32767, Math.round(value)));
+  }
+  return out;
+}
+
+/**
+ * A take that already fits the scene keeps its length.
+ * A longer take is scaled into the scene so the tail is still the end of that take.
+ */
+export function fitTakeToScene(
+  samples: Int16Array,
+  fromRate: number,
+  toRate: number,
+  slotSamples: number
+): Int16Array {
+  if (slotSamples <= 0 || samples.length === 0 || fromRate <= 0 || toRate <= 0) return new Int16Array(0);
+  const native = Math.max(1, Math.round((samples.length * toRate) / fromRate));
+  if (native <= slotSamples) return resampleMono(samples, native);
+  return resampleMono(samples, slotSamples);
 }
 
 /** Speech for one caption. Same text always yields the same WAV. */
@@ -430,22 +504,31 @@ export function synthesizeSpeech(text: string): Uint8Array {
   return encodeWav(renderPhones(phonesFor(spoken), spoken.toLowerCase()));
 }
 
-/** Place each Spoken line at its scene start. Other scenes stay silent. */
+/** Place each Spoken line at its scene start. A long take is fitted, not chopped. */
 export function mixSpokenTimeline(
   timelineMs: number,
   slots: readonly { key: string; startMs: number; durationMs: number }[],
   lines: ReadonlyMap<string, Uint8Array>
 ): Uint8Array {
-  const total = Math.max(1, Math.round((SPEECH_SAMPLE_RATE * timelineMs) / 1000));
-  const mixed = new Int16Array(total);
+  const decoded = new Map<string, { sampleRate: number; samples: Int16Array }>();
+  let rate = SPEECH_SAMPLE_RATE;
   for (const slot of slots) {
     const wav = lines.get(slot.key);
-    if (!wav) continue;
-    const { samples } = wavPcm(wav);
-    const start = Math.round((SPEECH_SAMPLE_RATE * slot.startMs) / 1000);
-    const room = Math.round((SPEECH_SAMPLE_RATE * slot.durationMs) / 1000);
-    const count = Math.min(samples.length, room, mixed.length - start);
-    for (let i = 0; i < count; i += 1) mixed[start + i] = samples[i]!;
+    if (!wav || decoded.has(slot.key)) continue;
+    const pcm = wavPcm(wav);
+    decoded.set(slot.key, pcm);
+    if (decoded.size === 1 && pcm.sampleRate > 0) rate = pcm.sampleRate;
   }
-  return encodeWav(mixed);
+  const total = Math.max(1, Math.round((rate * timelineMs) / 1000));
+  const mixed = new Int16Array(total);
+  for (const slot of slots) {
+    const pcm = decoded.get(slot.key);
+    if (!pcm) continue;
+    const start = Math.min(mixed.length, Math.max(0, Math.round((rate * slot.startMs) / 1000)));
+    const room = Math.min(mixed.length - start, Math.max(0, Math.round((rate * slot.durationMs) / 1000)));
+    const fitted = fitTakeToScene(pcm.samples, pcm.sampleRate, rate, room);
+    const count = Math.min(fitted.length, mixed.length - start);
+    for (let i = 0; i < count; i += 1) mixed[start + i] = fitted[i]!;
+  }
+  return encodeWav(mixed, rate);
 }

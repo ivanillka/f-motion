@@ -112,7 +112,8 @@ import {
   submitSpeech,
   speechStatus,
   speechResult,
-  cancelSpeech
+  cancelSpeech,
+  speakKokoroLine
 } from "../dist/index.js";
 
 test("estimateImage maps megapixel billing to the pinned portrait still", async () => {
@@ -254,4 +255,63 @@ test("speech result reads audio.url from fal.media and rejects other hosts", asy
     status: 200, headers: { "content-type": "application/json" }
   })), { status: "COMPLETED" });
   await cancelSpeech("k", "req", async () => new Response(null, { status: 202 }));
+});
+
+test("speakKokoroLine sends one voice and that spoken caption", async () => {
+  const wav = Buffer.alloc(44 + 8);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(36 + 8, 4);
+  wav.write("WAVE", 8);
+  wav.write("fmt ", 12);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(24000, 24);
+  wav.writeUInt32LE(48000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(8, 40);
+  const posts = [];
+  const fetchImpl = async (url, init = {}) => {
+    const method = String(init.method || "GET").toUpperCase();
+    if (method === "POST" && String(url).includes("kokoro/american-english")) {
+      posts.push(JSON.parse(String(init.body)));
+      return new Response(JSON.stringify({ request_id: `req-${posts.length}` }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    if (String(url).includes("/status")) {
+      return new Response(JSON.stringify({ status: "COMPLETED" }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    if (String(url).includes("/requests/")) {
+      return new Response(JSON.stringify({ audio: { url: "https://v3.fal.media/files/line.wav" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    return new Response(wav, {
+      status: 200,
+      headers: { "content-type": "audio/wav", "content-length": String(wav.length) }
+    });
+  };
+  const first = "A room that agreed to forget the street for a while.";
+  const later = "The night already had a script.";
+  const firstWav = await speakKokoroLine("k", first, fetchImpl);
+  const laterWav = await speakKokoroLine("k", later, fetchImpl);
+  assert.equal(posts.length, 2);
+  assert.equal(posts[0].prompt, first);
+  assert.equal(posts[1].prompt, later);
+  assert.equal(posts[0].prompt.includes(later), false);
+  assert.equal(posts[1].prompt.includes(first), false);
+  assert.equal(posts[0].voice, FAL_SPEECH_VOICE);
+  assert.equal(posts[1].voice, posts[0].voice);
+  assert.equal(posts[0].speed, 1);
+  assert.equal(posts[1].speed, 1);
+  assert.equal(firstWav.byteLength, wav.length);
+  assert.equal(laterWav.byteLength, wav.length);
 });

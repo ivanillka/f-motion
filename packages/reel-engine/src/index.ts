@@ -42,6 +42,7 @@ export {
   type SceneMediaIntentInput
 } from "./media-intent.js";
 export {
+  SPOKEN_VOICE,
   spokenCaption,
   spokenLineKey,
   spokenLineSlots,

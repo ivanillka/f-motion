@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildStoryboardDraft, conceptsFor, cuesForScene, outputFrames, sceneUsesStock, spokenWordsForCues } from "@f-engine/reel-engine";
+import { speakKokoroLine } from "@f-engine/fal-host";
 import type { CommandEnvelope, ProjectSnapshot, Voiceover } from "@f-engine/contracts";
 import { isMediaGlanceHints, isVideoArchitecture, type MediaGlanceHints, type VideoArchitecture } from "@f-engine/contracts";
 import {
@@ -59,6 +60,7 @@ import {
 import type { AccessPolicy } from "./access-policy.js";
 import {
   falCredentialHttpError,
+  FalCredentialMissingError,
   type FalCredentialService
 } from "./fal-credentials.js";
 import {
@@ -90,7 +92,13 @@ import {
 } from "./selfhost-auth.js";
 import { ProjectBusyError, type ProjectPurgeResult } from "./project-purge.js";
 import { composeOne, runBatch, type ComposeOneDeps } from "./compose-one.js";
-import { ensureSpokenVoiceover, spokenAudioFromMedia, type SpokenAudioStore } from "./spoken-narration.js";
+import {
+  ensureSpokenVoiceover,
+  SpokenVoiceUnavailableError,
+  spokenAudioFromMedia,
+  type SpokenAudioStore,
+  type SpokenSynthesizer
+} from "./spoken-narration.js";
 
 export interface MediaDependencies {
   repository: PostgresMediaRepository;
@@ -124,6 +132,8 @@ interface AppBaseOptions {
   purgeProject?: (ownerId: string, projectId: string) => Promise<ProjectPurgeResult | undefined>;
   /** Test double. Hosted startup uses the project media store. */
   spokenAudio?: SpokenAudioStore;
+  /** Test double. Hosted startup speaks with the owner's Kokoro voice. */
+  spokenSynthesizer?: SpokenSynthesizer;
 }
 
 export interface AppOptions extends AppBaseOptions {
@@ -365,7 +375,12 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     return spokenAudioFromMedia(repository, options.media.store);
   }
 
-  function saveSpokenNarration(ownerId: string, base: ProjectSnapshot, voiceover: Voiceover, spokenAudio: ProjectSnapshot["brief"]["spoken_audio"]) {
+  function saveSpokenNarration(
+    ownerId: string,
+    base: ProjectSnapshot,
+    voiceover: Voiceover | null,
+    spokenAudio: ProjectSnapshot["brief"]["spoken_audio"]
+  ) {
     return projects.command(ownerId, {
       command_id: randomUUID(),
       project_id: base.id,
@@ -376,19 +391,44 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     });
   }
 
+  async function narrationSynthesizer(ownerId: string): Promise<SpokenSynthesizer | undefined> {
+    if (options.spokenSynthesizer) return options.spokenSynthesizer;
+    if (!options.falCredentials) return undefined;
+    try {
+      const credential = await options.falCredentials.decryptForOwner(ownerId);
+      return (request) => speakKokoroLine(credential.apiKey, request.text);
+    } catch (error) {
+      if (error instanceof FalCredentialMissingError) return undefined;
+      throw error;
+    }
+  }
+
   /** Spoken lines are mixed here so a host can play them before the studio is opened. */
   async function ensurePartnerNarration(ownerId: string, project: ProjectSnapshot): Promise<ProjectSnapshot> {
     const audio = partnerSpokenAudio();
     if (!audio) return project;
-    const save = (base: ProjectSnapshot, voiceover: Voiceover, spokenAudio: NonNullable<ProjectSnapshot["brief"]["spoken_audio"]>) =>
-      saveSpokenNarration(ownerId, base, voiceover, spokenAudio);
+    const save = (
+      base: ProjectSnapshot,
+      voiceover: Voiceover | null,
+      spokenAudio: NonNullable<ProjectSnapshot["brief"]["spoken_audio"]>
+    ) => saveSpokenNarration(ownerId, base, voiceover, spokenAudio);
+    const prepare = async (current: ProjectSnapshot) => {
+      const synthesize = await narrationSynthesizer(ownerId);
+      return ensureSpokenVoiceover(ownerId, current, audio, save, synthesize);
+    };
     try {
-      return (await ensureSpokenVoiceover(ownerId, project, audio, save)).project;
+      return (await prepare(project)).project;
     } catch (error) {
+      if (error instanceof SpokenVoiceUnavailableError) return project;
       if (!(error instanceof ConflictError)) throw error;
       const current = await projects.get(ownerId, project.id);
       if (!current) throw error;
-      return (await ensureSpokenVoiceover(ownerId, current, audio, save)).project;
+      try {
+        return (await prepare(current)).project;
+      } catch (retryError) {
+        if (retryError instanceof SpokenVoiceUnavailableError) return current;
+        throw retryError;
+      }
     }
   }
 
@@ -1224,6 +1264,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const ownerId = String(response.locals.ownerId);
       const project = await projects.get(ownerId, request.params.projectId);
       if (!project) return response.status(404).json({ type: "not_found", message: "not found" });
+      const synthesize = await narrationSynthesizer(ownerId);
       const result = await ensureSpokenVoiceover(ownerId, project, audio, (base, voiceover, spokenAudio) =>
         projects.command(ownerId, {
           command_id: randomUUID(),
@@ -1232,9 +1273,15 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           client_timestamp: new Date().toISOString(),
           kind: "update_voiceover",
           payload: { voiceover, spoken_audio: spokenAudio }
-        }));
+        }), synthesize);
       response.json(result);
     } catch (error) {
+      if (error instanceof SpokenVoiceUnavailableError) {
+        return response.status(409).json({
+          type: "fal_not_connected",
+          message: "Connect your FAL API key in Settings to play spoken lines."
+        });
+      }
       if (error instanceof ConflictError) {
         return response.status(409).json({
           type: "conflict",

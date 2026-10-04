@@ -92,9 +92,13 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /brand\/mark\.html/);
   assert.match(source, /Record voice-over/);
   assert.match(source, /Upload voice-over/);
-  assert.match(source, /Generate with FAL/);
-  assert.match(source, /Generate voice-over/);
-  assert.match(source, /Use as voice-over/);
+  assert.match(source, /Spoken lines use Kokoro American English/);
+  assert.doesNotMatch(source, /Generate with FAL/);
+  assert.doesNotMatch(source, /Use as voice-over/);
+  assert.doesNotMatch(source, /speech-quotes/);
+  assert.doesNotMatch(source, /defaultVoiceoverPrompt/);
+  assert.doesNotMatch(source, /openFalSpeech\(/);
+  assert.doesNotMatch(source, /useFalSpeechMedia\(/);
   assert.match(source, /spoken-word/);
   assert.match(source, /is-current/);
   assert.match(source, /highlight each word/);
@@ -126,8 +130,6 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /lookAtOwnMedia/);
   assert.doesNotMatch(source, /Visual description/);
   assert.match(source, /Kokoro American English/);
-  assert.match(source, /openFalSpeech\(/);
-  assert.match(source, /useFalSpeechMedia\(/);
   assert.match(source, /voiceoverPlayback\(/);
   assert.match(source, /loadedmetadata/);
   assert.doesNotMatch(source, /if \(!duration \|\| at >= duration\)/);
@@ -183,7 +185,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { clampBpm, clampFocus, clampOffsetMs, defaultVoiceoverPrompt, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, previewMediaShouldLoop, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, spokenNarrationReady, stockBedUrl, voiceoverPlayback } = await vite.ssrLoadModule("/src/api.ts");
+    const { clampBpm, clampFocus, clampOffsetMs, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, previewMediaShouldLoop, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, spokenNarrationReady, stockBedUrl, voiceoverPlayback } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -219,10 +221,6 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.equal(previewMediaShouldLoop(true, false), false);
     assert.equal(previewMediaShouldLoop(false, true), false);
     assert.equal(previewMediaShouldLoop(false, false), true);
-    assert.equal(defaultVoiceoverPrompt({
-      brief: { purpose: "mystery murder in san francisco" },
-      scenes: [{ caption: "Mystery murder in san francisco." }, { caption: "" }]
-    }), "Mystery murder in san francisco.");
     assert.equal(snapDurationToBeat(3750, 120), 4000);
     assert.equal(musicLaneBeats(2000, 120).length, 5);
     assert.equal(stockBedUrl("pulse"), "/music/pulse.mp3");

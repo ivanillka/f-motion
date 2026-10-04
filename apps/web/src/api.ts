@@ -698,14 +698,6 @@ export function previewMediaShouldLoop(livePlaying: boolean, frozen: boolean): b
   return !livePlaying && !frozen;
 }
 
-export function defaultVoiceoverPrompt(snapshot: {
-  brief: { purpose: string };
-  scenes: readonly { caption: string }[];
-}): string {
-  const spoken = snapshot.scenes.map((scene) => scene.caption.trim()).filter(Boolean).join("\n").trim();
-  return (spoken || snapshot.brief.purpose.trim() || "Tell this story in one clear line.").slice(0, 2000);
-}
-
 export async function sceneMediaIntentForScene(
   snapshot: ProjectSnapshot,
   scene: Scene,
