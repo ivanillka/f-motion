@@ -37,8 +37,12 @@ test("home is a centered title with feature buttons", async () => {
   assert.match(source, /readyState/);
   assert.match(source, /paceRef/);
   assert.match(source, /seedStars/);
+  assert.match(source, /linkStars/);
   assert.match(source, /0\.34/);
   assert.match(source, /0\.66/);
+  assert.match(source, /strokeStyle/);
+  assert.match(source, /lineWidth = 1/);
+  assert.match(source, /prefers-reduced-motion/);
   assert.doesNotMatch(source, /mkt-splash-brand/);
   assert.doesNotMatch(css, /mkt-splash-brand/);
   assert.match(css, /\.mkt-splash-lede \{/);
@@ -194,6 +198,7 @@ test("hosted /app mounts the studio instead of a coming soon screen", async () =
 test("landing cube tumbles inside a clipped scene and freezes when motion is reduced", async () => {
   const css = await readFile(new URL("../public/web/web.css", import.meta.url), "utf8");
   const script = await readFile(new URL("../public/web/launch-cube.js", import.meta.url), "utf8");
+  const sky = await readFile(new URL("../public/web/launch-sky.js", import.meta.url), "utf8");
   const scene = css.match(/\.launch-scene \{[^}]+\}/);
   assert.ok(scene);
   assert.match(scene[0], /overflow:\s*hidden/);
@@ -206,15 +211,24 @@ test("landing cube tumbles inside a clipped scene and freezes when motion is red
   assert.doesNotMatch(css, /@keyframes launchDrift|@keyframes launchGlint|translateY\(130%\)|background-size:\s*400%/);
   assert.match(css, /animation:\s*none !important/);
   assert.match(css, /\.launch-cube > \.launch-face::after \{ content: none; \}/);
+  assert.match(css, /\.launch-sky \{/);
   assert.match(script, /if \(reduce\.matches\) return;/);
   assert.ok(script.indexOf("prefers-reduced-motion") < script.indexOf("addEventListener"));
   assert.match(script, /pointerType !== "touch"/);
   assert.match(script, /pointerleave/);
   assert.doesNotMatch(script, /eval\(|WebAssembly|new Worker|blob:/);
+  assert.match(sky, /linkStars|links/);
+  assert.match(sky, /0\.34/);
+  assert.match(sky, /0\.66/);
+  assert.match(sky, /prefers-reduced-motion/);
+  assert.match(sky, /strokeStyle/);
+  assert.doesNotMatch(sky, /eval\(|WebAssembly|new Worker|blob:/);
   for (const rel of ["../public/web/index.html", "../public/web/cs/index.html"]) {
     const html = await readFile(new URL(rel, import.meta.url), "utf8");
     assert.match(html, /class="launch-stage"/);
   assert.match(html, /class="launch-tilt"/);
+    assert.match(html, /class="launch-sky"/);
+    assert.match(html, /<script src="(?:\.\/|\.\.\/)launch-sky\.js"><\/script>/);
     assert.match(html, /<script src="(?:\.\/|\.\.\/)launch-cube\.js"><\/script>/);
     assert.doesNotMatch(html, /<style[\s>]/);
     assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)/);

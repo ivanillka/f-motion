@@ -143,8 +143,11 @@ type SkyStar = {
   a: number;
   speed: number;
   tw: number;
+  side: "L" | "R";
   tint: "white" | "cyan" | "rose";
 };
+
+type SkyLink = { i: number; j: number; cyan: boolean };
 
 function seedStars(count: number): SkyStar[] {
   return Array.from({ length: count }, () => {
@@ -157,9 +160,35 @@ function seedStars(count: number): SkyStar[] {
       a: 0.28 + Math.random() * 0.5,
       speed: 0.012 + Math.random() * 0.018,
       tw: Math.random() * Math.PI * 2,
+      side: left ? "L" : "R",
       tint: roll < 0.1 ? "cyan" : roll < 0.2 ? "rose" : "white"
     };
   });
+}
+
+function linkStars(stars: SkyStar[]): SkyLink[] {
+  const edges: SkyLink[] = [];
+  const maxDist = 0.18;
+  for (let i = 0; i < stars.length; i++) {
+    const a = stars[i]!;
+    const near: { j: number; d: number }[] = [];
+    for (let j = i + 1; j < stars.length; j++) {
+      const b = stars[j]!;
+      if (a.side !== b.side) continue;
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d > maxDist) continue;
+      near.push({ j, d });
+    }
+    near.sort((u, v) => u.d - v.d);
+    for (const hit of near.slice(0, 2)) {
+      if (Math.random() > 0.55) continue;
+      const b = stars[hit.j]!;
+      edges.push({ i, j: hit.j, cyan: a.tint === "cyan" || b.tint === "cyan" });
+    }
+  }
+  return edges;
 }
 
 const CUBE_FACES = ["front", "back", "right", "left", "top", "bottom"] as const;
@@ -288,6 +317,7 @@ function SplashSky({ paceRef }: { paceRef: { current: number } }) {
     const reduced = typeof matchMedia === "function"
       && matchMedia("(prefers-reduced-motion: reduce)").matches;
     const stars = seedStars(110);
+    const links = linkStars(stars);
     let width = 0;
     let height = 0;
     let frame = 0;
@@ -303,6 +333,8 @@ function SplashSky({ paceRef }: { paceRef: { current: number } }) {
       canvas.height = Math.floor(height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
+
+    const starY = (star: SkyStar, t: number) => ((star.y + t * star.speed) % 1 + 1) % 1;
 
     const paint = (t: number) => {
       ctx.clearRect(0, 0, width, height);
@@ -326,8 +358,22 @@ function SplashSky({ paceRef }: { paceRef: { current: number } }) {
         ctx.fillStyle = fog;
         ctx.fillRect(0, 0, width, height);
       }
+      const pulse = reduced ? 1 : 0.55 + 0.45 * Math.sin(t * 0.35);
+      for (const edge of links) {
+        const a = stars[edge.i]!;
+        const b = stars[edge.j]!;
+        const alpha = (edge.cyan ? 0.12 : 0.08) * pulse;
+        ctx.beginPath();
+        ctx.moveTo(a.x * width, starY(a, t) * height);
+        ctx.lineTo(b.x * width, starY(b, t) * height);
+        ctx.strokeStyle = edge.cyan
+          ? `rgba(0, 229, 255, ${alpha})`
+          : `rgba(241, 242, 243, ${alpha})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
       for (const star of stars) {
-        const y = ((star.y + t * star.speed) % 1 + 1) % 1;
+        const y = starY(star, t);
         const twinkle = reduced ? 1 : 0.72 + 0.28 * Math.sin(t * 0.55 + star.tw);
         const alpha = star.a * twinkle;
         ctx.beginPath();
