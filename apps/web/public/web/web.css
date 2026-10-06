@@ -728,24 +728,19 @@ button, .btn {
   padding: 32px 16px 48px;
 }
 
-.launch-hero::before,
-.launch-hero::after {
-  content: "";
+.launch-sky {
   position: absolute;
-  top: 8%;
-  width: min(28vw, 280px);
-  height: 72%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
-  background:
-    radial-gradient(circle at 30% 22%, rgba(241, 242, 243, 0.7) 0 1px, transparent 1.6px),
-    radial-gradient(circle at 62% 48%, rgba(0, 229, 255, 0.45) 0 1px, transparent 1.6px),
-    radial-gradient(circle at 40% 74%, rgba(255, 177, 196, 0.45) 0 1px, transparent 1.6px),
-    radial-gradient(ellipse at 50% 50%, rgba(165, 77, 103, 0.14), transparent 68%);
-  opacity: 0.55;
+  z-index: 0;
 }
 
-.launch-hero::before { left: 0; }
-.launch-hero::after { right: 0; }
+.launch-hero > :not(.launch-sky) {
+  position: relative;
+  z-index: 1;
+}
 
 .launch-scene {
   width: 100%;
@@ -1269,11 +1264,6 @@ button, .btn {
 @keyframes launchSweep {
   0%, 100% { opacity: 0; }
   50% { opacity: 1; }
-}
-
-@media (max-width: 800px) {
-  .launch-hero::before,
-  .launch-hero::after { display: none; }
 }
 
 @media (min-width: 800px) {
