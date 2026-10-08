@@ -36,6 +36,7 @@ export interface ReelCraftPayload {
   mediaAttach: Array<{ sceneId: string; mediaId?: string }>;
   editorModel: "storyboard";
   preview: { surface: string; aspect?: string };
+  animateStills?: boolean;
 }
 
 export interface CreateSessionView {
@@ -146,6 +147,7 @@ export async function generateReelSession(
     mediaSourcePref: MediaSourcePref;
     durationSeconds?: 15 | 30 | 45;
     cta?: string;
+    animateStills?: boolean;
   }
 ): Promise<{ session: CreateSessionView; craft: ReelCraftPayload }> {
   const created = await api.request<{ session: CreateSessionView }>("/api/create-sessions", {
@@ -185,7 +187,8 @@ export async function generateReelSession(
           reel_vertical: {
             durationSeconds: input.durationSeconds,
             uniqueAttach: true,
-            ...(input.cta ? { cta: input.cta } : {})
+            ...(input.cta ? { cta: input.cta } : {}),
+            ...(input.animateStills === true ? { animateStills: true } : {})
           }
         }
       })

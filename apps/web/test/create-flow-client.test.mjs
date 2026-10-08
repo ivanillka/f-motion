@@ -119,10 +119,13 @@ test("generateReelSession walks create-session spine and returns reel craft", as
     purpose: "Launch",
     skipPool: true,
     mediaSourcePref: "pexels",
-    durationSeconds: 15
+    durationSeconds: 15,
+    animateStills: true
   });
   assert.equal(result.craft.kind, "reel_storyboard");
   assert.ok(calls.some((call) => call.path === "/api/create-sessions" && call.method === "POST"));
   assert.ok(calls.some((call) => call.path.endsWith("/generate")));
   assert.ok(!calls.some((call) => call.path.includes("carousel")));
+  const settingsCall = calls.find((call) => call.path.endsWith("/settings"));
+  assert.match(String(settingsCall?.body ?? ""), /animateStills/);
 });

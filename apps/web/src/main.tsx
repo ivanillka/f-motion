@@ -84,7 +84,14 @@ import {
   scenesFromReelCraft,
   type ReelCraftPayload
 } from "./create-flow-client";
-import { mediaSourceChips, sourceChipTone, type SourceId } from "./media-sources";
+import {
+  animateStillsToggleState,
+  countStillFiles,
+  isReadyStillMedia,
+  mediaSourceChips,
+  sourceChipTone,
+  type SourceId
+} from "./media-sources";
 import "./style.css";
 
 type Step = "sign-in" | "drafts" | "brief" | "media" | "editor" | "render" | "settings";
@@ -296,6 +303,9 @@ export function App() {
   const [falVideoJob, setFalVideoJob] = useState<GenerationJobView>();
   const [falVideoBusy, setFalVideoBusy] = useState(false);
   const falVideoPollRef = useRef<string | undefined>(undefined);
+  /** Reel setting: animate pool stills via existing FAL image-to-video (default off). */
+  const [animateStills, setAnimateStills] = useState(false);
+  const animateStillQueueRef = useRef<string[]>([]);
   const falGenPollRef = useRef<string | undefined>(undefined);
   const [pexelsCredential, setPexelsCredential] = useState<PexelsCredentialView>();
   const [pexelsUnavailable, setPexelsUnavailable] = useState(false);
@@ -800,6 +810,9 @@ export function App() {
         pexelsConnected: Boolean(pexelsCredential?.connected && !pexelsUnavailable),
         falConnected: Boolean(falCredential?.connected && !falUnavailable)
       });
+      const wantAnimateStills = animateStills
+        && Boolean(falCredential?.connected && !falUnavailable)
+        && countStillFiles(pendingFiles) > 0;
       const { craft } = await generateReelSession(api, {
         purpose: brief.purpose,
         skipPool: pendingFiles.length === 0,
@@ -810,10 +823,13 @@ export function App() {
           label: file.name
         })),
         mediaSourcePref,
-        durationSeconds: plan.durationSeconds
+        durationSeconds: plan.durationSeconds,
+        animateStills: wantAnimateStills
       });
       const current = await materializeReelProject(craft, brief);
-      await hydrateReelEditor(current, plan);
+      await hydrateReelEditor(current, plan, {
+        animateStills: craft.animateStills === true || wantAnimateStills
+      });
     } catch (error) {
       const detail = error instanceof ApiResponseError
         ? (typeof error.body.message === "string" ? error.body.message : error.type)
@@ -859,7 +875,11 @@ export function App() {
   }
 
   /** Editor + own-media admit or stock fill — same polish path as before. */
-  async function hydrateReelEditor(current: ProjectSnapshot, plan: VideoArchitecture) {
+  async function hydrateReelEditor(
+    current: ProjectSnapshot,
+    plan: VideoArchitecture,
+    options: { animateStills?: boolean } = {}
+  ) {
     setStep("editor");
     if (pendingFiles.length) {
       setStatus("Uploading your media…");
@@ -870,6 +890,7 @@ export function App() {
         if (!scene) break;
         await admitFile(file, scene.id, current);
       }
+      if (options.animateStills) await beginAnimateStillsQueue(current.id);
       return;
     }
     if (plan.media === "own" || mediaPrefFromPlan(plan, {
@@ -879,6 +900,9 @@ export function App() {
       setStatus(pexelsCredential?.connected
         ? "Reel ready. Upload media or search Pexels per scene."
         : "Reel ready. Upload your media, or connect Pexels in the sources strip.");
+      if (options.animateStills) {
+        setStatus("Animate stills is on — drop stills on scenes, then use Animate this image (FAL BYOK).");
+      }
       return;
     }
     try {
@@ -889,6 +913,63 @@ export function App() {
         ? "Reel ready. Connect Pexels in the sources strip, or upload your own media."
         : "Reel ready. Licensed media could not be matched yet — upload your own or try sources.");
     }
+  }
+
+  /** Sequential FAL image-to-video for ready stills — quote→confirm each (one active job). */
+  async function beginAnimateStillsQueue(projectId: string) {
+    if (!falCredential?.connected || falUnavailable) {
+      setStatus("Animate stills needs FAL connected in the sources strip (BYOK).");
+      return;
+    }
+    let snapshot: ProjectSnapshot;
+    try {
+      const found = await api.getProject(projectId);
+      snapshot = found.project;
+      setProject(snapshot);
+    } catch {
+      setStatus("Animate stills · draft could not be reloaded.");
+      return;
+    }
+    let views: Record<string, SceneMediaView>;
+    try {
+      views = await loadSceneMediaViews(api, snapshot);
+    } catch {
+      setStatus("Animate stills · media details could not be loaded.");
+      return;
+    }
+    setSceneMedia(views);
+    const stillIds = snapshot.scenes
+      .filter((scene) => isReadyStillMedia(scene.media_id ? views[scene.media_id] : undefined))
+      .map((scene) => scene.id);
+    if (!stillIds.length) {
+      setStatus("Animate stills is on, but no ready still images were attached.");
+      return;
+    }
+    animateStillQueueRef.current = stillIds;
+    const first = snapshot.scenes.find((scene) => scene.id === stillIds[0]);
+    if (!first) return;
+    setActiveSceneId(first.id);
+    setStatus(`Animate stills · 1 of ${stillIds.length}. Confirm FAL price (your key) — not managed AI.`);
+    openFalAnimate(first, { autoQuote: true });
+  }
+
+  function advanceAnimateStillQueue() {
+    const queue = animateStillQueueRef.current;
+    if (!queue.length) return;
+    const rest = queue.slice(1);
+    animateStillQueueRef.current = rest;
+    if (!rest.length) {
+      setStatus("Animate stills finished. Review the storyboard, then Export final.");
+      return;
+    }
+    const next = project?.scenes.find((scene) => scene.id === rest[0]);
+    if (!next) {
+      animateStillQueueRef.current = [];
+      return;
+    }
+    setActiveSceneId(next.id);
+    setStatus(`Animate stills · ${rest.length} still(s) left. Confirm FAL price (BYOK).`);
+    openFalAnimate(next, { autoQuote: true });
   }
 
   async function buildStoryboard(snapshot: ProjectSnapshot, plan: VideoArchitecture) {
@@ -2217,14 +2298,19 @@ export function App() {
     return `fengine-fal-video:${projectId}:${sceneId}`;
   }
 
-  function openFalAnimate(scene: Scene) {
+  function openFalAnimate(scene: Scene, options: { autoQuote?: boolean } = {}) {
     if (!falCredential?.connected || falUnavailable) {
       showFalLock();
       return;
     }
     const media = scene.media_id ? sceneMedia[scene.media_id] : undefined;
-    const type = media?.detected?.type;
-    if (!media || media.state !== "ready" || type === "video/mp4") {
+    // autoQuote callers already filtered ready stills; sceneMedia state may lag one render.
+    if (!options.autoQuote) {
+      if (!isReadyStillMedia(media)) {
+        setStatus("Animate needs a ready still image on this scene.");
+        return;
+      }
+    } else if (!scene.media_id) {
       setStatus("Animate needs a ready still image on this scene.");
       return;
     }
@@ -2239,31 +2325,33 @@ export function App() {
     setFalVideoJob(undefined);
     setFalVideoOpen(true);
     void (async () => {
-      setFalVideoPrompt(
-        project
-          ? (await sceneMediaIntentForScene(project, scene, architecture)).video_motion_prompt
-          : "gentle camera drift, subtle motion"
-      );
+      const prompt = project
+        ? (await sceneMediaIntentForScene(project, scene, architecture)).video_motion_prompt
+        : "gentle camera drift, subtle motion";
+      setFalVideoPrompt(prompt);
       const projectId = project?.id;
       if (!projectId) return;
       const stored = localStorage.getItem(falVideoStorageKey(projectId, scene.id));
-      if (!stored) return;
-      try {
-        const job = await api.request<GenerationJobView>(`/api/generation-jobs/${stored}`);
-        setFalVideoJob(job);
-        setFalVideoPrompt(job.prompt);
-        if (falGenerationActive(job.state) && falVideoPollRef.current !== job.id) {
-          void pollFalVideo(job.id);
+      if (stored) {
+        try {
+          const job = await api.request<GenerationJobView>(`/api/generation-jobs/${stored}`);
+          setFalVideoJob(job);
+          setFalVideoPrompt(job.prompt);
+          if (falGenerationActive(job.state) && falVideoPollRef.current !== job.id) {
+            void pollFalVideo(job.id);
+          }
+          return;
+        } catch {
+          localStorage.removeItem(falVideoStorageKey(projectId, scene.id));
         }
-      } catch {
-        localStorage.removeItem(falVideoStorageKey(projectId, scene.id));
       }
+      if (options.autoQuote) await quoteFalVideo(scene, prompt);
     })();
   }
 
-  async function quoteFalVideo() {
-    if (!project || !activeScene?.media_id) return;
-    const prompt = falVideoPrompt.trim();
+  async function quoteFalVideo(scene: Scene | undefined = activeScene, motionPrompt?: string) {
+    if (!project || !scene?.media_id) return;
+    const prompt = (motionPrompt ?? falVideoPrompt).trim();
     if (!prompt || prompt.length > 500) {
       setStatus("Enter a motion prompt between 1 and 500 characters.");
       return;
@@ -2272,15 +2360,17 @@ export function App() {
     setStatus("Requesting FAL video price…");
     try {
       const job = await api.request<GenerationJobView>(
-        `/api/projects/${project.id}/scenes/${activeScene.id}/fal/video-quotes`,
+        `/api/projects/${project.id}/scenes/${scene.id}/fal/video-quotes`,
         {
           method: "POST",
-          body: JSON.stringify({ source_media_id: activeScene.media_id, motion_prompt: prompt })
+          body: JSON.stringify({ source_media_id: scene.media_id, motion_prompt: prompt })
         }
       );
       setFalVideoJob(job);
-      localStorage.setItem(falVideoStorageKey(project.id, activeScene.id), job.id);
-      setStatus("Review the FAL price, then confirm to generate one 6-second video.");
+      localStorage.setItem(falVideoStorageKey(project.id, scene.id), job.id);
+      setStatus(animateStillQueueRef.current.length
+        ? "Review the FAL price, then confirm — charged to your FAL account."
+        : "Review the FAL price, then confirm to generate one 6-second video.");
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.body.type : undefined;
       const detail = error instanceof ApiResponseError && typeof error.body.message === "string"
@@ -2388,6 +2478,7 @@ export function App() {
       localStorage.removeItem(falVideoStorageKey(project.id, scene.id));
       setFalVideoOpen(false);
       setStatus(`Scene ${scene.order + 1} uses AI-generated FAL video. Preview may loop or trim to the scene duration.`);
+      if (animateStillQueueRef.current[0] === scene.id) advanceAnimateStillQueue();
     } catch (error) {
       if (error instanceof ApiResponseError && error.status === 409) {
         openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
@@ -2829,6 +2920,13 @@ export function App() {
     falConnected: Boolean(falCredential?.connected),
     falUnavailable
   });
+  const poolStillCount = countStillFiles(pendingFiles)
+    + Object.values(sceneMedia).filter((media) => isReadyStillMedia(media)).length;
+  const animateToggle = animateStillsToggleState({
+    falConnected: Boolean(falCredential?.connected),
+    falUnavailable,
+    stillCount: poolStillCount
+  });
 
   function onSourceChip(id: SourceId) {
     if (id === "own") {
@@ -2873,6 +2971,21 @@ export function App() {
           </button>
         ))}
       </div>
+      <label
+        className={`animate-stills-toggle${animateToggle.enabled ? "" : " is-disabled"}`}
+        title={animateToggle.reason}
+      >
+        <input
+          type="checkbox"
+          checked={animateStills && animateToggle.enabled}
+          disabled={!animateToggle.enabled || busy}
+          onChange={(event) => setAnimateStills(event.target.checked)}
+        />
+        <span>
+          <strong>Animate stills</strong>
+          <span>{animateToggle.reason}</span>
+        </span>
+      </label>
       <button type="button" className="media-sources-manage secondary" onClick={() => setStep("settings")}>
         Manage
       </button>
@@ -3718,8 +3831,10 @@ export function App() {
             <>
               <button disabled={falVideoBusy || busy} onClick={() => void useFalVideoMedia()}>Use video for scene {activeSceneNumber}</button>
               <button className="secondary" disabled={falVideoBusy} onClick={() => {
+                const sceneId = falVideoJob.scene_id;
                 setFalVideoJob(undefined);
                 setStatus("Current image kept.");
+                if (sceneId && animateStillQueueRef.current[0] === sceneId) advanceAnimateStillQueue();
               }}>Keep image</button>
               <button className="secondary" disabled={falVideoBusy} onClick={() => {
                 setFalVideoJob(undefined);
@@ -3727,7 +3842,14 @@ export function App() {
               }}>Generate another</button>
             </>
           )}
-          <button className="secondary" disabled={falVideoBusy} onClick={() => setFalVideoOpen(false)}>
+          <button className="secondary" disabled={falVideoBusy} onClick={() => {
+            if (animateStillQueueRef.current.length && falVideoJob?.state === "quoted") {
+              // Skip this still in the create-flow queue without spending.
+              advanceAnimateStillQueue();
+              return;
+            }
+            setFalVideoOpen(false);
+          }}>
             {falVideoJob && falGenerationActive(falVideoJob.state) ? "Continue editing" : "Close"}
           </button>
         </div>

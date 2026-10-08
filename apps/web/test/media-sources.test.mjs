@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mediaSourceChips, sourceChipTone } from "../src/media-sources.ts";
+import {
+  animateStillsToggleState,
+  countStillFiles,
+  isReadyStillMedia,
+  mediaSourceChips,
+  sourceChipTone
+} from "../src/media-sources.ts";
 // node --experimental-strip-types (see package.json test script)
 
 test("media source chips always include own, pexels, fal, and a future slot", () => {
@@ -39,4 +45,25 @@ test("unavailable providers stay honest", () => {
   assert.equal(chips.find((chip) => chip.id === "pexels")?.state, "unavailable");
   assert.equal(chips.find((chip) => chip.id === "fal")?.state, "unavailable");
   assert.equal(sourceChipTone("unavailable"), "warn");
+});
+
+test("animate stills toggle stays off unless FAL is connected and pool has stills", () => {
+  assert.equal(animateStillsToggleState({
+    falConnected: false,
+    falUnavailable: false,
+    stillCount: 2
+  }).enabled, false);
+  assert.match(animateStillsToggleState({
+    falConnected: true,
+    falUnavailable: false,
+    stillCount: 0
+  }).reason, /stills/i);
+  assert.equal(animateStillsToggleState({
+    falConnected: true,
+    falUnavailable: false,
+    stillCount: 1
+  }).enabled, true);
+  assert.equal(countStillFiles([{ type: "image/jpeg" }, { type: "video/mp4" }]), 1);
+  assert.equal(isReadyStillMedia({ state: "ready", detected: { type: "image/jpeg" } }), true);
+  assert.equal(isReadyStillMedia({ state: "ready", detected: { type: "video/mp4" } }), false);
 });

@@ -182,8 +182,18 @@ export function mountCreateFlowRoutes(app: Express, options: CreateFlowMountOpti
         typeSettings?: Record<string, unknown>;
         mediaSourcePref?: "own" | "pexels" | "fal" | "mix" | "defer";
       };
-      if (body.mediaSourcePref) {
-        new Gate0Policy(await byokKeys(ownerId, options)).assertMediaSourcePref(body.mediaSourcePref);
+      const keys = await byokKeys(ownerId, options);
+      const gate = new Gate0Policy(keys);
+      if (body.mediaSourcePref) gate.assertMediaSourcePref(body.mediaSourcePref);
+      const reelSettings = body.typeSettings?.reel_vertical;
+      if (
+        reelSettings
+        && typeof reelSettings === "object"
+        && !Array.isArray(reelSettings)
+        && (reelSettings as { animateStills?: unknown }).animateStills === true
+      ) {
+        // Animate stills spends FAL — never claim managed AI.
+        gate.requireByok("fal");
       }
       session = settingsSeam.apply(session, body, registry);
       store.put(session);

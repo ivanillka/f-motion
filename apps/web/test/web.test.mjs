@@ -39,6 +39,9 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /materializeReelProject\(/);
   assert.match(source, /media-sources-strip/);
   assert.match(source, /Crafting your reel/);
+  assert.match(source, /Animate stills/);
+  assert.match(source, /animateStills/);
+  assert.match(source, /beginAnimateStillsQueue\(/);
   assert.match(source, /conceptIdForArchitecture/);
   assert.match(source, /briefPurposeFromChat/);
   assert.match(source, /requestRender\("final"\)/);

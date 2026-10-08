@@ -8,6 +8,7 @@ import {
   settingsSeam,
   withPoolItems
 } from "@f-engine/create-session";
+// settingsSeam used for animateStills typeSettings
 import {
   REEL_VERTICAL_TYPE_ID,
   isReelCraftPayload,
@@ -81,4 +82,29 @@ test("reel validateSettings rejects unknown keys", () => {
   const session = createSession({ ownerId: "u", skipPool: true });
   const result = reelVerticalModule.validateSettings(session, { nope: true });
   assert.equal(result.ok, false);
+});
+
+test("reel settings accept animateStills and stamp craft payload", async () => {
+  const registry = new TypeRegistry();
+  registerReelVertical(registry);
+  const dispatcher = new CraftDispatcher(registry, new Gate0Policy({ pexels: true, fal: true }));
+  let session = createSession({
+    ownerId: "owner",
+    skipPool: true,
+    brief: { purpose: "Portrait stills for a launch" },
+    mediaSourcePref: "own",
+    selectedTypeIds: [REEL_VERTICAL_TYPE_ID]
+  });
+  session = settingsSeam.apply(
+    session,
+    {
+      selectedTypeIds: [REEL_VERTICAL_TYPE_ID],
+      typeSettings: { [REEL_VERTICAL_TYPE_ID]: { durationSeconds: 15, animateStills: true } }
+    },
+    registry
+  );
+  session = withPoolItems(session, [{ id: "still-a", kind: "image", score: 1 }]);
+  assert.equal(reelVerticalModule.validateSettings(session, { animateStills: true }).ok, true);
+  session = await dispatcher.runAll(session);
+  assert.equal(session.artifacts[0]?.craftPayload?.animateStills, true);
 });

@@ -17,6 +17,8 @@ export interface ReelCraftPayload {
   mediaAttach: Array<{ sceneId: string; mediaId?: string }>;
   editorModel: "storyboard";
   preview: { surface: "reel_player"; aspect: "9:16" };
+  /** Intent: animate attached stills via existing FAL image-to-video (BYOK). */
+  animateStills?: boolean;
 }
 
 /** Re-pick from shared catalog for this craft; stock/FAL shortlists fill gaps later. */
@@ -116,7 +118,8 @@ export function generateReelCraft(input: {
     scenes: attached,
     mediaAttach,
     editorModel: "storyboard",
-    preview: { surface: "reel_player", aspect: "9:16" }
+    preview: { surface: "reel_player", aspect: "9:16" },
+    ...(input.settings.animateStills === true ? { animateStills: true } : {})
   };
 }
 
