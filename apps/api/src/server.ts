@@ -92,6 +92,7 @@ import {
 } from "./selfhost-auth.js";
 import { ProjectBusyError, type ProjectPurgeResult } from "./project-purge.js";
 import { composeOne, runBatch, type ComposeOneDeps } from "./compose-one.js";
+import { mountCreateFlowRoutes } from "./create-flow.js";
 import {
   ensureSpokenVoiceover,
   SpokenVoiceUnavailableError,
@@ -863,6 +864,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       } catch (error) { next(error); }
     });
   }
+  mountCreateFlowRoutes(app, {
+    pexelsCredentials: options.pexelsCredentials,
+    falCredentials: options.falCredentials
+  });
   const falUnavailable = (response: express.Response) => response.status(503).json({
     type: "provider_unavailable",
     message: "FAL connection is not enabled on this deployment."
