@@ -35,6 +35,10 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.doesNotMatch(source, /Create storyboard|Choose a story approach|Continue to story concepts/);
   assert.match(source, /buildStoryboard\(/);
   assert.match(source, /continueToStoryboard\(/);
+  assert.match(source, /generateReelSession\(/);
+  assert.match(source, /materializeReelProject\(/);
+  assert.match(source, /media-sources-strip/);
+  assert.match(source, /Crafting your reel/);
   assert.match(source, /conceptIdForArchitecture/);
   assert.match(source, /briefPurposeFromChat/);
   assert.match(source, /requestRender\("final"\)/);

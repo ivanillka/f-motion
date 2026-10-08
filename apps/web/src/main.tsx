@@ -77,6 +77,14 @@ import {
   upsertStoryboardTemplate,
   type StoryboardTemplate
 } from "./storyboard-templates";
+import {
+  generateReelSession,
+  mediaPrefFromPlan,
+  projectBriefFromReelCraft,
+  scenesFromReelCraft,
+  type ReelCraftPayload
+} from "./create-flow-client";
+import { mediaSourceChips, sourceChipTone, type SourceId } from "./media-sources";
 import "./style.css";
 
 type Step = "sign-in" | "drafts" | "brief" | "media" | "editor" | "render" | "settings";
@@ -760,9 +768,8 @@ export function App() {
     setSceneProgress({});
     setBusy(true);
     setArchitecture(plan);
-    setStatus("Building the storyboard…");
+    setStatus("Crafting your reel…");
     try {
-      let current = project;
       if (storyboardProjectAction(importEditLock.current, importedProjectRef.current) === "reuse") {
         const importedId = importedProjectRef.current;
         try {
@@ -787,37 +794,100 @@ export function App() {
         }
         return;
       }
-      const storedId = localStorage.getItem("fengine-project");
-      if (!current && storedId) {
-        try {
-          const { project: opened } = await api.getProject(storedId);
-          current = opened;
-        } catch {
-          localStorage.removeItem("fengine-project");
-        }
-      }
-      const storedFrame = current?.brief.frame ?? "reel";
-      const storedMix = current?.brief.mix === true;
-      if (!current || current.scenes.length || current.brief.purpose !== brief.purpose || storedFrame !== brief.frame || storedMix !== (brief.mix === true)) {
-        const body = await api.request<{ project: ProjectSnapshot }>("/api/projects", {
-          method: "POST",
-          body: JSON.stringify(brief)
-        });
-        current = body.project;
-        localStorage.setItem("fengine-project", current.id);
-      }
-      setProject(current);
-      await buildStoryboard(current, plan);
+      // Create spine → reel module generate → existing storyboard editor/export.
+      const mediaSourcePref = mediaPrefFromPlan(plan, {
+        hasOwn: pendingFiles.length > 0,
+        pexelsConnected: Boolean(pexelsCredential?.connected && !pexelsUnavailable),
+        falConnected: Boolean(falCredential?.connected && !falUnavailable)
+      });
+      const { craft } = await generateReelSession(api, {
+        purpose: brief.purpose,
+        skipPool: pendingFiles.length === 0,
+        poolItems: pendingFiles.map((file, index) => ({
+          id: `local-${index}-${file.name}`,
+          kind: file.type.startsWith("video/") ? "video" as const : "image" as const,
+          score: Math.max(0, 1 - index * 0.01),
+          label: file.name
+        })),
+        mediaSourcePref,
+        durationSeconds: plan.durationSeconds
+      });
+      const current = await materializeReelProject(craft, brief);
+      await hydrateReelEditor(current, plan);
     } catch (error) {
       const detail = error instanceof ApiResponseError
         ? (typeof error.body.message === "string" ? error.body.message : error.type)
-        : undefined;
+        : error instanceof Error ? error.message : undefined;
       setStatus(detail
-        ? `Your storyboard could not be created (${detail}). Please try again.`
-        : "Your storyboard could not be created. Please try again.");
+        ? `Your reel could not be created (${detail}). Please try again.`
+        : "Your reel could not be created. Please try again.");
     } finally {
       storyboardLock.current = false;
       setBusy(false);
+    }
+  }
+
+  /** Land reel craft on a real project (catalog media ids stripped). */
+  async function materializeReelProject(
+    craft: ReelCraftPayload,
+    brief: ProjectSnapshot["brief"]
+  ): Promise<ProjectSnapshot> {
+    const projectBrief = projectBriefFromReelCraft(craft, brief);
+    const body = await api.request<{ project: ProjectSnapshot }>("/api/projects", {
+      method: "POST",
+      body: JSON.stringify(projectBrief)
+    });
+    let updated = body.project;
+    updated = await api.command(updated.id, updated.revision, "select_concept", {
+      concept_id: craft.conceptId,
+      architecture: craft.architecture,
+      ...(projectBrief.media_glance ? { media_glance: projectBrief.media_glance } : {})
+    });
+    updated = await api.command(updated.id, updated.revision, "replace_storyboard", {
+      scenes: scenesFromReelCraft(craft)
+    });
+    updated = await attachSpokenVoice(updated);
+    setSceneMedia({});
+    setProject(updated);
+    setActiveSceneId(updated.scenes[0]?.id ?? "");
+    setDraft(updated.brief.purpose);
+    if (updated.brief.architecture) setArchitecture(updated.brief.architecture);
+    if (updated.brief.media_glance) setMediaGlance(updated.brief.media_glance);
+    localStorage.setItem("fengine-project", updated.id);
+    dismissConflict();
+    return updated;
+  }
+
+  /** Editor + own-media admit or stock fill — same polish path as before. */
+  async function hydrateReelEditor(current: ProjectSnapshot, plan: VideoArchitecture) {
+    setStep("editor");
+    if (pendingFiles.length) {
+      setStatus("Uploading your media…");
+      const files = pendingFiles;
+      setPendingFiles([]);
+      for (const [index, file] of files.entries()) {
+        const scene = current.scenes[index];
+        if (!scene) break;
+        await admitFile(file, scene.id, current);
+      }
+      return;
+    }
+    if (plan.media === "own" || mediaPrefFromPlan(plan, {
+      hasOwn: false,
+      pexelsConnected: Boolean(pexelsCredential?.connected && !pexelsUnavailable)
+    }) === "defer") {
+      setStatus(pexelsCredential?.connected
+        ? "Reel ready. Upload media or search Pexels per scene."
+        : "Reel ready. Upload your media, or connect Pexels in the sources strip.");
+      return;
+    }
+    try {
+      await fillStockStoryboard(current);
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.type : undefined;
+      setStatus(type === "pexels_not_connected"
+        ? "Reel ready. Connect Pexels in the sources strip, or upload your own media."
+        : "Reel ready. Licensed media could not be matched yet — upload your own or try sources.");
     }
   }
 
@@ -2752,10 +2822,62 @@ export function App() {
   const projectTitle = project?.brief.purpose?.trim() || "Untitled draft";
   const saveBusy = busy || status === "Saving…";
   const saveLabel = saveBusy ? "Saving…" : (status.startsWith("✓") || !status ? "Saved" : status);
+  const sourceChips = mediaSourceChips({
+    ownCount: pendingFiles.length + (project?.scenes.filter((scene) => scene.media_id).length ?? 0),
+    pexelsConnected: Boolean(pexelsCredential?.connected),
+    pexelsUnavailable,
+    falConnected: Boolean(falCredential?.connected),
+    falUnavailable
+  });
+
+  function onSourceChip(id: SourceId) {
+    if (id === "own") {
+      if (step === "settings" || step === "drafts") startCreate();
+      else if (step !== "brief" && step !== "editor") setStep("brief");
+      setStatus(pendingFiles.length
+        ? "Your files are in the pool for this reel."
+        : "Drop photos or clips into Create — own media stays first-class.");
+      return;
+    }
+    if (id === "pexels") {
+      if (pexelsCredential?.connected && !pexelsUnavailable) setStep("settings");
+      else showPexelsLock();
+      return;
+    }
+    if (id === "fal") {
+      if (falCredential?.connected && !falUnavailable) setStep("settings");
+      else showFalLock();
+      return;
+    }
+    showFutureLock();
+  }
 
   function goCreate() {
     if (step === "drafts" || step === "settings") startCreate();
   }
+
+  const sourcesStrip = inApp ? (
+    <aside className="media-sources-strip" aria-label="Media sources">
+      <span className="media-sources-label">Sources</span>
+      <div className="media-sources-chips">
+        {sourceChips.map((chip) => (
+          <button
+            key={chip.id}
+            type="button"
+            className={`media-source-chip tone-${sourceChipTone(chip.state)}`}
+            data-state={chip.state}
+            onClick={() => onSourceChip(chip.id)}
+          >
+            <strong>{chip.label}</strong>
+            <span>{chip.detail}</span>
+          </button>
+        ))}
+      </div>
+      <button type="button" className="media-sources-manage secondary" onClick={() => setStep("settings")}>
+        Manage
+      </button>
+    </aside>
+  ) : null;
 
   const appNav = inApp ? <>
     <button type="button" aria-current={step === "drafts" ? "page" : undefined} onClick={() => setStep("drafts")}>Drafts</button>
@@ -2792,21 +2914,18 @@ export function App() {
         </>}
       </div>
       <div className="header-actions">
-        {partnerBrands && (
-          <span className="partner-brands" aria-label="Your source brands">
-            <button type="button" className={`brand-mark pexels${pexelsCredential?.connected ? " is-on" : ""}`} onClick={() => setStep("settings")}>Pexels</button>
-            <button type="button" className={`brand-mark fal${falCredential?.connected && !falUnavailable ? " is-on" : ""}`} onClick={() => setStep("settings")}>FAL</button>
-            {partnerGalleryUrl ? (
-              <a className="brand-mark fotium is-on" href={partnerGalleryUrl} target="_blank" rel="noreferrer">{partnerGalleryName}</a>
-            ) : null}
+        {partnerBrands && partnerGalleryUrl ? (
+          <span className="partner-brands" aria-label="Partner gallery">
+            <a className="brand-mark fotium is-on" href={partnerGalleryUrl} target="_blank" rel="noreferrer">{partnerGalleryName}</a>
           </span>
-        )}
+        ) : null}
         {authReady && token && step !== "sign-in" && !inApp && <button className="secondary" onClick={() => setStep("settings")}>Settings</button>}
         <span role="status">{online ? "● Connected" : "○ Reconnecting. Draft kept locally"}</span>
         <span className="build-rev" title={`F-Motion ${APP_VERSION}`}>{APP_VERSION}</span>
         <span className="build-rev" title="Git revision">{String(import.meta.env.VITE_GIT_SHA ?? "dev").slice(0, 7)}</span>
       </div>
     </header>
+    {sourcesStrip}
     {!authReady && <section><p role="status">Checking session…</p></section>}
     {authReady && step === "sign-in" && <section>
       <h1>{import.meta.env.VITE_SELFHOST_AUTH === "1"
@@ -2850,18 +2969,17 @@ export function App() {
         <h1>Drafts</h1>
         <p>Pick up where you left off or start a new video.</p>
       </div>
-      <aside className="provider-preview" aria-label="Creation sources">
-        <button className="provider-preview-item" data-locked={!pexelsCredential?.connected} onClick={() => pexelsCredential?.connected ? setStep("settings") : showPexelsLock()}>
+      <p className="drafts-sources-hint">Sources stay in the strip above — Own, Pexels, and FAL. Choose video sources anytime, or drop your own media in Create.</p>
+      <aside className="provider-preview drafts-sources-echo" aria-label="Creation sources">
+        <button className="provider-preview-item" data-locked={!pexelsCredential?.connected} onClick={() => onSourceChip("pexels")}>
           <strong>Pexels</strong><span>Real stock video · {pexelsCredential?.connected ? "unlocked" : "locked"}</span>
         </button>
-        <button className="provider-preview-item" data-locked={!falCredential?.connected || falUnavailable} onClick={showFalLock}>
+        <button className="provider-preview-item" data-locked={!falCredential?.connected || falUnavailable} onClick={() => onSourceChip("fal")}>
           <strong>FAL</strong><span>{falCredential?.connected && !falUnavailable ? "AI stills in storyboard" : "AI stills · locked"}</span>
         </button>
-        {partnerBrands ? null : (
-          <button className="provider-preview-item" data-locked onClick={showFutureLock}>
-            <strong>More</strong><span>New providers · locked</span>
-          </button>
-        )}
+        <button className="provider-preview-item" data-locked onClick={() => onSourceChip("more")}>
+          <strong>More</strong><span>More providers · locked</span>
+        </button>
         <button className="secondary" onClick={() => setStep("settings")}>Choose video sources</button>
       </aside>
       <button onClick={startCreate}>Create new video</button>

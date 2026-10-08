@@ -132,22 +132,14 @@ export class CraftDispatcher {
 }
 
 function assertMediaResolved(session: CreateSessionSnapshot, module: ContentTypeModule): void {
+  if (module.mediaPolicy.requirement !== "required") return;
   const catalog = session.mediaCatalog;
   const hasOwn = catalog.ownRanked.length > 0;
-  const hasStock = (catalog.pexelsShortlist?.length ?? 0) > 0;
-  const hasFal = (catalog.falQuotes ?? []).some((quote) => quote.status === "confirmed");
   const pref = session.mediaSourcePref;
-  if (pref === "defer" && !hasOwn && !hasStock && !hasFal) {
-    throw new TypeRegistryError(`${module.typeId}: media required before generate`);
-  }
+  // Own pool is the only hard pre-generate gate. Stock/FAL shortlists may fill
+  // in the editor after craft (BYOK already checked on the pref). QA owns polish.
   if (pref === "own" && !hasOwn) {
     throw new TypeRegistryError(`${module.typeId}: own media required`);
-  }
-  if (pref === "pexels" && !hasStock && !hasOwn) {
-    throw new TypeRegistryError(`${module.typeId}: Pexels shortlist or own media required`);
-  }
-  if (pref === "fal" && !hasFal && !hasOwn) {
-    throw new TypeRegistryError(`${module.typeId}: confirmed FAL quote or own media required`);
   }
 }
 

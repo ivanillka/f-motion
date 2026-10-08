@@ -68,8 +68,8 @@ export const reelVerticalModule: ContentTypeModule = {
     return qaReelCraft(artifact.craftPayload, session.mediaCatalog);
   },
 
-  exportPackage(artifact, _session) {
-    // Existing Studio final render path attaches later via project id / packageRef.
+  exportPackage(artifact, session) {
+    // Studio Export final uses requestRender on the materialized ProjectSnapshot.
     return {
       format: "mp4",
       filename: "reel-vertical.mp4",
@@ -77,7 +77,9 @@ export const reelVerticalModule: ContentTypeModule = {
       meta: {
         editorModel: "storyboard",
         typeId: REEL_VERTICAL_TYPE_ID,
-        note: "Wire to existing project render/download when session persists a ProjectSnapshot"
+        sessionId: session.id,
+        artifactId: artifact.id,
+        surface: "studio_render"
       }
     };
   },
