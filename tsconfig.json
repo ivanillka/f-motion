@@ -2,6 +2,9 @@
   "files": [],
   "references": [
     { "path": "packages/contracts" },
+    { "path": "packages/content-type-contract" },
+    { "path": "packages/create-session" },
+    { "path": "packages/type-reel-vertical" },
     { "path": "packages/fal-host" },
     { "path": "packages/reel-engine" },
     { "path": "packages/fmotion-cli" },

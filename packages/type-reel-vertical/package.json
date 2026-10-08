@@ -1,0 +1,26 @@
+{
+  "name": "@f-engine/type-reel-vertical",
+  "private": true,
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@f-engine/content-type-contract": "^0.1.0",
+    "@f-engine/contracts": "^0.1.0",
+    "@f-engine/create-session": "^0.1.0",
+    "@f-engine/reel-engine": "^0.1.0"
+  }
+}
