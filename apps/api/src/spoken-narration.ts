@@ -9,6 +9,7 @@ import {
   spokenTimelineMs
 } from "@f-engine/reel-engine";
 import type { PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
+import { FalImageError, FalProviderError } from "@f-engine/fal-host";
 import { mixSpokenTimeline } from "./speech-wav.js";
 
 /** One spoken line, always SPOKEN_VOICE. Callers do not pick another engine. */
@@ -26,6 +27,54 @@ export class SpokenVoiceUnavailableError extends Error {
     super("spoken voice unavailable");
     this.name = "SpokenVoiceUnavailableError";
   }
+}
+
+/**
+ * Why a read could not hand back the spoken voice. The read still answers 200:
+ * the host keeps playing the stills and reads the project again for the voice.
+ * A slow queue reports "preparing"; a provider hiccup reports its own code.
+ */
+export type SpokenVoiceReason =
+  | "provider_unavailable"
+  | "rate_limited"
+  | "credential"
+  | "not_connected"
+  | "invalid_request"
+  | "unsafe_output"
+  | "preparing";
+
+export interface SpokenVoiceStatus {
+  attached: boolean;
+  /** Every Spoken line for this cut is spoken and mixed. */
+  ready: boolean;
+  /** Spoken lines stored on the project; a retry reuses them. */
+  lines: number;
+  reason?: SpokenVoiceReason;
+}
+
+/** What a read can say about the voice without calling FAL again. */
+export function spokenVoiceStatus(project: ProjectSnapshot, reason?: SpokenVoiceReason): SpokenVoiceStatus {
+  const attached = Boolean(project.brief.voiceover?.media_id);
+  const lines = (project.brief.spoken_audio ?? []).filter((ref) => ref.role === "line").length;
+  return {
+    attached,
+    ready: spokenNarrationReady(project),
+    lines,
+    ...(!attached && reason ? { reason } : {})
+  };
+}
+
+/**
+ * A provider hiccup is a voice status, not a failed read. undefined means the
+ * caller still has to see the error.
+ */
+export function spokenVoiceReasonFromError(error: unknown): SpokenVoiceReason | undefined {
+  if (error instanceof FalImageError) return error.code;
+  if (error instanceof FalProviderError) {
+    return error.code === "unavailable" ? "provider_unavailable" : "credential";
+  }
+  if (error instanceof SpokenVoiceUnavailableError) return "not_connected";
+  return undefined;
 }
 
 const inflightLines = new Map<string, Promise<{ mediaId: string; bytes: Uint8Array }>>();

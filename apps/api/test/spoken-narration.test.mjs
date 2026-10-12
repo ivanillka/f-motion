@@ -4,7 +4,8 @@ import { createServer } from "node:http";
 import { ProjectService } from "../dist/domain.js";
 import { createTestApp } from "../dist/server.js";
 import { SPOKEN_VOICE, spokenLineKey, spokenLineSlots, spokenTimelineMs } from "@f-engine/reel-engine";
-import { ensureSpokenVoiceover } from "../dist/spoken-narration.js";
+import { ensureSpokenVoiceover, spokenVoiceReasonFromError, spokenVoiceStatus, SpokenVoiceUnavailableError } from "../dist/spoken-narration.js";
+import { FalImageError, FalProviderError } from "@f-engine/fal-host";
 import { encodeWav, fitTakeToScene, mixSpokenTimeline, synthesizeSpeech, wavPcm } from "../dist/speech-wav.js";
 
 function scene(id, caption, extra = {}) {
@@ -368,6 +369,94 @@ test("spoken narration does not invent a formant voice when FAL is not connected
     assert.equal(body.message.includes("—"), false);
     assert.equal(audio.puts(), 0);
     assert.equal(projects.get("owner", project.id).brief.voiceover, undefined);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("voice status names why a read has no voice without failing it", () => {
+  const projects = new ProjectService();
+  const created = projects.create("owner", { purpose: "A room that agreed to forget", audience: "Viewers", tone: "Calm" });
+  const board = projects.command("owner", {
+    command_id: "board",
+    project_id: created.id,
+    base_revision: created.revision,
+    client_timestamp: "t",
+    kind: "replace_storyboard",
+    payload: { scenes: [scene("s5", "Read the full post.")] }
+  });
+  assert.deepEqual(spokenVoiceStatus(board), { attached: false, ready: false, lines: 0 });
+  assert.deepEqual(spokenVoiceStatus(board, "preparing"), {
+    attached: false, ready: false, lines: 0, reason: "preparing"
+  });
+  // A provider code is only added while the voice is still missing.
+  assert.deepEqual(spokenVoiceStatus(board, "unsafe_output"), {
+    attached: false, ready: false, lines: 0, reason: "unsafe_output"
+  });
+  assert.equal(spokenVoiceReasonFromError(new FalImageError("provider_unavailable")), "provider_unavailable");
+  assert.equal(spokenVoiceReasonFromError(new FalImageError("unsafe_output")), "unsafe_output");
+  assert.equal(spokenVoiceReasonFromError(new FalImageError("credential")), "credential");
+  assert.equal(spokenVoiceReasonFromError(new FalProviderError("unavailable")), "provider_unavailable");
+  assert.equal(spokenVoiceReasonFromError(new FalProviderError("credential")), "credential");
+  assert.equal(spokenVoiceReasonFromError(new SpokenVoiceUnavailableError()), "not_connected");
+  // Anything else still has to reach the caller as a real error.
+  assert.equal(spokenVoiceReasonFromError(new Error("boom")), undefined);
+});
+
+test("a provider hiccup answers 200 with voice_status and a later open attaches the voice", async () => {
+  const projects = new ProjectService();
+  const audio = memoryAudio();
+  const calls = [];
+  let failing = true;
+  const spokenSynthesizer = async (request) => {
+    calls.push(request);
+    if (failing) throw new FalImageError("provider_unavailable");
+    return voiceWav(request.text);
+  };
+  const server = createServer(createTestApp({ ownerId: "owner", projects, spokenAudio: audio, spokenSynthesizer }));
+  const origin = await listen(server);
+  try {
+    const created = await fetch(`${origin}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "The night already had a script", audience: "Viewers", tone: "Calm" })
+    });
+    const { project } = await created.json();
+    const replaced = await fetch(`${origin}/api/projects/${project.id}/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command_id: "board",
+        base_revision: project.revision,
+        client_timestamp: "t",
+        kind: "replace_storyboard",
+        payload: { scenes: [scene("s5", "Read the full post.")] }
+      })
+    });
+    assert.equal(replaced.status, 200);
+    // A busy Kokoro queue used to surface as a 500 while the host lost the draft.
+    const first = await fetch(`${origin}/api/projects/${project.id}/spoken-narration`, { method: "POST" });
+    assert.equal(first.status, 200);
+    const hiccup = await first.json();
+    assert.equal(hiccup.generated, 0);
+    assert.deepEqual(hiccup.voice_status, {
+      attached: false, ready: false, lines: 0, reason: "provider_unavailable"
+    });
+    assert.equal(hiccup.project.brief.voiceover, undefined);
+    assert.equal(hiccup.project.id, project.id);
+    assert.deepEqual(calls.map((call) => call.text), ["Read the full post."]);
+    assert.equal(audio.puts(), 0);
+
+    failing = false;
+    calls.length = 0;
+    const retry = await fetch(`${origin}/api/projects/${project.id}/spoken-narration`, { method: "POST" });
+    assert.equal(retry.status, 200);
+    const attached = await retry.json();
+    assert.deepEqual(calls.map((call) => call.text), ["Read the full post."]);
+    assert.equal(calls[0].voice, SPOKEN_VOICE.voice);
+    assert.equal(attached.generated, 1);
+    assert.deepEqual(attached.voice_status, { attached: true, ready: true, lines: 1 });
+    assert.equal(wavPcm(audio.files.get(attached.project.brief.voiceover.media_id)).sampleRate, 24_000);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

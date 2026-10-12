@@ -113,8 +113,29 @@ import {
   speechStatus,
   speechResult,
   cancelSpeech,
-  speakKokoroLine
+  speakKokoroLine,
+  FAL_SPEECH_MAX_BYTES,
+  fetchFalSpeechAudio,
+  emitFalDiagnostic,
+  redactFalBody,
+  setFalDiagnosticSink
 } from "../dist/index.js";
+
+/** A take is only audio once the header says RIFF/WAVE. */
+function speechTake() {
+  const wav = Buffer.alloc(44 + 8);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(36 + 8, 4);
+  wav.write("WAVE", 8);
+  return wav;
+}
+
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" }
+  });
+}
 
 test("estimateImage maps megapixel billing to the pinned portrait still", async () => {
   const quote = await estimateImage("synthetic:key", async () => new Response(JSON.stringify({
@@ -360,4 +381,218 @@ test("queue status, result, and cancel address the app pair instead of the submi
     ["PUT", `${appBase(FAL_SPEECH_ENDPOINT_ID)}/requests/${encoded}/cancel`]
   ]);
   assert.notEqual(appBase(FAL_SPEECH_ENDPOINT_ID), `https://queue.fal.run/${FAL_SPEECH_ENDPOINT_ID}`);
+});
+
+test("a busy Kokoro queue is polled to its deadline and reported through the sink", async () => {
+  const wav = speechTake();
+  const events = [];
+  setFalDiagnosticSink((event) => events.push(event));
+  const credential = "fal-secret-key:1234";
+  // FAL queues are shared: the line answers IN_QUEUE with a place in line first.
+  const queue = ["IN_QUEUE", "COMPLETED"];
+  const fetchImpl = async (url, init = {}) => {
+    const method = String(init.method || "GET").toUpperCase();
+    const target = String(url);
+    if (method === "POST" && !target.includes("/requests/")) {
+      return jsonResponse({
+        request_id: "req-slow",
+        signed_url: "https://v3.fal.media/files/voice.wav?token=tok-abc",
+        api_key: "api-key-value",
+        queue: { authorization: "Bearer tok-abc" }
+      });
+    }
+    if (target.endsWith("/status")) {
+      const state = queue.shift();
+      return jsonResponse(state === "IN_QUEUE" ? { status: state, queue_position: 4 } : { status: state });
+    }
+    if (target.includes("/requests/")) {
+      return jsonResponse({ audio: { url: "https://v3.fal.media/files/voice.wav?sig=1" } });
+    }
+    return new Response(wav, {
+      status: 200,
+      headers: { "content-type": "audio/wav", "content-length": String(wav.length) }
+    });
+  };
+  try {
+    const bytes = await speakKokoroLine(credential, "A busy queue.", fetchImpl, 20_000);
+    assert.equal(bytes.byteLength, wav.length);
+    const submit = events.find((event) => event.stage === "submit");
+    assert.equal(submit.requestId, "req-slow");
+    assert.equal(submit.body.request_id, "req-slow");
+    assert.equal(submit.body.signed_url, "(redacted)");
+    assert.equal(submit.body.api_key, "(redacted)");
+    assert.equal(submit.body.queue.authorization, "(redacted)");
+    assert.deepEqual(
+      events.filter((event) => event.stage === "status").map((event) => [event.status, event.queuePosition]),
+      [["IN_QUEUE", 4], ["COMPLETED", undefined]]
+    );
+    // The signed take URL never reaches the sink; the result body keeps the shape only.
+    assert.equal(events.find((event) => event.stage === "result").body.audio.url, "(redacted)");
+    assert.equal(events.find((event) => event.stage === "download").contentType, "audio/wav");
+    assert.equal(events.find((event) => event.stage === "download").bytes, wav.length);
+    const logged = JSON.stringify(events);
+    assert.equal(logged.includes("tok-abc"), false);
+    assert.equal(logged.includes("api-key-value"), false);
+    assert.equal(logged.includes(credential), false);
+
+    // A queue that never finishes runs to the deadline and reports what it last saw.
+    let polls = 0;
+    const stuckFetch = async (_url, init = {}) => {
+      if (String(init.method || "GET").toUpperCase() === "POST") {
+        return jsonResponse({ request_id: "req-stuck" });
+      }
+      polls += 1;
+      return jsonResponse({ status: "IN_QUEUE", queue_position: 9 });
+    };
+    await assert.rejects(
+      speakKokoroLine(credential, "Still queued.", stuckFetch, 1_200),
+      (error) => error instanceof FalImageError && error.code === "provider_unavailable"
+    );
+    const timeout = events.find((event) => event.stage === "timeout");
+    assert.equal(timeout.requestId, "req-stuck");
+    assert.equal(timeout.status, "IN_QUEUE");
+    assert.equal(timeout.code, "provider_unavailable");
+    assert.ok(timeout.elapsedMs >= 1_000);
+    assert.ok(polls >= 2);
+
+    // A diagnostic never breaks a voice line.
+    setFalDiagnosticSink(() => { throw new Error("sink down"); });
+    assert.doesNotThrow(() => emitFalDiagnostic({ stage: "submit", endpoint: FAL_SPEECH_ENDPOINT_ID }));
+  } finally {
+    setFalDiagnosticSink(undefined);
+  }
+});
+
+test("a speech take is only fetched from fal.media and only when it is audio", async () => {
+  const wav = speechTake();
+  const media = "https://v3.fal.media/files/voice.wav?sig=1";
+  // A signed take URL cannot bounce the download to another origin.
+  for (const location of ["https://evil.example/voice.wav", "http://v3.fal.media/files/voice.wav"]) {
+    await assert.rejects(
+      fetchFalSpeechAudio(media, async () => new Response(null, { status: 302, headers: { location } })),
+      (error) => error instanceof FalImageError && error.code === "unsafe_output"
+    );
+  }
+  let requested = false;
+  await assert.rejects(
+    fetchFalSpeechAudio("https://evil.example/voice.wav", async () => {
+      requested = true;
+      return new Response(wav);
+    }),
+    (error) => error instanceof FalImageError && error.code === "unsafe_output"
+  );
+  assert.equal(requested, false);
+  // Five redirects are followed; the sixth is refused instead of spinning.
+  let hops = 0;
+  await assert.rejects(
+    fetchFalSpeechAudio(media, async () => {
+      hops += 1;
+      return new Response(null, { status: 307, headers: { location: media } });
+    }),
+    (error) => error instanceof FalImageError && error.code === "unsafe_output"
+  );
+  assert.equal(hops, 6);
+  // A hop to another fal.media host is re-validated and followed by hand.
+  const seen = [];
+  const followed = await fetchFalSpeechAudio(media, async (url, init = {}) => {
+    seen.push([String(url), init.redirect]);
+    if (seen.length === 1) {
+      return new Response(null, { status: 307, headers: { location: "https://v4.fal.media/files/voice.wav?sig=2" } });
+    }
+    return new Response(wav, {
+      status: 200,
+      headers: { "content-type": "audio/wav", "content-length": String(wav.length) }
+    });
+  });
+  assert.deepEqual(seen, [
+    [media, "manual"],
+    ["https://v4.fal.media/files/voice.wav?sig=2", "manual"]
+  ]);
+  assert.equal((await followed.arrayBuffer()).byteLength, wav.length);
+  // HTML and an oversized take are provider mistakes, not a voice.
+  await assert.rejects(
+    fetchFalSpeechAudio(media, async () => new Response("<html>", {
+      status: 200,
+      headers: { "content-type": "text/html" }
+    })),
+    (error) => error instanceof FalImageError && error.code === "unsafe_output"
+  );
+  await assert.rejects(
+    fetchFalSpeechAudio(media, async () => new Response(wav, {
+      status: 200,
+      headers: { "content-type": "audio/wav", "content-length": String(FAL_SPEECH_MAX_BYTES + 1) }
+    })),
+    (error) => error instanceof FalImageError && error.code === "unsafe_output"
+  );
+  // A refused or unreachable download is a provider hiccup the caller retries.
+  for (const fetchImpl of [
+    async () => new Response("busy", { status: 503 }),
+    async () => { throw new Error("socket"); }
+  ]) {
+    await assert.rejects(
+      fetchFalSpeechAudio(media, fetchImpl),
+      (error) => error instanceof FalImageError && error.code === "provider_unavailable"
+    );
+  }
+});
+
+test("a failed or unknown Kokoro queue state is reported once with its code", async () => {
+  const events = [];
+  setFalDiagnosticSink((event) => events.push(event));
+  try {
+    assert.deepEqual(
+      await speechStatus("k", "req-queued", async () => jsonResponse({ status: "IN_QUEUE", queue_position: 2 })),
+      { status: "IN_QUEUE" }
+    );
+    assert.equal(events.at(-1).stage, "status");
+    assert.equal(events.at(-1).queuePosition, 2);
+    // FAILED is the provider refusing the line, which is the shared speech status
+    // code for a refused take, exactly as imageStatus and videoStatus report it.
+    assert.deepEqual(
+      await speechStatus("k", "req-failed", async () => jsonResponse({
+        status: "FAILED",
+        detail: "refused by the voice model",
+        signed_url: "https://v3.fal.media/files/voice.wav?sig=9"
+      })),
+      { status: "FAILED", failureCode: "unsafe_output" }
+    );
+    assert.equal(events.at(-1).stage, "failure");
+    assert.equal(events.at(-1).code, "unsafe_output");
+    assert.equal(events.at(-1).body.detail, "refused by the voice model");
+    assert.equal(events.at(-1).body.signed_url, "(redacted)");
+    // An unknown state is a provider failure, not a verdict on the caption.
+    await assert.rejects(
+      speechStatus("k", "req-unknown", async () => jsonResponse({ status: "NOT_FOUND" })),
+      (error) => error instanceof FalImageError && error.code === "provider_unavailable"
+    );
+    assert.equal(events.at(-1).status, "NOT_FOUND");
+    assert.equal(events.at(-1).code, "provider_unavailable");
+    // A body without a status field is not COMPLETED.
+    await assert.rejects(
+      speechStatus("k", "req-empty", async () => jsonResponse({ queue_position: 0 })),
+      (error) => error instanceof FalImageError && error.code === "provider_unavailable"
+    );
+    assert.equal(events.at(-1).status, "(empty)");
+  } finally {
+    setFalDiagnosticSink(undefined);
+  }
+});
+
+test("diagnostic bodies keep the provider shape and drop secrets and long strings", () => {
+  const redacted = redactFalBody({
+    status: "FAILED",
+    audio: { url: "https://v3.fal.media/files/voice.wav?sig=9" },
+    note: "https://v3.fal.media/files/voice.wav?sig=9",
+    apiKey: "abc",
+    long: "x".repeat(400),
+    deep: { a: { b: { c: { d: { e: "far" } } } } },
+    list: [1, 2, 3, 4, 5, 6, 7]
+  });
+  assert.equal(redacted.status, "FAILED");
+  assert.equal(redacted.audio.url, "(redacted)");
+  assert.equal(redacted.note, "v3.fal.media/…");
+  assert.equal(redacted.apiKey, "(redacted)");
+  assert.equal(redacted.long.length, 201);
+  assert.equal(redacted.deep.a.b.c, "(truncated)");
+  assert.equal(redacted.list.length, 5);
 });

@@ -10,6 +10,7 @@ import {
 } from "../dist/external-import.js";
 import { RenderInputIncompleteError } from "../dist/render-repository.js";
 import { createTestApp } from "../dist/server.js";
+import { FalImageError } from "@f-engine/fal-host";
 import { SPOKEN_VOICE } from "@f-engine/reel-engine";
 import { encodeWav, synthesizeSpeech, wavPcm } from "../dist/speech-wav.js";
 
@@ -1139,6 +1140,177 @@ test("partner playback is returned when a render cannot start", async () => {
     assert.equal(body.playback.voiceover, null);
     assert.equal(body.playback.scenes[0].media.url, "https://signed.example/projects/media/still-1");
     assert.equal(body.playback.scenes[0].media.muted, true);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("a partner read answers 200 while a slow voice queue finishes in the background", async () => {
+  const token = "q".repeat(32);
+  const ownerId = "11111111-1111-4111-8111-111111111111";
+  const spokenId = "cms:gallery:slow-voice";
+  const projects = new ProjectService();
+  const media = playbackMediaStore();
+  media.add("still-1");
+  const speech = countingSpeech(media.assets);
+  const created = projects.create(ownerId, { purpose: "A slow voice", audience: "Viewers", tone: "Calm" });
+  projects.bindHostImport(ownerId, created.id, { externalId: spokenId });
+  projects.command(ownerId, {
+    command_id: "board-slow",
+    project_id: created.id,
+    base_revision: created.revision,
+    client_timestamp: "t",
+    kind: "replace_storyboard",
+    payload: {
+      scenes: [
+        playbackScene("s1", "Selected gallery image 4", {
+          media_id: "still-1",
+          overlay_look: "caption",
+          duration_ms: 3000,
+          order: 0
+        }),
+        playbackScene("s2", "Read the full post.", {
+          overlay_look: "spoken",
+          overlay_place: "center",
+          order: 1,
+          duration_ms: 4000
+        })
+      ]
+    }
+  });
+  const spokenCalls = [];
+  const spokenSynthesizer = async (request) => {
+    spokenCalls.push(request);
+    // A shared Kokoro queue: the take lands after the host stopped waiting.
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const samples = new Int16Array(2_400);
+    samples.fill(9_000);
+    return encodeWav(samples, 24_000);
+  };
+  const server = createServer(createTestApp({
+    projects,
+    spokenAudio: speech,
+    spokenSynthesizer,
+    narrationWaitMs: 40,
+    media: { repository: media.repository, store: media.store },
+    externalImports: { token, ownerId, webOrigin: "https://f-motion.example", mediaOrigins: [] }
+  }));
+  const origin = await listen(server);
+  const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+  try {
+    const preview = await fetch(`${origin}/v1/integrations/project-imports/preview`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ external_id: spokenId })
+    });
+    assert.equal(preview.status, 200);
+    const body = await preview.json();
+    // The host gets the stills and a status instead of waiting on FAL.
+    assert.deepEqual(body.voice_status, { attached: false, ready: false, lines: 0, reason: "preparing" });
+    assert.equal(body.playback.voiceover, null);
+    assert.equal(body.playback.scenes[0].media.url, "https://signed.example/projects/media/still-1");
+    assert.equal(body.playback.scenes[1].overlay_look, "spoken");
+    assert.deepEqual(spokenCalls.map((call) => call.text), ["Read the full post."]);
+
+    await waitFor(
+      () => Boolean(projects.findByExternalId(ownerId, spokenId).brief.voiceover?.media_id),
+      "the stored take"
+    );
+
+    const refreshed = await fetch(
+      `${origin}/v1/integrations/project-imports?external_id=${encodeURIComponent(spokenId)}`,
+      { headers: { authorization: `Bearer ${token}` } }
+    );
+    assert.equal(refreshed.status, 200);
+    const attached = await refreshed.json();
+    assert.deepEqual(attached.voice_status, { attached: true, ready: true, lines: 1 });
+    assert.match(attached.playback.voiceover.url, /^https:\/\/signed\.example\/projects\/media\/wav-/);
+    assert.equal(attached.playback.voiceover.level, 1);
+    // The take was spoken once and stored, so a later read reuses it.
+    assert.deepEqual(spokenCalls.map((call) => call.text), ["Read the full post."]);
+    assert.ok(speech.puts() > 0);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("a partner read keeps the stills when the voice provider fails", async () => {
+  const token = "f".repeat(32);
+  const ownerId = "11111111-1111-4111-8111-111111111111";
+  const spokenId = "cms:gallery:no-voice";
+  const projects = new ProjectService();
+  const media = playbackMediaStore();
+  media.add("still-1");
+  const speech = countingSpeech(media.assets);
+  const created = projects.create(ownerId, { purpose: "A missing voice", audience: "Viewers", tone: "Calm" });
+  projects.bindHostImport(ownerId, created.id, { externalId: spokenId });
+  projects.command(ownerId, {
+    command_id: "board-fail",
+    project_id: created.id,
+    base_revision: created.revision,
+    client_timestamp: "t",
+    kind: "replace_storyboard",
+    payload: {
+      scenes: [
+        playbackScene("s1", "Selected gallery image 4", {
+          media_id: "still-1",
+          overlay_look: "caption",
+          duration_ms: 3000,
+          order: 0
+        }),
+        playbackScene("s2", "Read the full post.", {
+          overlay_look: "spoken",
+          overlay_place: "center",
+          order: 1,
+          duration_ms: 4000
+        })
+      ]
+    }
+  });
+  let calls = 0;
+  const spokenSynthesizer = async () => {
+    calls += 1;
+    // A busy Kokoro queue used to surface here as a 500 on the partner read.
+    throw new FalImageError("provider_unavailable");
+  };
+  const server = createServer(createTestApp({
+    projects,
+    spokenAudio: speech,
+    spokenSynthesizer,
+    media: { repository: media.repository, store: media.store },
+    externalImports: { token, ownerId, webOrigin: "https://f-motion.example", mediaOrigins: [] }
+  }));
+  const origin = await listen(server);
+  try {
+    const preview = await fetch(`${origin}/v1/integrations/project-imports/preview`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ external_id: spokenId })
+    });
+    assert.equal(preview.status, 200);
+    const body = await preview.json();
+    assert.deepEqual(body.voice_status, {
+      attached: false, ready: false, lines: 0, reason: "provider_unavailable"
+    });
+    assert.equal(body.playback.voiceover, null);
+    assert.equal(body.playback.scenes.length, 2);
+    assert.equal(body.playback.scenes[0].media.url, "https://signed.example/projects/media/still-1");
+    assert.equal(body.playback.scenes[0].media.muted, true);
+    assert.equal(calls, 1);
+    assert.equal(speech.puts(), 0);
+
+    const read = await fetch(
+      `${origin}/v1/integrations/project-imports?external_id=${encodeURIComponent(spokenId)}`,
+      { headers: { authorization: `Bearer ${token}` } }
+    );
+    assert.equal(read.status, 200);
+    const readBody = await read.json();
+    assert.deepEqual(readBody.voice_status, {
+      attached: false, ready: false, lines: 0, reason: "provider_unavailable"
+    });
+    assert.equal(readBody.playback.scenes[0].media.muted, true);
+    assert.equal(calls, 2);
+    assert.equal(speech.puts(), 0);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

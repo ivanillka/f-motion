@@ -17,7 +17,8 @@ import {
   assertNoSharedFalCredential,
   assertNoSharedPexelsCredential,
   credentialVaultFromEnv,
-  falByokEnabled
+  falByokEnabled,
+  setFalDiagnosticSink
 } from "@f-engine/fal-host";
 import { PostgresFalCredentialService } from "./fal-credentials.js";
 import { PostgresFalGenerationService } from "./fal-generation.js";
@@ -44,6 +45,11 @@ function extraAuthIssuers(env: NodeJS.ProcessEnv) {
 assertLocalAuthAllowed(process.env);
 assertNoSharedFalCredential(process.env);
 assertNoSharedPexelsCredential(process.env);
+// FAL queue diagnostics for this process. Events are already redacted by the
+// fal-host sink: no API keys and no signed media URLs reach the log.
+setFalDiagnosticSink((event) => {
+  console.error("fal diagnostic", JSON.stringify(event));
+});
 const accessPolicy = accessPolicyFromEnv(process.env);
 const externalImports = externalImportConfigFromEnv(process.env);
 const renderNotify = renderNotifyConfigFromEnv(process.env);

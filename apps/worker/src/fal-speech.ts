@@ -9,10 +9,10 @@ import type pg from "pg";
 import {
   FAL_SPEECH_ENDPOINT_ID,
   FAL_SPEECH_MAX_BYTES,
-  assertFalMediaUrl,
   cancelSpeech,
   credentialVaultFromEnv,
   decryptCredential,
+  fetchFalSpeechAudio,
   speechResult,
   speechStatus,
   submitSpeech,
@@ -109,11 +109,12 @@ async function downloadWav(
   signal: AbortSignal,
   fetchImpl: typeof fetch = fetch
 ): Promise<{ path: string; bytes: number; directory: string }> {
-  assertFalMediaUrl(url);
-  const response = await fetchImpl(url, { redirect: "error", signal });
-  if (!response.ok || !response.body) throw new Error("download failed");
+  // Shared with the API narration path: the signed take URL is re-checked on
+  // every redirect hop and the response has to look like audio, not HTML.
+  const response = await fetchFalSpeechAudio(url, fetchImpl, 30_000, signal);
   const declared = Number(response.headers.get("content-length") ?? NaN);
   if (Number.isFinite(declared) && declared > FAL_SPEECH_MAX_BYTES) throw new Error("audio too large");
+  if (!response.body) throw new Error("download failed");
   const directory = join(tmpdir(), `fal-speech-${randomUUID()}`);
   await mkdir(directory, { recursive: true });
   const path = join(directory, "voice.wav");

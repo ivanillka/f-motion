@@ -599,6 +599,81 @@ export function falSpeechInput(prompt: string): Record<string, unknown> {
   };
 }
 
+/*
+ * Speech diagnostics. A slow Kokoro take is otherwise invisible: the caller only
+ * sees a FalImageError 60s later. The sink reports the queue status, the queue
+ * position, the error fields, and how long the wait was.
+ *
+ * The FAL key, the signed take URL, and any field that looks like a credential
+ * never reach the sink: bodies are copied through redactFalBody first.
+ */
+export type FalDiagnosticStage = "submit" | "status" | "result" | "download" | "timeout" | "failure";
+
+export interface FalDiagnosticEvent {
+  stage: FalDiagnosticStage;
+  endpoint: string;
+  requestId?: string;
+  /** FAL queue state: IN_QUEUE, IN_PROGRESS, COMPLETED, FAILED. */
+  status?: string;
+  /** Providers report the place in line while the request is queued. */
+  queuePosition?: number;
+  httpStatus?: number;
+  contentType?: string;
+  bytes?: number;
+  code?: FalImageErrorCode;
+  elapsedMs?: number;
+  /** Redacted copy of the provider response. */
+  body?: unknown;
+}
+
+export type FalDiagnosticSink = (event: FalDiagnosticEvent) => void;
+
+let diagnosticSink: FalDiagnosticSink | undefined;
+
+/** One sink per process, installed at startup. Unset keeps diagnostics silent. */
+export function setFalDiagnosticSink(sink?: FalDiagnosticSink): void {
+  diagnosticSink = sink;
+}
+
+export function emitFalDiagnostic(event: FalDiagnosticEvent): void {
+  if (!diagnosticSink) return;
+  try {
+    diagnosticSink(event);
+  } catch {
+    // A diagnostic never breaks a voice line.
+  }
+}
+
+const falSecretField = /(url|uri|signed|token|secret|authorization|key|password)/iu;
+
+/** A URL keeps its host only; every other string is clipped. */
+function redactFalString(value: string): string {
+  if (!/^https?:\/\//iu.test(value)) return value.length > 200 ? `${value.slice(0, 200)}…` : value;
+  try {
+    return `${new URL(value).host}/…`;
+  } catch {
+    return "(redacted)";
+  }
+}
+
+/** Provider body copy with signed URLs, tokens, and keys stripped. */
+export function redactFalBody(value: unknown, depth = 0): unknown {
+  if (typeof value === "string") return redactFalString(value);
+  if (value === null || typeof value !== "object") return value;
+  if (depth >= 4) return "(truncated)";
+  if (Array.isArray(value)) return value.slice(0, 5).map((item) => redactFalBody(item, depth + 1));
+  const redacted: Record<string, unknown> = {};
+  for (const [field, item] of Object.entries(value as Record<string, unknown>)) {
+    redacted[field] = falSecretField.test(field) ? "(redacted)" : redactFalBody(item, depth + 1);
+  }
+  return redacted;
+}
+
+/** Submitting, polling, and downloading one Kokoro line. FAL queues are busy. */
+export const FAL_SPEECH_POLL_TIMEOUT_MS = 180_000;
+/** Time between two status checks while the line is still queued. */
+export const FAL_SPEECH_POLL_INTERVAL_MS = 1_000;
+
 export async function submitSpeech(
   credential: string,
   input: { prompt: string },
@@ -615,13 +690,30 @@ export async function submitSpeech(
     },
     body: JSON.stringify(payload)
   }, fetchImpl, timeoutMs, signal);
-  if (status === 401 || status === 403) throw new FalImageError("credential");
-  if (status === 429) throw new FalImageError("rate_limited");
-  if (status < 200 || status >= 300) throw new FalImageError(classifyHttp(status));
+  const failure = (code: FalImageErrorCode) => {
+    emitFalDiagnostic({
+      stage: "failure",
+      endpoint: FAL_SPEECH_ENDPOINT_ID,
+      httpStatus: status,
+      code,
+      body: redactFalBody(body)
+    });
+    return new FalImageError(code);
+  };
+  if (status === 401 || status === 403) throw failure("credential");
+  if (status === 429) throw failure("rate_limited");
+  if (status < 200 || status >= 300) throw failure(classifyHttp(status));
   const requestId = body && typeof body === "object" && !Array.isArray(body)
     ? (body as { request_id?: unknown }).request_id
     : undefined;
-  if (typeof requestId !== "string" || !requestId.trim()) throw new FalImageError("provider_unavailable");
+  if (typeof requestId !== "string" || !requestId.trim()) throw failure("provider_unavailable");
+  emitFalDiagnostic({
+    stage: "submit",
+    endpoint: FAL_SPEECH_ENDPOINT_ID,
+    requestId: requestId.trim(),
+    httpStatus: status,
+    body: redactFalBody(body)
+  });
   return { request_id: requestId.trim() };
 }
 
@@ -643,12 +735,36 @@ export async function speechStatus(
   );
   if (status === 401 || status === 403) throw new FalImageError("credential");
   if (status < 200 || status >= 300) throw new FalImageError(classifyHttp(status));
-  const state = body && typeof body === "object" && !Array.isArray(body)
-    ? String((body as { status?: unknown }).status ?? "")
-    : "";
-  if (state === "IN_QUEUE" || state === "IN_PROGRESS") return { status: state };
-  if (state === "COMPLETED") return { status: "COMPLETED" };
-  if (state === "FAILED") return { status: "FAILED", failureCode: "unsafe_output" };
+  const record = body && typeof body === "object" && !Array.isArray(body)
+    ? body as Record<string, unknown>
+    : undefined;
+  const state = String(record?.status ?? "");
+  const queuePosition = typeof record?.queue_position === "number" && Number.isFinite(record.queue_position)
+    ? record.queue_position
+    : undefined;
+  const diagnostic = (stage: FalDiagnosticStage, code?: FalImageErrorCode) => emitFalDiagnostic({
+    stage,
+    endpoint: FAL_SPEECH_ENDPOINT_ID,
+    requestId,
+    status: state || "(empty)",
+    ...(queuePosition === undefined ? {} : { queuePosition }),
+    httpStatus: status,
+    ...(code ? { code } : {}),
+    body: redactFalBody(body)
+  });
+  if (state === "IN_QUEUE" || state === "IN_PROGRESS") {
+    diagnostic("status");
+    return { status: state };
+  }
+  if (state === "COMPLETED") {
+    diagnostic("status");
+    return { status: "COMPLETED" };
+  }
+  if (state === "FAILED") {
+    diagnostic("failure", "unsafe_output");
+    return { status: "FAILED", failureCode: "unsafe_output" };
+  }
+  diagnostic("failure", "provider_unavailable");
   throw new FalImageError("provider_unavailable");
 }
 
@@ -681,6 +797,13 @@ export async function speechResult(
   const url = firstFalAudioUrl(body);
   if (!url) throw new FalImageError("unsafe_output");
   assertFalMediaUrl(url);
+  emitFalDiagnostic({
+    stage: "result",
+    endpoint: FAL_SPEECH_ENDPOINT_ID,
+    requestId,
+    httpStatus: status,
+    body: redactFalBody(body)
+  });
   return { url };
 }
 
@@ -707,6 +830,65 @@ export async function cancelSpeech(
   }
 }
 
+const falSpeechRedirectLimit = 5;
+
+/** A take is only audio. Anything else is a provider mistake, not a voice. */
+function checkFalSpeechAudio(response: Response): Response {
+  if (!response.ok) throw new FalImageError("provider_unavailable");
+  const type = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (type && !type.startsWith("audio/") && !type.startsWith("application/octet-stream")) {
+    throw new FalImageError("unsafe_output");
+  }
+  const declared = Number(response.headers.get("content-length") ?? NaN);
+  if (Number.isFinite(declared) && declared > FAL_SPEECH_MAX_BYTES) throw new FalImageError("unsafe_output");
+  if (!response.body) throw new FalImageError("provider_unavailable");
+  return response;
+}
+
+/**
+ * One audio take from the signed FAL URL in a speech result. Redirects are
+ * followed by hand and every hop is re-checked against the FAL media hosts, so a
+ * signed URL cannot bounce the download to another origin. The caller reads the
+ * body; the size ceiling is enforced here and by FAL_SPEECH_MAX_BYTES.
+ */
+export async function fetchFalSpeechAudio(
+  url: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falHttpTimeoutMs,
+  signal?: AbortSignal
+): Promise<Response> {
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  signal?.addEventListener("abort", onAbort, { once: true });
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  timeout.unref();
+  try {
+    let current = url;
+    for (let hop = 0; ; hop += 1) {
+      assertFalMediaUrl(current);
+      let response: Response;
+      try {
+        response = await fetchImpl(current, { method: "GET", redirect: "manual", signal: controller.signal });
+      } catch {
+        throw new FalImageError("provider_unavailable");
+      }
+      const location = response.status >= 300 && response.status < 400
+        ? response.headers.get("location")
+        : null;
+      if (!location) return checkFalSpeechAudio(response);
+      if (hop >= falSpeechRedirectLimit) throw new FalImageError("unsafe_output");
+      try {
+        current = new URL(location, current).toString();
+      } catch {
+        throw new FalImageError("unsafe_output");
+      }
+    }
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", onAbort);
+  }
+}
+
 function isWavHeader(bytes: Uint8Array): boolean {
   return bytes.length >= 12
     && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
@@ -716,39 +898,70 @@ function isWavHeader(bytes: Uint8Array): boolean {
 /**
  * One Kokoro line. The prompt is that line, voice af_heart, speed 1.
  * The bytes are the take. Fitting them to a scene happens after this returns.
+ *
+ * FAL queues are shared, so a line that used to finish in seconds can sit in
+ * IN_QUEUE for minutes. The wait is FAL_SPEECH_POLL_TIMEOUT_MS, and the sink
+ * reports the queue state, the place in line, and the wait before the caller
+ * gives up.
  */
 export async function speakKokoroLine(
   credential: string,
   text: string,
   fetchImpl: typeof fetch = fetch,
-  timeoutMs = 60_000,
+  timeoutMs = FAL_SPEECH_POLL_TIMEOUT_MS,
   signal?: AbortSignal
 ): Promise<Uint8Array> {
+  const startedAt = Date.now();
   const submitted = await submitSpeech(credential, { prompt: text }, fetchImpl, timeoutMs, signal);
   const deadline = Date.now() + timeoutMs;
   let completed = false;
+  let lastStatus = "IN_QUEUE";
   while (Date.now() < deadline) {
     if (signal?.aborted) throw new FalImageError("provider_unavailable");
     const status = await speechStatus(credential, submitted.request_id, fetchImpl, timeoutMs, signal);
     if (status.status === "FAILED") throw new FalImageError(status.failureCode);
+    lastStatus = status.status;
     if (status.status === "COMPLETED") {
       completed = true;
       break;
     }
-    const wait = Math.min(250, Math.max(0, deadline - Date.now()));
+    const wait = Math.min(FAL_SPEECH_POLL_INTERVAL_MS, Math.max(0, deadline - Date.now()));
     if (wait === 0) break;
     await new Promise((resolve) => setTimeout(resolve, wait));
   }
-  if (!completed) throw new FalImageError("provider_unavailable");
+  if (!completed) {
+    emitFalDiagnostic({
+      stage: "timeout",
+      endpoint: FAL_SPEECH_ENDPOINT_ID,
+      requestId: submitted.request_id,
+      status: lastStatus,
+      code: "provider_unavailable",
+      elapsedMs: Date.now() - startedAt
+    });
+    throw new FalImageError("provider_unavailable");
+  }
   const result = await speechResult(credential, submitted.request_id, fetchImpl, timeoutMs, signal);
-  const response = await fetchImpl(result.url, { redirect: "error", signal });
-  if (!response.ok) throw new FalImageError("provider_unavailable");
-  const declared = Number(response.headers.get("content-length") ?? NaN);
-  if (Number.isFinite(declared) && declared > FAL_SPEECH_MAX_BYTES) throw new FalImageError("unsafe_output");
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  const audio = await fetchFalSpeechAudio(result.url, fetchImpl, timeoutMs, signal);
+  const bytes = new Uint8Array(await audio.arrayBuffer());
   if (bytes.byteLength === 0 || bytes.byteLength > FAL_SPEECH_MAX_BYTES || !isWavHeader(bytes)) {
+    emitFalDiagnostic({
+      stage: "failure",
+      endpoint: FAL_SPEECH_ENDPOINT_ID,
+      requestId: submitted.request_id,
+      code: "unsafe_output",
+      bytes: bytes.byteLength,
+      elapsedMs: Date.now() - startedAt
+    });
     throw new FalImageError("unsafe_output");
   }
+  emitFalDiagnostic({
+    stage: "download",
+    endpoint: FAL_SPEECH_ENDPOINT_ID,
+    requestId: submitted.request_id,
+    contentType: audio.headers.get("content-type") ?? undefined,
+    bytes: bytes.byteLength,
+    elapsedMs: Date.now() - startedAt
+  });
   return bytes;
 }
 
