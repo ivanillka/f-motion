@@ -38,6 +38,9 @@ COPY apps/api/package.json apps/api/package.json
 COPY apps/worker/package.json apps/worker/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/content-type-contract/package.json packages/content-type-contract/package.json
+COPY packages/create-session/package.json packages/create-session/package.json
+COPY packages/type-reel-vertical/package.json packages/type-reel-vertical/package.json
 COPY packages/fal-host/package.json packages/fal-host/package.json
 COPY packages/reel-engine/package.json packages/reel-engine/package.json
 COPY packages/fmotion-cli/package.json packages/fmotion-cli/package.json
@@ -45,16 +48,22 @@ COPY packages/fmotion-mcp/package.json packages/fmotion-mcp/package.json
 COPY prisma prisma
 RUN npm ci
 COPY packages/contracts packages/contracts
+COPY packages/content-type-contract packages/content-type-contract
+COPY packages/create-session packages/create-session
+COPY packages/type-reel-vertical packages/type-reel-vertical
 COPY packages/fal-host packages/fal-host
 COPY packages/reel-engine packages/reel-engine
 COPY apps/api apps/api
 COPY apps/worker apps/worker
 # Build order follows the project-reference graph: apps/api's tsconfig
-# references contracts + reel-engine but (unlike the root "lint" script)
+# references contracts, reel-engine and the create-flow packages but (unlike the root "lint" script)
 # does not run in `tsc -b` build-graph mode, so dependencies build first.
 RUN npm run build --workspace packages/contracts \
  && npm run build --workspace packages/reel-engine \
  && npm run build --workspace packages/fal-host \
+ && npm run build --workspace packages/content-type-contract \
+ && npm run build --workspace packages/create-session \
+ && npm run build --workspace packages/type-reel-vertical \
  && npm run build --workspace apps/api \
  && npm run build --workspace apps/worker
 
@@ -79,6 +88,12 @@ COPY --from=build /repo/packages/fal-host/package.json packages/fal-host/package
 COPY --from=build /repo/packages/fal-host/dist packages/fal-host/dist
 COPY --from=build /repo/packages/reel-engine/package.json packages/reel-engine/package.json
 COPY --from=build /repo/packages/reel-engine/dist packages/reel-engine/dist
+COPY --from=build /repo/packages/content-type-contract/package.json packages/content-type-contract/package.json
+COPY --from=build /repo/packages/content-type-contract/dist packages/content-type-contract/dist
+COPY --from=build /repo/packages/create-session/package.json packages/create-session/package.json
+COPY --from=build /repo/packages/create-session/dist packages/create-session/dist
+COPY --from=build /repo/packages/type-reel-vertical/package.json packages/type-reel-vertical/package.json
+COPY --from=build /repo/packages/type-reel-vertical/dist packages/type-reel-vertical/dist
 COPY --from=build /repo/prisma prisma
 COPY --from=build /repo/apps/api/package.json apps/api/package.json
 COPY --from=build /repo/apps/api/dist apps/api/dist
