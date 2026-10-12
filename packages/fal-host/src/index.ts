@@ -7,7 +7,8 @@ import {
 const falPricingUrl = "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai%2Fflux%2Fschnell";
 export const FAL_IMAGE_ENDPOINT_ID = "fal-ai/flux/schnell";
 const falEndpointId = FAL_IMAGE_ENDPOINT_ID;
-const falQueueBase = `https://queue.fal.run/${FAL_IMAGE_ENDPOINT_ID}`;
+/** Submitting keeps the whole endpoint id: POST https://queue.fal.run/fal-ai/flux/schnell. */
+const falQueueSubmitUrl = `https://queue.fal.run/${FAL_IMAGE_ENDPOINT_ID}`;
 const falImageMaxPrompt = 500;
 /** Contract checked 2026-08-20: fal.ai model-arguments lists portrait_16_9 as 576×1024. */
 export const FAL_IMAGE_SIZE = "portrait_16_9" as const;
@@ -53,6 +54,22 @@ export interface FalImageResult {
   url: string;
   contentType?: string;
 }
+
+/**
+ * Queue routes for one request - status, result, and cancel - address the app pair only:
+ * `https://queue.fal.run/{owner}/{alias}/requests/{id}`. The endpoint path after the alias
+ * belongs to the submit URL; both FAL clients drop it when they rebuild a request URL
+ * (@fal-ai/client `parseEndpointId`, fal_client `AppId.from_endpoint_id`), and queue.fal.run
+ * answers a path-ful GET from the app runner with 405 instead of the queue.
+ */
+function falRequestBaseFor(endpointId: string): string {
+  const [owner, alias] = endpointId.split("/");
+  if (!owner || !alias) throw new FalImageError("invalid_request");
+  return `https://queue.fal.run/${owner}/${alias}`;
+}
+
+/** Status, result, and cancel for one Flux still: GET .../fal-ai/flux/requests/{id}/status. */
+const falImageRequestBase = falRequestBaseFor(FAL_IMAGE_ENDPOINT_ID);
 
 function classifyHttp(status: number): FalImageErrorCode {
   if (status === 401 || status === 403) return "credential";
@@ -179,7 +196,7 @@ export async function submitImage(
   signal?: AbortSignal
 ): Promise<FalImageSubmitResult> {
   const payload = falImageInput(input.prompt);
-  const { status, body } = await falJson(credential, falQueueBase, {
+  const { status, body } = await falJson(credential, falQueueSubmitUrl, {
     method: "POST",
     headers: {
       "X-Fal-Store-IO": "0",
@@ -207,7 +224,7 @@ export async function imageStatus(
   if (!requestId.trim()) throw new FalImageError("invalid_request");
   const { status, body } = await falJson(
     credential,
-    `${falQueueBase}/requests/${encodeURIComponent(requestId)}/status`,
+    `${falImageRequestBase}/requests/${encodeURIComponent(requestId)}/status`,
     { method: "GET" },
     fetchImpl,
     timeoutMs,
@@ -258,7 +275,7 @@ export async function imageResult(
   if (!requestId.trim()) throw new FalImageError("invalid_request");
   const { status, body } = await falJson(
     credential,
-    `${falQueueBase}/requests/${encodeURIComponent(requestId)}`,
+    `${falImageRequestBase}/requests/${encodeURIComponent(requestId)}`,
     { method: "GET" },
     fetchImpl,
     timeoutMs,
@@ -282,7 +299,7 @@ export async function cancelImage(
   if (!requestId.trim()) throw new FalImageError("invalid_request");
   const { status } = await falJson(
     credential,
-    `${falQueueBase}/requests/${encodeURIComponent(requestId)}/cancel`,
+    `${falImageRequestBase}/requests/${encodeURIComponent(requestId)}/cancel`,
     { method: "PUT" },
     fetchImpl,
     timeoutMs,
@@ -299,7 +316,9 @@ export async function cancelImage(
 export const FAL_VIDEO_ENDPOINT_ID = "fal-ai/minimax/hailuo-2.3-fast/standard/image-to-video";
 const falVideoPricingUrl =
   "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai%2Fminimax%2Fhailuo-2.3-fast%2Fstandard%2Fimage-to-video";
-const falVideoQueueBase = `https://queue.fal.run/${FAL_VIDEO_ENDPOINT_ID}`;
+const falVideoQueueSubmitUrl = `https://queue.fal.run/${FAL_VIDEO_ENDPOINT_ID}`;
+/** Status, result, and cancel address the app pair only, without the endpoint path. */
+const falVideoRequestBase = falRequestBaseFor(FAL_VIDEO_ENDPOINT_ID);
 /** Contract checked 2026-08-02 against fal.ai Hailuo 2.3 Fast standard image-to-video docs. */
 export const FAL_VIDEO_DURATION = "6" as const;
 export const FAL_VIDEO_MAX_BYTES = 100_000_000;
@@ -376,7 +395,7 @@ export async function submitVideo(
   signal?: AbortSignal
 ): Promise<FalVideoSubmitResult> {
   const payload = falVideoInput(input.prompt, input.imageUrl);
-  const { status, body } = await falJson(credential, falVideoQueueBase, {
+  const { status, body } = await falJson(credential, falVideoQueueSubmitUrl, {
     method: "POST",
     headers: {
       "X-Fal-Store-IO": "0",
@@ -404,7 +423,7 @@ export async function videoStatus(
   if (!requestId.trim()) throw new FalImageError("invalid_request");
   const { status, body } = await falJson(
     credential,
-    `${falVideoQueueBase}/requests/${encodeURIComponent(requestId)}/status`,
+    `${falVideoRequestBase}/requests/${encodeURIComponent(requestId)}/status`,
     { method: "GET" },
     fetchImpl,
     timeoutMs,
@@ -456,7 +475,7 @@ export async function videoResult(
   if (!requestId.trim()) throw new FalImageError("invalid_request");
   const { status, body } = await falJson(
     credential,
-    `${falVideoQueueBase}/requests/${encodeURIComponent(requestId)}`,
+    `${falVideoRequestBase}/requests/${encodeURIComponent(requestId)}`,
     { method: "GET" },
     fetchImpl,
     timeoutMs,
@@ -480,7 +499,7 @@ export async function cancelVideo(
   if (!requestId.trim()) throw new FalImageError("invalid_request");
   const { status } = await falJson(
     credential,
-    `${falVideoQueueBase}/requests/${encodeURIComponent(requestId)}/cancel`,
+    `${falVideoRequestBase}/requests/${encodeURIComponent(requestId)}/cancel`,
     { method: "PUT" },
     fetchImpl,
     timeoutMs,
@@ -500,7 +519,9 @@ export const FAL_SPEECH_MAX_PROMPT = 2000;
 export const FAL_SPEECH_MAX_BYTES = 25_000_000;
 const falSpeechPricingUrl =
   "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai%2Fkokoro%2Famerican-english";
-const falSpeechQueueBase = `https://queue.fal.run/${FAL_SPEECH_ENDPOINT_ID}`;
+const falSpeechQueueSubmitUrl = `https://queue.fal.run/${FAL_SPEECH_ENDPOINT_ID}`;
+/** Status, result, and cancel address the app pair only: GET .../fal-ai/kokoro/requests/{id}/status. */
+const falSpeechRequestBase = falRequestBaseFor(FAL_SPEECH_ENDPOINT_ID);
 
 export type FalSpeechQuote = FalImageQuote;
 export type FalSpeechSubmitResult = FalImageSubmitResult;
@@ -586,7 +607,7 @@ export async function submitSpeech(
   signal?: AbortSignal
 ): Promise<FalSpeechSubmitResult> {
   const payload = falSpeechInput(input.prompt);
-  const { status, body } = await falJson(credential, falSpeechQueueBase, {
+  const { status, body } = await falJson(credential, falSpeechQueueSubmitUrl, {
     method: "POST",
     headers: {
       "X-Fal-Store-IO": "0",
@@ -614,7 +635,7 @@ export async function speechStatus(
   if (!requestId.trim()) throw new FalImageError("invalid_request");
   const { status, body } = await falJson(
     credential,
-    `${falSpeechQueueBase}/requests/${encodeURIComponent(requestId)}/status`,
+    `${falSpeechRequestBase}/requests/${encodeURIComponent(requestId)}/status`,
     { method: "GET" },
     fetchImpl,
     timeoutMs,
@@ -649,7 +670,7 @@ export async function speechResult(
   if (!requestId.trim()) throw new FalImageError("invalid_request");
   const { status, body } = await falJson(
     credential,
-    `${falSpeechQueueBase}/requests/${encodeURIComponent(requestId)}`,
+    `${falSpeechRequestBase}/requests/${encodeURIComponent(requestId)}`,
     { method: "GET" },
     fetchImpl,
     timeoutMs,
@@ -673,7 +694,7 @@ export async function cancelSpeech(
   if (!requestId.trim()) throw new FalImageError("invalid_request");
   const { status } = await falJson(
     credential,
-    `${falSpeechQueueBase}/requests/${encodeURIComponent(requestId)}/cancel`,
+    `${falSpeechRequestBase}/requests/${encodeURIComponent(requestId)}/cancel`,
     { method: "PUT" },
     fetchImpl,
     timeoutMs,

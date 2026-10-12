@@ -149,6 +149,7 @@ test("queued speech submits once, seals wav, skips inspect-media", async () => {
   }), options);
   let posts = 0;
   let phase = 0;
+  const statusUrls = [];
   const wav = wavBytes();
   const fetchImpl = async (url, init = {}) => {
     const method = String(init.method || "GET").toUpperCase();
@@ -160,6 +161,7 @@ test("queued speech submits once, seals wav, skips inspect-media", async () => {
       });
     }
     if (String(url).includes("/status")) {
+      statusUrls.push(String(url));
       phase += 1;
       return new Response(JSON.stringify({ status: phase < 2 ? "IN_PROGRESS" : "COMPLETED" }), {
         status: 200, headers: { "content-type": "application/json" }
@@ -193,6 +195,13 @@ test("queued speech submits once, seals wav, skips inspect-media", async () => {
     env,
     fetchImpl
   );
+  // queue.fal.run only routes {owner}/{alias}/requests/{id} to the queue service, so the Kokoro
+  // app pair is `fal-ai/kokoro`: a path-ful GET lands on the POST-only submit route, answers 405,
+  // and surfaces as provider_unavailable, which is how a resumed Spoken draft reported a 500.
+  assert.deepEqual(statusUrls, [
+    "https://queue.fal.run/fal-ai/kokoro/requests/req-speech/status",
+    "https://queue.fal.run/fal-ai/kokoro/requests/req-speech/status"
+  ]);
   assert.equal(posts, 1);
   assert.equal(result.state, "ready");
   assert.equal(pool.row.state, "ready");
