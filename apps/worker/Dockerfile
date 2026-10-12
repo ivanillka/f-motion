@@ -13,9 +13,9 @@
 # BtbN autobuild tags are pruned after about a week; re-pin from
 # https://github.com/BtbN/FFmpeg-Builds/releases if the curl 404s.
 FROM debian:bookworm-slim AS ffmpeg
-ARG FFMPEG_VERSION=n8.1.3
-ARG FFMPEG_RELEASE_TAG=autobuild-2026-09-24-14-14
-ARG FFMPEG_SHA256=30e87bab39f0153a85d96abec439e2f697ff2ef3ba5e3a141cd2b0acb5428043
+ARG FFMPEG_VERSION=n8.1.3-18-g46d899d7a0
+ARG FFMPEG_RELEASE_TAG=autobuild-2026-10-12-13-12
+ARG FFMPEG_SHA256=5b9d661315095a781ac8e285f788db059076cd41f17fec8b7d78a7b32afa7bbd
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
  && rm -rf /var/lib/apt/lists/*
