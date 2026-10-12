@@ -315,3 +315,49 @@ test("speakKokoroLine sends one voice and that spoken caption", async () => {
   assert.equal(firstWav.byteLength, wav.length);
   assert.equal(laterWav.byteLength, wav.length);
 });
+
+test("queue status, result, and cancel address the app pair instead of the submit path", async () => {
+  const calls = [];
+  const respondent = (body) => async (url, init) => {
+    calls.push([init.method, String(url)]);
+    return new Response(JSON.stringify(body), {
+      status: 200, headers: { "content-type": "application/json" }
+    });
+  };
+  // Endpoint ids carry a submit path after the app pair (flux/schnell, minimax/hailuo.../...,
+  // kokoro/american-english); queue.fal.run only routes {owner}/{alias}/requests/{id} to the
+  // queue service, so the request routes must not repeat that path.
+  const appBase = (endpointId) => `https://queue.fal.run/${endpointId.split("/").slice(0, 2).join("/")}`;
+  const requestId = "req 1/2";
+  const encoded = encodeURIComponent(requestId);
+  assert.deepEqual(await imageStatus("k", requestId, respondent({ status: "IN_PROGRESS" })), { status: "IN_PROGRESS" });
+  assert.equal((await imageResult("k", requestId, respondent({
+    images: [{ url: "https://v3.fal.media/files/example.png" }]
+  }))).url, "https://v3.fal.media/files/example.png");
+  await cancelImage("k", requestId, respondent(null));
+  assert.deepEqual(await videoStatus("k", requestId, respondent({ status: "COMPLETED" })), { status: "COMPLETED" });
+  assert.equal((await videoResult("k", requestId, respondent({
+    video: { url: "https://storage.googleapis.com/falserverless/example_outputs/out.mp4" }
+  }))).url, "https://storage.googleapis.com/falserverless/example_outputs/out.mp4");
+  await cancelVideo("k", requestId, respondent(null));
+  assert.deepEqual(await speechStatus("k", requestId, respondent({ status: "IN_PROGRESS" })), { status: "IN_PROGRESS" });
+  assert.equal((await speechResult("k", requestId, respondent({
+    audio: { url: "https://v3.fal.media/files/voice.wav" }
+  }))).url, "https://v3.fal.media/files/voice.wav");
+  await cancelSpeech("k", requestId, respondent(null));
+  // Probed 2026-10-12: the path-ful form answers 405 with `allow: POST` because it lands on the
+  // submit route, which surfaces as provider_unavailable; the app-pair form reaches the queue
+  // service and answers {"status":"NOT_FOUND"} for an unknown id.
+  assert.deepEqual(calls, [
+    ["GET", `${appBase(FAL_IMAGE_ENDPOINT_ID)}/requests/${encoded}/status`],
+    ["GET", `${appBase(FAL_IMAGE_ENDPOINT_ID)}/requests/${encoded}`],
+    ["PUT", `${appBase(FAL_IMAGE_ENDPOINT_ID)}/requests/${encoded}/cancel`],
+    ["GET", `${appBase(FAL_VIDEO_ENDPOINT_ID)}/requests/${encoded}/status`],
+    ["GET", `${appBase(FAL_VIDEO_ENDPOINT_ID)}/requests/${encoded}`],
+    ["PUT", `${appBase(FAL_VIDEO_ENDPOINT_ID)}/requests/${encoded}/cancel`],
+    ["GET", `${appBase(FAL_SPEECH_ENDPOINT_ID)}/requests/${encoded}/status`],
+    ["GET", `${appBase(FAL_SPEECH_ENDPOINT_ID)}/requests/${encoded}`],
+    ["PUT", `${appBase(FAL_SPEECH_ENDPOINT_ID)}/requests/${encoded}/cancel`]
+  ]);
+  assert.notEqual(appBase(FAL_SPEECH_ENDPOINT_ID), `https://queue.fal.run/${FAL_SPEECH_ENDPOINT_ID}`);
+});
