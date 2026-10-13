@@ -7,10 +7,21 @@ import {
   cleanupDispatchedOutbox,
   dispatchOutbox,
   dispatchOutboxSafely,
+  falImageQueue,
+  falSpeechQueue,
+  falVideoQueue,
   guardDatabasePool,
   guardQueue,
+  inspectionQueue,
+  outboxDispatchIntervalMs,
   outboxRetentionHoursFromEnv,
   queueDatabasePoolMax,
+  queueMaintenanceIntervalSeconds,
+  queueMonitorIntervalSeconds,
+  queuePollingSeconds,
+  renderNotifyQueue,
+  renderQueue,
+  workerDatabaseIdleTimeoutMillis,
   workerDatabasePoolMax
 } from "../dist/queue.js";
 
@@ -96,6 +107,26 @@ test("database pools stay inside a small shared session pooler", async () => {
   assert.match(queueSource, /dispatchOutboxSafely\(pool, boss\)/);
 });
 
+test("idle pools keep warm clients instead of reconnecting every ten seconds", async () => {
+  const apiPool = await readFile(new URL("../../api/src/db-pool.ts", import.meta.url), "utf8");
+  const apiIdle = Number(
+    (apiPool.match(/export const apiDatabaseIdleTimeoutMillis = ([\d_]+)/)?.[1] ?? "").replaceAll("_", "")
+  );
+  assert.equal(apiIdle, 300_000);
+  assert.equal(workerDatabaseIdleTimeoutMillis, 300_000);
+  assert.ok(apiIdle > 10_000, "longer than the node-pg default that was churning the pooler");
+  const apiStart = await readFile(new URL("../../api/src/start.ts", import.meta.url), "utf8");
+  const workerStart = await readFile(new URL("../src/start.ts", import.meta.url), "utf8");
+  const queueSource = await readFile(new URL("../src/queue.ts", import.meta.url), "utf8");
+  assert.match(apiStart, /idleTimeoutMillis: apiDatabaseIdleTimeoutMillis/);
+  assert.match(workerStart, /idleTimeoutMillis: workerDatabaseIdleTimeoutMillis/);
+  // The worker pool and the pg-boss pool both get the longer idle window.
+  assert.equal(
+    queueSource.match(/idleTimeoutMillis: workerDatabaseIdleTimeoutMillis/g)?.length,
+    2
+  );
+});
+
 test("a refused session does not stop the worker", async () => {
   const refused = Object.assign(new Error("max clients reached - pool_size: 15"), {
     code: "EMAXCONNSESSION"
@@ -144,3 +175,32 @@ test("cleanup is one bounded parameterized batch", async () => {
   assert.match(statement, /FOR UPDATE SKIP LOCKED/);
   assert.match(statement, /LIMIT 250/);
 });
+
+test("idle polling, maintenance, and outbox dispatch stay bounded", async () => {
+  assert.deepEqual(
+    { ...queuePollingSeconds },
+    {
+      // Fast where a studio user is waiting on the result.
+      [inspectionQueue]: 5,
+      [renderQueue]: 5,
+      [falImageQueue]: 10,
+      // Background: relaxed.
+      [renderNotifyQueue]: 30,
+      [falVideoQueue]: 30,
+      [falSpeechQueue]: 5
+    }
+  );
+  assert.equal(queueMaintenanceIntervalSeconds, 120);
+  assert.equal(queueMonitorIntervalSeconds, 60);
+  assert.equal(outboxDispatchIntervalMs, 10_000);
+
+  // Source guard: a per-second override must not creep back in, and every
+  // worker polls through the map and dispatches on the shared interval.
+  const source = await readFile(new URL("../src/queue.ts", import.meta.url), "utf8");
+  assert.equal(source.match(/pollingIntervalSeconds: queuePollingSeconds\[/g)?.length, 6);
+  assert.doesNotMatch(source, /pollingIntervalSeconds: 1[,}]/);
+  assert.doesNotMatch(source, /maintenanceIntervalSeconds: 1[,}]/);
+  assert.match(source, /monitorIntervalSeconds: queueMonitorIntervalSeconds/);
+  assert.match(source, /dispatchOutboxSafely\(pool, boss\),\s*\n\s*outboxDispatchIntervalMs/);
+});
+

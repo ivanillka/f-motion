@@ -59,6 +59,49 @@ const outboxCleanupIntervalMs = 60 * 60 * 1000;
 export const workerDatabasePoolMax = 3;
 export const queueDatabasePoolMax = 4;
 
+/**
+ * node-pg closes an idle client after 10s by default, and the Supabase session
+ * pooler re-runs its setup (`DISCARD ALL`, `pgbouncer.get_auth`) on every new
+ * connection. At idle that churn is pure egress, so keep warm clients for five
+ * minutes. Applied to the worker pool and to the pool pg-boss opens.
+ */
+export const workerDatabaseIdleTimeoutMillis = 300_000;
+
+/**
+ * Idle pg-boss fetch cadence per queue. pg-boss runs without LISTEN/NOTIFY here
+ * (`useListenNotify` defaults to false), so this interval is the delivery
+ * latency. The queues a studio user is waiting on stay fast — render-preview,
+ * inspect-media, and the speech read at 5s, generate-fal-image at 10s — and only
+ * the background queues relax to 30s. The old 1s cadence issued about 547k fetch
+ * queries a day against an almost always empty queue.
+ */
+export const queuePollingSeconds = {
+  [inspectionQueue]: 5, // a studio user is waiting on the verdict
+  [renderQueue]: 5, // ...and on the first preview frame
+  [renderNotifyQueue]: 30,
+  [falImageQueue]: 10, // ...and on the first generated still
+  [falVideoQueue]: 30,
+  [falSpeechQueue]: 5 // ...and on the first spoken line
+} as const;
+
+/**
+ * pg-boss housekeeping (queue deletion bookkeeping) cadence. The old override
+ * ran it every second. This pg-boss build defaults to 24h, so pin the reviewed
+ * two minutes instead of tracking the library default.
+ */
+export const queueMaintenanceIntervalSeconds = 120;
+
+/** Queue size/progress sampling for metrics. 10s bought nothing at idle. */
+export const queueMonitorIntervalSeconds = 60;
+
+/**
+ * Outbox dispatch cadence. The dispatcher is the crash-window closer for API
+ * enqueues, not a latency budget: a row only waits here when the API could not
+ * send directly or a pass failed. Every tick costs a `WorkOutbox` scan, so 10s
+ * keeps recovery snappy while paying a tenth of the old query volume.
+ */
+export const outboxDispatchIntervalMs = 10_000;
+
 const guardedPools = new WeakSet<object>();
 const guardedQueues = new WeakSet<object>();
 
@@ -165,16 +208,25 @@ export async function dispatchOutboxSafely(pool: pg.Pool, boss: PgBoss): Promise
 export async function startQueueRuntime(
   connectionString: string,
   handlers: QueueHandlers,
-  pool = guardDatabasePool(new pg.Pool({ connectionString, max: workerDatabasePoolMax })),
+  pool = guardDatabasePool(new pg.Pool({
+    connectionString,
+    max: workerDatabasePoolMax,
+    idleTimeoutMillis: workerDatabaseIdleTimeoutMillis
+  })),
   outboxRetentionHours = defaultOutboxRetentionHours
 ) {
   guardDatabasePool(pool);
-  const boss = await new PgBoss({
+  // pg-boss hands its whole config object to `new pg.Pool(...)`, so
+  // idleTimeoutMillis reaches the queue pool even though pg-boss does not type
+  // it; the object stays un-annotated to keep that extra key.
+  const queueOptions = {
     connectionString,
     max: queueDatabasePoolMax,
-    maintenanceIntervalSeconds: 1,
-    monitorIntervalSeconds: 10
-  }).start();
+    idleTimeoutMillis: workerDatabaseIdleTimeoutMillis,
+    maintenanceIntervalSeconds: queueMaintenanceIntervalSeconds,
+    monitorIntervalSeconds: queueMonitorIntervalSeconds
+  };
+  const boss = await new PgBoss(queueOptions).start();
   guardQueue(boss);
   await boss.createQueue(inspectionQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 60 });
   await boss.createQueue(renderQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 300 });
@@ -182,39 +234,39 @@ export async function startQueueRuntime(
   await boss.createQueue(falVideoQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 1200 });
   await boss.createQueue(falSpeechQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 600 });
   await boss.createQueue(renderNotifyQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 60 });
-  await boss.work<InspectionJob>(inspectionQueue, { pollingIntervalSeconds: 1 }, async (jobs: Job<InspectionJob>[]) => {
+  await boss.work<InspectionJob>(inspectionQueue, { pollingIntervalSeconds: queuePollingSeconds[inspectionQueue] }, async (jobs: Job<InspectionJob>[]) => {
     const job = jobs[0];
     if (!job) return;
     return handlers.inspect(job.data, job.signal);
   });
-  await boss.work<PreviewJob>(renderQueue, { pollingIntervalSeconds: 1 }, async (jobs: Job<PreviewJob>[]) => {
+  await boss.work<PreviewJob>(renderQueue, { pollingIntervalSeconds: queuePollingSeconds[renderQueue] }, async (jobs: Job<PreviewJob>[]) => {
     const job = jobs[0];
     if (!job) return;
     return handlers.render(job.data, job.signal);
   });
   if (handlers.notifyRender) {
-    await boss.work<RenderNotifyJob>(renderNotifyQueue, { pollingIntervalSeconds: 1 }, async (jobs: Job<RenderNotifyJob>[]) => {
+    await boss.work<RenderNotifyJob>(renderNotifyQueue, { pollingIntervalSeconds: queuePollingSeconds[renderNotifyQueue] }, async (jobs: Job<RenderNotifyJob>[]) => {
       const job = jobs[0];
       if (!job) return;
       return handlers.notifyRender!(job.data, job.signal);
     });
   }
   if (handlers.generateFalImage) {
-    await boss.work<FalImageQueueJob>(falImageQueue, { pollingIntervalSeconds: 1 }, async (jobs: Job<FalImageQueueJob>[]) => {
+    await boss.work<FalImageQueueJob>(falImageQueue, { pollingIntervalSeconds: queuePollingSeconds[falImageQueue] }, async (jobs: Job<FalImageQueueJob>[]) => {
       const job = jobs[0];
       if (!job) return;
       return handlers.generateFalImage!(job.data, job.signal);
     });
   }
   if (handlers.generateFalVideo) {
-    await boss.work<FalVideoQueueJob>(falVideoQueue, { pollingIntervalSeconds: 1 }, async (jobs: Job<FalVideoQueueJob>[]) => {
+    await boss.work<FalVideoQueueJob>(falVideoQueue, { pollingIntervalSeconds: queuePollingSeconds[falVideoQueue] }, async (jobs: Job<FalVideoQueueJob>[]) => {
       const job = jobs[0];
       if (!job) return;
       return handlers.generateFalVideo!(job.data, job.signal);
     });
   }
   if (handlers.generateFalSpeech) {
-    await boss.work<FalSpeechQueueJob>(falSpeechQueue, { pollingIntervalSeconds: 1 }, async (jobs: Job<FalSpeechQueueJob>[]) => {
+    await boss.work<FalSpeechQueueJob>(falSpeechQueue, { pollingIntervalSeconds: queuePollingSeconds[falSpeechQueue] }, async (jobs: Job<FalSpeechQueueJob>[]) => {
       const job = jobs[0];
       if (!job) return;
       return handlers.generateFalSpeech!(job.data, job.signal);
@@ -226,9 +278,12 @@ export async function startQueueRuntime(
   } catch (error) {
     boss.emit("error", queueError(error));
   }
+  // ponytail: 10s keeps the API enqueue crash window small without a full
+  // WorkOutbox scan every second. Upgrade: have the API send inline and leave
+  // this as a recovery sweep for failed marks.
   const dispatchTimer = setInterval(
     () => void dispatchOutboxSafely(pool, boss),
-    1000
+    outboxDispatchIntervalMs
   );
   // ponytail: one 250-row batch per hour caps cleanup work but may lag a large
   // backlog. Upgrade after measuring cleanup count and oldest-undispatched age.

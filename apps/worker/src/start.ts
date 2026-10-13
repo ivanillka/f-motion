@@ -6,7 +6,13 @@ import {
   mediaLimitsFromEnv,
   S3WorkerObjectStore
 } from "./runtime.js";
-import { guardDatabasePool, outboxRetentionHoursFromEnv, startQueueRuntime, workerDatabasePoolMax } from "./queue.js";
+import {
+  guardDatabasePool,
+  outboxRetentionHoursFromEnv,
+  startQueueRuntime,
+  workerDatabaseIdleTimeoutMillis,
+  workerDatabasePoolMax
+} from "./queue.js";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -25,7 +31,11 @@ if (falByokEnabled(process.env)) {
 setFalDiagnosticSink((event) => {
   console.error("fal diagnostic", JSON.stringify(event));
 });
-const pool = guardDatabasePool(new pg.Pool({ connectionString, max: workerDatabasePoolMax }));
+const pool = guardDatabasePool(new pg.Pool({
+  connectionString,
+  max: workerDatabasePoolMax,
+  idleTimeoutMillis: workerDatabaseIdleTimeoutMillis
+}));
 const store = new S3WorkerObjectStore(new S3Client({
   region: process.env.R2_REGION ?? "auto",
   endpoint: required("R2_ENDPOINT"),

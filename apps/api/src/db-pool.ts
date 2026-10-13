@@ -6,3 +6,11 @@
  * ponytail: fixed split, not a setting. Raise these together if the pooler limit grows.
  */
 export const apiDatabasePoolMax = 4;
+
+/**
+ * node-pg closes an idle client after 10s, and the Supabase session pooler
+ * re-runs its setup (`DISCARD ALL`, `pgbouncer.get_auth`) on every reconnect.
+ * Reconnects cost egress and buy nothing between requests, so keep warm clients
+ * for five minutes. The 4 + 3 + 4 pool split is unchanged.
+ */
+export const apiDatabaseIdleTimeoutMillis = 300_000;
