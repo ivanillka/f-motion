@@ -59,6 +59,7 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - run: npm run smoke:reel
       - run: npm run verify:pages-artifact
       - run: npm run test:package-consumer
       - run: node --test tools/publication/*.test.mjs

@@ -29,6 +29,7 @@
     "deploy:pages": "node tools/deploy/deploy-pages.mjs",
     "smoke:pages": "node tools/deploy/smoke-pages.mjs",
     "smoke:agents": "node tests/agents/smoke.mjs",
+    "smoke:reel": "tsc -b apps/api/tsconfig.json --pretty false && node --experimental-strip-types tests/reel-path/smoke.mjs",
     "demo": "npm run build --workspace apps/api && npm run build --workspace apps/worker && node tests/e2e/run-servers.mjs",
     "stack": "npm run build --workspace apps/api && npm run start --workspace apps/api",
     "test:e2e:web": "playwright test -c tests/e2e/playwright.config.ts",
