@@ -1,6 +1,6 @@
 import { S3Client } from "@aws-sdk/client-s3";
 import pg from "pg";
-import { credentialVaultFromEnv, falByokEnabled } from "@f-engine/fal-host";
+import { credentialVaultFromEnv, falByokEnabled, setFalDiagnosticSink } from "@f-engine/fal-host";
 import {
   createQueueHandlers,
   mediaLimitsFromEnv,
@@ -21,6 +21,10 @@ if (falByokEnabled(process.env)) {
   // Worker decrypts owner FAL credentials for generate-fal-image / video / speech. Same KEK as API.
   credentialVaultFromEnv(process.env);
 }
+// Queue diagnostics for this process. The fal-host sink redacts keys and signed URLs.
+setFalDiagnosticSink((event) => {
+  console.error("fal diagnostic", JSON.stringify(event));
+});
 const pool = guardDatabasePool(new pg.Pool({ connectionString, max: workerDatabasePoolMax }));
 const store = new S3WorkerObjectStore(new S3Client({
   region: process.env.R2_REGION ?? "auto",

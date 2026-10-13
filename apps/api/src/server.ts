@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildStoryboardDraft, conceptsFor, cuesForScene, outputFrames, sceneUsesStock, spokenWordsForCues } from "@f-engine/reel-engine";
-import { speakKokoroLine } from "@f-engine/fal-host";
+import { speakKokoroLine, FalImageError, FalProviderError } from "@f-engine/fal-host";
 import type { CommandEnvelope, ProjectSnapshot, Voiceover } from "@f-engine/contracts";
 import { isMediaGlanceHints, isVideoArchitecture, type MediaGlanceHints, type VideoArchitecture } from "@f-engine/contracts";
 import {
@@ -97,8 +97,12 @@ import {
   ensureSpokenVoiceover,
   SpokenVoiceUnavailableError,
   spokenAudioFromMedia,
+  spokenVoiceReasonFromError,
+  spokenVoiceStatus,
   type SpokenAudioStore,
-  type SpokenSynthesizer
+  type SpokenSynthesizer,
+  type SpokenVoiceReason,
+  type SpokenVoiceStatus
 } from "./spoken-narration.js";
 
 export interface MediaDependencies {
@@ -135,6 +139,10 @@ interface AppBaseOptions {
   spokenAudio?: SpokenAudioStore;
   /** Test double. Hosted startup speaks with the owner's Kokoro voice. */
   spokenSynthesizer?: SpokenSynthesizer;
+  /** How long one Kokoro line may queue before FAL is called unavailable. */
+  speechTimeoutMs?: number;
+  /** How long a read waits for the voice before it answers with voice_status. */
+  narrationWaitMs?: number;
 }
 
 export interface AppOptions extends AppBaseOptions {
@@ -397,17 +405,28 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     if (!options.falCredentials) return undefined;
     try {
       const credential = await options.falCredentials.decryptForOwner(ownerId);
-      return (request) => speakKokoroLine(credential.apiKey, request.text);
+      return (request) => speakKokoroLine(credential.apiKey, request.text, fetch, options.speechTimeoutMs);
     } catch (error) {
       if (error instanceof FalCredentialMissingError) return undefined;
       throw error;
     }
   }
 
-  /** Spoken lines are mixed here so a host can play them before the studio is opened. */
-  async function ensurePartnerNarration(ownerId: string, project: ProjectSnapshot): Promise<ProjectSnapshot> {
+  /** Reads wait this long for the voice, then hand the rest to the next read. */
+  const narrationWaitMs = options.narrationWaitMs ?? 10_000;
+
+  /**
+   * Spoken lines are mixed here so a host can play them before the studio is
+   * opened. A read never fails on the provider: a slow queue answers
+   * voice_status preparing while the take finishes in the background, and the
+   * next read attaches the stored lines.
+   */
+  async function ensurePartnerNarration(
+    ownerId: string,
+    project: ProjectSnapshot
+  ): Promise<{ project: ProjectSnapshot; voice_status: SpokenVoiceStatus }> {
     const audio = partnerSpokenAudio();
-    if (!audio) return project;
+    if (!audio) return { project, voice_status: spokenVoiceStatus(project) };
     const save = (
       base: ProjectSnapshot,
       voiceover: Voiceover | null,
@@ -417,19 +436,65 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const synthesize = await narrationSynthesizer(ownerId);
       return ensureSpokenVoiceover(ownerId, current, audio, save, synthesize);
     };
-    try {
-      return (await prepare(project)).project;
-    } catch (error) {
-      if (error instanceof SpokenVoiceUnavailableError) return project;
-      if (!(error instanceof ConflictError)) throw error;
-      const current = await projects.get(ownerId, project.id);
-      if (!current) throw error;
+    const attempt = (async (current: ProjectSnapshot) => {
       try {
         return (await prepare(current)).project;
-      } catch (retryError) {
-        if (retryError instanceof SpokenVoiceUnavailableError) return current;
-        throw retryError;
+      } catch (error) {
+        if (!(error instanceof ConflictError)) throw error;
+        const latest = await projects.get(ownerId, project.id);
+        if (!latest) throw error;
+        return (await prepare(latest)).project;
       }
+    })(project);
+    // The wait is a deadline for the read, not for the take: the same promise
+    // keeps storing lines, so a later read attaches them.
+    const settled = await withNarrationWait(attempt, narrationWaitMs);
+    if (settled === undefined) {
+      void attempt.then(
+        () => undefined,
+        (error: unknown) => reportNarrationFailure(ownerId, project, error)
+      );
+      return { project, voice_status: spokenVoiceStatus(project, "preparing") };
+    }
+    if (settled.ok) return { project: settled.value, voice_status: spokenVoiceStatus(settled.value) };
+    const reason = spokenVoiceReasonFromError(settled.error);
+    if (!reason) throw settled.error;
+    reportNarrationFailure(ownerId, project, settled.error);
+    return { project, voice_status: spokenVoiceStatus(project, reason) };
+  }
+
+  /** The voice is a status, not a 500: log it and let the read answer. */
+  function reportNarrationFailure(ownerId: string, project: ProjectSnapshot, error: unknown): void {
+    const reason = spokenVoiceReasonFromError(error) ?? "unknown";
+    console.error(
+      "spoken narration unavailable",
+      project.id,
+      ownerId,
+      reason,
+      error instanceof Error ? error.message : error
+    );
+  }
+
+  /** undefined means the voice is still being spoken. */
+  async function withNarrationWait(
+    task: Promise<ProjectSnapshot>,
+    waitMs: number
+  ): Promise<{ ok: true; value: ProjectSnapshot } | { ok: false; error: unknown } | undefined> {
+    if (!(waitMs > 0)) return undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        task.then(
+          (value) => ({ ok: true as const, value }),
+          (error: unknown) => ({ ok: false as const, error })
+        ),
+        new Promise<undefined>((resolve) => {
+          timer = setTimeout(() => resolve(undefined), waitMs);
+          timer.unref?.();
+        })
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 
@@ -535,7 +600,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     created: boolean,
     externalId: string,
     queued = false,
-    playback?: PartnerPlayback
+    playback?: PartnerPlayback,
+    voiceStatus?: SpokenVoiceStatus
   ) {
     const projectUrl = externalProjectUrl(webOrigin, project.id);
     const preview = await portraitPreview(ownerId, project.id, project.revision);
@@ -547,7 +613,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       revision: project.revision,
       preview: preview ?? null,
       ...(preview ? {} : { next_call: nextCallForPreview(project.id, externalId, queued) }),
-      ...(playback ? { playback } : {})
+      ...(playback ? { playback } : {}),
+      ...(voiceStatus ? { voice_status: voiceStatus } : {})
     };
   }
 
@@ -564,9 +631,19 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       if (!found) {
         return response.status(404).json({ type: "not_found", message: "No draft is bound to that external id." });
       }
-      const project = await ensurePartnerNarration(integration.ownerId, found);
+      const narration = await ensurePartnerNarration(integration.ownerId, found);
+      const project = narration.project;
       const playback = await partnerPlayback(integration.ownerId, project);
-      response.json(await hostDraftBody(integration.ownerId, integration.webOrigin, project, false, externalId, false, playback));
+      response.json(await hostDraftBody(
+        integration.ownerId,
+        integration.webOrigin,
+        project,
+        false,
+        externalId,
+        false,
+        playback,
+        narration.voice_status
+      ));
     } catch (error) { next(error); }
   });
   if (integration) app.post("/api/integrations/project-imports/preview", async (request, response, next) => {
@@ -586,7 +663,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       if (!found) {
         return response.status(404).json({ type: "not_found", message: "No draft is bound to that external id." });
       }
-      const project = await ensurePartnerNarration(integration.ownerId, found);
+      const narration = await ensurePartnerNarration(integration.ownerId, found);
+      const project = narration.project;
       playback = await partnerPlayback(integration.ownerId, project);
       if (!options.renders) {
         return response.json(await hostDraftBody(
@@ -596,7 +674,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           false,
           externalId,
           false,
-          playback
+          playback,
+          narration.voice_status
         ));
       }
       // Host download billing stays with the host. Do not debit render units here.
@@ -613,7 +692,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         false,
         externalId,
         true,
-        playback
+        playback,
+        narration.voice_status
       );
       response.status(payload.preview ? 200 : 202).json({
         ...payload,
@@ -1279,13 +1359,28 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           kind: "update_voiceover",
           payload: { voiceover, spoken_audio: spokenAudio }
         }), synthesize);
-      response.json(result);
+      response.json({ ...result, voice_status: spokenVoiceStatus(result.project) });
     } catch (error) {
       if (error instanceof SpokenVoiceUnavailableError) {
         return response.status(409).json({
           type: "fal_not_connected",
           message: "Connect your FAL API key in Settings to play spoken lines."
         });
+      }
+      // A provider hiccup (queue timeout, refused download) is not a broken studio:
+      // the stills stay playable and the host asks again for the voice.
+      const voiceReason = spokenVoiceReasonFromError(error);
+      if (voiceReason && (error instanceof FalImageError || error instanceof FalProviderError)) {
+        const ownerId = String(response.locals.ownerId);
+        const current = await projects.get(ownerId, request.params.projectId);
+        if (current) {
+          reportNarrationFailure(ownerId, current, error);
+          return response.status(200).json({
+            project: current,
+            generated: 0,
+            voice_status: spokenVoiceStatus(current, voiceReason)
+          });
+        }
       }
       if (error instanceof ConflictError) {
         return response.status(409).json({

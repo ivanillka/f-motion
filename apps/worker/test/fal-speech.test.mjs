@@ -212,3 +212,74 @@ test("queued speech submits once, seals wav, skips inspect-media", async () => {
   assert.equal(options.outbox, undefined);
   assert.equal(pool.queries.some(({ sql }) => sql.includes("inspect-media")), false);
 });
+
+test("a take that is not audio from fal.media fails the job instead of sealing bytes", async () => {
+  const { credentialVaultFromEnv, encryptCredential, FalImageError } = await import("@f-engine/fal-host");
+  const vault = credentialVaultFromEnv(env);
+  const encrypted = encryptCredential("fal-test-key", {
+    id: "cred-1",
+    ownerId: "owner",
+    provider: "fal"
+  }, vault);
+  // The queue service completes, and the take itself is what is wrong.
+  const speechFetch = (take) => async (url, init = {}) => {
+    const method = String(init.method || "GET").toUpperCase();
+    if (method === "POST" && String(url).includes("queue.fal.run") && !String(url).includes("/requests/")) {
+      return new Response(JSON.stringify({ request_id: "req-speech" }), {
+        status: 200, headers: { "content-type": "application/json" }
+      });
+    }
+    if (String(url).includes("/status")) {
+      return new Response(JSON.stringify({ status: "COMPLETED" }), {
+        status: 200, headers: { "content-type": "application/json" }
+      });
+    }
+    if (String(url).includes("/requests/") && method === "GET") {
+      return new Response(JSON.stringify({ audio: { url: "https://v3.fal.media/files/voice.wav?sig=1" } }), {
+        status: 200, headers: { "content-type": "application/json" }
+      });
+    }
+    return take();
+  };
+  for (const [label, code, take] of [
+    ["a redirect off fal.media", "unsafe_output", () => new Response(null, {
+      status: 302, headers: { location: "https://evil.example/voice.wav" }
+    })],
+    ["an HTML body", "unsafe_output", () => new Response("<html>login</html>", {
+      status: 200, headers: { "content-type": "text/html" }
+    })],
+    ["a refused download", "provider_unavailable", () => new Response("busy", { status: 503 })]
+  ]) {
+    const options = {};
+    const pool = fakePool(baseRow({
+      ciphertext: Buffer.from(encrypted.ciphertext),
+      nonce: Buffer.from(encrypted.nonce),
+      authTag: Buffer.from(encrypted.authTag),
+      keyVersion: encrypted.keyVersion
+    }), options);
+    const puts = [];
+    await assert.rejects(
+      processFalSpeechJob(
+        pool,
+        {
+          async put(key, _body, contentType, length) {
+            puts.push({ key, contentType, length });
+            return { etag: "\"etag\"" };
+          },
+          async delete() {}
+        },
+        { generationJobId: "job-s1", ownerId: "owner", projectId: "project" },
+        new AbortController().signal,
+        env,
+        speechFetch(take)
+      ),
+      (error) => error instanceof FalImageError && error.code === code,
+      label
+    );
+    // Nothing is sealed and no media row is inserted, so the runtime fails the job.
+    assert.deepEqual(puts, [], label);
+    assert.equal(options.insertedMedia, undefined, label);
+    assert.equal(pool.row.resultMediaId, null, label);
+    assert.equal(pool.row.state, "downloading", label);
+  }
+});
