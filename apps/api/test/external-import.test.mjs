@@ -1233,6 +1233,116 @@ test("a partner read answers 200 while a slow voice queue finishes in the backgr
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+/** Counts narration saves so a duplicated take shows up in the assertions. */
+class CountingProjects extends ProjectService {
+  constructor() {
+    super();
+    this.narrationSaves = 0;
+  }
+  command(ownerId, command) {
+    if (command.kind === "update_voiceover") this.narrationSaves += 1;
+    return super.command(ownerId, command);
+  }
+}
+
+test("two overlapping partner reads share one narration take and never race the save", async () => {
+  const token = "o".repeat(32);
+  const ownerId = "11111111-1111-4111-8111-111111111111";
+  const spokenId = "cms:gallery:overlapping-voice";
+  const projects = new CountingProjects();
+  const media = playbackMediaStore();
+  media.add("still-1");
+  const speech = countingSpeech(media.assets);
+  const created = projects.create(ownerId, { purpose: "Two reads, one voice", audience: "Viewers", tone: "Calm" });
+  projects.bindHostImport(ownerId, created.id, { externalId: spokenId });
+  projects.command(ownerId, {
+    command_id: "board-overlap",
+    project_id: created.id,
+    base_revision: created.revision,
+    client_timestamp: "t",
+    kind: "replace_storyboard",
+    payload: {
+      scenes: [
+        playbackScene("s1", "Selected gallery image 4", {
+          media_id: "still-1",
+          overlay_look: "caption",
+          duration_ms: 3000,
+          order: 0
+        }),
+        playbackScene("s2", "Read the full post.", {
+          overlay_look: "spoken",
+          overlay_place: "center",
+          order: 1,
+          duration_ms: 4000
+        }),
+        playbackScene("s3", "Then open the gallery.", {
+          overlay_look: "spoken",
+          overlay_place: "center",
+          order: 2,
+          duration_ms: 4000
+        })
+      ]
+    }
+  });
+  const spokenCalls = [];
+  const spokenSynthesizer = async (request) => {
+    spokenCalls.push(request);
+    // Both reads stop waiting before the take lands, so the run is still open
+    // when the second read asks for it.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    const samples = new Int16Array(2_400);
+    samples.fill(9_000);
+    return encodeWav(samples, 24_000);
+  };
+  const server = createServer(createTestApp({
+    projects,
+    spokenAudio: speech,
+    spokenSynthesizer,
+    narrationWaitMs: 20,
+    media: { repository: media.repository, store: media.store },
+    externalImports: { token, ownerId, webOrigin: "https://f-motion.example", mediaOrigins: [] }
+  }));
+  const origin = await listen(server);
+  const headers = { authorization: `Bearer ${token}` };
+  try {
+    const read = () => fetch(
+      `${origin}/v1/integrations/project-imports?external_id=${encodeURIComponent(spokenId)}`,
+      { headers }
+    );
+    // Both reads used to save the same take on the same base revision, so the
+    // loser answered 500 with "stale base revision".
+    const [first, second] = await Promise.all([read(), read()]);
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 200);
+    const bodies = await Promise.all([first.json(), second.json()]);
+    for (const body of bodies) {
+      assert.deepEqual(body.voice_status, { attached: false, ready: false, lines: 0, reason: "preparing" });
+      assert.equal(body.playback.voiceover, null);
+      assert.equal(body.playback.scenes[0].media.url, "https://signed.example/projects/media/still-1");
+      assert.equal(body.playback.scenes[1].overlay_look, "spoken");
+    }
+
+    await waitFor(
+      () => Boolean(projects.findByExternalId(ownerId, spokenId).brief.voiceover?.media_id),
+      "the stored take"
+    );
+    // Two Spoken lines speak once each and the mix is stored once: the reads
+    // shared a single run instead of racing two takes into the same revision.
+    assert.deepEqual(spokenCalls.map((call) => call.text), ["Read the full post.", "Then open the gallery."]);
+    assert.equal(speech.puts(), 3);
+    assert.equal(projects.narrationSaves, 3);
+
+    const later = await read();
+    assert.equal(later.status, 200);
+    const attached = await later.json();
+    assert.deepEqual(attached.voice_status, { attached: true, ready: true, lines: 2 });
+    assert.match(attached.playback.voiceover.url, /^https:\/\/signed\.example\/projects\/media\/wav-/);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+
 
 test("a partner read keeps the stills when the voice provider fails", async () => {
   const token = "f".repeat(32);
