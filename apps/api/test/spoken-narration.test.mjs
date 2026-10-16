@@ -461,3 +461,68 @@ test("a provider hiccup answers 200 with voice_status and a later open attaches 
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+/** Counts narration saves so a duplicated take shows up in the assertions. */
+class NarratingProjects extends ProjectService {
+  constructor() {
+    super();
+    this.narrationSaves = 0;
+  }
+  command(ownerId, command) {
+    if (command.kind === "update_voiceover") this.narrationSaves += 1;
+    return super.command(ownerId, command);
+  }
+}
+
+test("two overlapping opens share one narration take and store it once", async () => {
+  const projects = new NarratingProjects();
+  const audio = memoryAudio();
+  const calls = [];
+  const spokenSynthesizer = async (request) => {
+    calls.push(request);
+    // A slow queue: the second open arrives while the take is still running.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    return voiceWav(request.text);
+  };
+  const server = createServer(createTestApp({ ownerId: "owner", projects, spokenAudio: audio, spokenSynthesizer }));
+  const origin = await listen(server);
+  try {
+    const created = await fetch(`${origin}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "Two opens, one take", audience: "Viewers", tone: "Calm" })
+    });
+    const { project } = await created.json();
+    const replaced = await fetch(`${origin}/api/projects/${project.id}/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command_id: "board",
+        base_revision: project.revision,
+        client_timestamp: "t",
+        kind: "replace_storyboard",
+        payload: { scenes: [scene("s5", "Read the full post.", { duration_ms: 6000 })] }
+      })
+    });
+    assert.equal(replaced.status, 200);
+    const open = () => fetch(`${origin}/api/projects/${project.id}/spoken-narration`, { method: "POST" });
+    // The open that lost the revision race used to answer 409 conflict while the
+    // studio showed an error over a draft that was in fact voiced.
+    const [first, second] = await Promise.all([open(), open()]);
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 200);
+    const bodies = await Promise.all([first.json(), second.json()]);
+    for (const body of bodies) {
+      assert.equal(body.generated, 1);
+      assert.deepEqual(body.voice_status, { attached: true, ready: true, lines: 1 });
+      assert.ok(body.project.brief.voiceover.media_id);
+    }
+    // One line is spoken once and the mix is stored once for both opens.
+    assert.deepEqual(calls.map((call) => call.text), ["Read the full post."]);
+    assert.equal(audio.puts(), 2);
+    assert.equal(projects.narrationSaves, 2);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+

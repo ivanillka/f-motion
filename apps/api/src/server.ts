@@ -416,6 +416,57 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
   const narrationWaitMs = options.narrationWaitMs ?? 10_000;
 
   /**
+   * One voice preparation per project at a time. Two reads of the same draft
+   * share the run, so the lines are spoken and stored once instead of racing
+   * each other into the same revision.
+   */
+  const inflightNarration = new Map<string, Promise<{ project: ProjectSnapshot; generated: number }>>();
+
+  /**
+   * Speaks the missing Spoken lines and stores the mix. A save that loses a
+   * race for the project revision is not a failed read: another writer already
+   * stored lines on that revision, so re-read the project and report it.
+   */
+  function narrationRun(
+    ownerId: string,
+    project: ProjectSnapshot,
+    audio: SpokenAudioStore
+  ): Promise<{ project: ProjectSnapshot; generated: number }> {
+    const key = `${ownerId}:${project.id}`;
+    const shared = inflightNarration.get(key);
+    if (shared) return shared;
+    const run = (async () => {
+      try {
+        const synthesize = await narrationSynthesizer(ownerId);
+        return await ensureSpokenVoiceover(
+          ownerId,
+          project,
+          audio,
+          (base, voiceover, spokenAudio) => saveSpokenNarration(ownerId, base, voiceover, spokenAudio),
+          synthesize
+        );
+      } catch (error) {
+        if (!(error instanceof ConflictError)) throw error;
+        const latest = await projects.get(ownerId, project.id);
+        if (!latest) throw error;
+        return { project: latest, generated: 0 };
+      }
+    })();
+    inflightNarration.set(key, run);
+    run.finally(() => {
+      if (inflightNarration.get(key) === run) inflightNarration.delete(key);
+    }).catch(() => undefined);
+    return run;
+  }
+
+  /** A raced save hands back the winner's project: attached, or still preparing. */
+  function narrationStatus(project: ProjectSnapshot): SpokenVoiceStatus {
+    const status = spokenVoiceStatus(project);
+    if (status.attached || status.ready) return status;
+    return spokenVoiceStatus(project, "preparing");
+  }
+
+  /**
    * Spoken lines are mixed here so a host can play them before the studio is
    * opened. A read never fails on the provider: a slow queue answers
    * voice_status preparing while the take finishes in the background, and the
@@ -427,25 +478,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
   ): Promise<{ project: ProjectSnapshot; voice_status: SpokenVoiceStatus }> {
     const audio = partnerSpokenAudio();
     if (!audio) return { project, voice_status: spokenVoiceStatus(project) };
-    const save = (
-      base: ProjectSnapshot,
-      voiceover: Voiceover | null,
-      spokenAudio: NonNullable<ProjectSnapshot["brief"]["spoken_audio"]>
-    ) => saveSpokenNarration(ownerId, base, voiceover, spokenAudio);
-    const prepare = async (current: ProjectSnapshot) => {
-      const synthesize = await narrationSynthesizer(ownerId);
-      return ensureSpokenVoiceover(ownerId, current, audio, save, synthesize);
-    };
-    const attempt = (async (current: ProjectSnapshot) => {
-      try {
-        return (await prepare(current)).project;
-      } catch (error) {
-        if (!(error instanceof ConflictError)) throw error;
-        const latest = await projects.get(ownerId, project.id);
-        if (!latest) throw error;
-        return (await prepare(latest)).project;
-      }
-    })(project);
+    const attempt = narrationRun(ownerId, project, audio).then((result) => result.project);
     // The wait is a deadline for the read, not for the take: the same promise
     // keeps storing lines, so a later read attaches them.
     const settled = await withNarrationWait(attempt, narrationWaitMs);
@@ -456,7 +489,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       );
       return { project, voice_status: spokenVoiceStatus(project, "preparing") };
     }
-    if (settled.ok) return { project: settled.value, voice_status: spokenVoiceStatus(settled.value) };
+    if (settled.ok) return { project: settled.value, voice_status: narrationStatus(settled.value) };
     const reason = spokenVoiceReasonFromError(settled.error);
     if (!reason) throw settled.error;
     reportNarrationFailure(ownerId, project, settled.error);
@@ -1349,17 +1382,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const ownerId = String(response.locals.ownerId);
       const project = await projects.get(ownerId, request.params.projectId);
       if (!project) return response.status(404).json({ type: "not_found", message: "not found" });
-      const synthesize = await narrationSynthesizer(ownerId);
-      const result = await ensureSpokenVoiceover(ownerId, project, audio, (base, voiceover, spokenAudio) =>
-        projects.command(ownerId, {
-          command_id: randomUUID(),
-          project_id: base.id,
-          base_revision: base.revision,
-          client_timestamp: new Date().toISOString(),
-          kind: "update_voiceover",
-          payload: { voiceover, spoken_audio: spokenAudio }
-        }), synthesize);
-      response.json({ ...result, voice_status: spokenVoiceStatus(result.project) });
+      const result = await narrationRun(ownerId, project, audio);
+      response.json({ ...result, voice_status: narrationStatus(result.project) });
     } catch (error) {
       if (error instanceof SpokenVoiceUnavailableError) {
         return response.status(409).json({
@@ -1381,13 +1405,6 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
             voice_status: spokenVoiceStatus(current, voiceReason)
           });
         }
-      }
-      if (error instanceof ConflictError) {
-        return response.status(409).json({
-          type: "conflict",
-          message: error.message,
-          authoritative_snapshot: error.authoritativeSnapshot
-        });
       }
       if (error instanceof ValidationError) {
         return response.status(422).json({ type: "validation", message: error.message });
