@@ -621,3 +621,38 @@ test("landing CSP matches Pages and both web nginx configs", async () => {
   assert.doesNotMatch(home, /<script(?![^>]*\bsrc=)/);
   assert.doesNotMatch(cs, /<script(?![^>]*\bsrc=)/);
 });
+
+test("scene editor is split into four accessible tabs (Style, Timing, Text, Media) with at most 4 controls each", async () => {
+  const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
+
+  assert.match(source, /role="tablist"/);
+  assert.match(source, /role="tab"/);
+  assert.match(source, /role="tabpanel"/);
+  assert.match(source, /aria-controls=\{`scene-panel-\$\{t\.id\}`\}/);
+  assert.match(source, /aria-labelledby="scene-tab-style"/);
+  assert.match(source, /aria-labelledby="scene-tab-timing"/);
+  assert.match(source, /aria-labelledby="scene-tab-text"/);
+  assert.match(source, /aria-labelledby="scene-tab-media"/);
+
+  assert.match(source, /id:\s*"style",\s*label:\s*"Style"/);
+  assert.match(source, /id:\s*"timing",\s*label:\s*"Timing"/);
+  assert.match(source, /id:\s*"text",\s*label:\s*"Text"/);
+  assert.match(source, /id:\s*"media",\s*label:\s*"Media"/);
+
+  assert.match(source, /onKeyDown=\{handleTabKeyDown\}/);
+  assert.match(source, /ArrowRight/);
+  assert.match(source, /ArrowLeft/);
+  assert.match(source, /Home/);
+  assert.match(source, /End/);
+
+  assert.match(css, /\.scene-tablist/);
+  assert.match(css, /\.scene-tab-btn/);
+  assert.match(css, /\.scene-tabpanel/);
+  assert.match(css, /\.scene-tabpanel\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
+
+  assert.match(source, /scene-panel-style[\s\S]*overlay-looks[\s\S]*overlay-places[\s\S]*motion-\$\{activeScene\.id\}/);
+  assert.match(source, /scene-panel-timing[\s\S]*duration-\$\{activeScene\.id\}[\s\S]*audio-\$\{activeScene\.id\}[\s\S]*Mute scene/);
+  assert.match(source, /scene-panel-text[\s\S]*caption-\$\{activeScene\.id\}[\s\S]*prompt-\$\{activeScene\.id\}/);
+  assert.match(source, /scene-panel-media[\s\S]*searchStock[\s\S]*openFalGenerate[\s\S]*openFalAnimate[\s\S]*Upload media/);
+});
