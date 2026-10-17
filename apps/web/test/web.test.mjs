@@ -6,7 +6,7 @@ import { createServer } from "vite";
 
 test("required recovery, accessibility, and preview language is present", async () => {
   const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
-  for (const phrase of ["Drafts", "Add photos or clips", "Try again", "Storyboard", "What’s new", "Full changelog on GitHub", "Live preview", "Play progress", "Restart", "Previous scene", "Next scene", "Find licensed media", "Find another licensed video", "Generate AI image for scene", "Animate this image", "Generate one 6-second video", "Use video for scene", "Keep image", "Generate one image", "Get FAL price", "Use for scene", "Keep current media", "Generate another", "AI-generated with FAL", "Charged directly to your FAL account", "Select for scene", "Move scene", "Add scene", "Remove scene", "Play preview", "Pause preview", "Export final", "Final export", "Download export", "playsInline", "Older preview", "Reload latest", "Save as new project", "media not copied", "Save as template", "Save template", "Update template", "Templates", "media not stored", "Overwrite from this draft", "pending", "was not merged", "Reconnecting", "magic link", "Google", "Pexels", "Cancel render", "Download preview", "Accurate preview failed", "Retry", "Choose video sources", "Choose your video sources", "Real stock video", "AI stills", "More providers", "More ways to create", "Locked", "Why is this locked", "Pexels stock is locked", "Connect your Pexels API key to search real stock video", "FAL generation is locked", "Open provider settings", "Settings", "Sign out", "Waiting for media inspection", "Media is still inspecting", "Connect your own Pexels API key", "F-Motion does not supply or share a Pexels key", "Connect Pexels", "Test Pexels", "Disconnect Pexels", "Connect your own FAL API-scope key", "charged directly to your FAL account", "F-Motion does not supply or share a FAL key", "Connect FAL", "Test connection", "Disconnect", "Sign in to open the imported draft.", "Open the email link to finish sign-in.", "Delete"]) assert.match(source, new RegExp(phrase));
+  for (const phrase of ["Drafts", "Add photos or clips", "Try again", "Storyboard", "What’s new", "Full changelog on GitHub", "Live preview", "Play progress", "Restart", "Previous scene", "Next scene", "Find licensed media", "Find another licensed video", "Generate AI image for scene", "Animate this image", "Generate one 6-second video", "Use video for scene", "Keep image", "Generate one image", "Get FAL price", "Use for scene", "Keep current media", "Generate another", "AI-generated with FAL", "Charged directly to your FAL account", "Select for scene", "Move scene", "Add scene", "Remove scene", "Play preview", "Pause preview", "Export video", "Final export", "Download export", "playsInline", "Older preview", "Reload latest", "Save as new project", "media not copied", "Save as template", "Save template", "Update template", "Templates", "media not stored", "Overwrite from this draft", "pending", "was not merged", "Reconnecting", "magic link", "Google", "Pexels", "Cancel render", "Download preview", "Accurate preview failed", "Retry", "Choose video sources", "Choose your video sources", "Real stock video", "AI stills", "More providers", "More ways to create", "Locked", "Why is this locked", "Pexels stock is locked", "Connect your Pexels API key to search real stock video", "FAL generation is locked", "Open provider settings", "Settings", "Sign out", "Waiting for media inspection", "Media is still inspecting", "Connect your own Pexels API key", "F-Motion does not supply or share a Pexels key", "Connect Pexels", "Test Pexels", "Disconnect Pexels", "Connect your own FAL API-scope key", "charged directly to your FAL account", "F-Motion does not supply or share a FAL key", "Connect FAL", "Test connection", "Disconnect", "Sign in to open the imported draft.", "Open the email link to finish sign-in.", "Delete"]) assert.match(source, new RegExp(phrase));
   assert.match(source, /applyStoryboardTemplate\(/);
   assert.match(source, /openSaveTemplate\(/);
   assert.match(source, /snapshotToTemplate\(/);
@@ -38,8 +38,12 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /generateReelSession\(/);
   assert.match(source, /materializeReelProject\(/);
   assert.match(source, /media-sources-strip/);
-  assert.match(source, /Crafting your reel/);
-  assert.match(source, /Animate stills/);
+  assert.match(source, /Making your storyboard/);
+  assert.match(source, /Make my storyboard now/);
+  assert.match(source, /scene-caption-hint/);
+  // Scene cards show the caption or a plain hint, never the internal image prompt.
+  assert.doesNotMatch(source, /scene\.caption \|\| scene\.visual_prompt/);
+  assert.match(source, /Turn photos into motion/);
   assert.match(source, /animateStills/);
   assert.match(source, /beginAnimateStillsQueue\(/);
   assert.match(source, /conceptIdForArchitecture/);
@@ -78,7 +82,7 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /VITE_PARTNER_GALLERY_URL/);
   assert.doesNotMatch(source, /Fotium Motion|Fotium Studio/);
   assert.match(source, /Search licensed music/);
-  assert.match(source, /Export final mixes this bed/);
+  assert.match(source, /Export video mixes this bed/);
   assert.match(source, /Kevin MacLeod/);
   assert.match(source, /Mixkit/);
   assert.match(source, /Trendy/);
@@ -90,7 +94,7 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Reel 9:16/);
   assert.match(source, /Desktop 16:9/);
   assert.match(source, /name="output-frame"/);
-  assert.match(source, /Mix stock, AI footage, and diagrams/);
+  assert.match(source, /Mix in Pexels videos, images made with AI, and diagrams/);
   assert.match(source, /This shot is AI footage/);
   assert.match(source, /This shot is a diagram/);
   assert.match(source, /Download desktop/);
@@ -157,8 +161,8 @@ test("required recovery, accessibility, and preview language is present", async 
   const apiSource = await readFile(new URL("../src/api.ts", import.meta.url), "utf8");
   assert.match(apiSource, /Funkorama/);
   assert.match(apiSource, /stockBedUrl/);
-  assert.match(apiSource, /Looking at your media/);
-  assert.match(apiSource, /Drop the photos or clips/);
+  assert.match(apiSource, /Looking at your photos/);
+  assert.match(apiSource, /Add your photos or clips/);
   assert.match(apiSource, /I looked at/);
   assert.match(apiSource, /deleteProject\(/);
   assert.match(apiSource, /method: "DELETE"/);
@@ -171,7 +175,7 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /type === "validation"/);
   assert.match(source, /falGenerationActive\(/);
   assert.match(source, /Continue editing/);
-  assert.match(source, /Animating…/);
+  assert.match(source, /Adding motion…/);
   assert.match(source, /Animating scene \$\{activeScene\.order \+ 1\} in the background/);
   assert.match(source, /setFalVideoOpen\(false\)/);
   assert.match(source, /is-preparing/);

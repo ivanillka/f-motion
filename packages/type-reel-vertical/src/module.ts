@@ -69,7 +69,7 @@ export const reelVerticalModule: ContentTypeModule = {
   },
 
   exportPackage(artifact, session) {
-    // Studio Export final uses requestRender on the materialized ProjectSnapshot.
+    // Studio Export video uses requestRender on the materialized ProjectSnapshot.
     return {
       format: "mp4",
       filename: "reel-vertical.mp4",
