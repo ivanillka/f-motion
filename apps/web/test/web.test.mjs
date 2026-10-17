@@ -305,6 +305,20 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.brief-chat/);
   assert.match(css, /\.app-shell-brief/);
   assert.match(css, /\.brief-composer textarea \{[\s\S]*min-height: 44px/);
+  // The phone dock owns the bottom strip: the pinned composer, the dock itself, and
+  // every studio screen keep the dock height plus the OS home-indicator inset clear.
+  assert.match(css, /--safe-bottom: env\(safe-area-inset-bottom, 0px\)/);
+  assert.match(css, /--dock-h: calc\(var\(--dock\) \+ var\(--safe-bottom\)\)/);
+  assert.match(css, /\.app-stage \{\s*min-width: 0;\s*min-height: 100dvh;\s*padding: 24px 24px calc\(24px \+ var\(--safe-bottom\)\);/);
+  assert.match(css, /\.app-shell-editor \.app-stage \{\s*max-width: none;\s*padding: 12px 20px calc\(20px \+ var\(--safe-bottom\)\);/);
+  assert.match(css, /\.app-shell-signed \.app-stage,\n  \.app-shell-editor \.app-stage \{ padding-bottom: calc\(var\(--dock-h\) \+ 20px\); \}/);
+  assert.match(css, /\.app-dock \{[\s\S]{0,200}height: var\(--dock-h\);[\s\S]{0,60}padding: 6px 8px calc\(6px \+ var\(--safe-bottom\)\);/);
+  assert.match(css, /@media \(max-width: 899px\) \{\s*\.brief-composer \{ bottom: var\(--dock-h\); \}\s*\}/);
+  // The phone shell must grow with its content; a viewport-tall grid row swallowed
+  // the dock padding and left tall screens (Storyboard) scrolled under the dock.
+  assert.match(css, /\.app-space \.app-shell \{[\s\S]{0,600}display: block;/);
+  assert.match(css, /\.app-space \.app-stage \{\s*height: auto;\s*min-height: 100dvh;\s*\}/);
+  assert.match(css, /\.app-stage \{ padding: 16px 16px calc\(16px \+ var\(--safe-bottom\)\); \}/);
   assert.match(css, /\.preview-grade/);
   assert.match(css, /\.caption-burn/);
   assert.match(css, /\.look-title/);
