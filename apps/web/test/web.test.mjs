@@ -38,8 +38,12 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /generateReelSession\(/);
   assert.match(source, /materializeReelProject\(/);
   assert.match(source, /media-sources-strip/);
-  assert.match(source, /Crafting your reel/);
-  assert.match(source, /Animate stills/);
+  assert.match(source, /Making your storyboard/);
+  assert.match(source, /Make my storyboard now/);
+  assert.match(source, /scene-caption-hint/);
+  // Scene cards show the caption or a plain hint, never the internal image prompt.
+  assert.doesNotMatch(source, /scene\.caption \|\| scene\.visual_prompt/);
+  assert.match(source, /Turn photos into motion/);
   assert.match(source, /animateStills/);
   assert.match(source, /beginAnimateStillsQueue\(/);
   assert.match(source, /conceptIdForArchitecture/);
@@ -90,7 +94,7 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Reel 9:16/);
   assert.match(source, /Desktop 16:9/);
   assert.match(source, /name="output-frame"/);
-  assert.match(source, /Mix stock, AI footage, and diagrams/);
+  assert.match(source, /Mix in Pexels videos, images made with AI, and diagrams/);
   assert.match(source, /This shot is AI footage/);
   assert.match(source, /This shot is a diagram/);
   assert.match(source, /Download desktop/);
@@ -157,8 +161,8 @@ test("required recovery, accessibility, and preview language is present", async 
   const apiSource = await readFile(new URL("../src/api.ts", import.meta.url), "utf8");
   assert.match(apiSource, /Funkorama/);
   assert.match(apiSource, /stockBedUrl/);
-  assert.match(apiSource, /Looking at your media/);
-  assert.match(apiSource, /Drop the photos or clips/);
+  assert.match(apiSource, /Looking at your photos/);
+  assert.match(apiSource, /Add your photos or clips/);
   assert.match(apiSource, /I looked at/);
   assert.match(apiSource, /deleteProject\(/);
   assert.match(apiSource, /method: "DELETE"/);
@@ -171,7 +175,7 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /type === "validation"/);
   assert.match(source, /falGenerationActive\(/);
   assert.match(source, /Continue editing/);
-  assert.match(source, /Animating…/);
+  assert.match(source, /Adding motion…/);
   assert.match(source, /Animating scene \$\{activeScene\.order \+ 1\} in the background/);
   assert.match(source, /setFalVideoOpen\(false\)/);
   assert.match(source, /is-preparing/);

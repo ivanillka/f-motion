@@ -58,12 +58,16 @@ async function signIn(page: import("@playwright/test").Page) {
 }
 
 
+async function nextBriefChoice(page: Page) {
+  return page.locator(".brief-chat-choices button:not(.is-primary)").first();
+}
+
 async function describeVideo(page: Page, text: string): Promise<void> {
   await page.getByLabel("Message F-Motion").fill(text);
   await page.getByRole("button", { name: "Send" }).click();
   for (let step = 0; step < 4; step += 1) {
     if (await page.getByRole("heading", { name: "Storyboard" }).isVisible()) return;
-    const choice = page.locator(".brief-chat-choices button").first();
+    const choice = await nextBriefChoice(page);
     if (!await choice.isVisible()) break;
     await choice.click();
   }
@@ -72,8 +76,8 @@ async function describeVideo(page: Page, text: string): Promise<void> {
 
 async function briefAdvance(page: Page): Promise<"storyboard" | "own" | "choices"> {
   const storyboard = page.getByRole("heading", { name: "Storyboard" });
-  const own = page.getByRole("button", { name: "My own media", exact: true });
-  const choice = page.locator(".brief-chat-choices button").first();
+  const own = page.getByRole("button", { name: "Use my photos", exact: true });
+  const choice = await nextBriefChoice(page);
   await expect.poll(async () => {
     if (await storyboard.isVisible()) return "storyboard";
     if (await own.isVisible()) return "own";
@@ -87,14 +91,14 @@ async function briefAdvance(page: Page): Promise<"storyboard" | "own" | "choices
 
 async function sayOwnMedia(page: Page): Promise<void> {
   if (await page.getByRole("heading", { name: "Storyboard" }).isVisible()) return;
-  const own = page.getByRole("button", { name: "My own media", exact: true });
+  const own = page.getByRole("button", { name: "Use my photos", exact: true });
   if (await own.isVisible()) {
     await own.click();
     return;
   }
   const box = page.getByLabel("Message F-Motion");
   if (!await box.isVisible()) return;
-  await box.fill("My own media");
+  await box.fill("Use my photos");
   await page.getByRole("button", { name: "Send" }).click();
 }
 
@@ -106,11 +110,11 @@ async function briefWithOwnStill(page: Page, text: string): Promise<void> {
     const next = await briefAdvance(page);
     if (next === "storyboard") return;
     if (next === "own") {
-      await page.getByRole("button", { name: "My own media", exact: true }).click();
+      await page.getByRole("button", { name: "Use my photos", exact: true }).click();
       pickedOwn = true;
       break;
     }
-    await page.locator(".brief-chat-choices button").first().click();
+    await (await nextBriefChoice(page)).click();
   }
   if (!pickedOwn) await sayOwnMedia(page);
   if (await page.getByRole("heading", { name: "Storyboard" }).isVisible()) return;
@@ -119,7 +123,7 @@ async function briefWithOwnStill(page: Page, text: string): Promise<void> {
     const next = await briefAdvance(page);
     if (next === "storyboard") return;
     if (next !== "choices") break;
-    await page.locator(".brief-chat-choices button").first().click();
+    await (await nextBriefChoice(page)).click();
   }
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
 }
@@ -242,12 +246,23 @@ test("locked provider actions explain the blocker and next action", async ({ pag
 });
 
 test("own media is glanced locally before remaining Create questions", async ({ page }) => {
+  await page.route("https://e2e-storage.invalid/**", (route) =>
+    route.fulfill({ status: 200, body: "" }));
   await signIn(page);
   await page.getByRole("button", { name: "Create new video" }).click();
   await page.locator("section.create-brief input[type=file]").setInputFiles("apps/worker/test/fixtures/still.jpg");
   await expect(page.getByText(/I looked at 1 photo/i)).toBeVisible();
-  await expect(page.locator(".brief-chat-choices button").first()).toBeVisible();
+  const makeNow = page.getByRole("button", { name: "Make my storyboard now", exact: true });
+  await expect(makeNow).toBeVisible();
+  await expect(page.locator(".brief-chat-choices button").first()).toHaveText("Make my storyboard now");
+  await expect(page.locator(".brief-chat-choices button.is-primary").first()).toHaveText("Make my storyboard now");
   await expect(page.getByRole("heading", { name: "Storyboard" })).toHaveCount(0);
+  // The first action after uploads skips the remaining questions and lands on
+  // the storyboard with the photo already attached to scene 1.
+  await makeNow.click();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "Media attached to this scene" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit scene 1" }).locator("img")).toBeVisible();
 });
 
 test("upload journey, natural conflict recovery, render, and download", async ({ page }) => {
@@ -561,7 +576,7 @@ test("scene editor tabs switch via click and keyboard, show at most 4 controls, 
   await expect(timingPanel).toBeVisible();
   await expect(stylePanel).toBeHidden();
 
-  // Timing panel has exactly 3 controls (Seconds, Clip audio, Mute button)
+  // Timing panel has exactly 3 controls (Seconds, clip volume, Mute button)
   await expect(timingPanel.locator("input, button")).toHaveCount(3);
   await page.getByLabel("Seconds").fill("4.5");
   await page.getByLabel("Seconds").press("Tab");

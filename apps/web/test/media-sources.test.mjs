@@ -57,7 +57,7 @@ test("animate stills toggle stays off unless FAL is connected and pool has still
     falConnected: true,
     falUnavailable: false,
     stillCount: 0
-  }).reason, /stills/i);
+  }).reason, /add photos first/i);
   assert.equal(animateStillsToggleState({
     falConnected: true,
     falUnavailable: false,
