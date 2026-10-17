@@ -340,6 +340,7 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   expect(new Set(attached.creators).size).toBeGreaterThanOrEqual(1);
 
   await page.getByRole("button", { name: "Edit scene 1" }).click();
+  await page.getByRole("tab", { name: "Media" }).click();
   await page.getByRole("button", { name: "Find another licensed video for scene 1" }).click();
   await expect(page.locator(".fit-badge").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Select for scene 1" })).toHaveCount(3);
@@ -348,6 +349,7 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
   await expect(page.getByRole("status").filter({ hasText: "video by Fixture Two With A Long Name on Pexels" })).toBeVisible();
 
   await page.getByRole("button", { name: "Edit scene 5" }).click();
+  await page.getByRole("tab", { name: "Text" }).click();
   await page.getByLabel("Scene 5 caption").fill("Closing beat for the guided editor");
   await page.getByLabel("Scene 5 caption").press("Tab");
   await page.getByRole("button", { name: "Edit scene 2" }).click();
@@ -395,6 +397,7 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
 
   await page.getByRole("button", { name: "Edit scene 1" }).click();
+  await page.getByRole("tab", { name: "Media" }).click();
   await page.getByRole("button", { name: "Generate AI image for scene 1" }).click();
   await expect(page.getByRole("heading", { name: "Generate AI image for scene 1" })).toBeVisible();
   await page.getByLabel("Image prompt").fill("quiet lighthouse at dusk, soft fog, cinematic");
@@ -498,6 +501,7 @@ test("FAL image-to-video quotes, confirms, and attaches only after review", asyn
   for (const sceneNumber of [2, 3, 4]) await attachFixtureToScene(page, sceneNumber);
 
   await page.getByRole("button", { name: "Edit scene 1" }).click();
+  await page.getByRole("tab", { name: "Media" }).click();
   await page.getByRole("button", { name: "Animate this image for scene 1" }).click();
   await expect(page.getByRole("heading", { name: "Animate image for scene 1" })).toBeVisible();
   await page.getByLabel("Motion prompt").fill("gentle camera drift over the harbor");
@@ -513,4 +517,87 @@ test("FAL image-to-video quotes, confirms, and attaches only after review", asyn
   await expect(page.getByRole("button", { name: /Play preview|Pause preview/ })).toBeVisible();
   await expect(page.getByLabel(/Live preview/)).toBeVisible();
   await expect(page.getByRole("slider", { name: "Play progress" })).toBeVisible();
+});
+
+test("scene editor tabs switch via click and keyboard, show at most 4 controls, and persist edits", async ({ page }) => {
+  test.setTimeout(90_000);
+  await signIn(page);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await briefWithOwnStill(page, "A calm launch teaser for a small team");
+  await createStoryboard(page);
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: "Edit scene 1" }).click();
+
+  const tablist = page.getByRole("tablist", { name: "Scene 1 settings" });
+  await expect(tablist).toBeVisible();
+
+  const styleTab = page.getByRole("tab", { name: "Style" });
+  const timingTab = page.getByRole("tab", { name: "Timing" });
+  const textTab = page.getByRole("tab", { name: "Text" });
+  const mediaTab = page.getByRole("tab", { name: "Media" });
+
+  await expect(styleTab).toHaveAttribute("aria-selected", "true");
+  await expect(timingTab).toHaveAttribute("aria-selected", "false");
+  await expect(textTab).toHaveAttribute("aria-selected", "false");
+  await expect(mediaTab).toHaveAttribute("aria-selected", "false");
+
+  // Style panel is visible and active
+  const stylePanel = page.locator("#scene-panel-style");
+  await expect(stylePanel).toBeVisible();
+  await expect(stylePanel.getByRole("group", { name: "Overlay look" })).toBeVisible();
+  await expect(stylePanel.getByRole("group", { name: "Overlay place" })).toBeVisible();
+  await expect(page.getByLabel("Scene 1 motion")).toBeVisible();
+
+  // Edit in Style tab: change motion to Zoom
+  await page.getByLabel("Scene 1 motion").selectOption("zoom");
+  await expect(page.getByRole("status").filter({ hasText: "All changes saved" })).toBeVisible();
+
+  // Switch tab via keyboard ArrowRight
+  await styleTab.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(timingTab).toHaveAttribute("aria-selected", "true");
+  const timingPanel = page.locator("#scene-panel-timing");
+  await expect(timingPanel).toBeVisible();
+  await expect(stylePanel).toBeHidden();
+
+  // Timing panel has exactly 3 controls (Seconds, Clip audio, Mute button)
+  await expect(timingPanel.locator("input, button")).toHaveCount(3);
+  await page.getByLabel("Seconds").fill("4.5");
+  await page.getByLabel("Seconds").press("Tab");
+  await expect(page.getByRole("status").filter({ hasText: "All changes saved" })).toBeVisible();
+
+  // Switch to Text tab via click
+  await textTab.click();
+  await expect(textTab).toHaveAttribute("aria-selected", "true");
+  const textPanel = page.locator("#scene-panel-text");
+  await expect(textPanel).toBeVisible();
+  await expect(timingPanel).toBeHidden();
+
+  // Text panel has 2 controls (Caption, Search)
+  await expect(textPanel.locator("input, textarea")).toHaveCount(2);
+  const captionInput = page.getByLabel("Scene 1 caption");
+  await captionInput.fill("Updated scene caption for tab test");
+  await captionInput.press("Tab");
+  await expect(page.getByRole("status").filter({ hasText: "All changes saved" })).toBeVisible();
+
+  // Switch to Media tab via keyboard End key
+  await textTab.focus();
+  await page.keyboard.press("End");
+  await expect(mediaTab).toHaveAttribute("aria-selected", "true");
+  const mediaPanel = page.locator("#scene-panel-media");
+  await expect(mediaPanel).toBeVisible();
+  await expect(textPanel).toBeHidden();
+
+  // Media panel visible controls <= 4
+  const visibleMediaButtons = await mediaPanel.locator("button:visible").count();
+  expect(visibleMediaButtons).toBeLessThanOrEqual(4);
+
+  // Switch back to Style and verify motion is still zoom
+  await styleTab.click();
+  await expect(page.getByLabel("Scene 1 motion")).toHaveValue("zoom");
+
+  // Switch to Text and verify caption is still saved
+  await textTab.click();
+  await expect(page.getByLabel("Scene 1 caption")).toHaveValue("Updated scene caption for tab test");
 });

@@ -203,6 +203,15 @@ interface FeatureLock {
   action?: "settings";
 }
 
+export const sceneTabs = [
+  { id: "style", label: "Style" },
+  { id: "timing", label: "Timing" },
+  { id: "text", label: "Text" },
+  { id: "media", label: "Media" },
+] as const;
+
+export type SceneTabId = typeof sceneTabs[number]["id"];
+
 export function App() {
   const authSetup = useMemo(() => {
     try {
@@ -286,6 +295,29 @@ export function App() {
   const [recording, setRecording] = useState(false);
   const [previewingId, setPreviewingId] = useState<number>();
   const [overlayCaption, setOverlayCaption] = useState("");
+  const [sceneTab, setSceneTab] = useState<SceneTabId>("style");
+
+  function handleTabKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const currentIndex = sceneTabs.findIndex((t) => t.id === sceneTab);
+    let nextIndex = -1;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      nextIndex = (currentIndex + 1) % sceneTabs.length;
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      nextIndex = (currentIndex - 1 + sceneTabs.length) % sceneTabs.length;
+    } else if (e.key === "Home") {
+      nextIndex = 0;
+    } else if (e.key === "End") {
+      nextIndex = sceneTabs.length - 1;
+    }
+    const next = nextIndex >= 0 ? sceneTabs[nextIndex] : undefined;
+    if (next) {
+      e.preventDefault();
+      e.stopPropagation();
+      setSceneTab(next.id);
+      const tabEl = document.getElementById("scene-tab-" + next.id);
+      tabEl?.focus();
+    }
+  }
   const [ctaDraft, setCtaDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
@@ -2813,7 +2845,7 @@ export function App() {
     if (step !== "editor") return;
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (target?.closest("input, textarea, select, [role='tablist'], [contenteditable='true']")) return;
       if (event.code === "Space") {
         event.preventDefault();
         if (livePlaying) pauseLivePreview();
@@ -3599,101 +3631,155 @@ export function App() {
 
         <div className="scene-controls">
           <h2>Scene {activeSceneNumber}</h2>
-          <div className="inspector-block">
-          <p className="crop-hint">Text on the clip</p>
-          <div className="overlay-looks" role="group" aria-label="Overlay look">
-            {overlayLooks.map(([label, look, place]) =>
-              <button
-                key={look}
-                type="button"
-                className={`overlay-look-tile look-${look}${(activeScene.overlay_look ?? "caption") === look ? " is-on" : ""}`}
-                aria-pressed={(activeScene.overlay_look ?? "caption") === look}
-                aria-label={label}
-                onClick={() => void saveScenePatch(activeScene.id, { overlay_look: look, overlay_place: place })}
-              >
-                {look === "title" ? <strong>Title</strong> : null}
-                {look === "spoken" ? <strong>Spoken</strong> : null}
-                {look === "poster" ? <><strong>Title</strong><span>Lower third</span></> : null}
-                {look === "caption" ? <span>Caption</span> : null}
-              </button>)}
+          <div
+            role="tablist"
+            aria-label={`Scene ${activeSceneNumber} settings`}
+            className="scene-tablist"
+            onKeyDown={handleTabKeyDown}
+          >
+            {sceneTabs.map((t) => {
+              const isSelected = sceneTab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  role="tab"
+                  id={`scene-tab-${t.id}`}
+                  aria-selected={isSelected}
+                  aria-controls={`scene-panel-${t.id}`}
+                  tabIndex={isSelected ? 0 : -1}
+                  className={`scene-tab-btn${isSelected ? " is-active" : ""}`}
+                  type="button"
+                  onClick={() => setSceneTab(t.id)}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
           </div>
-          <label htmlFor={`caption-${activeScene.id}`}>Caption
-            <input id={`caption-${activeScene.id}`} aria-label={`Scene ${activeSceneNumber} caption`} maxLength={180} value={overlayCaption} onChange={(event) => setOverlayCaption(event.target.value)} onBlur={(event) => void saveScenePatch(activeScene.id, { caption: event.currentTarget.value })} />
-          </label>
-          <p className="crop-hint">Play and Export keep this caption intact and highlight each word as it is spoken.</p>
-          <div className="overlay-places" role="group" aria-label="Overlay place">
-            {([["Top", "top"], ["Middle", "center"], ["Bottom", "bottom"]] as const).map(([label, place]) =>
-              <button
-                key={place}
-                type="button"
-                className={overlayPlace === place ? undefined : "secondary"}
-                aria-pressed={overlayPlace === place}
-                onClick={() => void saveScenePatch(activeScene.id, { overlay_place: place })}
-              >{label}</button>)}
+
+          <div
+            role="tabpanel"
+            id="scene-panel-style"
+            aria-labelledby="scene-tab-style"
+            hidden={sceneTab !== "style"}
+            className="scene-tabpanel"
+            tabIndex={0}
+          >
+            <p className="crop-hint">Text on the clip</p>
+            <div className="overlay-looks" role="group" aria-label="Overlay look">
+              {overlayLooks.map(([label, look, place]) =>
+                <button
+                  key={look}
+                  type="button"
+                  className={`overlay-look-tile look-${look}${(activeScene.overlay_look ?? "caption") === look ? " is-on" : ""}`}
+                  aria-pressed={(activeScene.overlay_look ?? "caption") === look}
+                  aria-label={label}
+                  onClick={() => void saveScenePatch(activeScene.id, { overlay_look: look, overlay_place: place })}
+                >
+                  {look === "title" ? <strong>Title</strong> : null}
+                  {look === "spoken" ? <strong>Spoken</strong> : null}
+                  {look === "poster" ? <><strong>Title</strong><span>Lower third</span></> : null}
+                  {look === "caption" ? <span>Caption</span> : null}
+                </button>)}
+            </div>
+            <div className="overlay-places" role="group" aria-label="Overlay place">
+              {([["Top", "top"], ["Middle", "center"], ["Bottom", "bottom"]] as const).map(([label, place]) =>
+                <button
+                  key={place}
+                  type="button"
+                  className={overlayPlace === place ? undefined : "secondary"}
+                  aria-pressed={overlayPlace === place}
+                  onClick={() => void saveScenePatch(activeScene.id, { overlay_place: place })}
+                >{label}</button>)}
+            </div>
+            <label htmlFor={`motion-${activeScene.id}`}>{wideStill ? "Pan" : "Motion"}
+              <select id={`motion-${activeScene.id}`} aria-label={`Scene ${activeSceneNumber} motion`} value={activeScene.motion} onChange={(event) => void saveScenePatch(activeScene.id, { motion: event.target.value as Scene["motion"] })}>
+                <option value="none">None</option><option value="push">{wideStill ? "Pan sideways" : "Push"}</option><option value="zoom">Zoom</option>
+              </select>
+            </label>
           </div>
+
+          <div
+            role="tabpanel"
+            id="scene-panel-timing"
+            aria-labelledby="scene-tab-timing"
+            hidden={sceneTab !== "timing"}
+            className="scene-tabpanel"
+            tabIndex={0}
+          >
+            <label htmlFor={`duration-${activeScene.id}`}>Seconds
+              <input id={`duration-${activeScene.id}`} type="number" min="0.5" max="15" step="0.1" defaultValue={activeScene.duration_ms / 1000} onBlur={(event) => void saveScenePatch(activeScene.id, { duration_ms: Math.round(event.currentTarget.valueAsNumber * 1000) })} />
+            </label>
+            <label htmlFor={`audio-${activeScene.id}`}>Clip audio · {Math.round(activeScene.audio_level * 100)}%
+              <input id={`audio-${activeScene.id}`} type="range" min="0" max="1" step="0.05" defaultValue={activeScene.audio_level} onBlur={(event) => void saveScenePatch(activeScene.id, { audio_level: event.currentTarget.valueAsNumber })} />
+            </label>
+            <button className="secondary" type="button" onClick={() => void saveScenePatch(activeScene.id, { audio_level: activeScene.audio_level === 0 ? 1 : 0 })}>{activeScene.audio_level === 0 ? `Unmute scene ${activeSceneNumber}` : `Mute scene ${activeSceneNumber}`}</button>
           </div>
-          <div className="inspector-block">
-          {!activeMedia && (
-          <label htmlFor={`prompt-${activeScene.id}`}>Search
-            <textarea id={`prompt-${activeScene.id}`} maxLength={100} defaultValue={activeScene.visual_prompt ?? ""} onBlur={(event) => void saveScenePatch(activeScene.id, { visual_prompt: event.currentTarget.value.trim() })} />
-          </label>
-          )}
-          <div className="inspector-pair">
-          <label htmlFor={`duration-${activeScene.id}`}>Seconds
-            <input id={`duration-${activeScene.id}`} type="number" min="0.5" max="15" step="0.1" defaultValue={activeScene.duration_ms / 1000} onBlur={(event) => void saveScenePatch(activeScene.id, { duration_ms: Math.round(event.currentTarget.valueAsNumber * 1000) })} />
-          </label>
-          <label htmlFor={`motion-${activeScene.id}`}>{wideStill ? "Pan" : "Motion"}
-            <select id={`motion-${activeScene.id}`} aria-label={`Scene ${activeSceneNumber} motion`} value={activeScene.motion} onChange={(event) => void saveScenePatch(activeScene.id, { motion: event.target.value as Scene["motion"] })}>
-              <option value="none">None</option><option value="push">{wideStill ? "Pan sideways" : "Push"}</option><option value="zoom">Zoom</option>
-            </select>
-          </label>
+
+          <div
+            role="tabpanel"
+            id="scene-panel-text"
+            aria-labelledby="scene-tab-text"
+            hidden={sceneTab !== "text"}
+            className="scene-tabpanel"
+            tabIndex={0}
+          >
+            <label htmlFor={`caption-${activeScene.id}`}>Caption
+              <input id={`caption-${activeScene.id}`} aria-label={`Scene ${activeSceneNumber} caption`} maxLength={180} value={overlayCaption} onChange={(event) => setOverlayCaption(event.target.value)} onBlur={(event) => void saveScenePatch(activeScene.id, { caption: event.currentTarget.value })} />
+            </label>
+            <p className="crop-hint">Play and Export keep this caption intact and highlight each word as it is spoken.</p>
+            <label htmlFor={`prompt-${activeScene.id}`}>Search
+              <textarea id={`prompt-${activeScene.id}`} key={`prompt-${activeScene.id}`} maxLength={100} defaultValue={activeScene.visual_prompt ?? ""} onBlur={(event) => void saveScenePatch(activeScene.id, { visual_prompt: event.currentTarget.value.trim() })} />
+            </label>
           </div>
-          </div>
-          <div className="inspector-block">
-          <label htmlFor={`audio-${activeScene.id}`}>Clip audio · {Math.round(activeScene.audio_level * 100)}%
-            <input id={`audio-${activeScene.id}`} type="range" min="0" max="1" step="0.05" defaultValue={activeScene.audio_level} onBlur={(event) => void saveScenePatch(activeScene.id, { audio_level: event.currentTarget.valueAsNumber })} />
-          </label>
-          <button className="secondary" onClick={() => void saveScenePatch(activeScene.id, { audio_level: activeScene.audio_level === 0 ? 1 : 0 })}>{activeScene.audio_level === 0 ? `Unmute scene ${activeSceneNumber}` : `Mute scene ${activeSceneNumber}`}</button>
-          </div>
-          <div className="inspector-block">
-          {activeScene.picture === "stock" ? <p>This shot is stock footage.</p> : null}
-          {activeScene.picture === "footage" ? <p>This shot is AI footage. Generate a still, then animate it.</p> : null}
-          {activeScene.picture === "document" ? <p>This shot is a diagram: a simple drawn scheme or plan. Generate an AI image.</p> : null}
-          <button className={!pexelsCredential?.connected ? "locked-feature" : undefined}
-            disabled={busy || (Boolean(pexelsCredential?.connected) && !activeScene.visual_prompt)}
-            aria-label={activeMedia
-              ? `Find another licensed video for scene ${activeSceneNumber}`
-              : `Find licensed media for scene ${activeSceneNumber}`}
-            onClick={() => pexelsCredential?.connected ? void searchStock(activeScene.id) : showPexelsLock()}>
-            {!pexelsCredential?.connected ? "🔒 " : ""}{activeMedia ? "Find another licensed video" : "Find licensed media"}
-          </button>
-          <button className={!falCredential?.connected || falUnavailable ? "locked-feature" : undefined}
-            disabled={busy || falGenBusy}
-            aria-label={`Generate AI image for scene ${activeSceneNumber}`}
-            onClick={() => openFalGenerate(activeScene)}>
-            {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Generate AI image
-          </button>
-          {activeMedia?.state === "ready" && activeMedia.detected?.type !== "video/mp4" && (
-            <button className={!falCredential?.connected || falUnavailable ? "locked-feature" : undefined}
-              disabled={busy || falVideoBusy}
-              aria-label={`Animate this image for scene ${activeSceneNumber}`}
-              onClick={() => openFalAnimate(activeScene)}>
-              {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Animate this image
+
+          <div
+            role="tabpanel"
+            id="scene-panel-media"
+            aria-labelledby="scene-tab-media"
+            hidden={sceneTab !== "media"}
+            className="scene-tabpanel"
+            tabIndex={0}
+          >
+            {activeScene.picture === "stock" ? <p>This shot is stock footage.</p> : null}
+            {activeScene.picture === "footage" ? <p>This shot is AI footage. Generate a still, then animate it.</p> : null}
+            {activeScene.picture === "document" ? <p>This shot is a diagram: a simple drawn scheme or plan. Generate an AI image.</p> : null}
+            <button className={!pexelsCredential?.connected ? "locked-feature" : undefined}
+              disabled={busy || (Boolean(pexelsCredential?.connected) && !activeScene.visual_prompt)}
+              aria-label={activeMedia
+                ? `Find another licensed video for scene ${activeSceneNumber}`
+                : `Find licensed media for scene ${activeSceneNumber}`}
+              onClick={() => pexelsCredential?.connected ? void searchStock(activeScene.id) : showPexelsLock()}>
+              {!pexelsCredential?.connected ? "🔒 " : ""}{activeMedia ? "Find another licensed video" : "Find licensed media"}
             </button>
-          )}
+            <button className={!falCredential?.connected || falUnavailable ? "locked-feature" : undefined}
+              disabled={busy || falGenBusy}
+              aria-label={`Generate AI image for scene ${activeSceneNumber}`}
+              onClick={() => openFalGenerate(activeScene)}>
+              {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Generate AI image
+            </button>
+            {activeMedia?.state === "ready" && activeMedia.detected?.type !== "video/mp4" && (
+              <button className={!falCredential?.connected || falUnavailable ? "locked-feature" : undefined}
+                disabled={busy || falVideoBusy}
+                aria-label={`Animate this image for scene ${activeSceneNumber}`}
+                onClick={() => openFalAnimate(activeScene)}>
+                {!falCredential?.connected || falUnavailable ? "🔒 " : ""}Animate this image
+              </button>
+            )}
+            <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void admitFile(file, activeScene.id);
+            }} />
+            <button className="secondary" disabled={busy} aria-label={`Upload media for scene ${activeSceneNumber}`} onClick={() => upload.current?.click()}>Upload media</button>
           </div>
-          <input ref={upload} hidden type="file" accept="video/mp4,image/jpeg,image/png,image/webp" onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void admitFile(file, activeScene.id);
-          }} />
-          <button className="secondary" disabled={busy} aria-label={`Upload media for scene ${activeSceneNumber}`} onClick={() => upload.current?.click()}>Upload media</button>
+
           <p role="status">{status || "✓ All changes saved"}</p>
           {!allScenesHavePreview && project.scenes.every(({ media_id }) => media_id) ? (
             <p>Media is processing.</p>
           ) : null}
-          </div>
         </div>
       </div>
+    </div>
 
       {candidates.length > 0 && <div className="candidates" aria-label={`Licensed media options for scene ${activeSceneNumber}`}>{candidates.map((candidate) => <article key={candidate.id} className="candidate">
         <div className="candidate-preview">
