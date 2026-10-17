@@ -301,6 +301,36 @@ test("sources ride in the header as slim chips instead of a full-width strip", a
   assert.match(css, /@media \(max-width: 520px\) \{\s*\.media-source-detail \{[\s\S]{0,320}?clip-path: inset\(50%\)/);
   assert.match(css, /\.animate-stills-reason \{[^}]*color: var\(--muted\)/);
 });
+test("brand type scale is self-hosted Space Grotesk over a 16px body, and rose is the only accent", async () => {
+  const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
+  const license = await readFile(new URL("../src/fonts/OFL.txt", import.meta.url), "utf8");
+  // One variable woff2, shipped from the app so the CSP keeps font-src 'self'.
+  assert.match(
+    css,
+    /@font-face \{\s*font-family: "Space Grotesk";[\s\S]{0,220}?url\("\.\/fonts\/space-grotesk-latin\.woff2"\) format\("woff2"\)/
+  );
+  assert.match(license, /SIL OPEN FONT LICENSE/i);
+  assert.match(css, /--font-heading: "Space Grotesk", ui-sans-serif/);
+  // Body copy sits at 16px; supporting copy and metadata are single tokens.
+  assert.match(css, /--text-micro: 0\.75rem/);
+  assert.match(css, /--text-support: 0\.875rem/);
+  assert.match(css, /--text-body: 1rem/);
+  assert.match(css, /--text-card: 1\.125rem/);
+  assert.match(css, /--text-section: 1\.25rem/);
+  assert.match(css, /--text-display: clamp\(1\.75rem, 5vw, 2\.75rem\)/);
+  assert.match(css, /body \{[^}]*font-size: var\(--text-body\)/);
+  assert.match(css, /h1 \{\s*font-size: var\(--text-display\)/);
+  assert.match(css, /h1, h2, h3, h4, h5, h6,\s*header strong,[\s\S]{0,400}?font-family: var\(--font-heading\)/);
+  // Higher-contrast secondary grey for 14px supporting copy.
+  assert.match(css, /--muted: #bec5cc/);
+  assert.doesNotMatch(css, /#a6adb5/);
+  // Rose owns the studio accent: the cyan HUD line and the per-provider /
+  // chart neon colors are gone.
+  assert.match(css, /--hud-line: rgba\(255, 177, 196, 0\.28\)/);
+  assert.match(css, /\.header-actions \.brand-mark\.is-on \{\s*color: var\(--accent-soft\)/);
+  assert.doesNotMatch(css, /0, 229, 255|#00e5ff|#7dffe3|#9ef6ff|#7c5cff|#8b5cff|#05a081|#00dbe9|#ffe000/i);
+});
+
 test("320px and reduced motion styles are explicit", async () => {
   const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
   assert.match(css, /max-width: 520px/);
