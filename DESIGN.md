@@ -45,24 +45,22 @@ Use this base palette:
 | Soft surface | `#2a2d31` | Media placeholders and stronger separation |
 | Border | `#35383d` | Standard dividers and input borders |
 | Primary text | `#f1f2f3` | Headings and important labels |
-| Muted text | `#a6adb5` | Supporting copy and metadata |
+| Muted text | `#bec5cc` | Supporting copy and metadata |
 | Primary accent | `#a54d67` | Primary actions and important active states |
 | Accent highlight | `#d989a0` | Eyebrows, links, and softer emphasis |
 | Warning | `#ffd36b` | Warnings and unsaved states |
 | Error | `#ee6f92` | Errors and destructive emphasis |
 | Success | `#68d8c1` | Ready, connected, and completed states |
 
-Fotium also has four optical accent colors:
+Rose is the only decorative accent in the studio interface. The four Fotium
+optical colors (cyan `#00e5ff`, magenta `#ff00cc`, yellow `#ffe000`, green
+`#00ff88`) belong to the rendered brand mark and the marketing pages, never to
+studio chrome: no cyan HUD lines, no per-provider chip colors, no neon chart
+fills. Warning, error and success stay available as status colors only, and
+status is always spelled out in words as well as color.
 
-- Cyan: `#00e5ff`
-- Magenta: `#ff00cc`
-- Yellow: `#ffe000`
-- Green: `#00ff88`
-
-Use these neon colors sparingly for the logo treatment, subtle active-state
-edges, media-category cues, progress moments, and restrained optical effects.
-Never use all four as large background fills. The muted rose remains the main
-product accent.
+Muted text sits at `#bec5cc` rather than the older `#a6adb5` so 14px supporting
+copy clears WCAG AA (4.5:1) on the surface, raised and soft surfaces.
 
 ## Background and glass
 
@@ -87,13 +85,18 @@ use opaque surfaces for readability.
 
 ## Typography
 
-Use a native sans-serif stack:
+Two faces, one scale. Headings, brand marks and card titles use **Space
+Grotesk**, self-hosted as a single variable woff2 (`apps/web/src/fonts/`,
+SIL OFL, 300–700) so `font-src 'self'` holds and the studio never waits on a
+third-party font host. Body copy uses the native stack:
 
 ```css
-ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif
+--font-heading: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+--font-body: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 ```
 
-Do not require a downloadable font for the MVP.
+Body copy is 16px. Supporting copy is 14px, metadata and chips are 12px. Page
+titles use one fluid `clamp()` display step.
 
 Typography character:
 
@@ -102,18 +105,19 @@ Typography character:
 - Body copy is compact but never cramped.
 - Small uppercase eyebrow labels use the rose highlight.
 - Avoid excessive bold text and all-uppercase body copy.
+- Live preview overlays deliberately keep Inter so the preview matches the
+  rendered burn-in; Space Grotesk never leaks into burned-in type.
 
-Suggested scale:
+Type scale tokens (`src/style.css`):
 
-| Style | Desktop | Mobile | Weight |
-|---|---:|---:|---:|
-| Display | 48–64px | 36–44px | 400–500 |
-| Page title | 30–36px | 26–32px | 500–600 |
-| Section title | 20–24px | 18–22px | 600 |
-| Card title | 16–18px | 16–18px | 600 |
-| Body | 15–16px | 15–16px | 400 |
-| Supporting | 13–14px | 13–14px | 400 |
-| Eyebrow/status | 12–13px | 12–13px | 600 |
+| Token | Size | Usage | Weight |
+|---|---:|---|---:|
+| `--text-display` | clamp 28–44px | Page titles (`h1`) | 600 |
+| `--text-section` | 20px | Section and card headings | 600 |
+| `--text-card` | 18px | Card titles | 600 |
+| `--text-body` | 16px | Body copy and form inputs | 400 |
+| `--text-support` | 14px | Supporting copy, controls, form labels | 400–600 |
+| `--text-micro` | 12px | Chips, metadata, eyebrows | 600–700 |
 
 Use body line-height around `1.5`; long explanatory text may use `1.6`.
 
@@ -210,7 +214,7 @@ has an accessible name.
 - Primary text and muted placeholder
 - Label above the field
 - Visible help/error text below
-- Focus outline uses rose; cyan may be used only as a subtle secondary glow
+- Focus outline uses rose
 - Secure fields need show/hide controls
 - Never reveal an already saved provider key
 
