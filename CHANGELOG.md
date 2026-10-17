@@ -10,6 +10,7 @@ studio under **Settings → What’s new**. Product version lives in root
 
 - Drafts list has a per-item **Delete** control with a confirm step. It calls the existing hard-purge `DELETE /projects/{id}` (project row, cascaded children, outbox rows, and best-effort object-storage blobs).
 - Phone widths (≤899px) keep the Create composer's **Send** button, the Storyboard actions, and every studio footer above the bottom dock, and the dock reserves the iOS home-indicator inset.
+- Create leads with its task: media sources sit in the header as slim chips (Own, Pexels, FAL, More, and the Animate stills toggle with its reason) instead of a full-width Sources strip, and Drafts no longer repeats that strip in prose.
 
 ### Site
 

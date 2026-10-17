@@ -2954,9 +2954,10 @@ export function App() {
     if (step === "drafts" || step === "settings") startCreate();
   }
 
+  // One slim chip row in the header: each source keeps its state word and the
+  // Animate stills toggle keeps its reason, so every screen leads with its task.
   const sourcesStrip = inApp ? (
     <aside className="media-sources-strip" aria-label="Media sources">
-      <span className="media-sources-label">Sources</span>
       <div className="media-sources-chips">
         {sourceChips.map((chip) => (
           <button
@@ -2964,10 +2965,12 @@ export function App() {
             type="button"
             className={`media-source-chip tone-${sourceChipTone(chip.state)}`}
             data-state={chip.state}
+            title={`${chip.label}: ${chip.detail}`}
             onClick={() => onSourceChip(chip.id)}
           >
+            <span className="media-source-dot" aria-hidden="true" />
             <strong>{chip.label}</strong>
-            <span>{chip.detail}</span>
+            <span className="media-source-detail">{chip.detail}</span>
           </button>
         ))}
       </div>
@@ -2983,12 +2986,9 @@ export function App() {
         />
         <span>
           <strong>Animate stills</strong>
-          <span>{animateToggle.reason}</span>
+          <span className="animate-stills-reason">{animateToggle.reason}</span>
         </span>
       </label>
-      <button type="button" className="media-sources-manage secondary" onClick={() => setStep("settings")}>
-        Manage
-      </button>
     </aside>
   ) : null;
 
@@ -3026,6 +3026,7 @@ export function App() {
           <span className="save-pill" data-busy={saveBusy || undefined}>{saveLabel}</span>
         </>}
       </div>
+      {sourcesStrip}
       <div className="header-actions">
         {partnerBrands && partnerGalleryUrl ? (
           <span className="partner-brands" aria-label="Partner gallery">
@@ -3038,7 +3039,6 @@ export function App() {
         <span className="build-rev" title="Git revision">{String(import.meta.env.VITE_GIT_SHA ?? "dev").slice(0, 7)}</span>
       </div>
     </header>
-    {sourcesStrip}
     {!authReady && <section><p role="status">Checking session…</p></section>}
     {authReady && step === "sign-in" && <section>
       <h1>{import.meta.env.VITE_SELFHOST_AUTH === "1"
@@ -3082,7 +3082,6 @@ export function App() {
         <h1>Drafts</h1>
         <p>Pick up where you left off or start a new video.</p>
       </div>
-      <p className="drafts-sources-hint">Sources stay in the strip above — Own, Pexels, and FAL. Choose video sources anytime, or drop your own media in Create.</p>
       <aside className="provider-preview drafts-sources-echo" aria-label="Creation sources">
         <button className="provider-preview-item" data-locked={!pexelsCredential?.connected} onClick={() => onSourceChip("pexels")}>
           <strong>Pexels</strong><span>Real stock video · {pexelsCredential?.connected ? "unlocked" : "locked"}</span>

@@ -263,9 +263,10 @@ body { margin: 0; min-height: 100dvh; background: inherit; }
 
 header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
+  gap: 6px 16px;
   color: var(--muted);
   margin-bottom: 8px;
 }
@@ -1093,107 +1094,113 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   display: flex;
   flex-direction: column;
 }
-.app-shell-brief .app-stage > header { display: none; }
-/* Sources stay visible on Create even when the identity header is hidden. */
+.app-shell-brief .app-stage > header .header-identity,
+.app-shell-brief .app-stage > header .header-actions { display: none; }
+/* Sources keep the Create header slim: only the chip row remains there. */
+.app-shell-brief .app-stage > header .media-sources-strip { justify-content: flex-start; }
+/* Sources are one slim chip row inside the header, so each screen leads with its
+   own task instead of a full-width strip above it. */
 .media-sources-strip {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 10px;
-  margin: 0 0 10px;
-  padding: 8px 10px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-.media-sources-label {
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  gap: 4px 6px;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
 }
 .media-sources-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  flex: 1;
+  gap: 4px;
   min-width: 0;
 }
 .media-source-chip {
-  display: grid;
-  gap: 1px;
-  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   width: auto;
-  padding: 6px 10px;
-  text-align: left;
-  border-radius: 8px;
+  min-height: 28px;
+  padding: 3px 9px;
+  border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--raised);
   color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 .media-source-chip strong {
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0.02em;
 }
-.media-source-chip span {
+.media-source-detail {
   color: var(--muted);
-  font-size: 0.7rem;
-  line-height: 1.25;
+  font-size: 0.68rem;
+  font-weight: 500;
 }
-.media-source-chip.tone-on {
-  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+/* State reads as a dot (audit: neutral/small dot for connected status). */
+.media-source-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
 }
-.media-source-chip.tone-on strong { color: var(--success); }
+.media-source-chip.tone-on .media-source-dot { background: var(--success); }
+.media-source-chip.tone-warn .media-source-dot { background: var(--warning); }
+.media-source-chip.tone-warn strong { color: var(--warning); }
 .media-source-chip.tone-warn {
   border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
 }
-.media-source-chip.tone-warn strong { color: var(--warning); }
-.media-source-chip.tone-muted strong::before {
-  content: "";
-}
-.media-source-chip[data-state="locked"] strong::before,
-.media-source-chip[data-state="coming"] strong::before {
-  content: "· ";
-  color: var(--muted);
-}
-.media-sources-manage {
-  width: auto;
-  min-height: 36px;
-  padding: 6px 12px;
-  font-size: 0.8rem;
+@media (hover: hover) {
+  .media-source-chip:hover,
+  .animate-stills-toggle:not(.is-disabled):hover { border-color: var(--muted); }
 }
 .animate-stills-toggle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 44px;
+  gap: 6px;
+  width: auto;
+  min-height: 28px;
   margin: 0;
-  padding: 6px 10px;
+  padding: 3px 9px 3px 8px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--raised);
+  font-size: 0.72rem;
+  line-height: 1.2;
   cursor: pointer;
+  white-space: nowrap;
 }
 .animate-stills-toggle input {
-  width: auto;
+  width: 14px;
+  height: 14px;
   min-height: 0;
   margin: 0;
   accent-color: var(--accent);
 }
-.animate-stills-toggle span {
-  display: grid;
-  gap: 1px;
+.animate-stills-toggle > span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
 }
 .animate-stills-toggle strong {
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   color: var(--text);
 }
-.animate-stills-toggle span span {
+/* The toggle's reason stays with the chip: visible here, still in the label's
+   accessible name when phone widths hide the secondary text. */
+.animate-stills-reason {
   color: var(--muted);
-  font-size: 0.7rem;
-  line-height: 1.25;
+  font-size: 0.68rem;
+  font-weight: 500;
 }
 .animate-stills-toggle.is-disabled {
   opacity: 0.72;
@@ -1202,14 +1209,20 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .animate-stills-toggle:not(.is-disabled):has(input:checked) {
   border-color: color-mix(in srgb, var(--success) 45%, var(--border));
 }
-.drafts-sources-hint {
-  margin: 0;
-  font-size: 0.88rem;
-}
-@media (max-width: 720px) {
-  .media-sources-strip { align-items: stretch; }
-  .media-sources-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .media-sources-manage { width: 100%; }
+/* Phones keep the dot plus the source name: the state word moves to the chip's
+   title and accessible name, while the Animate stills reason stays visible. */
+@media (max-width: 520px) {
+  .media-source-detail {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
 }
 .create-brief {
   display: flex;
@@ -1529,10 +1542,18 @@ header [role="status"] { color: var(--muted); }
     height: auto;
     min-height: 100dvh;
   }
+  /* Phones keep the identity line and give the source chips their own row under it. */
+  header { gap: 6px 10px; }
+  .media-sources-strip {
+    order: 3;
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
 }
 @media (max-width: 520px) {
   .app-stage { padding: 16px 16px calc(16px + var(--safe-bottom)); }
   header { font-size: 0.85rem; }
+  .media-source-chip, .animate-stills-toggle { min-height: 32px; }
   section { margin-top: 4vh; }
   .candidates, .scene-actions, .architecture-grid, .architecture-summary { grid-template-columns: 1fr; }
   .drafts-grid { grid-template-columns: 1fr; }

@@ -278,6 +278,29 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     await vite.close();
   }
 });
+test("sources ride in the header as slim chips instead of a full-width strip", async () => {
+  const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
+  // The strip renders inside <header> ahead of the actions, so no screen leads
+  // with its own full-width Sources block.
+  assert.match(
+    source,
+    /<header>\s*<div className="header-identity">[\s\S]{0,700}?\{sourcesStrip\}\s*<div className="header-actions">/
+  );
+  assert.doesNotMatch(source, /media-sources-label|drafts-sources-hint/);
+  const strip = source.slice(source.indexOf("const sourcesStrip"), source.indexOf("const appNav"));
+  assert.ok(strip.includes("media-sources-strip"));
+  assert.ok(strip.includes("media-source-dot"));
+  assert.ok(strip.includes("animate-stills-reason"));
+  assert.doesNotMatch(strip, /Manage/);
+  // State also rides in the chip's title, so the phone layout can hide the
+  // state word visually without dropping it from the accessible name.
+  assert.match(strip, /title=\{`\$\{chip\.label\}: \$\{chip\.detail\}`\}/);
+  // Chips are pills; only the detail word is visually hidden on phones.
+  assert.match(css, /\.media-source-chip \{[\s\S]{0,260}?border-radius: 999px;/);
+  assert.match(css, /@media \(max-width: 520px\) \{\s*\.media-source-detail \{[\s\S]{0,320}?clip-path: inset\(50%\)/);
+  assert.match(css, /\.animate-stills-reason \{[^}]*color: var\(--muted\)/);
+});
 test("320px and reduced motion styles are explicit", async () => {
   const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
   assert.match(css, /max-width: 520px/);
