@@ -8,10 +8,11 @@ studio under **Settings → What’s new**. Product version lives in root
 
 ### Studio
 
+- Create speaks plain language end to end: no reel, stock, footage, or package jargon; captions read as short plain sentences; and **Make my storyboard now** is the first action after an upload, so nobody has to answer every question first. Scene cards show the caption, or a short **Add a short caption** hint, instead of the internal image prompt. The export button reads **Export video**, and messages point at Sources, not a strip. Ship together with Pages, the API, and the VPS in one release.
 - Scene editor is split into four tabs: Style, Timing, Text, and Media, showing at most four controls at once while keeping full keyboard and screen reader access. Edits persist across tab switches. Ship together with Pages, the API, and the VPS in one release.
 - Drafts list has a per-item **Delete** control with a confirm step. It calls the existing hard-purge `DELETE /projects/{id}` (project row, cascaded children, outbox rows, and best-effort object-storage blobs).
 - Phone widths (≤899px) keep the Create composer's **Send** button, the Storyboard actions, and every studio footer above the bottom dock, and the dock reserves the iOS home-indicator inset.
-- Create leads with its task: media sources sit in the header as slim chips (Own, Pexels, FAL, More, and the Animate stills toggle with its reason) instead of a full-width Sources strip, and Drafts no longer repeats that strip in prose.
+- Create leads with its task: media sources sit in the header as slim chips (Own, Pexels, FAL, More, and the Animate stills toggle with its reason) instead of a full-width sources row, and Drafts no longer repeats that row in prose.
 
 ### Site
 

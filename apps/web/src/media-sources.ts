@@ -34,30 +34,30 @@ export function mediaSourceChips(input: MediaSourcesInput): SourceChip[] {
   return [
     {
       id: "own",
-      label: "Own",
+      label: "My photos",
       detail: ownReady
-        ? `${input.ownCount} in pool`
-        : "Drop or add later",
+        ? `${input.ownCount} added`
+        : "Add yours",
       state: ownReady ? "ready" : "locked"
     },
     {
       id: "pexels",
       label: "Pexels",
       detail: pexelsState === "connected"
-        ? "BYOK connected"
+        ? "Your key"
         : pexelsState === "unavailable"
-          ? "Unavailable here"
-          : "BYOK needed",
+          ? "Not available here"
+          : "Add your key",
       state: pexelsState
     },
     {
       id: "fal",
       label: "FAL",
       detail: falState === "connected"
-        ? "BYOK connected"
+        ? "Your key"
         : falState === "unavailable"
-          ? "Unavailable here"
-          : "BYOK needed",
+          ? "Not available here"
+          : "Add your key",
       state: falState
     },
     {
@@ -75,22 +75,22 @@ export function sourceChipTone(state: SourceState): "on" | "warn" | "muted" {
   return "muted";
 }
 
-/** Reel setting: animate pool stills via FAL image-to-video (BYOK). */
+/** Reel setting: turn ready photos into motion with FAL image-to-video (your key). */
 export function animateStillsToggleState(input: {
   falConnected: boolean;
   falUnavailable: boolean;
   stillCount: number;
 }): { enabled: boolean; reason: string } {
   if (input.falUnavailable) {
-    return { enabled: false, reason: "FAL unavailable here" };
+    return { enabled: false, reason: "Not available here" };
   }
   if (!input.falConnected) {
-    return { enabled: false, reason: "Connect FAL (BYOK)" };
+    return { enabled: false, reason: "Connect FAL to use this" };
   }
   if (input.stillCount <= 0) {
-    return { enabled: false, reason: "Needs stills in pool" };
+    return { enabled: false, reason: "Add photos first" };
   }
-  return { enabled: true, reason: "Off by default · quote→confirm each" };
+  return { enabled: true, reason: "Paid · asks first" };
 }
 
 export function countStillFiles(files: ReadonlyArray<{ type: string }>): number {

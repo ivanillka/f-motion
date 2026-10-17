@@ -11,7 +11,7 @@ test("inspected video duration becomes a bounded scene duration", () => {
 
 test("brief purpose stays the first user line, not later chip answers", () => {
   assert.equal(
-    briefPurposeFromChat("mystery murder in san francisco\nmystery murder i\nGeneral viewers\nAbout 30 seconds\nPexels real stock video"),
+    briefPurposeFromChat("mystery murder in san francisco\nmystery murder i\nGeneral viewers\nAbout 30 seconds\nPexels videos"),
     "mystery murder in san francisco"
   );
   assert.equal(briefPurposeFromChat("", 2), "Video from 2 photos");
@@ -79,7 +79,7 @@ test("create chat asks only missing brief questions, at most four", () => {
   assert.equal(visuals?.id, "visuals");
   assert.match(visuals?.prompt ?? "", /San Francisco/);
   assert.doesNotMatch(visuals?.prompt ?? "", /^Where should the pictures come from\?$/);
-  assert.equal(nextBriefQuestion("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds\nPexels real stock video", false, ["audience", "length", "visuals"]), undefined);
+  assert.equal(nextBriefQuestion("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds\nPexels videos", false, ["audience", "length", "visuals"]), undefined);
   assert.equal(nextBriefQuestion("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds", true, ["audience", "length"]), undefined);
   assert.equal(nextBriefQuestion("Launch a 15 second reel using stock to promote our product for customers", false, []), undefined);
   assert.equal(
@@ -98,8 +98,9 @@ test("create chat asks only missing brief questions, at most four", () => {
     ),
     undefined
   );
-  assert.match(briefReadyMessage("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds\nPexels real stock video"), /mystery about mystery murder in san francisco/);
-  assert.doesNotMatch(briefReadyMessage("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds\nPexels real stock video"), /More settings|Continue when you are ready/);
+  assert.match(briefReadyMessage("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds\nPexels videos"), /That is enough to make your storyboard/);
+  assert.match(briefReadyMessage("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds\nPexels videos"), /about 30 seconds/);
+  assert.doesNotMatch(briefReadyMessage("mystery murder in san francisco\nGeneral viewers\nAbout 30 seconds\nPexels videos"), /More settings|Continue when you are ready/);
   const stored = parseBriefChat(JSON.stringify({
     messages: [{ role: "assistant", text: "What do you want to make?" }],
     asked: ["audience"],
@@ -124,27 +125,27 @@ test("own-media glance notes adapt the next question without a VLM", () => {
     warmth: -0.1
   }]);
   assert.match(notes, /I looked at 1 photo/);
-  assert.match(notes, /portrait/);
-  assert.match(notes, /dark/);
+  assert.match(notes, /mostly portrait/);
+  assert.match(notes, /fairly dark/);
   assert.match(notes, /sf alley/);
-  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nMy own media", 0), true);
-  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nMy own media", 2), false);
-  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nMix Pexels stock and my media", 0), true);
-  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nMix Pexels stock and my media", 2), false);
-  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nPexels real stock video", 0), false);
+  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nUse my photos", 0), true);
+  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nUse my photos", 2), false);
+  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nUse both photos and Pexels", 0), true);
+  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nUse both photos and Pexels", 2), false);
+  assert.equal(briefNeedsMediaLook("mystery murder in san francisco\nPexels videos", 0), false);
   assert.equal(briefNeedsMediaLook("I'll use my photos", 0), true);
-  assert.equal(briefShouldGlance("mystery\nMy own media", 0), false);
-  assert.equal(briefShouldGlance("mystery\nMy own media", 2), true);
+  assert.equal(briefShouldGlance("mystery\nUse my photos", 0), false);
+  assert.equal(briefShouldGlance("mystery\nUse my photos", 2), true);
   assert.equal(briefShouldGlance(`mystery\n${notes}`, 2), false);
-  assert.equal(briefShouldGlance("mystery\nPexels real stock video", 2), false);
-  assert.equal(briefShouldGlance("mystery\nMix Pexels stock and my media", 1), true);
+  assert.equal(briefShouldGlance("mystery\nPexels videos", 2), false);
+  assert.equal(briefShouldGlance("mystery\nUse both photos and Pexels", 1), true);
   assert.equal(briefShouldGlance("mystery\nGeneral viewers", 2), false);
   assert.equal(briefShouldGlance("I added 2 photos.", 2), true);
   const intent = nextBriefQuestion(notes, true, []);
   assert.equal(intent?.id, "intent");
-  assert.match(intent?.prompt ?? "", /dark, portrait/);
+  assert.match(intent?.prompt ?? "", /What should this video be/);
   assert.match(intent?.prompt ?? "", /story/);
-  const mixNext = nextBriefQuestion(`mystery murder in san francisco\nMix Pexels stock and my media\n${notes}`, true, []);
+  const mixNext = nextBriefQuestion(`mystery murder in san francisco\nUse both photos and Pexels\n${notes}`, true, []);
   assert.equal(mixNext?.id, "audience");
   assert.match(mixNext?.prompt ?? "", /San Francisco mystery/);
 });
