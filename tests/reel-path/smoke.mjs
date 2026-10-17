@@ -5,7 +5,7 @@
  * Four things a reviewer wants green together:
  *   1. skip-pool      POST /api/create-sessions { skipPool: true } → storyboard
  *   2. with-pool      pool items fill the session and attach uniquely
- *   3. sources strip  Pexels/FAL credential reads + chip and toggle state
+ *   3. sources        Pexels/FAL credential reads + chip and toggle state
  *   4. Animate stills Gate 0 blocks without FAL BYOK; the craft stamps it with
  *
  * Everything talks to a throwaway test-mode API bound by this process on
@@ -182,7 +182,7 @@ try {
     return `${attached.length} of ${POOL.length} pool items attached`;
   });
 
-  await check("sources strip: credential reads drive the chip states", async () => {
+  await check("sources: credential reads drive the chip states", async () => {
     fal.connected = false;
     pexels.connected = false;
     const locked = mediaSourceChips({
@@ -211,7 +211,7 @@ try {
     return "locked -> connected";
   });
 
-  await check("sources strip: markup keeps chips, the toggle, and stays in-app", async () => {
+  await check("sources: markup keeps chips, the toggle, and stays in-app", async () => {
     const source = await readFile(new URL("../../apps/web/src/main.tsx", import.meta.url), "utf8");
     assert.match(source, /className="media-sources-strip" aria-label="Media sources"/);
     assert.match(source, /const sourcesStrip = inApp \?/);
@@ -225,7 +225,7 @@ try {
     return "main.tsx";
   });
 
-  await check("sources strip: pref mapping never claims a key the owner has not connected", async () => {
+  await check("sources: pref mapping never claims a key the owner has not connected", async () => {
     const cases = [
       [{ media: "own" }, { hasOwn: false, pexelsConnected: false }, "defer"],
       [{ media: "own" }, { hasOwn: true, pexelsConnected: false }, "own"],
@@ -287,21 +287,21 @@ try {
     return "craft.animateStills + settings";
   });
 
-  await check("animate stills: the strip toggle stays honest about why it is off", async () => {
+  await check("animate stills: the sources toggle stays honest about why it is off", async () => {
     assert.deepEqual(
       animateStillsToggleState({ falConnected: false, falUnavailable: false, stillCount: 2 }),
-      { enabled: false, reason: "Connect FAL (BYOK)" }
+      { enabled: false, reason: "Connect FAL to use this" }
     );
     assert.deepEqual(
       animateStillsToggleState({ falConnected: true, falUnavailable: true, stillCount: 2 }),
-      { enabled: false, reason: "FAL unavailable here" }
+      { enabled: false, reason: "Not available here" }
     );
     const noStills = animateStillsToggleState({ falConnected: true, falUnavailable: false, stillCount: 0 });
     assert.equal(noStills.enabled, false);
-    assert.match(noStills.reason, /stills/i);
+    assert.match(noStills.reason, /photos/i);
     const ready = animateStillsToggleState({ falConnected: true, falUnavailable: false, stillCount: 1 });
     assert.equal(ready.enabled, true);
-    assert.match(ready.reason, /confirm/i);
+    assert.match(ready.reason, /paid/i);
     assert.equal(countStillFiles([{ type: "image/jpeg" }, { type: "video/mp4" }, { type: "image/png" }]), 2);
     assert.equal(isReadyStillMedia({ state: "ready", detected: { type: "image/jpeg" } }), true);
     assert.equal(isReadyStillMedia({ state: "ready", detected: { type: "video/mp4" } }), false);

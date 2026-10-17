@@ -13,4 +13,4 @@ used under [Creative Commons Attribution 3.0](https://creativecommons.org/licens
 | `rise.mp3` | Hot Swing |
 
 Required credit: **Music by Kevin MacLeod (incompetech.com) — CC BY 3.0**.
-The studio shows this credit; Export final writes it into the MP4 metadata.
+The studio shows this credit; Export video writes it into the MP4 metadata.

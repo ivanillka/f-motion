@@ -153,18 +153,21 @@ export interface BriefChatMessage {
 
 export const BRIEF_OPENING: BriefChatMessage = {
   role: "assistant",
-  text: "What do you want to make? Drop photos or describe the video. I will ask only what I still need."
+  text: "What do you want to make? Add photos or describe the video. I will ask only what I still need."
 };
 
-export const LOOKING_AT_MEDIA = "Looking at your media…";
-export const DROP_OWN_MEDIA = "Drop the photos or clips. I will look at them first, then ask only what is still missing.";
-export const BRIEF_READY = "That is enough for a video plan."
+/** Offered first after an upload so nobody has to answer every question first. */
+export const MAKE_STORYBOARD_NOW = "Make my storyboard now";
+
+export const LOOKING_AT_MEDIA = "Looking at your photos…";
+export const DROP_OWN_MEDIA = "Add your photos or clips. I will look at them first, then ask only what is still missing.";
+export const BRIEF_READY = "That is enough to make your storyboard."
 
 const briefChoiceSets: Record<BriefQuestionId, readonly string[]> = {
   intent: ["Tell a story", "Explain something", "Promote an idea or product", "Teach the viewer"],
   audience: ["General viewers", "Social media audience", "Customers", "Internal team"],
   length: ["About 15 seconds", "About 30 seconds", "About 45 seconds"],
-  visuals: ["Pexels real stock video", "My own media", "Mix Pexels stock and my media"]
+  visuals: ["Pexels videos", "Use my photos", "Use both photos and Pexels"]
 };
 
 function titledPlace(place: string): string {
@@ -241,7 +244,13 @@ export function mediaNotesFromGlances(glances: readonly LocalMediaGlance[]): str
   const luminance = lumValues.length ? lumValues.reduce((sum, value) => sum + value, 0) / lumValues.length : 0.5;
   const warmth = warmValues.length ? warmValues.reduce((sum, value) => sum + value, 0) / warmValues.length : 0;
   const { mood, temp } = toneFromSample(luminance, warmth);
-  const frame = portraits >= glances.length / 2 ? "portrait" : landscapes >= glances.length / 2 ? "wide" : "mixed framing";
+  const light = mood === "dark" ? "fairly dark" : mood === "bright" ? "fairly bright" : "evenly lit";
+  const cast = `${temp} `;
+  const frame = portraits >= glances.length / 2
+    ? "mostly portrait"
+    : landscapes >= glances.length / 2
+      ? "mostly landscape"
+      : "a mix of shapes";
   const label = stills && clips
     ? `${stills} photos and ${clips} clips`
     : stills
@@ -251,8 +260,10 @@ export function mediaNotesFromGlances(glances: readonly LocalMediaGlance[]): str
   const names = glances.map((item) => item.name.replace(/\.[^.]+$/u, "").replace(/[_-]+/gu, " ")).join(", ");
   return [
     `I looked at ${label}.`,
-    `${frame}, ${mood} ${temp} tones.`,
-    clipMs >= 500 ? `Clips run about ${Math.round(clipMs / 1000)} seconds.` : "",
+    glances.length === 1
+      ? `It is ${frame} and ${light}, with ${cast}light.`
+      : `They are ${frame} and ${light}, with ${cast}light.`,
+    clipMs >= 500 ? `The clips run about ${Math.round(clipMs / 1000)} seconds.` : "",
     names ? `File names: ${names.slice(0, 160)}.` : ""
   ].filter(Boolean).join(" ");
 }
@@ -279,9 +290,9 @@ export function aggregateMediaGlance(glances: readonly LocalMediaGlance[]): Medi
 export function briefNeedsMediaLook(conversation: string, fileCount: number): boolean {
   if (fileCount > 0) return false;
   const text = conversation.normalize("NFKC").toLowerCase();
-  if (/\bpexels real stock video\b/u.test(text) && !/\bmy own media\b/u.test(text) && !/\bmix pexels\b/u.test(text)) return false;
-  return /\bmy own media\b/u.test(text)
-    || /\bmix pexels stock and my media\b/u.test(text)
+  if (/\bpexels videos\b/u.test(text) && !/\buse my photos\b/u.test(text) && !/\bboth photos and pexels\b/u.test(text)) return false;
+  return /\buse my photos\b/u.test(text)
+    || /\bboth photos and pexels\b/u.test(text)
     || (/\b(my|our)\s+(photos?|videos?|footage|clips?)\b/u.test(text) && !/\bpexels\b/u.test(text));
 }
 
@@ -289,14 +300,14 @@ export function briefNeedsMediaLook(conversation: string, fileCount: number): bo
 export function briefShouldGlance(conversation: string, fileCount: number): boolean {
   if (fileCount <= 0 || /\bI looked at\b/iu.test(conversation)) return false;
   const text = conversation.normalize("NFKC").toLowerCase();
-  if (/\bmix pexels stock and my media\b/u.test(text)) return true;
-  if (/\bpexels real stock video\b/u.test(text) && !/\bmy own media\b/u.test(text)) return false;
-  return /\bmy own media\b/u.test(text)
+  if (/\bboth photos and pexels\b/u.test(text)) return true;
+  if (/\bpexels videos\b/u.test(text) && !/\buse my photos\b/u.test(text)) return false;
+  return /\buse my photos\b/u.test(text)
     || /\bi added \d+ photos?\./u.test(text)
     || (/\b(my|our)\s+(photos?|videos?|footage|clips?)\b/u.test(text) && !/\bpexels\b/u.test(text));
 }
 
-const briefMetaLine = /^(I looked at|I added |File names:|Looking at your media|That is enough for)/iu;
+const briefMetaLine = /^(I looked at|I added |File names:|Looking at your photos|That is enough (?:for|to make))/iu;
 
 /** First user topic, not the later chip answers or glance notes. */
 export function briefPurposeFromChat(conversation: string, fileCount = 0): string {
@@ -341,27 +352,18 @@ export function briefTopic(conversation: string): {
 }
 
 export function isBriefReadyMessage(text: string): boolean {
-  return text.startsWith("That is enough for");
+  return text.startsWith(BRIEF_READY);
 }
 
 export function briefReadyMessage(conversation: string): string {
   if (!conversation.trim()) return BRIEF_READY;
-  const { subject, place, hook, plan } = briefTopic(conversation);
-  const shape = plan.structure === "mystery"
-    ? "mystery"
-    : plan.goal === "promote"
-      ? "promo"
-      : plan.goal === "educate"
-        ? "lesson"
-        : "story";
+  const { plan } = briefTopic(conversation);
   const where = plan.media === "own"
-    ? "your media"
+    ? "your photos"
     : plan.media === "mixed"
-      ? "your media mixed with Pexels"
-      : place
-        ? `moody ${hook} Pexels stock`
-        : "Pexels stock";
-  return `That is enough for a ${plan.tone} ${shape} about ${subject} — about ${plan.durationSeconds} seconds, ${where}.`;
+      ? "your photos and Pexels"
+      : "Pexels videos";
+  return `${BRIEF_READY} It will run about ${plan.durationSeconds} seconds and use ${where}.`;
 }
 
 export function briefQuestionFor(
@@ -371,16 +373,12 @@ export function briefQuestionFor(
 ): BriefQuestion {
   const { subject, place, hook, plan } = briefTopic(conversation);
   const looked = /\bI looked at\b/iu.test(conversation);
-  const dark = /\bdark\b/iu.test(conversation);
   const portrait = /\bportrait\b/iu.test(conversation);
-  const lookHint = [dark ? "dark" : "", portrait ? "portrait" : ""].filter(Boolean).join(", ");
-  const about = looked && (subject === "this video" || subject === "your media") ? "your media" : subject;
+  const about = looked && (subject === "this video" || subject === "your media") ? "this video" : subject;
   if (id === "intent") {
     return {
       id,
-      prompt: lookHint
-        ? `Your media looks ${lookHint}. Is this a story, an explanation, a promotion, or a lesson?`
-        : `Should ${about} be a story, an explanation, a promotion, or a lesson?`,
+      prompt: `What should ${about} be: a story, an explanation, a promotion, or a lesson?`,
       choices: briefChoiceSets.intent
     };
   }
@@ -412,11 +410,11 @@ export function briefQuestionFor(
             : `About how long should ${about} run?`;
     return { id, prompt, choices };
   }
-  const stock = place ? `moody ${hook} stock from Pexels` : "Pexels stock";
+  const stock = place ? `Pexels videos of ${hook}` : "Pexels videos";
   const prompt = hasOwnMedia
-    ? `Use the photos you added for ${about}, mix in Pexels, or switch to stock only?`
+    ? `Should ${about} use the photos you added, photos plus Pexels, or Pexels only?`
     : plan.structure === "mystery"
-      ? `Do you have footage, or should we use ${stock}?`
+      ? `Do you have photos, or should I use ${stock}?`
       : `Where should pictures for ${about} come from?`;
   return { id, prompt, choices: briefChoiceSets.visuals };
 }
