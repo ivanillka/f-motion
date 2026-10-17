@@ -140,6 +140,44 @@ async function attachFixtureToScene(page: Page, sceneNumber: number): Promise<vo
   await expect(page.getByRole("status").filter({ hasText: "Media attached to this scene" })).toBeVisible();
 }
 
+/** Interactive studio controls whose box reaches into the fixed phone dock. */
+async function controlsUnderPhoneDock(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const dock = document.querySelector(".app-dock");
+    if (!dock) return ["app-dock is missing"];
+    const dockBox = dock.getBoundingClientRect();
+    if (dockBox.height < 1) return [];
+    const under: string[] = [];
+    for (const node of document.querySelectorAll(".app-stage button, .app-stage input, .app-stage textarea, .app-stage a[href]")) {
+      if (node.closest(".app-dock")) continue;
+      const box = node.getBoundingClientRect();
+      if (box.width < 1 || box.height < 1) continue;
+      if (box.top >= dockBox.bottom || box.bottom <= dockBox.top) continue;
+      const label = (node.getAttribute("aria-label") ?? node.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
+      under.push(`${node.tagName.toLowerCase()}:${label || "(unnamed)"}`);
+    }
+    return under;
+  });
+}
+
+async function scrollStudioToEnd(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    for (const node of document.querySelectorAll(".app-shell, .app-stage")) node.scrollTop = node.scrollHeight;
+  });
+}
+
+/**
+ * Phone screens keep growing after a step change (fonts, decoded media, the live
+ * cut), so re-scroll and re-measure until the tail stops moving instead of
+ * reading a stale, half-scrolled layout.
+ */
+async function expectNothingUnderPhoneDock(page: Page, message: string): Promise<void> {
+  await expect.poll(async () => {
+    await scrollStudioToEnd(page);
+    return controlsUnderPhoneDock(page);
+  }, { message, timeout: 10_000 }).toEqual([]);
+}
+
 test("E2E worker rejects empty snapshots and missing fixture mappings", async ({ request }) => {
   const job = {
     jobId: "00000000-0000-4000-8000-000000000001",
@@ -386,6 +424,59 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   await expect(page.getByRole("button", { name: /Play preview|Pause preview/ })).toBeVisible();
   await expect(page.getByLabel(/Live preview/)).toBeVisible();
   await expect(page.getByRole("slider", { name: "Play progress" })).toBeVisible();
+});
+
+test("the phone dock leaves the Create composer and studio footers reachable", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 390, height: 664 });
+  await signIn(page);
+  // Chromium reports env(safe-area-inset-bottom) as 0 on every platform, so the
+  // studio exposes the inset as --safe-bottom; 34px is the iOS home indicator.
+  await page.addStyleTag({ content: ":root { --safe-bottom: 34px; }" });
+  const dock = page.locator(".app-dock");
+  await expect(dock).toBeVisible();
+  const dockBox = await dock.boundingBox();
+  expect(dockBox).not.toBeNull();
+  expect((dockBox?.height ?? 0)).toBeCloseTo(98, 0);
+  expect((dockBox?.y ?? 0) + (dockBox?.height ?? 0)).toBeCloseTo(664, 0);
+  await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
+  await expectNothingUnderPhoneDock(page, "Drafts keeps its dock and safe-area padding");
+
+  await dock.getByRole("button", { name: "Create" }).click();
+  const send = page.getByRole("button", { name: "Send" });
+  await expect(send).toBeVisible();
+  const composerBox = await page.locator(".brief-composer").boundingBox();
+  expect(composerBox).not.toBeNull();
+  expect((composerBox?.y ?? 0) + (composerBox?.height ?? 0)).toBeLessThanOrEqual(dockBox?.y ?? 0);
+  const sendBox = await send.boundingBox();
+  expect(sendBox).not.toBeNull();
+  expect((sendBox?.y ?? 0) + (sendBox?.height ?? 0)).toBeLessThanOrEqual(dockBox?.y ?? 0);
+  // A tap on Send must land on Send, not on the dock above it.
+  const tapped = await page.evaluate(([x, y]) =>
+    document.elementFromPoint(x, y)?.closest("button")?.textContent?.trim() ?? "",
+  [(sendBox?.x ?? 0) + (sendBox?.width ?? 0) / 2, (sendBox?.y ?? 0) + (sendBox?.height ?? 0) / 2]);
+  expect(tapped).toBe("Send");
+  expect(await controlsUnderPhoneDock(page), "the pinned composer stays above the dock").toEqual([]);
+  await expectNothingUnderPhoneDock(page, "scrolled Create keeps the whole composer clear");
+  await expect(page.getByLabel("Message F-Motion")).toBeVisible();
+
+  await briefWithOwnStill(page, "A calm launch teaser for a small team");
+  await createStoryboard(page);
+  await expectNothingUnderPhoneDock(page, "Storyboard keeps its dock and safe-area padding");
+  // A block-level phone shell must not take its width from the editor's
+  // min-content, which widened the shell to 474px at 390px and clipped the studio.
+  const widths = await page.evaluate(() => ({
+    shell: document.querySelector(".app-shell")?.getBoundingClientRect().width ?? 0,
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth
+  }));
+  expect(widths.shell).toBeLessThanOrEqual(widths.viewport + 0.5);
+  expect(widths.document).toBeLessThanOrEqual(widths.viewport);
+
+  for (const screen of ["Drafts", "Settings"]) {
+    await dock.getByRole("button", { name: screen }).click();
+    await expectNothingUnderPhoneDock(page, `${screen} keeps its dock and safe-area padding`);
+  }
 });
 
 test("FAL image-to-video quotes, confirms, and attaches only after review", async ({ page }) => {

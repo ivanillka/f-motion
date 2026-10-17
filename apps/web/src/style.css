@@ -29,6 +29,10 @@
   --error: #ee6f92;
   --rail: 72px;
   --dock: 64px;
+  /* Chromium never reports env() insets, so --safe-bottom is also the seam the
+     390px Playwright check emulates an iOS home indicator with. */
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --dock-h: calc(var(--dock) + var(--safe-bottom));
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background:
     radial-gradient(ellipse 80% 40% at 50% 0%, rgba(180, 40, 70, 0.18) 0%, transparent 70%),
@@ -158,7 +162,7 @@ body { margin: 0; min-height: 100dvh; background: inherit; }
 .app-stage {
   min-width: 0;
   min-height: 100dvh;
-  padding: 24px;
+  padding: 24px 24px calc(24px + var(--safe-bottom));
   max-width: 1120px;
   width: 100%;
   margin: 0 auto;
@@ -170,7 +174,7 @@ body { margin: 0; min-height: 100dvh; background: inherit; }
 }
 .app-shell-editor .app-stage {
   max-width: none;
-  padding: 12px 20px 20px;
+  padding: 12px 20px calc(20px + var(--safe-bottom));
 }
 .app-shell-editor .app-stage > header,
 .app-shell-editor .editor {
@@ -239,15 +243,18 @@ body { margin: 0; min-height: 100dvh; background: inherit; }
   }
 }
 @media (max-width: 899px) {
-  .app-shell-signed .app-stage { padding-bottom: calc(var(--dock) + 20px); }
+  /* The editor footer is the tightest edge, so it clears the dock even if the
+     shell is not marked signed. */
+  .app-shell-signed .app-stage,
+  .app-shell-editor .app-stage { padding-bottom: calc(var(--dock-h) + 20px); }
   .app-dock {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     position: fixed;
     z-index: 30;
     inset: auto 0 0 0;
-    height: var(--dock);
-    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+    height: var(--dock-h);
+    padding: 6px 8px calc(6px + var(--safe-bottom));
     background: rgba(23, 25, 27, 0.92);
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     backdrop-filter: blur(16px);
@@ -1308,7 +1315,12 @@ label.mix-choice input {
   border-radius: 12px;
   background: var(--surface);
   position: sticky;
-  bottom: 0;
+  bottom: var(--safe-bottom);
+}
+/* The fixed dock owns the bottom strip on phones, so the pinned composer and the
+   Send button must stop above it instead of scrolling underneath. */
+@media (max-width: 899px) {
+  .brief-composer { bottom: var(--dock-h); }
 }
 .brief-composer button.secondary { grid-area: attach; }
 .brief-composer textarea {
@@ -1496,6 +1508,10 @@ header [role="status"] { color: var(--muted); }
     --hud-w: 100vw;
     --hud-h: 100dvh;
     place-items: stretch;
+    /* The implicit track would take its minimum from the block-level shell, and
+       the editor's inspector then widened the shell past the viewport to be
+       clipped by .app-space. The phone shell has to track the viewport exactly. */
+    grid-template-columns: minmax(0, 1fr);
   }
   .app-space-stage { width: 100%; height: 100dvh; }
   .app-space-cube { display: none; }
@@ -1503,10 +1519,19 @@ header [role="status"] { color: var(--muted); }
     border-radius: 0;
     border: 0;
     min-height: 100dvh;
+    /* Phones scroll the whole page, so the stage grows with its content: as a
+       stretched grid item in a 100dvh row it stayed viewport-tall, swallowed the
+       dock clearance padding and left the last row of tall screens such as the
+       Storyboard editor under the dock. */
+    display: block;
+  }
+  .app-space .app-stage {
+    height: auto;
+    min-height: 100dvh;
   }
 }
 @media (max-width: 520px) {
-  .app-stage { padding: 16px; }
+  .app-stage { padding: 16px 16px calc(16px + var(--safe-bottom)); }
   header { font-size: 0.85rem; }
   section { margin-top: 4vh; }
   .candidates, .scene-actions, .architecture-grid, .architecture-summary { grid-template-columns: 1fr; }

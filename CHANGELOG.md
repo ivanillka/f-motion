@@ -9,6 +9,7 @@ studio under **Settings → What’s new**. Product version lives in root
 ### Studio
 
 - Drafts list has a per-item **Delete** control with a confirm step. It calls the existing hard-purge `DELETE /projects/{id}` (project row, cascaded children, outbox rows, and best-effort object-storage blobs).
+- Phone widths (≤899px) keep the Create composer's **Send** button, the Storyboard actions, and every studio footer above the bottom dock, and the dock reserves the iOS home-indicator inset.
 
 ### Site
 
