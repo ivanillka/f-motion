@@ -584,6 +584,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.scene-caption-hint { font-style: italic; }
 .scene-progress { color: var(--accent-soft) !important; font-size: var(--text-micro) !important; text-transform: uppercase; letter-spacing: 0.06em; }
 .scene-card.is-preparing img,
 .scene-card.is-preparing video,
@@ -1399,6 +1400,13 @@ label.mix-choice input {
 .brief-chat-msg p { margin: 0; color: var(--text); }
 .brief-chat-choices { display: flex; flex-wrap: wrap; gap: 6px; }
 .brief-chat-choices button { width: auto; min-height: 36px; padding: 6px 10px; font-size: var(--text-support); }
+/* The first action after an upload is the primary one: solid accent, focused. */
+.brief-chat-choices button.is-primary {
+  background: var(--accent);
+  border: 1px solid transparent;
+  color: var(--text);
+  font-weight: 700;
+}
 .brief-composer {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1427,6 +1435,12 @@ label.mix-choice input {
 }
 .brief-composer button[type="submit"] { grid-area: send; }
 .brief-composer > button[type="button"]:not(.secondary) { grid-area: continue; }
+.brief-composer button.brief-make-now {
+  background: var(--accent);
+  border: 1px solid transparent;
+  color: var(--text);
+  font-weight: 700;
+}
 .brief-composer button { width: auto; }
 .brief-composer > button[type="button"]:not(.secondary) { width: 100%; }
 .create-media-drop {

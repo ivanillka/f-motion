@@ -21,6 +21,7 @@ import {
   BRIEF_OPENING,
   DROP_OWN_MEDIA,
   LOOKING_AT_MEDIA,
+  MAKE_STORYBOARD_NOW,
   briefNeedsMediaLook,
   briefReadyMessage,
   briefShouldGlance,
@@ -551,7 +552,7 @@ export function App() {
     const onVisuals = last?.questionId === "visuals";
     if (!waitingDrop && !mediaFirst && !onVisuals) return;
     const userLine = onVisuals
-      ? "My own media"
+      ? "Use my photos"
       : mediaFirst
         ? `I added ${pendingFiles.length} photo${pendingFiles.length === 1 ? "" : "s"}.`
         : undefined;
@@ -756,7 +757,12 @@ export function App() {
         const stripped = chat.filter((message) => message.text !== LOOKING_AT_MEDIA);
         const withNotes: BriefChatMessage[] = [...stripped, { role: "assistant", text: notes }];
         if (!next) return [...withNotes, { role: "assistant", text: briefReadyMessage(nextDraft) }];
-        return [...withNotes, { role: "assistant", text: next.prompt, questionId: next.id, choices: next.choices }];
+        return [...withNotes, {
+          role: "assistant",
+          text: next.prompt,
+          questionId: next.id,
+          choices: [MAKE_STORYBOARD_NOW, ...next.choices]
+        }];
       });
       if (next) setBriefAsked((current) => current.includes(next.id) ? current : [...current, next.id]);
       else void continueToStoryboard();
@@ -769,6 +775,13 @@ export function App() {
   function sendBrief(text: string) {
     const trimmed = text.trim();
     if (!trimmed && !pendingFiles.length) return;
+    // The first choice after an upload never waits for the remaining questions.
+    if (trimmed === MAKE_STORYBOARD_NOW) {
+      setComposer("");
+      setBriefChat((current) => [...current, { role: "user", text: trimmed }]);
+      void continueToStoryboard();
+      return;
+    }
     const said = trimmed || `I added ${pendingFiles.length} photo${pendingFiles.length === 1 ? "" : "s"}.`;
     const continuing = briefChat.some((message) => message.role === "user");
     const conversation = (continuing ? [draft, said] : [said]).filter(Boolean).join("\n").slice(0, 2000);
@@ -810,7 +823,7 @@ export function App() {
     setSceneProgress({});
     setBusy(true);
     setArchitecture(plan);
-    setStatus("Crafting your reel…");
+    setStatus("Making your storyboard…");
     try {
       if (storyboardProjectAction(importEditLock.current, importedProjectRef.current) === "reuse") {
         const importedId = importedProjectRef.current;
@@ -867,8 +880,8 @@ export function App() {
         ? (typeof error.body.message === "string" ? error.body.message : error.type)
         : error instanceof Error ? error.message : undefined;
       setStatus(detail
-        ? `Your reel could not be created (${detail}). Please try again.`
-        : "Your reel could not be created. Please try again.");
+        ? `Your storyboard could not be made (${detail}). Please try again.`
+        : "Your storyboard could not be made. Please try again.");
     } finally {
       storyboardLock.current = false;
       setBusy(false);
@@ -906,7 +919,7 @@ export function App() {
     return updated;
   }
 
-  /** Editor + own-media admit or stock fill — same polish path as before. */
+  /** Editor + own-media admit or stock fill, same polish path as before. */
   async function hydrateReelEditor(
     current: ProjectSnapshot,
     plan: VideoArchitecture,
@@ -930,10 +943,10 @@ export function App() {
       pexelsConnected: Boolean(pexelsCredential?.connected && !pexelsUnavailable)
     }) === "defer") {
       setStatus(pexelsCredential?.connected
-        ? "Reel ready. Upload media or search Pexels per scene."
-        : "Reel ready. Upload your media, or connect Pexels in the sources strip.");
+        ? "Storyboard ready. Add your own photos or search Pexels for each scene."
+        : "Storyboard ready. Add your own photos, or connect Pexels in Sources.");
       if (options.animateStills) {
-        setStatus("Animate stills is on — drop stills on scenes, then use Animate this image (FAL BYOK).");
+        setStatus("Turn photos into motion is on. Drop photos on scenes, then use Animate this image (your FAL key).");
       }
       return;
     }
@@ -942,15 +955,15 @@ export function App() {
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.type : undefined;
       setStatus(type === "pexels_not_connected"
-        ? "Reel ready. Connect Pexels in the sources strip, or upload your own media."
-        : "Reel ready. Licensed media could not be matched yet — upload your own or try sources.");
+        ? "Storyboard ready. Connect Pexels in Sources, or add your own photos."
+        : "Storyboard ready. Pexels videos could not be matched yet. Add your own photos or try Settings.");
     }
   }
 
-  /** Sequential FAL image-to-video for ready stills — quote→confirm each (one active job). */
+  /** Sequential FAL image-to-video for ready photos, price first, then confirm (one at a time). */
   async function beginAnimateStillsQueue(projectId: string) {
     if (!falCredential?.connected || falUnavailable) {
-      setStatus("Animate stills needs FAL connected in the sources strip (BYOK).");
+      setStatus("Turning photos into motion needs FAL connected in Sources (your key).");
       return;
     }
     let snapshot: ProjectSnapshot;
@@ -959,14 +972,14 @@ export function App() {
       snapshot = found.project;
       setProject(snapshot);
     } catch {
-      setStatus("Animate stills · draft could not be reloaded.");
+      setStatus("Turn photos into motion · the draft could not be reloaded.");
       return;
     }
     let views: Record<string, SceneMediaView>;
     try {
       views = await loadSceneMediaViews(api, snapshot);
     } catch {
-      setStatus("Animate stills · media details could not be loaded.");
+      setStatus("Turn photos into motion · media details could not be loaded.");
       return;
     }
     setSceneMedia(views);
@@ -974,14 +987,14 @@ export function App() {
       .filter((scene) => isReadyStillMedia(scene.media_id ? views[scene.media_id] : undefined))
       .map((scene) => scene.id);
     if (!stillIds.length) {
-      setStatus("Animate stills is on, but no ready still images were attached.");
+      setStatus("Turn photos into motion is on, but no ready photos were added.");
       return;
     }
     animateStillQueueRef.current = stillIds;
     const first = snapshot.scenes.find((scene) => scene.id === stillIds[0]);
     if (!first) return;
     setActiveSceneId(first.id);
-    setStatus(`Animate stills · 1 of ${stillIds.length}. Confirm FAL price (your key) — not managed AI.`);
+    setStatus(`Turn photos into motion · 1 of ${stillIds.length}. Check the FAL price first (your key).`);
     openFalAnimate(first, { autoQuote: true });
   }
 
@@ -991,7 +1004,7 @@ export function App() {
     const rest = queue.slice(1);
     animateStillQueueRef.current = rest;
     if (!rest.length) {
-      setStatus("Animate stills finished. Review the storyboard, then Export final.");
+      setStatus("Finished turning photos into motion. Review the storyboard, then Export video.");
       return;
     }
     const next = project?.scenes.find((scene) => scene.id === rest[0]);
@@ -1000,7 +1013,7 @@ export function App() {
       return;
     }
     setActiveSceneId(next.id);
-    setStatus(`Animate stills · ${rest.length} still(s) left. Confirm FAL price (BYOK).`);
+    setStatus(`Turn photos into motion · ${rest.length} photo(s) left. Check the FAL price first (your key).`);
     openFalAnimate(next, { autoQuote: true });
   }
 
@@ -2649,10 +2662,10 @@ export function App() {
   const soundtrackHint = !soundtrack
     ? ""
     : soundtrack.kind === "stock"
-      ? `${stockBeds.find((bed) => bed.id === soundtrack.stock_id)?.label ?? "Catalog"} · Export final mixes this bed`
+      ? `${stockBeds.find((bed) => bed.id === soundtrack.stock_id)?.label ?? "Catalog"} · Export video mixes this bed`
       : soundtrackMedia?.attribution?.source === "Mixkit"
-        ? `${soundtrackMedia.attribution.title ?? "Mixkit"} · ${soundtrackMedia.attribution.creator} · Mixkit · Export final mixes this bed`
-        : `Uploaded · Export final mixes this bed`;
+        ? `${soundtrackMedia.attribution.title ?? "Mixkit"} · ${soundtrackMedia.attribution.creator} · Mixkit · Export video mixes this bed`
+        : `Uploaded · Export video mixes this bed`;
   const musicLabel = !soundtrack
     ? "Add music"
     : soundtrack.kind === "stock"
@@ -2959,14 +2972,18 @@ export function App() {
     falUnavailable,
     stillCount: poolStillCount
   });
+  // After an upload the main action is always one tap away, even before the
+  // next question arrives; with a question on screen that choice row owns it.
+  const lastBriefMessage = briefChat[briefChat.length - 1];
+  const offerMakeNow = step === "brief" && pendingFiles.length > 0 && !lastBriefMessage?.choices;
 
   function onSourceChip(id: SourceId) {
     if (id === "own") {
       if (step === "settings" || step === "drafts") startCreate();
       else if (step !== "brief" && step !== "editor") setStep("brief");
       setStatus(pendingFiles.length
-        ? "Your files are in the pool for this reel."
-        : "Drop photos or clips into Create — own media stays first-class.");
+        ? "Your photos are ready for this video."
+        : "Add photos or clips in Create. Your own media comes first.");
       return;
     }
     if (id === "pexels") {
@@ -2987,7 +3004,7 @@ export function App() {
   }
 
   // One slim chip row in the header: each source keeps its state word and the
-  // Animate stills toggle keeps its reason, so every screen leads with its task.
+  // turn-photos-into-motion toggle keeps its reason, so every screen leads with its task.
   const sourcesStrip = inApp ? (
     <aside className="media-sources-strip" aria-label="Media sources">
       <div className="media-sources-chips">
@@ -3017,7 +3034,7 @@ export function App() {
           onChange={(event) => setAnimateStills(event.target.checked)}
         />
         <span>
-          <strong>Animate stills</strong>
+          <strong>Turn photos into motion</strong>
           <span className="animate-stills-reason">{animateToggle.reason}</span>
         </span>
       </label>
@@ -3189,7 +3206,7 @@ export function App() {
           checked={mixReel}
           onChange={(event) => setMixReel(event.target.checked)}
         />
-        Mix stock, AI footage, and diagrams
+        Mix in Pexels videos, images made with AI, and diagrams
       </label>
       <div ref={briefChatPane} className="brief-chat" aria-label="Create chat" aria-live="polite" aria-busy={mediaLooking || undefined}>
         {briefChat.map((message, index) =>
@@ -3198,7 +3215,13 @@ export function App() {
             {message.choices && index === briefChat.length - 1 ? (
               <div className="brief-chat-choices" role="group" aria-label="Suggested answers">
                 {message.choices.map((choice) =>
-                  <button key={choice} type="button" className="secondary" onClick={() => sendBrief(choice)}>{choice}</button>)}
+                  <button
+                    key={choice}
+                    type="button"
+                    className={choice === MAKE_STORYBOARD_NOW ? "is-primary" : "secondary"}
+                    autoFocus={choice === MAKE_STORYBOARD_NOW}
+                    onClick={() => sendBrief(choice)}
+                  >{choice}</button>)}
               </div>
             ) : null}
           </div>)}
@@ -3232,6 +3255,11 @@ export function App() {
           }}
         />
         <button type="submit" disabled={busy || mediaLooking || (!composer.trim() && !pendingFiles.length)}>Send</button>
+        {offerMakeNow && (
+          <button type="button" className="brief-make-now" disabled={busy || mediaLooking} onClick={() => sendBrief(MAKE_STORYBOARD_NOW)}>
+            Make my storyboard now
+          </button>
+        )}
         {status.startsWith("Your storyboard could not") && (
           <button type="button" disabled={busy} onClick={() => void continueToStoryboard()}>Try again</button>
         )}
@@ -3262,7 +3290,7 @@ export function App() {
             : "Review each beat and replace a still only when another visual fits better."}</p>
         </div>
         <div className="editor-toolbar-actions">
-          <button className="secondary" disabled={!allScenesHaveMedia} onClick={() => void requestRender("final")}>Export final</button>
+          <button className="secondary" disabled={!allScenesHaveMedia} onClick={() => void requestRender("final")}>Export video</button>
         </div>
       </div>
 
@@ -3299,15 +3327,17 @@ export function App() {
             : (
               <span className="scene-empty">
                 {sceneProgress[scene.id] === "finding" ? "Finding…"
-                  : sceneProgress[scene.id] === "inspecting" ? "Inspecting…"
-                    : sceneProgress[scene.id] === "needs_media" ? "Needs media"
-                      : media ? "Media processing" : "No media"}
+                  : sceneProgress[scene.id] === "inspecting" ? "Checking…"
+                    : sceneProgress[scene.id] === "needs_media" ? "Add media"
+                      : media ? "Checking media" : "No media"}
               </span>
             )}
-          <strong>Scene {scene.order + 1} · {(scene.duration_ms / 1000).toFixed(1)}s{scene.picture === "stock" ? " · Stock" : scene.picture === "footage" ? " · AI footage" : scene.picture === "document" ? " · Diagram" : ""}</strong>
-          <span>{scene.caption || scene.visual_prompt}</span>
+          <strong>Scene {scene.order + 1} · {(scene.duration_ms / 1000).toFixed(1)}s{scene.picture === "stock" ? " · Pexels" : scene.picture === "footage" ? " · AI video" : scene.picture === "document" ? " · Diagram" : ""}</strong>
+          {scene.caption
+            ? <span>{scene.caption}</span>
+            : <span className="scene-caption-hint">Add a short caption</span>}
           {preparing ? (
-            <span className="scene-progress scene-preparing">{videoPreparing ? "Animating…" : "Generating…"}</span>
+            <span className="scene-progress scene-preparing">{videoPreparing ? "Adding motion…" : "Generating…"}</span>
           ) : reviewReady ? (
             <span className="scene-progress">Ready — review</span>
           ) : sceneProgress[scene.id] === "finding" || sceneProgress[scene.id] === "inspecting" ? (
@@ -3710,7 +3740,7 @@ export function App() {
             <label htmlFor={`duration-${activeScene.id}`}>Seconds
               <input id={`duration-${activeScene.id}`} type="number" min="0.5" max="15" step="0.1" defaultValue={activeScene.duration_ms / 1000} onBlur={(event) => void saveScenePatch(activeScene.id, { duration_ms: Math.round(event.currentTarget.valueAsNumber * 1000) })} />
             </label>
-            <label htmlFor={`audio-${activeScene.id}`}>Clip audio · {Math.round(activeScene.audio_level * 100)}%
+            <label htmlFor={`audio-${activeScene.id}`}>Volume for this clip · {Math.round(activeScene.audio_level * 100)}%
               <input id={`audio-${activeScene.id}`} type="range" min="0" max="1" step="0.05" defaultValue={activeScene.audio_level} onBlur={(event) => void saveScenePatch(activeScene.id, { audio_level: event.currentTarget.valueAsNumber })} />
             </label>
             <button className="secondary" type="button" onClick={() => void saveScenePatch(activeScene.id, { audio_level: activeScene.audio_level === 0 ? 1 : 0 })}>{activeScene.audio_level === 0 ? `Unmute scene ${activeSceneNumber}` : `Mute scene ${activeSceneNumber}`}</button>

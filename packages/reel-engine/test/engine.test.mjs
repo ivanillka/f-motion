@@ -114,6 +114,22 @@ test("shared storyboard planning separates footage intent from copy and closes w
   assert.doesNotMatch(scenes.map(({ caption }) => caption).join("\n"), /open the full gallery|the story begins/i);
   assert.ok(scenes.every((scene) => scene.motion === "zoom"));
 });
+test("generated captions are plain sentences without request framing", () => {
+  let id = 0;
+  const scenes = buildStoryboardDraft(
+    "Make a short reel about a lighthouse keeper who paints the fog",
+    () => `cap-${++id}`,
+    { goal: "story", audience: "general", structure: "story_arc", tone: "cinematic", pace: "balanced", durationSeconds: 15, media: "stock" }
+  );
+  const captions = scenes.map(({ caption }) => caption).filter(Boolean);
+  assert.ok(captions.length >= 1);
+  assert.equal(captions[0], "A lighthouse keeper who paints the fog.");
+  for (const caption of captions) {
+    assert.ok(caption.length <= 120, caption);
+    assert.match(caption, /[.!?]$/u, caption);
+    assert.doesNotMatch(caption, /^(?:make|create|build)\b/iu, caption);
+  }
+});
 test("imported galleries do not share queue-template overlay copy", () => {
   const architecture = {
     goal: "promote", audience: "social", structure: "story_arc", tone: "cinematic", pace: "balanced", durationSeconds: 15, media: "own"

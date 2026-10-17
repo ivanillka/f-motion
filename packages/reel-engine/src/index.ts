@@ -157,10 +157,32 @@ function footagePrompt(
   return query.slice(0, 101).replace(/\s+\S*$/u, "").trim();
 }
 
-function subjectCaption(brief: string): string {
-  const subject = brief.trim().replace(/[.!?]+$/u, "");
+/** Longest auto caption we put on screen; the schema allows 180 but cards read best short. */
+const CAPTION_MAX_CHARS = 120;
+
+/**
+ * Turns a brief line into one plain sentence. Request framing ("make a short
+ * reel about …") is dropped so the caption reads as copy, not as an instruction.
+ */
+function captionSentence(value: string): string {
+  const subject = stripOverlayNoise(value)
+    .replace(/^(?:please\s+)?(?:make|create|build)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:short\s+|quick\s+|simple\s+)?(?:reel|video|clip|story|slideshow)\b\s*(?:about|of|on|from|for)?\s*/iu, "")
+    .replace(/^(?:a|an)\s+(?:short\s+|quick\s+|simple\s+)?(?:reel|video|clip|story|slideshow)\s+(?:about|of|on|from|for)\s+/iu, "")
+    .replace(/^(?:short|quick)\s+(?:reel|video|clip)\s+/iu, "")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .replace(/[.!?]+$/u, "");
   if (!subject) return "";
-  return `${subject.charAt(0).toLocaleUpperCase()}${subject.slice(1)}.`.slice(0, 180);
+  const normalized = subject === subject.toLocaleUpperCase() ? subject.toLocaleLowerCase() : subject;
+  const sentence = `${normalized.charAt(0).toLocaleUpperCase()}${normalized.slice(1)}`;
+  const bounded = sentence.length > CAPTION_MAX_CHARS
+    ? sentence.slice(0, CAPTION_MAX_CHARS - 1).replace(/\s+\S*$/u, "").trim()
+    : sentence;
+  return bounded ? `${bounded}.` : "";
+}
+
+function subjectCaption(brief: string): string {
+  return captionSentence(brief);
 }
 
 function stripOverlayNoise(value: string): string {
@@ -258,6 +280,8 @@ function fillCaptions(brief: string, source: StoryboardSource, sceneCount: numbe
     if (normalized === briefNorm || normalized === joinedTitle) continue;
     push(fragment, true);
   }
+  // Title parts keep their exact form: imports show the host's title as written.
+  // Only free-form sentences are normalized into a full plain sentence.
   for (const part of titleParts) push(part, titleParts.length === 1);
   if (!unique.length && narrative) push(narrative, true);
   const captions: string[] = [];
