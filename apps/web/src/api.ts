@@ -102,6 +102,8 @@ export interface SceneMediaView {
     creator: string;
     attributionUrl: string;
     previewUrl?: string;
+    postId?: number;
+    postUrl?: string;
     title?: string;
   };
   generation?: {

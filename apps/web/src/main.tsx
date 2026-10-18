@@ -121,7 +121,19 @@ interface CivitaiMatch {
   width?: number;
   height?: number;
   baseModel?: string;
+  postId?: number;
+  postUrl?: string;
+  nsfwLevel?: string;
 }
+interface CivitaiSettingsView {
+  max_nsfw_level: "None" | "Soft" | "Mature" | "X";
+  allowed_creators: string[];
+  min_short_side: number;
+  server_max_nsfw_level: "None" | "Soft" | "Mature" | "X";
+}
+const civitaiRightsNotice = "Images on Civitai belong to their creators and may not be licensed for reuse or commercial use. You are responsible for permission.";
+const civitaiLevelOrder = ["None", "Soft", "Mature", "X"] as const;
+type CivitaiLevel = typeof civitaiLevelOrder[number];
 interface MixkitMatch {
   id: number;
   title: string;
@@ -307,6 +319,18 @@ export function App() {
   const [civitaiCandidates, setCivitaiCandidates] = useState<CivitaiMatch[]>([]);
   const stockSearchQueryRef = useRef("");
   const civitaiSearchQueryRef = useRef("");
+  const civitaiSearchContextRef = useRef<{ sceneId: string; query: string; orientation: "portrait" | "landscape" } | undefined>(undefined);
+  const [civitaiSettings, setCivitaiSettings] = useState<CivitaiSettingsView>();
+  const [civitaiUsername, setCivitaiUsername] = useState("");
+  const [civitaiSort, setCivitaiSort] = useState("Most Reactions");
+  const [civitaiPeriod, setCivitaiPeriod] = useState("Month");
+  const [civitaiNsfwLevel, setCivitaiNsfwLevel] = useState<CivitaiLevel>("None");
+  const [civitaiCursor, setCivitaiCursor] = useState<string>();
+  const [civitaiModelId, setCivitaiModelId] = useState<number>();
+  const [civitaiLoadingMore, setCivitaiLoadingMore] = useState(false);
+  const [civitaiSettingsBusy, setCivitaiSettingsBusy] = useState(false);
+  const [civitaiCreatorsDraft, setCivitaiCreatorsDraft] = useState("");
+  const [civitaiMinShortSide, setCivitaiMinShortSide] = useState(1080);
   const [musicHits, setMusicHits] = useState<MixkitMatch[]>([]);
   const [musicQuery, setMusicQuery] = useState("trendy");
   const [musicOpen, setMusicOpen] = useState(false);
@@ -586,6 +610,7 @@ export function App() {
     void loadFalCredential();
     void loadPexelsCredential();
     void loadCivitaiCredential();
+    void loadCivitaiSettings();
   }, [token]);
 
   useEffect(() => {
@@ -1753,6 +1778,25 @@ export function App() {
     }
   }
 
+  function civitaiSearchPath(
+    context: { query: string; orientation: "portrait" | "landscape" },
+    cursor?: string,
+    modelId?: number
+  ) {
+    const params = new URLSearchParams({
+      q: context.query,
+      orientation: context.orientation,
+      sort: civitaiSort,
+      period: civitaiPeriod,
+      nsfw: civitaiNsfwLevel,
+      limit: "12"
+    });
+    if (civitaiUsername.trim()) params.set("username", civitaiUsername.trim());
+    if (cursor) params.set("cursor", cursor);
+    if (modelId) params.set("model_id", String(modelId));
+    return `/api/civitai/search?${params.toString()}`;
+  }
+
   async function searchCivitai(sceneId: string) {
     const scene = project?.scenes.find(({ id }) => id === sceneId);
     if (!scene || !project) return;
@@ -1761,28 +1805,60 @@ export function App() {
     if (!query) return;
     civitaiSearchQueryRef.current = query;
     const orientation = architecture.delivery === "youtube" ? "landscape" : "portrait";
+    const context = { sceneId, query, orientation } as const;
+    civitaiSearchContextRef.current = context;
     searchAbort.current?.abort();
     const controller = new AbortController();
     searchAbort.current = controller;
     const transition = ++searchTransition.current;
     setCivitaiCandidates([]);
+    setCivitaiCursor(undefined);
+    setCivitaiModelId(undefined);
     setStatus("Finding safe Civitai images for this scene…");
     try {
-      const body = await api.request<{ results: CivitaiMatch[] }>(
-        `/api/civitai/search?q=${encodeURIComponent(query)}&orientation=${orientation}`,
+      const body = await api.request<{ results: CivitaiMatch[]; next_cursor?: string; model_id?: number }>(
+        civitaiSearchPath(context),
         { signal: controller.signal }
       );
       if (transition !== searchTransition.current || activeSceneId !== sceneId) return;
-      setCivitaiCandidates(body.results.slice(0, 3));
+      setCivitaiCandidates(body.results);
+      setCivitaiCursor(body.next_cursor);
+      setCivitaiModelId(body.model_id);
       setStatus(body.results.length ? "Choose the image that fits this scene." : "No safe Civitai images found. Refine the search.");
     } catch (error) {
       if (!controller.signal.aborted) {
         const type = error instanceof ApiResponseError ? error.body.type : undefined;
         setStatus(type === "civitai_not_connected"
-          ? "Connect your Civitai API key in Settings, or upload your own media."
+          ? "Connect a Civitai API key in Settings to use this NSFW level, or choose None or Soft."
           : "Civitai image search failed. Your scene edits are safe.");
       }
     }
+  }
+
+  async function loadMoreCivitai() {
+    const context = civitaiSearchContextRef.current;
+    if (!context || !civitaiCursor || civitaiLoadingMore) return;
+    setCivitaiLoadingMore(true);
+    try {
+      const body = await api.request<{ results: CivitaiMatch[]; next_cursor?: string; model_id?: number }>(
+        civitaiSearchPath(context, civitaiCursor, civitaiModelId)
+      );
+      setCivitaiCandidates((current) => {
+        const seen = new Set(current.map((item) => item.id));
+        return [...current, ...body.results.filter((item) => !seen.has(item.id))];
+      });
+      setCivitaiCursor(body.next_cursor);
+      setCivitaiModelId(body.model_id);
+    } catch {
+      setStatus("More Civitai images could not be loaded. Try again.");
+    } finally {
+      setCivitaiLoadingMore(false);
+    }
+  }
+
+  function onCivitaiCandidatesScroll(event: React.UIEvent<HTMLDivElement>) {
+    const target = event.currentTarget;
+    if (target.scrollTop + target.clientHeight >= target.scrollHeight - 80) void loadMoreCivitai();
   }
 
   async function selectCivitai(sceneId: string, candidate: CivitaiMatch) {
@@ -1803,7 +1879,7 @@ export function App() {
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.body.type : undefined;
       setStatus(type === "civitai_not_connected"
-        ? "Connect your Civitai API key in Settings, or upload your own media."
+        ? "Connect a Civitai API key in Settings to use this NSFW level, or choose None or Soft."
         : "That Civitai image could not be attached. Choose another or try again.");
     } finally {
       setBusy(false);
@@ -2163,6 +2239,46 @@ export function App() {
       setCivitaiUnavailable(error instanceof ApiResponseError && error.status === 503);
     } finally {
       setCivitaiBusy(false);
+    }
+  }
+
+  async function loadCivitaiSettings() {
+    try {
+      const view = await api.request<CivitaiSettingsView>("/api/providers/civitai/settings");
+      setCivitaiSettings(view);
+      setCivitaiNsfwLevel(view.max_nsfw_level);
+      setCivitaiCreatorsDraft(view.allowed_creators.join(", "));
+      setCivitaiMinShortSide(view.min_short_side);
+      setCivitaiUnavailable(false);
+    } catch (error) {
+      if (error instanceof ApiResponseError && error.status === 503) setCivitaiUnavailable(true);
+    }
+  }
+
+  async function saveCivitaiSettings() {
+    if (!civitaiSettings) return;
+    setCivitaiSettingsBusy(true);
+    try {
+      const view = await api.request<CivitaiSettingsView>("/api/providers/civitai/settings", {
+        method: "PUT",
+        body: JSON.stringify({
+          max_nsfw_level: civitaiNsfwLevel,
+          allowed_creators: civitaiCreatorsDraft.split(",").map((name) => name.trim()).filter(Boolean),
+          min_short_side: civitaiMinShortSide
+        })
+      });
+      setCivitaiSettings(view);
+      setCivitaiNsfwLevel(view.max_nsfw_level);
+      setCivitaiCreatorsDraft(view.allowed_creators.join(", "));
+      setCivitaiMinShortSide(view.min_short_side);
+      setStatus("Civitai filters saved.");
+    } catch (error) {
+      const type = error instanceof ApiResponseError ? error.body.type : undefined;
+      setStatus(type === "validation"
+        ? "Civitai filters were not valid. Check the level, creators, and minimum resolution."
+        : "Civitai filters could not be saved. Try again.");
+    } finally {
+      setCivitaiSettingsBusy(false);
     }
   }
 
@@ -3121,6 +3237,7 @@ export function App() {
     pexelsUnavailable,
     civitaiConnected: Boolean(civitaiCredential?.connected),
     civitaiUnavailable,
+    civitaiKeyless: Boolean(civitaiCredential && !civitaiCredential.connected),
     falConnected: Boolean(falCredential?.connected),
     falUnavailable
   });
@@ -3151,7 +3268,7 @@ export function App() {
       return;
     }
     if (id === "civitai") {
-      if (civitaiCredential?.connected && !civitaiUnavailable) setStep("settings");
+      if (!civitaiUnavailable) setStep("settings");
       else showCivitaiLock();
       return;
     }
@@ -3299,9 +3416,9 @@ export function App() {
         <button className="provider-preview-item" data-locked={!pexelsCredential?.connected} onClick={() => onSourceChip("pexels")}>
           <strong>Pexels</strong><span>Real stock video · {pexelsCredential?.connected ? "unlocked" : "locked"}</span>
         </button>
-        <button className="provider-preview-item" data-locked={!civitaiCredential?.connected} onClick={() => onSourceChip("civitai")}>
-          <strong>Civitai</strong><span>Safe images · {civitaiCredential?.connected ? "unlocked" : "locked"}</span>
-        </button>
+        {!civitaiUnavailable && <button className="provider-preview-item" data-locked={!civitaiCredential?.connected && !civitaiCredential} onClick={() => onSourceChip("civitai")}>
+          <strong>Civitai</strong><span>Safe images · {civitaiCredential?.connected ? "unlocked" : "keyless"}</span>
+        </button>}
         <button className="provider-preview-item" data-locked={!falCredential?.connected || falUnavailable} onClick={() => onSourceChip("fal")}>
           <strong>FAL</strong><span>{falCredential?.connected && !falUnavailable ? "AI stills in storyboard" : "AI stills · locked"}</span>
         </button>
@@ -3821,7 +3938,8 @@ export function App() {
             : "Drag the still to frame it."}</p>
           {activeMedia?.attribution && <p>
             {activeMedia.attribution.source === "Civitai"
-              ? <>Image by <a href={activeMedia.attribution.attributionUrl} target="_blank" rel="noreferrer">{activeMedia.attribution.creator}</a>{" · "}<a href="https://civitai.com" target="_blank" rel="noreferrer">Civitai</a></>
+              ? <>Image by <a href={activeMedia.attribution.postUrl ?? activeMedia.attribution.attributionUrl} target="_blank" rel="noreferrer">{activeMedia.attribution.creator}</a>{" · "}<a href="https://civitai.com" target="_blank" rel="noreferrer">Civitai</a>{" "}
+                <small>{civitaiRightsNotice}</small></>
               : <>Video by <a href={activeMedia.attribution.attributionUrl} target="_blank" rel="noreferrer">{activeMedia.attribution.creator}</a>{" · "}<a href="https://www.pexels.com" target="_blank" rel="noreferrer">Pexels</a></>}
           </p>}
           {activeMedia?.generation?.source === "FAL" && <p>AI-generated with FAL{activeMedia.generation.derivedFromImage ? " · from your still" : ""} · {activeMedia.generation.model}</p>}
@@ -3950,12 +4068,43 @@ export function App() {
               onClick={() => pexelsCredential?.connected ? void searchStock(activeScene.id) : showPexelsLock()}>
               {!pexelsCredential?.connected ? "🔒 " : ""}{activeMedia ? "Find another licensed video" : "Find licensed media"}
             </button>
-            <button className={!civitaiCredential?.connected ? "locked-feature" : undefined}
-              disabled={busy || (Boolean(civitaiCredential?.connected) && !activeScene.visual_prompt)}
-              aria-label={`Find safe Civitai images for scene ${activeSceneNumber}`}
-              onClick={() => civitaiCredential?.connected ? void searchCivitai(activeScene.id) : showCivitaiLock()}>
-              {!civitaiCredential?.connected ? "🔒 " : ""}Find Civitai image
-            </button>
+            {!civitaiUnavailable && <>
+              <div className="civitai-filters" aria-label="Civitai filters">
+                <label>Creator
+                  <input value={civitaiUsername} maxLength={64} onChange={(event) => setCivitaiUsername(event.target.value)} placeholder="Any creator" />
+                </label>
+                <label>Sort
+                  <select value={civitaiSort} onChange={(event) => setCivitaiSort(event.target.value)}>
+                    <option>Most Reactions</option>
+                    <option>Most Comments</option>
+                    <option>Most Collected</option>
+                    <option>Newest</option>
+                    <option>Oldest</option>
+                  </select>
+                </label>
+                <label>Period
+                  <select value={civitaiPeriod} onChange={(event) => setCivitaiPeriod(event.target.value)}>
+                    <option>Month</option>
+                    <option>Week</option>
+                    <option>Day</option>
+                    <option>Year</option>
+                    <option>AllTime</option>
+                  </select>
+                </label>
+                <label>Max NSFW
+                  <select value={civitaiNsfwLevel} onChange={(event) => setCivitaiNsfwLevel(event.target.value as CivitaiLevel)}>
+                    {civitaiLevelOrder.slice(0, civitaiLevelOrder.indexOf(civitaiSettings?.max_nsfw_level ?? "None") + 1).map((level) =>
+                      <option key={level}>{level}</option>)}
+                  </select>
+                </label>
+              </div>
+              <button disabled={busy || !activeScene.visual_prompt}
+                aria-label={`Find safe Civitai images for scene ${activeSceneNumber}`}
+                onClick={() => void searchCivitai(activeScene.id)}>
+                Find Civitai image
+              </button>
+              <p className="crop-hint">{civitaiRightsNotice}</p>
+            </>}
             <button className={!falCredential?.connected || falUnavailable ? "locked-feature" : undefined}
               disabled={busy || falGenBusy}
               aria-label={`Generate AI image for scene ${activeSceneNumber}`}
@@ -3994,14 +4143,20 @@ export function App() {
         <button disabled={busy} onClick={() => void selectStock(activeScene.id, candidate)}>Select for scene {activeSceneNumber}</button>
       </article>)}</div>}
 
-      {civitaiCandidates.length > 0 && <div className="candidates" aria-label={`Safe Civitai image options for scene ${activeSceneNumber}`}>{civitaiCandidates.map((candidate) => <article key={candidate.id} className="candidate">
-        <div className="candidate-preview">
-          <img src={candidate.previewUrl} alt={`Civitai preview by ${candidate.creator}`} />
-          {candidate.fit != null && <span className="fit-badge">{candidate.fit}% match</span>}
-        </div>
-        <a href={candidate.attributionUrl} target="_blank" rel="noreferrer">{candidate.creator} on Civitai</a>
-        <button disabled={busy} onClick={() => void selectCivitai(activeScene.id, candidate)}>Select for scene {activeSceneNumber}</button>
-      </article>)}</div>}
+      {!civitaiUnavailable && civitaiCandidates.length > 0 && <div className="candidates" onScroll={onCivitaiCandidatesScroll} aria-label={`Safe Civitai image options for scene ${activeSceneNumber}`}>
+        <p className="crop-hint">{civitaiRightsNotice}</p>
+        {civitaiCandidates.map((candidate) => <article key={candidate.id} className="candidate">
+          <div className="candidate-preview">
+            <img src={candidate.previewUrl} alt={`Civitai preview by ${candidate.creator}`} />
+            {candidate.fit != null && <span className="fit-badge">{candidate.fit}% match</span>}
+          </div>
+          <a href={candidate.postUrl ?? candidate.attributionUrl} target="_blank" rel="noreferrer">{candidate.creator} on Civitai</a>
+          <button disabled={busy} onClick={() => void selectCivitai(activeScene.id, candidate)}>Select for scene {activeSceneNumber}</button>
+        </article>)}
+        {civitaiCursor && <button className="secondary" disabled={civitaiLoadingMore} onClick={() => void loadMoreCivitai()}>
+          {civitaiLoadingMore ? "Loading more…" : "Load more images"}
+        </button>}
+      </div>}
 
       <div className="editor-foot">
       {downloadUrl && <button className="secondary" onClick={() => setStep("render")}>{renderKind === "final" ? "View final export" : "View accurate preview"}{previewRevision !== project.revision ? " · older" : ""}</button>}
@@ -4223,15 +4378,13 @@ export function App() {
             ? <a href="#pexels-settings-title">Manage Pexels</a>
             : <button className="lock-trigger" onClick={showPexelsLock}>Why is this locked?</button>}
         </article>
-        <article className={`provider-card ${civitaiCredential?.connected ? "provider-live" : "provider-locked"}`}>
-          <span className={`provider-status ${civitaiCredential?.connected ? "" : "provider-soon"}`}>{civitaiCredential?.connected ? "Unlocked" : "Locked"}</span>
+        {!civitaiUnavailable && <article className="provider-card provider-live">
+          <span className="provider-status">Unlocked</span>
           <h2>Civitai</h2>
           <strong>Safe creator images</strong>
-          <p>Search community images with a safe-NSFW default and full on-product attribution.</p>
-          {civitaiCredential?.connected
-            ? <a href="#civitai-settings-title">Manage Civitai</a>
-            : <button className="lock-trigger" onClick={showCivitaiLock}>Why is this locked?</button>}
-        </article>
+          <p>Search community images with a safe-NSFW default, per-creator filters, and full on-product attribution.</p>
+          <a href="#civitai-settings-title">Manage Civitai</a>
+        </article>}
         <article className={`provider-card ${falCredential?.connected && !falUnavailable ? "provider-live" : "provider-locked"}`}>
           <span className={`provider-status ${falCredential?.connected && !falUnavailable ? "" : "provider-soon"}`}>{falCredential?.connected && !falUnavailable ? "Unlocked" : "Locked"}</span>
           <h2>FAL</h2>
@@ -4280,26 +4433,44 @@ export function App() {
         </div>}
         <a href="https://www.pexels.com/api/" target="_blank" rel="noreferrer">Get a Pexels API key</a>
       </article>
-      <article className="settings-card" aria-labelledby="civitai-settings-title">
+      {!civitaiUnavailable && <article className="settings-card" aria-labelledby="civitai-settings-title">
         <h2 id="civitai-settings-title">Civitai images</h2>
-        <p>Connect your own Civitai API key. Search uses a safe-NSFW default and only downloads from Civitai's own HTTPS image hosts. F-Motion does not supply or share a Civitai key.</p>
-        {civitaiUnavailable && <p className="notice">Civitai connection is unavailable here. Uploads, Pexels, editing, and rendering still work.</p>}
-        {!civitaiUnavailable && civitaiCredential?.connected && <p>
+        <p>Browsing at None and Soft works without a key. A Civitai API key is only needed for Mature or X levels. Search uses the host allowlist and never downloads from other origins.</p>
+        <p className="crop-hint">{civitaiRightsNotice}</p>
+        <label>Civitai maximum NSFW level
+          <select value={civitaiNsfwLevel} onChange={(event) => setCivitaiNsfwLevel(event.target.value as CivitaiLevel)}>
+            {civitaiLevelOrder.slice(0, civitaiLevelOrder.indexOf(civitaiSettings?.server_max_nsfw_level ?? "None") + 1).map((level) =>
+              <option key={level}>{level}</option>)}
+          </select>
+          <small>The server maximum is {civitaiSettings?.server_max_nsfw_level ?? "None"}. Mature and X require a connected Civitai key.</small>
+        </label>
+        <label>Allowed creators
+          <input value={civitaiCreatorsDraft} onChange={(event) => setCivitaiCreatorsDraft(event.target.value)} placeholder="creator-one, creator-two" />
+          <small>Optional comma-separated usernames. When set, only these creators can appear in search or import.</small>
+        </label>
+        <label>Minimum short side
+          <input type="number" min="480" max="2160" step="1" value={civitaiMinShortSide} onChange={(event) => setCivitaiMinShortSide(event.target.valueAsNumber)} />
+          <small>Default 1080 pixels on the shorter side.</small>
+        </label>
+        <div className="settings-actions">
+          <button disabled={civitaiSettingsBusy || !civitaiSettings} onClick={() => void saveCivitaiSettings()}>Save Civitai filters</button>
+        </div>
+        {civitaiCredential?.connected && <p>
           Connected · key ending …{civitaiCredential.hint}
           {civitaiCredential.validated_at ? ` · verified ${new Date(civitaiCredential.validated_at).toLocaleString()}` : ""}
         </p>}
-        {!civitaiUnavailable && <label htmlFor="civitai-key">{civitaiCredential?.connected ? "Replacement Civitai API key" : "Civitai API key"}
+        <label htmlFor="civitai-key">{civitaiCredential?.connected ? "Replacement Civitai API key" : "Optional Civitai API key"}
           <input id="civitai-key" type="password" autoComplete="new-password" spellCheck={false}
             value={civitaiKey} onChange={(event) => setCivitaiKey(event.target.value)} placeholder="Paste your Civitai API key" />
           <small>The key is validated, encrypted server-side, and never shown again.</small>
-        </label>}
-        {!civitaiUnavailable && <div className="settings-actions">
+        </label>
+        <div className="settings-actions">
           <button disabled={civitaiBusy || !civitaiKey.trim()} onClick={() => void connectCivitai()}>{civitaiCredential?.connected ? "Replace key" : "Connect Civitai"}</button>
           {civitaiCredential?.connected && <button className="secondary" disabled={civitaiBusy} onClick={() => void testCivitai()}>Test Civitai</button>}
           {civitaiCredential?.connected && <button className="secondary" disabled={civitaiBusy} onClick={() => void disconnectCivitai()}>Disconnect Civitai</button>}
-        </div>}
+        </div>
         <a href="https://civitai.com/user/account" target="_blank" rel="noreferrer">Get a Civitai API key</a>
-      </article>
+      </article>}
       <article className="settings-card" aria-labelledby="fal-settings-title">
         <h2 id="fal-settings-title">FAL generation</h2>
         <p>Connect your own FAL API-scope key for AI still generation in the storyboard. Each image is charged directly to your FAL account after you see the estimated cost and confirm it. F-Motion does not supply or share a FAL key.</p>

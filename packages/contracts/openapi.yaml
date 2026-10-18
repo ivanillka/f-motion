@@ -463,6 +463,37 @@ paths:
               schema: { $ref: "#/components/schemas/TypedError" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /providers/civitai/settings:
+    get:
+      operationId: getCivitaiSettings
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Owner Civitai search settings capped by the server maximum
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CivitaiSettingsView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+    put:
+      operationId: putCivitaiSettings
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CivitaiSettingsRequest" }
+      responses:
+        "200":
+          description: Updated owner Civitai settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CivitaiSettingsView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
   /projects:
     get:
       operationId: listProjects
@@ -734,8 +765,34 @@ paths:
       parameters:
         - name: q
           in: query
-          required: true
-          schema: { type: string, minLength: 1, maxLength: 100 }
+          required: false
+          schema: { type: string, maxLength: 100 }
+        - name: username
+          in: query
+          required: false
+          schema: { type: string, minLength: 1, maxLength: 64 }
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [Most Reactions, Most Comments, Most Collected, Newest, Oldest, Random]
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [AllTime, Year, Month, Week, Day]
+        - name: nsfw
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [None, Soft, Mature, X]
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50 }
         - name: orientation
           in: query
           required: false
@@ -744,6 +801,10 @@ paths:
           in: query
           required: false
           schema: { type: string }
+        - name: model_id
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1 }
       responses:
         "200":
           description: Safe bounded Civitai image results without source download URLs
@@ -1540,6 +1601,28 @@ components:
           items:
             type: object
             additionalProperties: true
+    CivitaiSettingsView:
+      type: object
+      required: [max_nsfw_level, allowed_creators, min_short_side, server_max_nsfw_level]
+      properties:
+        max_nsfw_level: { type: string, enum: [None, Soft, Mature, X] }
+        allowed_creators:
+          type: array
+          maxItems: 50
+          items: { type: string, minLength: 1, maxLength: 64 }
+        min_short_side: { type: integer, minimum: 480, maximum: 2160 }
+        server_max_nsfw_level: { type: string, enum: [None, Soft, Mature, X] }
+      additionalProperties: false
+    CivitaiSettingsRequest:
+      type: object
+      properties:
+        max_nsfw_level: { type: string, enum: [None, Soft, Mature, X] }
+        allowed_creators:
+          type: array
+          maxItems: 50
+          items: { type: string, minLength: 1, maxLength: 64 }
+        min_short_side: { type: integer, minimum: 480, maximum: 2160 }
+      additionalProperties: false
     CivitaiSearchResult:
       type: object
       required: [results]
@@ -1549,7 +1632,9 @@ components:
           items:
             type: object
             additionalProperties: true
+        nsfw_level: { type: string, enum: [None, Soft, Mature, X] }
         next_cursor: { type: string }
+        model_id: { type: integer, minimum: 1 }
     CivitaiCopyRequest:
       type: object
       required: [query, civitai_id]

@@ -33,7 +33,8 @@ import {
   PostgresCivitaiCredentialService,
   civitaiByokEnabled
 } from "./civitai-credentials.js";
-import { civitaiPolicyFromEnv, defaultCivitaiPolicy } from "./civitai.js";
+import { civitaiPolicyFromEnv, defaultCivitaiPolicy, type CivitaiPolicy } from "./civitai.js";
+import { PostgresCivitaiSettingsService } from "./civitai-settings.js";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -104,6 +105,9 @@ const civitaiPolicy = civitaiEnabled ? civitaiPolicyFromEnv(process.env) : defau
 const civitaiCredentials = civitaiEnabled
   ? new PostgresCivitaiCredentialService(pool, credentialVault!, civitaiPolicy)
   : undefined;
+const civitaiSettings = civitaiEnabled
+  ? new PostgresCivitaiSettingsService(pool, civitaiPolicy)
+  : undefined;
 const media = {
   repository: new PostgresMediaRepository(pool),
   store: objectStore,
@@ -111,9 +115,9 @@ const media = {
     if (!pexelsCredentials) throw new PexelsProviderError("unavailable");
     return pexelsCredentials.client(ownerId);
   },
-  civitaiForOwner: async (ownerId: string) => {
+  civitaiForOwner: async (ownerId: string, policy: CivitaiPolicy) => {
     if (!civitaiCredentials) throw new CivitaiProviderError("unavailable");
-    return civitaiCredentials.client(ownerId);
+    return civitaiCredentials.optionalClient(ownerId, policy);
   }
 };
 const purge = (ownerId: string, projectId: string) => purgeProject(pool, objectStore, ownerId, projectId);
@@ -138,6 +142,7 @@ if (engineEnv(process.env) === "selfhost") {
     pexelsCredentials,
     civitaiCredentials,
     civitaiPolicy,
+    civitaiSettings,
     apiKeys,
     hostUsage,
     externalImports,
@@ -164,6 +169,7 @@ if (engineEnv(process.env) === "selfhost") {
     pexelsCredentials,
     civitaiCredentials,
     civitaiPolicy,
+    civitaiSettings,
     apiKeys,
     hostUsage,
     externalImports,
@@ -180,6 +186,7 @@ if (engineEnv(process.env) === "selfhost") {
     pexelsCredentials,
     civitaiCredentials,
     civitaiPolicy,
+    civitaiSettings,
     apiKeys,
     hostUsage,
     ready,

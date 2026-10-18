@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Reel-path smoke — the as-built create-flow surface, local/test mode only.
+ * Reel-path smoke: the as-built create-flow surface, local/test mode only.
  *
  * Four things a reviewer wants green together:
  *   1. skip-pool      POST /api/create-sessions { skipPool: true } → storyboard
@@ -60,10 +60,12 @@ function credentialStub(provider) {
 
 const fal = credentialStub("fal");
 const pexels = credentialStub("pexels");
+const civitai = credentialStub("civitai");
 const server = createServer(createTestApp({
   ownerId: OWNER,
   falCredentials: fal,
-  pexelsCredentials: pexels
+  pexelsCredentials: pexels,
+  civitaiCredentials: civitai
 }));
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const address = server.address();
@@ -185,22 +187,36 @@ try {
   await check("sources: credential reads drive the chip states", async () => {
     fal.connected = false;
     pexels.connected = false;
+    civitai.connected = false;
+    let civitaiUnavailable = false;
+    try {
+      await api.request("/api/providers/civitai/credential");
+    } catch (error) {
+      if (error instanceof ApiResponseError && error.status === 503) civitaiUnavailable = true;
+      else throw error;
+    }
     const locked = mediaSourceChips({
       ownCount: 0,
       pexelsConnected: (await api.request("/api/providers/pexels/credential")).connected,
-      falConnected: (await api.request("/api/providers/fal/credential")).connected
+      falConnected: (await api.request("/api/providers/fal/credential")).connected,
+      civitaiConnected: civitai.connected,
+      civitaiUnavailable,
+      civitaiKeyless: !civitaiUnavailable
     });
-    assert.deepEqual(locked.map((chip) => `${chip.id}:${chip.state}`), [
-      "own:locked", "pexels:locked", "fal:locked", "more:coming"
-    ]);
-    assert.equal(sourceChipTone(locked[2].state), "muted");
+    assert.deepEqual(locked.map((chip) => `${chip.id}:${chip.state}`), civitaiUnavailable
+      ? ["own:locked", "pexels:locked", "fal:locked", "more:coming"]
+      : ["own:locked", "pexels:locked", "civitai:connected", "fal:locked", "more:coming"]);
+    assert.equal(sourceChipTone(locked.find((chip) => chip.id === "fal").state), "muted");
 
     fal.connected = true;
     pexels.connected = true;
+    civitai.connected = true;
     const live = mediaSourceChips({
       ownCount: 3,
       pexelsConnected: (await api.request("/api/providers/pexels/credential")).connected,
-      falConnected: (await api.request("/api/providers/fal/credential")).connected
+      falConnected: (await api.request("/api/providers/fal/credential")).connected,
+      civitaiConnected: civitai.connected,
+      civitaiUnavailable
     });
     assert.equal(live.find((chip) => chip.id === "own").state, "ready");
     assert.match(live.find((chip) => chip.id === "own").detail, /3/);
@@ -208,7 +224,8 @@ try {
     assert.equal(sourceChipTone("connected"), "on");
     fal.connected = false;
     pexels.connected = false;
-    return "locked -> connected";
+    civitai.connected = false;
+    return civitaiUnavailable ? "locked -> connected, Civitai hidden" : "locked -> connected, Civitai shown";
   });
 
   await check("sources: markup keeps chips, the toggle, and stays in-app", async () => {
@@ -322,7 +339,7 @@ try {
 const failed = checks.filter((item) => !item.ok);
 console.log(`reel-path smoke · ${checks.length - failed.length}/${checks.length} checks passed`);
 for (const item of checks) {
-  console.log(`  ${item.ok ? "PASS" : "FAIL"}  ${item.name}${item.detail ? ` — ${item.detail}` : ""}`);
+  console.log(`  ${item.ok ? "PASS" : "FAIL"}  ${item.name}${item.detail ? `: ${item.detail}` : ""}`);
   if (!item.ok) console.log(`        ${item.error}`);
 }
 if (failed.length) {

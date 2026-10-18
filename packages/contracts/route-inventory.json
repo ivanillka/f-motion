@@ -19,6 +19,8 @@
     { "method": "PUT", "path": "/providers/civitai/credential", "auth": "bearer" },
     { "method": "POST", "path": "/providers/civitai/credential/test", "auth": "bearer" },
     { "method": "DELETE", "path": "/providers/civitai/credential", "auth": "bearer" },
+    { "method": "GET", "path": "/providers/civitai/settings", "auth": "bearer" },
+    { "method": "PUT", "path": "/providers/civitai/settings", "auth": "bearer" },
     { "method": "GET", "path": "/projects", "auth": "bearer" },
     { "method": "POST", "path": "/projects", "auth": "bearer" },
     { "method": "POST", "path": "/compose", "auth": "bearer" },

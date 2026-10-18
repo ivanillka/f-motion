@@ -7,7 +7,7 @@ import {
   type CredentialVault,
   type EncryptedCredential
 } from "@f-engine/fal-host";
-import { CivitaiClient, type CivitaiPolicy } from "./civitai.js";
+import { CivitaiClient, civitaiLevelRank, type CivitaiPolicy } from "./civitai.js";
 
 const validationUrl = "https://civitai.com/api/v1/me";
 
@@ -23,7 +23,8 @@ export interface CivitaiCredentialService {
   connect(ownerId: string, credential: unknown): Promise<CivitaiCredentialView>;
   test(ownerId: string): Promise<CivitaiCredentialView>;
   disconnect(ownerId: string): Promise<void>;
-  client(ownerId: string): Promise<CivitaiClient>;
+  client(ownerId: string, policy?: CivitaiPolicy): Promise<CivitaiClient>;
+  optionalClient(ownerId: string, policy?: CivitaiPolicy): Promise<CivitaiClient>;
 }
 
 export class CivitaiCredentialInputError extends Error {}
@@ -169,10 +170,18 @@ export class PostgresCivitaiCredentialService implements CivitaiCredentialServic
     return decryptCredential(encrypted, { id: row.id, ownerId, provider: "civitai" }, this.vault);
   }
 
-  async client(ownerId: string): Promise<CivitaiClient> {
+  async client(ownerId: string, policy: CivitaiPolicy = this.policy): Promise<CivitaiClient> {
     const row = await this.row(ownerId);
     if (!row) throw new CivitaiCredentialMissingError("Civitai is not connected");
-    return new CivitaiClient(this.decrypt(row, ownerId), this.policy, this.fetchImpl);
+    return new CivitaiClient(this.decrypt(row, ownerId), policy, this.fetchImpl);
+  }
+
+  async optionalClient(ownerId: string, policy: CivitaiPolicy = this.policy): Promise<CivitaiClient> {
+    const row = await this.row(ownerId);
+    if (!row && civitaiLevelRank(policy.nsfwLevel) > civitaiLevelRank("Soft")) {
+      throw new CivitaiCredentialMissingError("Civitai API key is required for this NSFW level");
+    }
+    return new CivitaiClient(row ? this.decrypt(row, ownerId) : undefined, policy, this.fetchImpl);
   }
 
   async test(ownerId: string): Promise<CivitaiCredentialView> {

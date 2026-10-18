@@ -17,6 +17,7 @@ export interface MediaSourcesInput {
   pexelsUnavailable?: boolean;
   civitaiConnected: boolean;
   civitaiUnavailable?: boolean;
+  civitaiKeyless?: boolean;
   falConnected: boolean;
   falUnavailable?: boolean;
 }
@@ -28,11 +29,9 @@ export function mediaSourceChips(input: MediaSourcesInput): SourceChip[] {
     : input.pexelsConnected
       ? "connected"
       : "locked";
-  const civitaiState: SourceState = input.civitaiUnavailable
-    ? "unavailable"
-    : input.civitaiConnected
-      ? "connected"
-      : "locked";
+  const civitaiState: SourceState = input.civitaiConnected || input.civitaiKeyless
+    ? "connected"
+    : "locked";
   const falState: SourceState = input.falUnavailable
     ? "unavailable"
     : input.falConnected
@@ -57,16 +56,14 @@ export function mediaSourceChips(input: MediaSourcesInput): SourceChip[] {
           : "Add your key",
       state: pexelsState
     },
-    {
-      id: "civitai",
+    ...(!input.civitaiUnavailable ? [{
+      id: "civitai" as const,
       label: "Civitai",
       detail: civitaiState === "connected"
-        ? "Your key"
-        : civitaiState === "unavailable"
-          ? "Not available here"
-          : "Add your key",
+        ? input.civitaiConnected ? "Your key" : "Keyless"
+        : "Add your key",
       state: civitaiState
-    },
+    }] : []),
     {
       id: "fal",
       label: "FAL",

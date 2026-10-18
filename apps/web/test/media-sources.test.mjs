@@ -38,7 +38,7 @@ test("connected and pooled sources report ready/connected states", () => {
   assert.equal(sourceChipTone("connected"), "on");
 });
 
-test("unavailable providers stay honest", () => {
+test("unavailable Civitai is hidden and others stay honest", () => {
   const chips = mediaSourceChips({
     ownCount: 0,
     pexelsConnected: true,
@@ -48,10 +48,22 @@ test("unavailable providers stay honest", () => {
     falConnected: false,
     falUnavailable: true
   });
+  assert.equal(chips.some((chip) => chip.id === "civitai"), false);
   assert.equal(chips.find((chip) => chip.id === "pexels")?.state, "unavailable");
-  assert.equal(chips.find((chip) => chip.id === "civitai")?.state, "unavailable");
   assert.equal(chips.find((chip) => chip.id === "fal")?.state, "unavailable");
   assert.equal(sourceChipTone("unavailable"), "warn");
+});
+
+test("keyless Civitai remains available at the safe levels", () => {
+  const chips = mediaSourceChips({
+    ownCount: 0,
+    pexelsConnected: false,
+    civitaiConnected: false,
+    civitaiKeyless: true,
+    falConnected: false
+  });
+  assert.equal(chips.find((chip) => chip.id === "civitai")?.state, "connected");
+  assert.equal(chips.find((chip) => chip.id === "civitai")?.detail, "Keyless");
 });
 
 test("animate stills toggle stays off unless FAL is connected and pool has stills", () => {
