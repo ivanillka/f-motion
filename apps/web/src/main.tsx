@@ -87,6 +87,7 @@ import {
 } from "./create-flow-client";
 import {
   animateStillsToggleState,
+  civitaiPickerParams,
   countStillFiles,
   isReadyStillMedia,
   mediaSourceChips,
@@ -1783,18 +1784,16 @@ export function App() {
     cursor?: string,
     modelId?: number
   ) {
-    const params = new URLSearchParams({
-      q: context.query,
+    return `/api/civitai/search?${civitaiPickerParams({
+      query: context.query,
       orientation: context.orientation,
+      username: civitaiUsername,
       sort: civitaiSort,
       period: civitaiPeriod,
       nsfw: civitaiNsfwLevel,
-      limit: "12"
-    });
-    if (civitaiUsername.trim()) params.set("username", civitaiUsername.trim());
-    if (cursor) params.set("cursor", cursor);
-    if (modelId) params.set("model_id", String(modelId));
-    return `/api/civitai/search?${params.toString()}`;
+      ...(cursor ? { cursor } : {}),
+      ...(modelId ? { modelId } : {})
+    }).toString()}`;
   }
 
   async function searchCivitai(sceneId: string) {

@@ -89,6 +89,34 @@ export function sourceChipTone(state: SourceState): "on" | "warn" | "muted" {
   return "muted";
 }
 
+/** Shared Civitai picker query so filters and cursor paging stay testable. */
+export interface CivitaiPickerInput {
+  query: string;
+  orientation: "portrait" | "landscape";
+  username?: string;
+  sort: string;
+  period: string;
+  nsfw: string;
+  cursor?: string;
+  modelId?: number;
+  limit?: number;
+}
+
+export function civitaiPickerParams(input: CivitaiPickerInput): URLSearchParams {
+  const params = new URLSearchParams({
+    q: input.query,
+    orientation: input.orientation,
+    sort: input.sort,
+    period: input.period,
+    nsfw: input.nsfw,
+    limit: String(input.limit ?? 12)
+  });
+  if (input.username?.trim()) params.set("username", input.username.trim());
+  if (input.cursor) params.set("cursor", input.cursor);
+  if (input.modelId) params.set("model_id", String(input.modelId));
+  return params;
+}
+
 /** Reel setting: turn ready photos into motion with FAL image-to-video (your key). */
 export function animateStillsToggleState(input: {
   falConnected: boolean;

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   animateStillsToggleState,
+  civitaiPickerParams,
   countStillFiles,
   isReadyStillMedia,
   mediaSourceChips,
@@ -64,6 +65,28 @@ test("keyless Civitai remains available at the safe levels", () => {
   });
   assert.equal(chips.find((chip) => chip.id === "civitai")?.state, "connected");
   assert.equal(chips.find((chip) => chip.id === "civitai")?.detail, "Keyless");
+});
+
+test("Civitai picker carries filters and cursor paging", () => {
+  const params = civitaiPickerParams({
+    query: "harbor night",
+    orientation: "landscape",
+    username: "alice",
+    sort: "Newest",
+    period: "Week",
+    nsfw: "Soft",
+    cursor: "feed:1",
+    modelId: 11
+  });
+  assert.equal(params.get("q"), "harbor night");
+  assert.equal(params.get("orientation"), "landscape");
+  assert.equal(params.get("username"), "alice");
+  assert.equal(params.get("sort"), "Newest");
+  assert.equal(params.get("period"), "Week");
+  assert.equal(params.get("nsfw"), "Soft");
+  assert.equal(params.get("cursor"), "feed:1");
+  assert.equal(params.get("model_id"), "11");
+  assert.equal(params.get("limit"), "12");
 });
 
 test("animate stills toggle stays off unless FAL is connected and pool has stills", () => {
