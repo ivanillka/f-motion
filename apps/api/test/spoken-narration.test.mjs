@@ -366,7 +366,7 @@ test("spoken narration does not invent a formant voice when FAL is not connected
     assert.equal(response.status, 409);
     const body = await response.json();
     assert.equal(body.type, "fal_not_connected");
-    assert.equal(body.message.includes("—"), false);
+    assert.equal(body.message.includes("\u2014"), false);
     assert.equal(audio.puts(), 0);
     assert.equal(projects.get("owner", project.id).brief.voiceover, undefined);
   } finally {

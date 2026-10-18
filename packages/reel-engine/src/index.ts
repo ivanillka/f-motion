@@ -294,7 +294,7 @@ function fillCaptions(brief: string, source: StoryboardSource, sceneCount: numbe
 
 function promptWithRole(brief: string, role: string): string {
   const subject = brief.trim() || "Untitled subject";
-  const suffix = ` — ${role}`;
+  const suffix = `. ${role}`;
   return `${subject.slice(0, 240 - suffix.length).trim()}${suffix}`;
 }
 
