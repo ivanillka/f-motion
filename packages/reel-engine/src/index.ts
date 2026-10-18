@@ -358,28 +358,14 @@ export function buildStoryboardDraft(
     : fragments.length >= 3
       ? fragments.map((fragment) => fragment.slice(0, 240).trim())
       : STORY_ROLES.map((role) => promptWithRole(visualSubject, role));
-  const words = narrative.trim() ? narrative.trim().split(/\s+/u) : [];
-  const wordSlots = cta ? Math.max(1, visualPrompts.length - 1) : visualPrompts.length;
-  const base = Math.floor(words.length / wordSlots);
-  let remainder = words.length % wordSlots;
-  let cursor = 0;
   const totalDurationMs = (architecture?.durationSeconds ?? visualPrompts.length * 3) * 1000;
   const durationBase = Math.floor(totalDurationMs / visualPrompts.length);
   const durationExtra = totalDurationMs % visualPrompts.length;
-  const overlayCaptions = architecture ? fillCaptions(brief, source, visualPrompts.length, cta) : [];
-  const captions = visualPrompts.map((_, order) => {
-    const isLast = order === visualPrompts.length - 1;
-    if (architecture) return overlayCaptions[order] ?? "";
-    if (isLast && cta) return cta;
-    if (base < 2) {
-      // Fewer than two words per beat: keep the phrase speakable on scene 1.
-      return order === 0 ? words.join(" ").slice(0, 180) : "";
-    }
-    const count = base + (remainder-- > 0 ? 1 : 0);
-    const caption = words.slice(cursor, cursor + count).join(" ").slice(0, 180);
-    cursor += count;
-    return caption;
-  });
+  // Both paths use plain sentence captions. Without an architecture the old
+  // word split turned "make a short reel about my summer trip" into request
+  // fragments ("make a", "short reel"), not copy anyone wants on screen.
+  const plainCaptions = fillCaptions(brief, source, visualPrompts.length, cta);
+  const captions = visualPrompts.map((_, order) => plainCaptions[order] ?? "");
   const durations = visualPrompts.map((_, order) => durationBase + (order < durationExtra ? 1 : 0));
   return visualPrompts.map((visual_prompt, order) => spokenScene(
     makeId(),

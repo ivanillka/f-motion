@@ -179,7 +179,7 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /Animating scene \$\{activeScene\.order \+ 1\} in the background/);
   assert.match(source, /setFalVideoOpen\(false\)/);
   assert.match(source, /is-preparing/);
-  assert.match(source, /Ready — review/);
+  assert.match(source, /Ready\. Review/);
   assert.doesNotMatch(source, /useFalGeneratedMedia[\s\S]{0,80}pollFalGeneration/);
   assert.doesNotMatch(source, /Generation is not live yet/);
 

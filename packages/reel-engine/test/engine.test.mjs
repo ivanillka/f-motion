@@ -130,6 +130,18 @@ test("generated captions are plain sentences without request framing", () => {
     assert.doesNotMatch(caption, /^(?:make|create|build)\b/iu, caption);
   }
 });
+test("fallback captions without an architecture are plain sentences, not request fragments", () => {
+  let id = 0;
+  const scenes = buildStoryboardDraft("make a short reel about my summer trip", () => `fallback-${++id}`);
+  const captions = scenes.map(({ caption }) => caption).filter(Boolean);
+  assert.ok(captions.length >= 1);
+  assert.equal(scenes[0].caption, "My summer trip.");
+  for (const caption of captions) {
+    assert.match(caption, /\.$/u, caption);
+    assert.doesNotMatch(caption, /^(?:make|create|build)\b/iu, caption);
+  }
+  assert.doesNotMatch(scenes.map(({ caption }) => caption).join("\n"), /^(?:make|create|build)\b/imu);
+});
 test("imported galleries do not share queue-template overlay copy", () => {
   const architecture = {
     goal: "promote", audience: "social", structure: "story_arc", tone: "cinematic", pace: "balanced", durationSeconds: 15, media: "own"

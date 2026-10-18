@@ -296,7 +296,7 @@ export function briefNeedsMediaLook(conversation: string, fileCount: number): bo
     || (/\b(my|our)\s+(photos?|videos?|footage|clips?)\b/u.test(text) && !/\bpexels\b/u.test(text));
 }
 
-/** Files are present and we have not glanced yet — skip Pexels-only chats. */
+/** Files are present and we have not glanced yet. Skip Pexels-only chats. */
 export function briefShouldGlance(conversation: string, fileCount: number): boolean {
   if (fileCount <= 0 || /\bI looked at\b/iu.test(conversation)) return false;
   const text = conversation.normalize("NFKC").toLowerCase();
@@ -406,7 +406,7 @@ export function briefQuestionFor(
             ? `Should the ${hook} mystery be a 15-second hook, a 30-second slow reveal, or 45 seconds?`
             : `Should this mystery be a 15-second hook, a 30-second slow reveal, or 45 seconds?`)
           : plan.goal === "promote"
-            ? `How long should ${about} run — about 15, 30, or 45 seconds?`
+            ? `How long should ${about} run? About 15, 30, or 45 seconds?`
             : `About how long should ${about} run?`;
     return { id, prompt, choices };
   }
