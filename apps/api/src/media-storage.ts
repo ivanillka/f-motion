@@ -211,6 +211,11 @@ export interface StoredMedia {
     url: string;
     previewUrl?: string;
   } | {
+    source: "Civitai";
+    creator: string;
+    url: string;
+    previewUrl?: string;
+  } | {
     source: "Mixkit";
     creator: string;
     url: string;
@@ -235,7 +240,7 @@ export interface SceneMediaView {
     duration_ms?: number;
   };
   attribution?: {
-    source: "Pexels" | "Mixkit";
+    source: "Pexels" | "Civitai" | "Mixkit";
     creator: string;
     attributionUrl: string;
     previewUrl?: string;
@@ -271,6 +276,17 @@ function safeStockAttribution(value: unknown): SceneMediaView["attribution"] {
   if (attribution.source === "Pexels") {
     return {
       source: "Pexels",
+      creator,
+      attributionUrl,
+      ...(previewUrl ? { previewUrl } : {})
+    };
+  }
+  if (attribution.source === "Civitai") {
+    let host = "";
+    try { host = new URL(attributionUrl).hostname; } catch { return undefined; }
+    if (host !== "civitai.com" && !host.endsWith(".civitai.com")) return undefined;
+    return {
+      source: "Civitai",
       creator,
       attributionUrl,
       ...(previewUrl ? { previewUrl } : {})
@@ -825,7 +841,7 @@ async function sealImportedStillFromFile(
 }
 
 /** ponytail: CopyObject + header range, not a full GET. Stream sha256 when f-motion-worker exists. */
-async function sealImportedStillFromObject(
+export async function sealImportedStillFromObject(
   ownerId: string,
   projectId: string,
   id: string,

@@ -1,6 +1,6 @@
 /** Always-visible Create chrome source chips. Extensible without redesign. */
 
-export type SourceId = "own" | "pexels" | "fal" | "more";
+export type SourceId = "own" | "pexels" | "civitai" | "fal" | "more";
 
 export type SourceState = "ready" | "connected" | "locked" | "unavailable" | "coming";
 
@@ -15,6 +15,8 @@ export interface MediaSourcesInput {
   ownCount: number;
   pexelsConnected: boolean;
   pexelsUnavailable?: boolean;
+  civitaiConnected: boolean;
+  civitaiUnavailable?: boolean;
   falConnected: boolean;
   falUnavailable?: boolean;
 }
@@ -24,6 +26,11 @@ export function mediaSourceChips(input: MediaSourcesInput): SourceChip[] {
   const pexelsState: SourceState = input.pexelsUnavailable
     ? "unavailable"
     : input.pexelsConnected
+      ? "connected"
+      : "locked";
+  const civitaiState: SourceState = input.civitaiUnavailable
+    ? "unavailable"
+    : input.civitaiConnected
       ? "connected"
       : "locked";
   const falState: SourceState = input.falUnavailable
@@ -49,6 +56,16 @@ export function mediaSourceChips(input: MediaSourcesInput): SourceChip[] {
           ? "Not available here"
           : "Add your key",
       state: pexelsState
+    },
+    {
+      id: "civitai",
+      label: "Civitai",
+      detail: civitaiState === "connected"
+        ? "Your key"
+        : civitaiState === "unavailable"
+          ? "Not available here"
+          : "Add your key",
+      state: civitaiState
     },
     {
       id: "fal",

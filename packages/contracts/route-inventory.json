@@ -15,6 +15,10 @@
     { "method": "PUT", "path": "/providers/pexels/credential", "auth": "bearer" },
     { "method": "POST", "path": "/providers/pexels/credential/test", "auth": "bearer" },
     { "method": "DELETE", "path": "/providers/pexels/credential", "auth": "bearer" },
+    { "method": "GET", "path": "/providers/civitai/credential", "auth": "bearer" },
+    { "method": "PUT", "path": "/providers/civitai/credential", "auth": "bearer" },
+    { "method": "POST", "path": "/providers/civitai/credential/test", "auth": "bearer" },
+    { "method": "DELETE", "path": "/providers/civitai/credential", "auth": "bearer" },
     { "method": "GET", "path": "/projects", "auth": "bearer" },
     { "method": "POST", "path": "/projects", "auth": "bearer" },
     { "method": "POST", "path": "/compose", "auth": "bearer" },
@@ -32,6 +36,10 @@
     { "method": "POST", "path": "/projects/{project_id}/media/pexels/auto", "auth": "bearer" },
     { "method": "POST", "path": "/projects/{project_id}/media/pexels/storyboard", "auth": "bearer" },
     { "method": "POST", "path": "/projects/{project_id}/scenes/{scene_id}/media/pexels/feedback", "auth": "bearer" },
+    { "method": "GET", "path": "/civitai/search", "auth": "bearer" },
+    { "method": "POST", "path": "/projects/{project_id}/media/civitai", "auth": "bearer" },
+    { "method": "POST", "path": "/projects/{project_id}/media/civitai/auto", "auth": "bearer" },
+    { "method": "POST", "path": "/projects/{project_id}/media/civitai/storyboard", "auth": "bearer" },
     { "method": "POST", "path": "/projects/{project_id}/scenes/{scene_id}/fal/image-quotes", "auth": "bearer" },
     { "method": "POST", "path": "/projects/{project_id}/scenes/{scene_id}/fal/video-quotes", "auth": "bearer" },
     { "method": "POST", "path": "/projects/{project_id}/fal/speech-quotes", "auth": "bearer" },
@@ -58,7 +66,8 @@
     "fal_not_connected",
     "fal_generation_busy",
     "invalid_provider_credential",
-    "pexels_not_connected"
+    "pexels_not_connected",
+    "civitai_not_connected"
   ],
   "sse_phases": [
     "queued",

@@ -9,14 +9,16 @@ import {
 } from "../src/media-sources.ts";
 // node --experimental-strip-types (see package.json test script)
 
-test("media source chips always include own, pexels, fal, and a future slot", () => {
+test("media source chips always include own, pexels, civitai, fal, and a future slot", () => {
   const chips = mediaSourceChips({
     ownCount: 0,
     pexelsConnected: false,
+    civitaiConnected: false,
     falConnected: false
   });
-  assert.deepEqual(chips.map((chip) => chip.id), ["own", "pexels", "fal", "more"]);
+  assert.deepEqual(chips.map((chip) => chip.id), ["own", "pexels", "civitai", "fal", "more"]);
   assert.equal(chips.find((chip) => chip.id === "pexels")?.state, "locked");
+  assert.equal(chips.find((chip) => chip.id === "civitai")?.state, "locked");
   assert.equal(chips.find((chip) => chip.id === "more")?.state, "coming");
   assert.equal(sourceChipTone("locked"), "muted");
 });
@@ -25,11 +27,13 @@ test("connected and pooled sources report ready/connected states", () => {
   const chips = mediaSourceChips({
     ownCount: 3,
     pexelsConnected: true,
+    civitaiConnected: true,
     falConnected: true
   });
   assert.equal(chips.find((chip) => chip.id === "own")?.state, "ready");
   assert.match(chips.find((chip) => chip.id === "own")?.detail ?? "", /3/);
   assert.equal(chips.find((chip) => chip.id === "pexels")?.state, "connected");
+  assert.equal(chips.find((chip) => chip.id === "civitai")?.state, "connected");
   assert.equal(chips.find((chip) => chip.id === "fal")?.state, "connected");
   assert.equal(sourceChipTone("connected"), "on");
 });
@@ -39,10 +43,13 @@ test("unavailable providers stay honest", () => {
     ownCount: 0,
     pexelsConnected: true,
     pexelsUnavailable: true,
+    civitaiConnected: true,
+    civitaiUnavailable: true,
     falConnected: false,
     falUnavailable: true
   });
   assert.equal(chips.find((chip) => chip.id === "pexels")?.state, "unavailable");
+  assert.equal(chips.find((chip) => chip.id === "civitai")?.state, "unavailable");
   assert.equal(chips.find((chip) => chip.id === "fal")?.state, "unavailable");
   assert.equal(sourceChipTone("unavailable"), "warn");
 });
