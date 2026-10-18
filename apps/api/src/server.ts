@@ -1105,6 +1105,16 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       serverMaxNsfwLevel: (options.civitaiPolicy ?? defaultCivitaiPolicy).nsfwLevel
     };
   };
+  const civitaiHasKey = async (ownerId: string): Promise<boolean> => {
+    if (!options.civitaiCredentials) return true;
+    try {
+      return (await options.civitaiCredentials.status(ownerId)).connected;
+    } catch {
+      return false;
+    }
+  };
+  const civitaiKeylessLevel = (level: CivitaiNsfwLevel, hasKey: boolean): CivitaiNsfwLevel =>
+    hasKey || civitaiLevelRank(level) <= civitaiLevelRank("Soft") ? level : "Soft";
   const civitaiPolicyForOwner = (
     settings: Awaited<ReturnType<typeof civitaiSettingsForOwner>>,
     level: CivitaiNsfwLevel
@@ -2150,9 +2160,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         return response.status(422).json({ type: "validation", message: "invalid Civitai model" });
       }
       const settings = await civitaiSettingsForOwner(ownerId);
+      const hasKey = await civitaiHasKey(ownerId);
       let requestedLevel: CivitaiNsfwLevel;
       try {
-        requestedLevel = civitaiNsfwLevel(request.query.nsfw, settings.maxNsfwLevel);
+        requestedLevel = civitaiNsfwLevel(request.query.nsfw, civitaiKeylessLevel(settings.maxNsfwLevel, hasKey));
       } catch (error) {
         return response.status(422).json({
           type: "validation",
@@ -2212,7 +2223,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       }
       const orientation = pexelsOrientation(project.brief.architecture);
       const settings = await civitaiSettingsForOwner(ownerId);
-      const policy = civitaiPolicyForOwner(settings, settings.maxNsfwLevel);
+      const hasKey = await civitaiHasKey(ownerId);
+      const policy = civitaiPolicyForOwner(settings, civitaiKeylessLevel(settings.maxNsfwLevel, hasKey));
       const client = await civitaiForOwner(options.media, ownerId, policy);
       const selected = await client.imageById(civitaiId, orientation)
         ?? (await client.search({ query, orientation })).results.find(({ id }) => id === civitaiId);
@@ -2241,7 +2253,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         ? project.brief.purpose
         : projectBrief({ purpose: request.body.description }).purpose;
       const settings = await civitaiSettingsForOwner(ownerId);
-      const policy = civitaiPolicyForOwner(settings, settings.maxNsfwLevel);
+      const hasKey = await civitaiHasKey(ownerId);
+      const policy = civitaiPolicyForOwner(settings, civitaiKeylessLevel(settings.maxNsfwLevel, hasKey));
       const client = await civitaiForOwner(options.media, ownerId, policy);
       const scorer = await civitaiScorerForOwner(ownerId);
       const orientation = pexelsOrientation(project.brief.architecture);
@@ -2300,7 +2313,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         }
       }
       const settings = await civitaiSettingsForOwner(ownerId);
-      const policy = civitaiPolicyForOwner(settings, settings.maxNsfwLevel);
+      const hasKey = await civitaiHasKey(ownerId);
+      const policy = civitaiPolicyForOwner(settings, civitaiKeylessLevel(settings.maxNsfwLevel, hasKey));
       const client = await civitaiForOwner(options.media, ownerId, policy);
       const scorer = await civitaiScorerForOwner(ownerId);
       const usedCivitaiIds = new Set(exclude);
