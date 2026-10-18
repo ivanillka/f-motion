@@ -615,6 +615,13 @@ export function App() {
   }, [token]);
 
   useEffect(() => {
+    if (!civitaiCredential || civitaiCredential.connected) return;
+    if (civitaiSettings && civitaiLevelOrder.indexOf(civitaiSettings.max_nsfw_level) > 1) {
+      setCivitaiNsfwLevel("Soft");
+    }
+  }, [civitaiCredential?.connected, civitaiSettings?.max_nsfw_level]);
+
+  useEffect(() => {
     if (step !== "settings") {
       setFalKey("");
       setPexelsKey("");
