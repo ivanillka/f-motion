@@ -20,7 +20,7 @@ export const RELEASE_NOTES: readonly ReleaseNote[] = [
     date: "2026-09-01",
     title: "Reliability & site",
     items: [
-      "Self-host and LAN HTTP studios create storyboards again — command IDs no longer require a secure browser context.",
+      "Self-host and LAN HTTP studios create storyboards again. Command IDs no longer require a secure browser context.",
       "Create chat keeps your first topic line for the brief and opens the storyboard when the chat finishes.",
       "Brief questions use a shorter subject instead of repeating your whole opening line."
     ]
@@ -31,7 +31,7 @@ export const RELEASE_NOTES: readonly ReleaseNote[] = [
     title: "Context-aware media",
     items: [
       "Licensed stock search ranks candidates with a fit score from your brief, scene, and optional media glance.",
-      "Video architecture and media glance persist when the storyboard is created — not only after concept selection.",
+      "Video architecture and media glance persist when the storyboard is created, not only after concept selection.",
       "YouTube-style delivery searches landscape Pexels; Reels and Stories stay portrait.",
       "FAL image and motion dialogs open prefilled from scene intent; stock picks log feedback for tuning."
     ]
@@ -41,7 +41,7 @@ export const RELEASE_NOTES: readonly ReleaseNote[] = [
     date: "2026-08-28",
     title: "Create is the chat",
     items: [
-      "Create asks only what is still missing, then opens the storyboard — no concept picker and no extra Continue step.",
+      "Create asks only what is still missing, then opens the storyboard, with no concept picker and no extra Continue step.",
       "Dropped photos get a local glance before follow-up questions; Pexels-only chats do not wait on a drop.",
       "Play keeps running when a scene still needs media; Pause freezes the preview.",
       "Voice-over has start offset, level, and mute; spoken words highlight on the full caption."

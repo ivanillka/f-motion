@@ -185,7 +185,7 @@ dialog h2 {
 }
 .app-space.is-work .app-space-cube { opacity: 0.4; }
 
-/* —— App shell —— */
+/* App shell */
 .app-shell {
   min-height: 100dvh;
   display: grid;

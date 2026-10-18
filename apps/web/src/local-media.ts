@@ -77,7 +77,7 @@ async function glanceVideo(file: File): Promise<LocalMediaGlance> {
 }
 
 /**
- * Local downsample only — 64px average color + dimensions.
+ * Local downsample only. 64px average color + dimensions.
  * ponytail: quoted FAL caption on a 384px JPEG (moondream/florence-2) is the
  * upgrade when a key exists; do not send full-resolution originals to a VLM.
  */

@@ -395,11 +395,11 @@ export function App() {
   const previewIsDesktop = project?.brief.frame === "desktop"
     || (project?.brief.frame === "both" && previewFrame === "desktop");
   const renderFailedLabel = renderKind === "final"
-    ? "Final export failed — try again or keep editing."
-    : "Accurate preview failed — try again or keep editing.";
+    ? "Final export failed. Try again or keep editing."
+    : "Accurate preview failed. Try again or keep editing.";
   const olderRenderNotice = renderKind === "final"
-    ? "Older export — regenerate after your edits."
-    : "Older preview — regenerate after your edits.";
+    ? "Older export. Regenerate after your edits."
+    : "Older preview. Regenerate after your edits.";
 
   function openConflict(snapshot: ProjectSnapshot, notice: { sceneId?: string; operation: string }) {
     setConflict(snapshot);
@@ -1561,7 +1561,7 @@ export function App() {
       if (media.state !== "admitted" && media.state !== "inspecting") return false;
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
-    setStatus("Media is still inspecting — try again in a moment.");
+    setStatus("Media is still inspecting. Try again in a moment.");
     return false;
   }
 
@@ -1624,7 +1624,7 @@ export function App() {
     if (!project || project.scenes.length >= 8) return;
     const activeIndex = Math.max(0, project.scenes.findIndex(({ id }) => id === activeSceneId));
     const picture = project.brief.mix ? mixPicture(activeIndex + 1) : undefined;
-    const beat = `${project.brief.purpose.slice(0, 180).trim()} — additional visual beat`;
+    const beat = `${project.brief.purpose.slice(0, 180).trim()}. Additional visual beat`;
     const scene: Scene = {
       id: newCommandId(), order: activeIndex + 1, caption: "",
       visual_prompt: picture ? picturePrompt(picture, beat) : beat,
@@ -1786,7 +1786,7 @@ export function App() {
           ...withoutMedia,
           id: newCommandId(),
           order,
-          visual_prompt: scene.visual_prompt || `${brief.purpose.slice(0, 210).trim()} — scene ${order + 1}`
+          visual_prompt: scene.visual_prompt || `${brief.purpose.slice(0, 210).trim()}. Scene ${order + 1}.`
         };
       });
       updated = await api.command(updated.id, updated.revision, "replace_storyboard", { scenes });
@@ -2268,7 +2268,7 @@ export function App() {
           const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
           setFalGenJob(job);
           if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
-            if (job.state === "ready") setStatus("AI still ready — open Generate AI image to review it.");
+            if (job.state === "ready") setStatus("AI still ready. Open Generate AI image to review it.");
             else if (job.state === "cancelled") setStatus("FAL generation cancelled.");
             else setStatus(falGenFailureMessage(job));
             return;
@@ -2414,7 +2414,7 @@ export function App() {
       setFalVideoJob(job);
       localStorage.setItem(falVideoStorageKey(project.id, scene.id), job.id);
       setStatus(animateStillQueueRef.current.length
-        ? "Review the FAL price, then confirm — charged to your FAL account."
+        ? "Review the FAL price, then confirm. It is charged to your FAL account."
         : "Review the FAL price, then confirm to generate one 6-second video.");
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.body.type : undefined;
@@ -2472,7 +2472,7 @@ export function App() {
           const job = await api.request<GenerationJobView>(`/api/generation-jobs/${jobId}`);
           setFalVideoJob(job);
           if (["ready", "cancelled", "failed", "submission_uncertain"].includes(job.state)) {
-            if (job.state === "ready") setStatus("AI video ready — open Animate this image to review it.");
+            if (job.state === "ready") setStatus("AI video ready. Open Animate this image to review it.");
             else if (job.state === "cancelled") setStatus("FAL video generation cancelled.");
             else setStatus(falGenFailureMessage(job));
             return;
@@ -3339,7 +3339,7 @@ export function App() {
           {preparing ? (
             <span className="scene-progress scene-preparing">{videoPreparing ? "Adding motion…" : "Generating…"}</span>
           ) : reviewReady ? (
-            <span className="scene-progress">Ready — review</span>
+            <span className="scene-progress">Ready. Review</span>
           ) : sceneProgress[scene.id] === "finding" || sceneProgress[scene.id] === "inspecting" ? (
             <span className="scene-progress">{sceneProgress[scene.id] === "finding" ? "finding" : "inspecting"}</span>
           ) : null}
@@ -3650,7 +3650,7 @@ export function App() {
           <p className="crop-hint">{livePlaying
             ? "Space plays or pauses · click the bar to scrub."
             : wideStill
-            ? "Wide still — drag to keep the subject in the 9:16 frame."
+            ? "Wide still. Drag to keep the subject in the 9:16 frame."
             : "Drag the still to frame it."}</p>
           {activeMedia?.attribution && <p>
             Video by <a href={activeMedia.attribution.attributionUrl} target="_blank" rel="noreferrer">{activeMedia.attribution.creator}</a>
@@ -4067,7 +4067,7 @@ export function App() {
           </article>
         )}
       </div>
-      <p>Pexels videos require on-product attribution — see “Use video by … · Pexels” in the editor when you add stock footage.</p>
+      <p>Pexels videos require on-product attribution. See “Use video by … · Pexels” in the editor when you add stock footage.</p>
       <article className="settings-card" aria-labelledby="pexels-settings-title">
         <h2 id="pexels-settings-title">Pexels licensed media</h2>
         <p>Connect your own Pexels API key. Licensed searches use your Pexels account; F-Motion does not supply or share a Pexels key.</p>

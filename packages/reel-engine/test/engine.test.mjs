@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief, mixPicture, sceneUsesStock, picturePrompt } from "../dist/index.js";
 
+const EM_DASH = "\u2014";
+
 const snapshot = {
   schema_version: 1, id: "p1", owner_id: "u1", revision: 0,
   brief: { purpose: "Launch", audience: "Teams", tone: "Warm" },
@@ -128,6 +130,30 @@ test("generated captions are plain sentences without request framing", () => {
     assert.ok(caption.length <= 120, caption);
     assert.match(caption, /[.!?]$/u, caption);
     assert.doesNotMatch(caption, /^(?:make|create|build)\b/iu, caption);
+  }
+});
+test("fallback captions without an architecture are plain sentences, not request fragments", () => {
+  let id = 0;
+  const scenes = buildStoryboardDraft("make a short reel about my summer trip", () => `fallback-${++id}`);
+  const captions = scenes.map(({ caption }) => caption).filter(Boolean);
+  assert.ok(captions.length >= 1);
+  assert.equal(scenes[0].caption, "My summer trip.");
+  for (const caption of captions) {
+    assert.match(caption, /\.$/u, caption);
+    assert.doesNotMatch(caption, /^(?:make|create|build)\b/iu, caption);
+  }
+  assert.doesNotMatch(scenes.map(({ caption }) => caption).join("\n"), /^(?:make|create|build)\b/imu);
+  for (const { visual_prompt: visualPrompt } of scenes) {
+    assert.equal(visualPrompt.includes(EM_DASH), false, visualPrompt);
+  }
+});
+test("fallback visual prompts join the subject and role with a period", () => {
+  let id = 0;
+  const scenes = buildStoryboardDraft("My summer trip", () => `role-${++id}`);
+  assert.equal(scenes[0].visual_prompt, "My summer trip. wide establishing view");
+  assert.equal(scenes[3].visual_prompt, "My summer trip. closing wide shot");
+  for (const { visual_prompt: visualPrompt } of scenes) {
+    assert.equal(visualPrompt.includes(EM_DASH), false, visualPrompt);
   }
 });
 test("imported galleries do not share queue-template overlay copy", () => {

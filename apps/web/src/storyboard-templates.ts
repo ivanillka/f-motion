@@ -114,7 +114,7 @@ export function scenesFromTemplate(
     audio_level: scene.audio_level,
     ducking: scene.ducking,
     visual_prompt: scene.visual_prompt
-      || `${template.brief.purpose.slice(0, 210).trim()} — scene ${order + 1}`,
+      || `${template.brief.purpose.slice(0, 210).trim()}. Scene ${order + 1}.`,
     ...(scene.title !== undefined ? { title: scene.title } : {}),
     ...(scene.overlay_place !== undefined ? { overlay_place: scene.overlay_place } : {}),
     ...(scene.overlay_look !== undefined ? { overlay_look: scene.overlay_look } : {}),

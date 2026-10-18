@@ -1,4 +1,4 @@
-/** Create-session client for the reel module — no Vite-only imports. */
+/** Create-session client for the reel module. No Vite-only imports. */
 
 export type MediaSourcePref = "own" | "pexels" | "fal" | "mix" | "defer";
 
@@ -98,7 +98,7 @@ export function isReelCraftPayload(value: unknown): value is ReelCraftPayload {
     && typeof craft.conceptId === "string";
 }
 
-/** Strip catalog media ids — pool refs are not project assets yet. */
+/** Strip catalog media ids. Pool refs are not project assets yet. */
 export function scenesFromReelCraft(craft: ReelCraftPayload): ReelScene[] {
   return craft.scenes.map((scene, order) => {
     const { media_id: _mediaId, ...withoutMedia } = scene;

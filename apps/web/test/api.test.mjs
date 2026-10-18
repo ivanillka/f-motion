@@ -169,14 +169,20 @@ test("four substantial mystery clauses become four deterministic beats", () => {
     "footprints cross the wet sand",
     "then vanish at the sealed door"
   ]);
-  assert.equal(scenes.map(({ caption }) => caption).join(" "), brief);
+  assert.deepEqual(scenes.map(({ caption }) => caption), [
+    "A lonely island waits in black water.",
+    "A lighthouse flashes without a keeper.",
+    "Footprints cross the wet sand.",
+    "Then vanish at the sealed door."
+  ]);
+  assert.doesNotMatch(scenes.map(({ caption }) => caption).join("\n"), /^(?:make|create|build)\b/imu);
 });
 
 test("one sentence uses visible four-role prompts without repeating captions", () => {
   const brief = "A mysterious island rises from the ocean at dawn";
   const scenes = buildStoryboardDraft(brief, ids());
   assert.equal(scenes.length, 4);
-  assert.deepEqual(scenes.map(({ caption }) => caption), ["A mysterious island", "rises from", "the ocean", "at dawn"]);
+  assert.deepEqual(scenes.map(({ caption }) => caption), ["A mysterious island rises from the ocean at dawn.", "", "", ""]);
   assert.match(scenes[0].visual_prompt, /wide establishing view$/);
   assert.match(scenes[3].visual_prompt, /closing wide shot$/);
 });
@@ -184,7 +190,7 @@ test("one sentence uses visible four-role prompts without repeating captions", (
 test("a short cinematic phrase stays one speakable caption, not one word per scene", () => {
   const scenes = buildStoryboardDraft("cosmic dust space travel", ids());
   assert.equal(scenes.length, 4);
-  assert.deepEqual(scenes.map(({ caption }) => caption), ["cosmic dust space travel", "", "", ""]);
+  assert.deepEqual(scenes.map(({ caption }) => caption), ["Cosmic dust space travel.", "", "", ""]);
   const planned = buildStoryboardDraft("cosmic dust space travel", ids(), {
     goal: "story", audience: "general", structure: "story_arc", tone: "cinematic",
     pace: "balanced", durationSeconds: 15, media: "stock"
@@ -201,7 +207,7 @@ test("Unicode, excess clauses, and very short text stay bounded", () => {
   assert.equal(excess.length, 6);
   const short = buildStoryboardDraft("Hi", ids());
   assert.equal(short.length, 4);
-  assert.deepEqual(short.map(({ caption }) => caption), ["Hi", "", "", ""]);
+  assert.deepEqual(short.map(({ caption }) => caption), ["Hi.", "", "", ""]);
   assert.ok(short.every(({ visual_prompt }) => visual_prompt.length <= 240));
 });
 

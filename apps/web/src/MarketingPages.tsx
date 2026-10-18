@@ -46,9 +46,9 @@ export function marketingRoute(path: string): MarketingRoute {
 
 const TITLES: Record<MarketingRoute, string> = {
   home: "F-Motion",
-  "self-host": "F-Motion — Self-host",
-  "how-it-works": "F-Motion — How it works",
-  login: "F-Motion — Login"
+  "self-host": "F-Motion. Self-host",
+  "how-it-works": "F-Motion. How it works",
+  login: "F-Motion. Login"
 };
 
 const HEADLINES: Record<MarketingRoute, string> = {
@@ -67,7 +67,7 @@ const LEDES: Record<MarketingRoute, string> = {
 
 export function pageTitle(path: string): string {
   if (!studioComingSoon() && (isStudioPath(path) || path === "/login")) {
-    return "F-Motion — Studio";
+    return "F-Motion. Studio";
   }
   return TITLES[marketingRoute(path)] ?? "F-Motion";
 }

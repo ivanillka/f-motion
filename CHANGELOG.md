@@ -8,6 +8,7 @@ studio under **Settings → What’s new**. Product version lives in root
 
 ### Studio
 
+- Fallback storyboards now write plain sentence captions such as **My summer trip.** instead of splitting the brief into fragments, and user-facing studio copy no longer uses em dashes. Ship together with Pages, the API, and the VPS in one release.
 - Create speaks plain language end to end: no reel, stock, footage, or package jargon; captions read as short plain sentences; and **Make my storyboard now** is the first action after an upload, so nobody has to answer every question first. Scene cards show the caption, or a short **Add a short caption** hint, instead of the internal image prompt. The export button reads **Export video**, and messages point at Sources, not a strip. Ship together with Pages, the API, and the VPS in one release.
 - Scene editor is split into four tabs: Style, Timing, Text, and Media, showing at most four controls at once while keeping full keyboard and screen reader access. Edits persist across tab switches. Ship together with Pages, the API, and the VPS in one release.
 - Drafts list has a per-item **Delete** control with a confirm step. It calls the existing hard-purge `DELETE /projects/{id}` (project row, cascaded children, outbox rows, and best-effort object-storage blobs).
@@ -37,7 +38,7 @@ studio under **Settings → What’s new**. Product version lives in root
 
 ### Reliability & site
 
-- Self-host and LAN HTTP studios create storyboards again — command IDs no longer require a secure browser context.
+- Self-host and LAN HTTP studios create storyboards again. Command IDs no longer require a secure browser context.
 - Create chat keeps your first topic line for the brief and opens the storyboard when the chat finishes.
 - Brief questions use a shorter subject instead of repeating your whole opening line.
 - f-motion.com marketing routes: **Login** and **How it works** show coming soon; hosted studio sign-in stays gated until reopen.
@@ -48,7 +49,7 @@ studio under **Settings → What’s new**. Product version lives in root
 ### Context-aware media
 
 - Licensed stock search ranks candidates with a fit score from your brief, scene, and optional media glance.
-- Video architecture and media glance persist when the storyboard is created — not only after concept selection.
+- Video architecture and media glance persist when the storyboard is created, not only after concept selection.
 - YouTube-style delivery searches landscape Pexels; Reels and Stories stay portrait.
 - FAL image and motion dialogs open prefilled from scene intent; stock picks log feedback for tuning.
 
@@ -56,7 +57,7 @@ studio under **Settings → What’s new**. Product version lives in root
 
 ### Create is the chat
 
-- Create asks only what is still missing, then opens the storyboard — no concept picker and no extra Continue step.
+- Create asks only what is still missing, then opens the storyboard, with no concept picker and no extra Continue step.
 - Dropped photos get a local glance before follow-up questions; Pexels-only chats do not wait on a drop.
 - Play keeps running when a scene still needs media; Pause freezes the preview.
 - Voice-over has start offset, level, and mute; spoken words highlight on the full caption.
