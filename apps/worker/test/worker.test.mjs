@@ -586,7 +586,7 @@ test("render job clip crops around the scene's focal point", () => {
   }, "/tmp/job");
   assert.match(job.clips[0].args.join(" "), /crop=720:1280:\(iw-ow\)\*0\.8:\(ih-oh\)\*0\.2/);
 });
-test("zoom motion Ken Burns from a 2× cover matching the preview 1.08→1.16 range", () => {
+test("zoom motion Ken Burns from a 2× cover matching the preview 1.0→1.30 eased range", () => {
   const zoomJob = buildRenderJob({
     ...snapshot,
     scenes: [{ ...snapshot.scenes[0], motion: "zoom", media_id: "asset-1" }]
@@ -595,8 +595,7 @@ test("zoom motion Ken Burns from a 2× cover matching the preview 1.08→1.16 ra
   }, "/tmp/job");
   const args = zoomJob.clips[0].args.join(" ");
   assert.match(args, /crop=1440:2560:/);
-  assert.match(args, /min\(1\.08\+/);
-  assert.match(args, /1\.16/);
+  assert.match(args, /z='1\+0\.3000\*\(0\.5-0\.5\*cos\(PI\*on\/\d+\)\)'/);
   assert.match(args, /flags=lanczos/);
 
   const noneJob = buildRenderJob(snapshot, "preview.mp4", {}, "/tmp/job");
@@ -608,18 +607,19 @@ test("push motion pans within the frame instead of a no-op", () => {
     scenes: [{ ...snapshot.scenes[0], motion: "push" }]
   }, "preview.mp4", {}, "/tmp/job");
   assert.match(pushJob.clips[0].args.join(" "), /zoompan/);
-  assert.match(pushJob.clips[0].args.join(" "), /z=1\.16/);
+  assert.match(pushJob.clips[0].args.join(" "), /z=1\.25/);
+  assert.match(pushJob.clips[0].args.join(" "), /\(ih-ih\/zoom\)\*\(0\.5-0\.5\*cos/);
 });
 test("push pans sideways on a wide still and vertically on a tall still", () => {
   const scene = { ...snapshot.scenes[0], motion: "push", media_id: "asset-1" };
   const wide = buildRenderJob({ ...snapshot, scenes: [scene] }, "preview.mp4", {
     "asset-1": { path: "/tmp/wide.jpg", type: "image/jpeg", width: 1920, height: 1080 }
   }, "/tmp/job");
-  assert.match(wide.clips[0].args.join(" "), /\(iw-iw\/zoom\)\*on\//);
+  assert.match(wide.clips[0].args.join(" "), /x=.\(iw-iw\/zoom\)\*\(0\.5-0\.5\*cos\(PI\*on\//);
   const tall = buildRenderJob({ ...snapshot, scenes: [scene] }, "preview.mp4", {
     "asset-1": { path: "/tmp/tall.jpg", type: "image/jpeg", width: 1080, height: 1920 }
   }, "/tmp/job");
-  assert.match(tall.clips[0].args.join(" "), /\(ih-ih\/zoom\)\*on\//);
+  assert.match(tall.clips[0].args.join(" "), /y=.\(ih-ih\/zoom\)\*\(0\.5-0\.5\*cos\(PI\*on\//);
 });
 test("concat mixdown amixes an uploaded soundtrack under the cut", () => {
   const withBed = {
@@ -1041,4 +1041,53 @@ test("worker GetObject uses If-Match and omits VersionId for R2", async () => {
   const fn = source.slice(start, end);
   assert.match(fn, /IfMatch: etag/);
   assert.doesNotMatch(fn, /VersionId: versionId/);
+});
+
+// Frame-bound checks: evaluate the zoompan expressions at the first, middle
+// and last output frame the way FFmpeg does (on = output frame index).
+function zoompanAt(filter, on, iw, ih) {
+  const part = (key) => filter.match(new RegExp(`${key}='?([^':]+)'?(?::|$)`))[1];
+  const evalExpr = (expr, zoom) => Function("on", "iw", "ih", "zoom", "PI", "cos", `return ${expr};`)(on, iw, ih, zoom, Math.PI, Math.cos);
+  const zoom = evalExpr(part("z"), 1);
+  return { zoom, x: evalExpr(part("x"), zoom), y: evalExpr(part("y"), zoom) };
+}
+function motionFilterFor(motion, media) {
+  const job = buildRenderJob({
+    ...snapshot,
+    scenes: [{ ...snapshot.scenes[0], motion, duration_ms: 3000, media_id: "asset-1" }]
+  }, "final.mp4", { "asset-1": media }, "/tmp/job", { width: 1080, height: 1920 });
+  const args = job.clips[0].args;
+  return args[args.indexOf("-vf") + 1].split(",").find((part) => part.startsWith("zoompan="));
+}
+test("zoom eases from 1.0 to 1.30 and stays centred", () => {
+  const filter = motionFilterFor("zoom", { path: "/tmp/w.jpg", type: "image/jpeg", width: 3000, height: 2000 });
+  const iw = 2160, ih = 3840, last = 89;
+  const first = zoompanAt(filter, 0, iw, ih), mid = zoompanAt(filter, 44.5, iw, ih), end = zoompanAt(filter, last, iw, ih);
+  assert.ok(Math.abs(first.zoom - 1) < 1e-9);
+  assert.ok(Math.abs(end.zoom - 1.3) < 1e-9);
+  assert.ok(Math.abs(mid.zoom - 1.15) < 1e-6, "ease-in-out is symmetric");
+  assert.ok(zoompanAt(filter, 3, iw, ih).zoom - first.zoom < (end.zoom - first.zoom) / 89, "eases in");
+  for (const on of [0, 30, 60, last]) {
+    const at = zoompanAt(filter, on, iw, ih);
+    assert.ok(at.x >= 0 && at.x + iw / at.zoom <= iw + 1e-6, "no edge on x");
+    assert.ok(at.y >= 0 && at.y + ih / at.zoom <= ih + 1e-6, "no edge on y");
+  }
+});
+test("pan overscales to 1.25 and travels 25% of the frame width on a wide still", () => {
+  const filter = motionFilterFor("push", { path: "/tmp/w.jpg", type: "image/jpeg", width: 3000, height: 2000 });
+  const iw = 2160, ih = 3840;
+  const first = zoompanAt(filter, 0, iw, ih), end = zoompanAt(filter, 89, iw, ih);
+  assert.equal(first.zoom, 1.25);
+  const travelOfFrame = (end.x - first.x) / (iw / first.zoom);
+  assert.ok(Math.abs(travelOfFrame - 0.25) < 1e-9, `travel ${travelOfFrame}`);
+  assert.ok(first.x >= 0 && end.x + iw / end.zoom <= iw + 1e-6, "pan stays inside the overscan");
+  assert.ok(Math.abs(first.y - (ih - ih / 1.25) / 2) < 1e-9, "wide pan keeps y centred");
+});
+test("pan travels 25% of the frame height on a tall still, None stays static", () => {
+  const filter = motionFilterFor("push", { path: "/tmp/t.jpg", type: "image/jpeg", width: 2000, height: 3000 });
+  const iw = 2160, ih = 3840;
+  const first = zoompanAt(filter, 0, iw, ih), end = zoompanAt(filter, 89, iw, ih);
+  assert.ok(Math.abs((end.y - first.y) / (ih / 1.25) - 0.25) < 1e-9);
+  assert.ok(end.y + ih / end.zoom <= ih + 1e-6);
+  assert.equal(motionFilterFor("none", { path: "/tmp/t.jpg", type: "image/jpeg", width: 2000, height: 3000 }), undefined);
 });

@@ -264,15 +264,23 @@ function escapeAssText(value: string): string {
 }
 
 const MOTION_FPS = 30;
-// Match apps/web preview-zoom / preview-push: cover, then 1.08→1.16 (push holds 1.16).
-const MOTION_START_ZOOM = 1.08;
-const MOTION_MAX_ZOOM = 1.16;
+// Match apps/web preview-zoom / preview-push (style.css), both eased in and out.
+// Zoom pushes in from the plain cover (1.0) to 1.30. Push overscales the still
+// to 1.25 and travels across the whole overscan, which is 25% of the frame.
+export const MOTION_ZOOM_START = 1.0;
+export const MOTION_ZOOM_END = 1.3;
+export const MOTION_PAN_SCALE = 1.25;
 const MOTION_SAMPLE_SCALE = 2;
 
 function lanczosCoverCrop(width: number, height: number, focal_x: number, focal_y: number): string[] {
   return coverCropFilter(width, height, focal_x, focal_y).map((part) =>
     part.startsWith("scale=") && !part.includes("flags=") ? `${part}:flags=lanczos` : part
   );
+}
+
+/** Ease-in-out progress 0..1 over output frame `on` (zoompan's counter). */
+function easeExpr(frames: number): string {
+  return `(0.5-0.5*cos(PI*on/${frames - 1}))`;
 }
 
 function motionFilter(
@@ -284,17 +292,19 @@ function motionFilter(
 ): string | undefined {
   if (motion === "none") return undefined;
   const frames = Math.max(2, Math.round(durationSeconds * MOTION_FPS));
+  const ease = easeExpr(frames);
   if (motion === "zoom") {
-    const step = (MOTION_MAX_ZOOM - MOTION_START_ZOOM) / (frames - 1);
-    return `zoompan=z='min(${MOTION_START_ZOOM}+${step.toFixed(6)}*on,${MOTION_MAX_ZOOM})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+    const range = (MOTION_ZOOM_END - MOTION_ZOOM_START).toFixed(4);
+    return `zoompan=z='${MOTION_ZOOM_START}+${range}*${ease}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
   }
   // ponytail: "push" is a Ken Burns pan, not a transition. Wide sources pan X;
-  // tall/unknown pan Y so the extra cover-crop pixels actually move.
+  // tall/unknown pan Y so the extra cover-crop pixels actually move. The pan
+  // stays inside the overscaled cover, so it never shows an edge.
   const wide = Boolean(source?.width && source.height && source.width > source.height);
   if (wide) {
-    return `zoompan=z=${MOTION_MAX_ZOOM}:x='(iw-iw/zoom)*on/${frames - 1}':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+    return `zoompan=z=${MOTION_PAN_SCALE}:x='(iw-iw/zoom)*${ease}':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
   }
-  return `zoompan=z=${MOTION_MAX_ZOOM}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*on/${frames - 1}':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+  return `zoompan=z=${MOTION_PAN_SCALE}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*${ease}':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
 }
 
 const overlayFontsDir = fileURLToPath(new URL("../assets/fonts", import.meta.url));
