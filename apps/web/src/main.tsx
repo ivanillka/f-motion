@@ -47,7 +47,7 @@ import {
   sceneDurationForMedia,
   scenePreviewUrl,
   seekLivePlayhead,
-  snapDurationToBeat,
+  snapScenesToBeat as snapDurationsToBeat,
   stockBedUrl,
   stockBeds,
   showsPartnerBrands,
@@ -1368,8 +1368,9 @@ export function App() {
     setStatus("Saving…");
     try {
       let current = project;
-      for (const scene of project.scenes) {
-        const duration_ms = snapDurationToBeat(scene.duration_ms, bpm);
+      const durations = snapDurationsToBeat(project.scenes, bpm);
+      for (const [index, scene] of project.scenes.entries()) {
+        const duration_ms = durations[index]!;
         if (duration_ms === scene.duration_ms) continue;
         current = await api.command(current.id, current.revision, "update_scene", {
           scene: { ...scene, duration_ms }

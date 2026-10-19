@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { stockBeds, type CaptionCue, type OverlayLook, type OverlayPlace, type ProjectSnapshot, type Scene } from "@f-engine/contracts";
 import {
   coverCropFilter,
+  RENDER_FPS,
   renderPlan,
   spokenWordsForCues,
   VOICEOVER_DUCK,
@@ -516,7 +517,8 @@ export function brandMarkOverlay(width: number, height: number): { width: number
 // `h264` lets FFmpeg select the available software encoder (libx264 in the
 // production GPL build and OpenH264 in the local development image).
 // ponytail: OpenH264 rejects `-crf`; raise bitrate instead. 8M is for 1080×1920.
-const clipVideoEncode = ["-c:v", "h264", "-b:v", "8M", "-pix_fmt", "yuv420p", "-movflags", "+faststart"];
+// Pin every clip to RENDER_FPS so a 24/60 fps source cannot shift a beat cut.
+const clipVideoEncode = ["-c:v", "h264", "-r", String(RENDER_FPS), "-b:v", "8M", "-pix_fmt", "yuv420p", "-movflags", "+faststart"];
 const clipAudioEncode = ["-c:a", "aac", "-ar", "44100", "-ac", "2"];
 
 function concatOutputArgs(encodeVideo: boolean, mixdown?: boolean): string[] {
@@ -574,7 +576,7 @@ export function sceneClipArguments(
     const still = media.type === "image/jpeg" || media.type === "image/png" || media.type === "image/webp";
     const padAudio = still || media.hasAudio === false;
     const input = still
-      ? ["-loop", "1", "-framerate", "30", "-t", String(duration), "-i", media.path]
+      ? ["-loop", "1", "-framerate", String(RENDER_FPS), "-t", String(duration), "-i", media.path]
       : ["-stream_loop", "-1", "-t", String(duration), "-i", media.path];
     const audioInput = padAudio ? silentAudioInput(duration) : [];
     const audioMap = padAudio ? "1:a" : "0:a";
@@ -591,7 +593,7 @@ export function sceneClipArguments(
   return [
     "-y",
     "-f", "lavfi",
-    "-i", `color=c=#202027:s=${plan.width}x${plan.height}:d=${duration}:r=30`,
+    "-i", `color=c=#202027:s=${plan.width}x${plan.height}:d=${duration}:r=${RENDER_FPS}`,
     ...silentAudioInput(duration),
     ...vfArgs([...(motion ? [motion] : []), ...captions]),
     ...audioFilterArgs(scene.audio_level),

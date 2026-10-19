@@ -1,5 +1,8 @@
 import {
+  beatGridCuts,
+  beatMs,
   buildStoryboardDraft,
+  clampBpm,
   conceptIdForArchitecture,
   conceptsFor,
   cueAtElapsed,
@@ -24,7 +27,7 @@ import {
   type VideoArchitecture
 } from "@f-engine/reel-engine";
 
-export { spokenMixKey, spokenNarrationReady };
+export { beatMs, clampBpm, spokenMixKey, spokenNarrationReady };
 
 export interface Scene {
   id: string;
@@ -681,12 +684,6 @@ export function seekLivePlayhead(
   return { sceneId: last.id, sceneElapsedMs: boundedSceneMs(last.duration_ms) };
 }
 
-export function clampBpm(value: unknown): number {
-  const n = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(n)) return 120;
-  return Math.min(200, Math.max(60, Math.round(n)));
-}
-
 export function clampOffsetMs(value: unknown): number {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return 0;
@@ -713,14 +710,17 @@ export async function sceneMediaIntentForScene(
   }, sceneMediaIntent);
 }
 
-export function beatMs(bpm: unknown): number {
-  return 60_000 / clampBpm(bpm);
+/** One snapped duration per scene, parallel to the input order. */
+export function snapScenesToBeat(
+  scenes: readonly Pick<Scene, "id" | "order" | "duration_ms">[],
+  bpm: unknown
+): number[] {
+  return beatGridCuts(scenes, bpm).map((cut) => cut.duration_ms);
 }
 
+/** Snap one scene through the same cumulative grid (used by previews). */
 export function snapDurationToBeat(durationMs: number, bpm: unknown): number {
-  const beat = beatMs(bpm);
-  const beats = Math.max(1, Math.round(boundedSceneMs(durationMs) / beat));
-  return boundedSceneMs(beats * beat);
+  return snapScenesToBeat([{ id: "scene", order: 0, duration_ms: durationMs }], bpm)[0]!;
 }
 
 export function musicLaneBeats(totalMs: number, bpm: unknown): number[] {

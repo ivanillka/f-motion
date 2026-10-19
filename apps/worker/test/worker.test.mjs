@@ -5,7 +5,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { renderPlan } from "@f-engine/reel-engine";
+import { RENDER_FPS, renderPlan } from "@f-engine/reel-engine";
 import {
   IdempotentResults,
   MediaProbeError,
@@ -620,6 +620,39 @@ test("push pans sideways on a wide still and vertically on a tall still", () => 
     "asset-1": { path: "/tmp/tall.jpg", type: "image/jpeg", width: 1080, height: 1920 }
   }, "/tmp/job");
   assert.match(tall.clips[0].args.join(" "), /y=.\(ih-ih\/zoom\)\*\(0\.5-0\.5\*cos\(PI\*on\//);
+});
+test("render job gives every clip a frame-exact cut on the cumulative beat grid", () => {
+  const bpm = 174;
+  const beat = 60_000 / bpm;
+  const beatCounts = [4, 3, 6, 7, 4, 3, 6, 4, 7, 3, 6, 4, 3, 7, 6, 4, 3, 6, 7, 4, 3, 6, 4];
+  const beatSnapshot = {
+    ...snapshot,
+    brief: {
+      ...snapshot.brief,
+      soundtrack: { kind: "stock", stock_id: "pulse", bpm, offset_ms: 0, level: 0.8 }
+    },
+    scenes: beatCounts.map((beats, order) => ({
+      ...snapshot.scenes[0],
+      id: `beat-${order}`,
+      order,
+      caption: `Beat ${order}`,
+      duration_ms: beats * beat
+    }))
+  };
+  const job = buildRenderJob(beatSnapshot, "preview.mp4", {}, "/tmp/job");
+  let beatsSoFar = 0;
+  let elapsedMs = 0;
+  for (const [index, clip] of job.clips.entries()) {
+    beatsSoFar += beatCounts[index];
+    elapsedMs += clip.scene.duration_ms;
+    const expectedFrame = (beatsSoFar * beat / 1000) * RENDER_FPS;
+    const actualFrame = (elapsedMs / 1000) * RENDER_FPS;
+    assert.ok(
+      Math.abs(actualFrame - expectedFrame) <= 1,
+      `clip ${index} is ${(actualFrame - expectedFrame).toFixed(2)} frames off the beat grid`
+    );
+    assert.match(clip.args.join(" "), new RegExp(`-r ${RENDER_FPS} `));
+  }
 });
 test("concat mixdown amixes an uploaded soundtrack under the cut", () => {
   const withBed = {

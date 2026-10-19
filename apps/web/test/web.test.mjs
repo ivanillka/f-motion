@@ -196,7 +196,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { clampBpm, clampFocus, clampOffsetMs, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, previewMediaShouldLoop, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, spokenNarrationReady, stockBedUrl, voiceoverPlayback } = await vite.ssrLoadModule("/src/api.ts");
+    const { clampBpm, clampFocus, clampOffsetMs, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, previewMediaShouldLoop, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, snapScenesToBeat, spokenNarrationReady, stockBedUrl, voiceoverPlayback } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -233,6 +233,26 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.equal(previewMediaShouldLoop(false, true), false);
     assert.equal(previewMediaShouldLoop(false, false), true);
     assert.equal(snapDurationToBeat(3750, 120), 4000);
+    const bpm = 174;
+    const beat = 60_000 / bpm;
+    const beatCounts = [4, 3, 6, 7, 4, 3, 6, 4, 7, 3, 6, 4, 3, 7, 6, 4, 3, 6, 7, 4, 3, 6, 4];
+    const snapped = snapScenesToBeat(beatCounts.map((beats, order) => ({
+      id: `beat-${order}`,
+      order,
+      duration_ms: beats * beat
+    })), bpm);
+    let beatsSoFar = 0;
+    let elapsedMs = 0;
+    for (const [index, duration_ms] of snapped.entries()) {
+      beatsSoFar += beatCounts[index];
+      elapsedMs += duration_ms;
+      const expectedFrame = (beatsSoFar * beat / 1000) * 30;
+      const actualFrame = (elapsedMs / 1000) * 30;
+      assert.ok(
+        Math.abs(actualFrame - expectedFrame) <= 1,
+        `snapped cut ${index} is ${(actualFrame - expectedFrame).toFixed(2)} frames off the beat grid`
+      );
+    }
     assert.equal(musicLaneBeats(2000, 120).length, 5);
     assert.equal(stockBedUrl("pulse"), "/music/pulse.mp3");
     assert.equal(stockBedUrl(undefined), undefined);

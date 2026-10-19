@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief, mixPicture, sceneUsesStock, picturePrompt } from "../dist/index.js";
+import { beatGridCuts, RENDER_FPS, conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief, mixPicture, sceneUsesStock, picturePrompt } from "../dist/index.js";
 
 const EM_DASH = "\u2014";
 
@@ -454,6 +454,90 @@ test("render plan resolves each scene's cue list (derived or explicit)", () => {
   const plan = renderPlan(snapshot, referenceProfile);
   assert.ok(Array.isArray(plan.scenes[0].caption_cues));
   assert.ok(plan.scenes[0].caption_cues.length > 0);
+});
+test("render plan keeps every cut and the final end on the cumulative beat grid", () => {
+  const bpm = 174;
+  const beat = 60_000 / bpm;
+  const beatCounts = [4, 3, 6, 7, 4, 3, 6, 4, 7, 3, 6, 4, 3, 7, 6, 4, 3, 6, 7, 4, 3, 6, 4];
+  const beatSnapshot = {
+    ...snapshot,
+    brief: {
+      ...snapshot.brief,
+      soundtrack: { kind: "stock", stock_id: "pulse", bpm, offset_ms: 0, level: 0.8 }
+    },
+    scenes: beatCounts.map((beats, order) => ({
+      ...snapshot.scenes[0],
+      id: `beat-${order}`,
+      order,
+      caption: `Beat ${order}`,
+      duration_ms: beats * beat
+    }))
+  };
+  const cuts = beatGridCuts(beatSnapshot.scenes, bpm, RENDER_FPS);
+  assert.deepEqual(cuts.map((cut) => cut.beats), beatCounts);
+  const plan = renderPlan(beatSnapshot, referenceProfile);
+  let beatsSoFar = 0;
+  let elapsedMs = 0;
+  for (const [index, scene] of plan.scenes.entries()) {
+    beatsSoFar += beatCounts[index];
+    elapsedMs += scene.duration_ms;
+    const expectedFrame = (beatsSoFar * beat / 1000) * RENDER_FPS;
+    const actualFrame = (elapsedMs / 1000) * RENDER_FPS;
+    assert.ok(
+      Math.abs(actualFrame - expectedFrame) <= 1,
+      `cut ${index} is ${(actualFrame - expectedFrame).toFixed(2)} frames off the beat grid`
+    );
+  }
+  // Per-shot rounding (the old clip planner) drifts several frames by the end.
+  const perShotFrames = beatCounts
+    .reduce((total, beats) => total + Math.round((beats * beat / 1000) * RENDER_FPS), 0);
+  const gridFrames = (beatsSoFar * beat / 1000) * RENDER_FPS;
+  assert.ok(Math.abs(perShotFrames - gridFrames) > 1);
+});
+test("render plan leaves a reel that was not beat snapped at its bounded durations", () => {
+  const bpm = 115;
+  const beatSnapshot = {
+    ...snapshot,
+    brief: {
+      ...snapshot.brief,
+      soundtrack: { kind: "stock", stock_id: "pulse", bpm, offset_ms: 0, level: 0.8 }
+    },
+    scenes: [
+      { ...snapshot.scenes[0], id: "unsnapped-0", order: 0, caption: "First shot", duration_ms: 3200 },
+      { ...snapshot.scenes[0], id: "unsnapped-1", order: 1, caption: "Second shot", duration_ms: 2700 }
+    ]
+  };
+  const plan = renderPlan(beatSnapshot, referenceProfile);
+  assert.deepEqual(plan.scenes.map((scene) => scene.duration_ms), [3200, 2700]);
+});
+test("render plan clamps explicit cues when the beat grid shortens a snapped scene", () => {
+  const bpm = 174;
+  const beat = 60_000 / bpm;
+  const originalDuration = 4 * beat;
+  const explicit = { text: "Explicit cue", start_ms: 0, end_ms: originalDuration };
+  const beatSnapshot = {
+    ...snapshot,
+    brief: {
+      ...snapshot.brief,
+      soundtrack: { kind: "stock", stock_id: "pulse", bpm, offset_ms: 0, level: 0.8 }
+    },
+    scenes: [{
+      ...snapshot.scenes[0],
+      id: "snapped-cue",
+      order: 0,
+      caption: "Cue",
+      duration_ms: originalDuration,
+      caption_cues: [explicit]
+    }]
+  };
+  const plan = renderPlan(beatSnapshot, referenceProfile);
+  const scene = plan.scenes[0];
+  assert.ok(scene.duration_ms < originalDuration);
+  assert.equal(scene.caption_cues.length, 1);
+  assert.equal(scene.caption_cues[0].text, "Explicit cue");
+  assert.equal(scene.caption_cues[0].start_ms, 0);
+  assert.equal(scene.caption_cues[0].end_ms, scene.duration_ms);
+  assert.equal(explicit.end_ms, originalDuration, "the input snapshot is not mutated");
 });
 test("coverCropFilter offsets the crop by the focal point", () => {
   const offCenter = coverCropFilter(720, 1280, 0.75, 0.25);
