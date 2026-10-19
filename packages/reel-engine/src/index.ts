@@ -1073,14 +1073,47 @@ export function beatGridCuts(
   return cuts;
 }
 
+/**
+ * True when every scene already sits on a whole-beat length within one frame.
+ * Studio snapping produces exactly this shape; a reel that was never snapped
+ * can have arbitrary durations and must render at those durations unchanged.
+ */
+function isBeatSnapped(
+  scenes: readonly Pick<Scene, "duration_ms">[],
+  bpm: unknown,
+  fps = RENDER_FPS
+): boolean {
+  const beat = beatMs(bpm);
+  const frameMs = 1000 / fps;
+  return scenes.every((scene) => {
+    const beats = Math.round(scene.duration_ms / beat);
+    return beats >= 1 && Math.abs(scene.duration_ms - beats * beat) <= frameMs + 1e-6;
+  });
+}
+
+/** Explicit cues trimmed to a shortened scene: drop trailing cues, clamp the last end. */
+function cuesWithinDuration(cues: CaptionCue[], durationMs: number): CaptionCue[] {
+  const kept = cues
+    .filter((cue) => cue.start_ms < durationMs)
+    .map((cue) => ({ ...cue }));
+  const last = kept[kept.length - 1];
+  if (last && last.end_ms > durationMs) last.end_ms = durationMs;
+  return kept;
+}
+
 export function renderPlan(snapshot: ProjectSnapshot, profile: RenderProfile): RenderPlan {
   validateRenderProfile(profile);
   const soundtrack = snapshot.brief.soundtrack;
   const scenes = snapshot.scenes.map((scene) => ({ ...boundedScene(scene) }));
-  if (soundtrack) {
+  if (soundtrack && isBeatSnapped(scenes, soundtrack.bpm)) {
     const cuts = beatGridCuts(scenes, soundtrack.bpm);
     for (const [index, cut] of cuts.entries()) {
-      scenes[index]!.duration_ms = cut.duration_ms;
+      const scene = scenes[index]!;
+      if (cut.duration_ms === scene.duration_ms) continue;
+      scene.duration_ms = cut.duration_ms;
+      if (scene.caption_cues?.length) {
+        scene.caption_cues = cuesWithinDuration(scene.caption_cues, cut.duration_ms);
+      }
     }
   }
   return {

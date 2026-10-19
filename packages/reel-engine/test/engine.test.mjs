@@ -494,6 +494,51 @@ test("render plan keeps every cut and the final end on the cumulative beat grid"
   const gridFrames = (beatsSoFar * beat / 1000) * RENDER_FPS;
   assert.ok(Math.abs(perShotFrames - gridFrames) > 1);
 });
+test("render plan leaves a reel that was not beat snapped at its bounded durations", () => {
+  const bpm = 115;
+  const beatSnapshot = {
+    ...snapshot,
+    brief: {
+      ...snapshot.brief,
+      soundtrack: { kind: "stock", stock_id: "pulse", bpm, offset_ms: 0, level: 0.8 }
+    },
+    scenes: [
+      { ...snapshot.scenes[0], id: "unsnapped-0", order: 0, caption: "First shot", duration_ms: 3200 },
+      { ...snapshot.scenes[0], id: "unsnapped-1", order: 1, caption: "Second shot", duration_ms: 2700 }
+    ]
+  };
+  const plan = renderPlan(beatSnapshot, referenceProfile);
+  assert.deepEqual(plan.scenes.map((scene) => scene.duration_ms), [3200, 2700]);
+});
+test("render plan clamps explicit cues when the beat grid shortens a snapped scene", () => {
+  const bpm = 174;
+  const beat = 60_000 / bpm;
+  const originalDuration = 4 * beat;
+  const explicit = { text: "Explicit cue", start_ms: 0, end_ms: originalDuration };
+  const beatSnapshot = {
+    ...snapshot,
+    brief: {
+      ...snapshot.brief,
+      soundtrack: { kind: "stock", stock_id: "pulse", bpm, offset_ms: 0, level: 0.8 }
+    },
+    scenes: [{
+      ...snapshot.scenes[0],
+      id: "snapped-cue",
+      order: 0,
+      caption: "Cue",
+      duration_ms: originalDuration,
+      caption_cues: [explicit]
+    }]
+  };
+  const plan = renderPlan(beatSnapshot, referenceProfile);
+  const scene = plan.scenes[0];
+  assert.ok(scene.duration_ms < originalDuration);
+  assert.equal(scene.caption_cues.length, 1);
+  assert.equal(scene.caption_cues[0].text, "Explicit cue");
+  assert.equal(scene.caption_cues[0].start_ms, 0);
+  assert.equal(scene.caption_cues[0].end_ms, scene.duration_ms);
+  assert.equal(explicit.end_ms, originalDuration, "the input snapshot is not mutated");
+});
 test("coverCropFilter offsets the crop by the focal point", () => {
   const offCenter = coverCropFilter(720, 1280, 0.75, 0.25);
   assert.deepEqual(offCenter, [
