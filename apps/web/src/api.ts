@@ -98,10 +98,12 @@ export interface SceneMediaView {
     duration_ms?: number;
   };
   attribution?: {
-    source: "Pexels" | "Mixkit";
+    source: "Pexels" | "Civitai" | "Mixkit";
     creator: string;
     attributionUrl: string;
     previewUrl?: string;
+    postId?: number;
+    postUrl?: string;
     title?: string;
   };
   generation?: {

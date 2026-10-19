@@ -16,6 +16,7 @@ import { createApp, createTestApp } from "./server.js";
 import {
   assertNoSharedFalCredential,
   assertNoSharedPexelsCredential,
+  assertNoSharedCivitaiCredential,
   credentialVaultFromEnv,
   falByokEnabled,
   setFalDiagnosticSink
@@ -27,6 +28,13 @@ import {
   PostgresPexelsCredentialService,
   pexelsByokEnabled
 } from "./pexels-credentials.js";
+import {
+  CivitaiProviderError,
+  PostgresCivitaiCredentialService,
+  civitaiByokEnabled
+} from "./civitai-credentials.js";
+import { civitaiPolicyFromEnv, defaultCivitaiPolicy, type CivitaiPolicy } from "./civitai.js";
+import { PostgresCivitaiSettingsService } from "./civitai-settings.js";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -45,6 +53,7 @@ function extraAuthIssuers(env: NodeJS.ProcessEnv) {
 assertLocalAuthAllowed(process.env);
 assertNoSharedFalCredential(process.env);
 assertNoSharedPexelsCredential(process.env);
+assertNoSharedCivitaiCredential(process.env);
 // FAL queue diagnostics for this process. Events are already redacted by the
 // fal-host sink: no API keys and no signed media URLs reach the log.
 setFalDiagnosticSink((event) => {
@@ -81,7 +90,8 @@ const apiKeys = new PostgresApiKeyService(pool);
 const hostUsage = new PostgresHostUsageService(pool, freeRenderUnitsFromEnv(process.env));
 const falEnabled = falByokEnabled(process.env);
 const pexelsEnabled = pexelsByokEnabled(process.env);
-const credentialVault = falEnabled || pexelsEnabled ? credentialVaultFromEnv(process.env) : undefined;
+const civitaiEnabled = civitaiByokEnabled(process.env);
+const credentialVault = falEnabled || pexelsEnabled || civitaiEnabled ? credentialVaultFromEnv(process.env) : undefined;
 const falCredentials = falEnabled
   ? new PostgresFalCredentialService(pool, credentialVault!)
   : undefined;
@@ -91,12 +101,23 @@ const falGeneration = falCredentials
 const pexelsCredentials = pexelsEnabled
   ? new PostgresPexelsCredentialService(pool, credentialVault!)
   : undefined;
+const civitaiPolicy = civitaiEnabled ? civitaiPolicyFromEnv(process.env) : defaultCivitaiPolicy;
+const civitaiCredentials = civitaiEnabled
+  ? new PostgresCivitaiCredentialService(pool, credentialVault!, civitaiPolicy)
+  : undefined;
+const civitaiSettings = civitaiEnabled
+  ? new PostgresCivitaiSettingsService(pool, civitaiPolicy)
+  : undefined;
 const media = {
   repository: new PostgresMediaRepository(pool),
   store: objectStore,
   pexelsForOwner: async (ownerId: string) => {
     if (!pexelsCredentials) throw new PexelsProviderError("unavailable");
     return pexelsCredentials.client(ownerId);
+  },
+  civitaiForOwner: async (ownerId: string, policy: CivitaiPolicy) => {
+    if (!civitaiCredentials) throw new CivitaiProviderError("unavailable");
+    return civitaiCredentials.optionalClient(ownerId, policy);
   }
 };
 const purge = (ownerId: string, projectId: string) => purgeProject(pool, objectStore, ownerId, projectId);
@@ -119,6 +140,9 @@ if (engineEnv(process.env) === "selfhost") {
     falCredentials,
     falGeneration,
     pexelsCredentials,
+    civitaiCredentials,
+    civitaiPolicy,
+    civitaiSettings,
     apiKeys,
     hostUsage,
     externalImports,
@@ -143,6 +167,9 @@ if (engineEnv(process.env) === "selfhost") {
     falCredentials,
     falGeneration,
     pexelsCredentials,
+    civitaiCredentials,
+    civitaiPolicy,
+    civitaiSettings,
     apiKeys,
     hostUsage,
     externalImports,
@@ -157,6 +184,9 @@ if (engineEnv(process.env) === "selfhost") {
     falCredentials,
     falGeneration,
     pexelsCredentials,
+    civitaiCredentials,
+    civitaiPolicy,
+    civitaiSettings,
     apiKeys,
     hostUsage,
     ready,

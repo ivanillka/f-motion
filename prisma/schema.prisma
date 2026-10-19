@@ -50,6 +50,7 @@ model User {
   usageBalance           UsageBalance?
   usageLedger            UsageLedger[]
   sessions              OwnerSession[]
+  civitaiSettings       CivitaiOwnerSettings?
 }
 
 model OwnerSession {
@@ -113,6 +114,15 @@ model ProviderCredential {
 
   @@unique([ownerId, provider])
   @@index([ownerId])
+}
+
+model CivitaiOwnerSettings {
+  ownerId         String   @id
+  owner           User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  maxNsfwLevel    String   @default("None")
+  allowedCreators String[] @default([])
+  minShortSide    Int      @default(1080)
+  updatedAt       DateTime @updatedAt
 }
 
 model Project {

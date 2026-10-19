@@ -14,6 +14,7 @@ await import("./fal-credentials.test.mjs");
 await import("./fal-credentials-integration.test.mjs");
 await import("./fal-generation.test.mjs");
 await import("./pexels-credentials.test.mjs");
+await import("./civitai.test.mjs");
 await import("./api-keys-usage.test.mjs");
 await import("./media-bound.test.mjs");
 await import("./media-repository.test.mjs");

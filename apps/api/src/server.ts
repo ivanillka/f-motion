@@ -73,6 +73,31 @@ import {
   type PexelsCredentialService
 } from "./pexels-credentials.js";
 import {
+  CivitaiProviderError,
+  civitaiCredentialHttpError,
+  type CivitaiCredentialService
+} from "./civitai-credentials.js";
+import {
+  CivitaiRequestError,
+  defaultCivitaiPolicy,
+  civitaiLevelRank,
+  civitaiPeriods,
+  civitaiSorts,
+  civitaiNsfwLevels,
+  pickCivitaiCandidate,
+  rankCivitaiResults,
+  type CivitaiClient,
+  type CivitaiNsfwLevel,
+  type CivitaiPeriod,
+  type CivitaiPolicy,
+  type CivitaiSort
+} from "./civitai.js";
+import {
+  CivitaiSettingsValidationError,
+  defaultCivitaiOwnerSettings,
+  type CivitaiSettingsService
+} from "./civitai-settings.js";
+import {
   authenticatesExternalImport,
   externalMediaUrlAllowed,
   externalProjectUrl,
@@ -111,6 +136,8 @@ export interface MediaDependencies {
   pexelsForOwner?: (ownerId: string) => Promise<PexelsClient>;
   /** Test/local adapter only; hosted startup never constructs a shared client. */
   pexels?: PexelsClient;
+  civitaiForOwner?: (ownerId: string, policy: CivitaiPolicy) => Promise<CivitaiClient>;
+  civitai?: CivitaiClient;
 }
 
 export type HostUsageService = Pick<PostgresHostUsageService, "status" | "consumeRender" | "ensureFreeGrant">;
@@ -130,6 +157,9 @@ interface AppBaseOptions {
   falCredentials?: FalCredentialService;
   falGeneration?: FalGenerationService;
   pexelsCredentials?: PexelsCredentialService;
+  civitaiCredentials?: CivitaiCredentialService;
+  civitaiSettings?: CivitaiSettingsService;
+  civitaiPolicy?: CivitaiPolicy;
   apiKeys?: ApiKeyService;
   hostUsage?: HostUsageService;
   ownerAuth?: SelfhostOwnerAuth;
@@ -277,6 +307,53 @@ function pexelsQuery(value: unknown): string {
   const query = value.trim();
   if (!query || query.length > 100) throw new ValidationError("invalid Pexels query");
   return query;
+}
+
+function civitaiQuery(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value !== "string") throw new ValidationError("invalid Civitai query");
+  const query = value.trim();
+  if (query.length > 100) throw new ValidationError("invalid Civitai query");
+  return query;
+}
+
+function civitaiUsername(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string") throw new ValidationError("invalid Civitai username");
+  const username = value.trim();
+  if (!/^[A-Za-z0-9_.-]{1,64}$/u.test(username)) throw new ValidationError("invalid Civitai username");
+  return username;
+}
+
+function civitaiNsfwLevel(value: unknown, fallback: CivitaiNsfwLevel): CivitaiNsfwLevel {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value !== "string" || !civitaiNsfwLevels.includes(value as CivitaiNsfwLevel)) {
+    throw new ValidationError("invalid Civitai NSFW level");
+  }
+  return value as CivitaiNsfwLevel;
+}
+
+function civitaiSortValue(value: unknown): CivitaiSort {
+  if (value === undefined || value === null || value === "") return "Most Reactions";
+  if (typeof value !== "string" || !civitaiSorts.includes(value as CivitaiSort)) {
+    throw new ValidationError("invalid Civitai sort");
+  }
+  return value as CivitaiSort;
+}
+
+function civitaiPeriodValue(value: unknown): CivitaiPeriod {
+  if (value === undefined || value === null || value === "") return "Month";
+  if (typeof value !== "string" || !civitaiPeriods.includes(value as CivitaiPeriod)) {
+    throw new ValidationError("invalid Civitai period");
+  }
+  return value as CivitaiPeriod;
+}
+
+function civitaiLimitValue(value: unknown): number {
+  if (value === undefined || value === null || value === "") return 12;
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new ValidationError("invalid Civitai limit");
+  return limit;
 }
 
 async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -835,7 +912,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         && legacyAutoPrompts
         && project.scenes.some((scene) => scene.caption.includes("https://") || scene.visual_prompt?.startsWith("use secondary image"));
       // Queue Edit must land on the host's current media pick, not a stale attach.
-      // Assign uniquely by index — never wrap one still across every beat.
+      // Assign uniquely by index and never wrap one still across every beat.
       const expectedMediaId = (index: number) => importedMediaIds[index];
       const hostMediaMismatch = importedMediaIds.length > 0 && project.scenes.length > 0 && project.scenes.some((scene, index) =>
         scene.media_id !== expectedMediaId(index));
@@ -1010,6 +1087,38 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     if (media.pexels) return media.pexels;
     throw new PexelsProviderError("unavailable");
   };
+  const civitaiForOwner = async (media: MediaDependencies, ownerId: string, policy: CivitaiPolicy) => {
+    if (media.civitaiForOwner) return media.civitaiForOwner(ownerId, policy);
+    if (media.civitai) return media.civitai;
+    throw new CivitaiProviderError("unavailable");
+  };
+  const civitaiSettingsForOwner = async (ownerId: string) => {
+    if (options.civitaiSettings) return options.civitaiSettings.get(ownerId);
+    return {
+      ...defaultCivitaiOwnerSettings,
+      allowedCreators: [...defaultCivitaiOwnerSettings.allowedCreators],
+      serverMaxNsfwLevel: (options.civitaiPolicy ?? defaultCivitaiPolicy).nsfwLevel
+    };
+  };
+  const civitaiHasKey = async (ownerId: string): Promise<boolean> => {
+    if (!options.civitaiCredentials) return true;
+    try {
+      return (await options.civitaiCredentials.status(ownerId)).connected;
+    } catch {
+      return false;
+    }
+  };
+  const civitaiKeylessLevel = (level: CivitaiNsfwLevel, hasKey: boolean): CivitaiNsfwLevel =>
+    hasKey || civitaiLevelRank(level) <= civitaiLevelRank("Soft") ? level : "Soft";
+  const civitaiPolicyForOwner = (
+    settings: Awaited<ReturnType<typeof civitaiSettingsForOwner>>,
+    level: CivitaiNsfwLevel
+  ): CivitaiPolicy => ({
+    ...(options.civitaiPolicy ?? defaultCivitaiPolicy),
+    nsfwLevel: level,
+    allowedCreators: settings.allowedCreators,
+    minShortSide: settings.minShortSide
+  });
   const composeDeps = (ownerId: string): ComposeOneDeps => ({
     projects,
     fillStock: options.media ? async (owner, projectId) => {
@@ -1108,6 +1217,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     ?? (error instanceof PexelsRequestError
       ? { status: 503, body: { type: "provider_unavailable", message: "Pexels could not be reached. Try again later." } }
       : undefined);
+  const civitaiHttpError = (error: unknown) => civitaiCredentialHttpError(error)
+    ?? (error instanceof CivitaiRequestError
+      ? { status: 503, body: { type: "provider_unavailable", message: "Civitai could not be reached. Try again later." } }
+      : undefined);
   app.get("/api/me/usage", async (_request, response, next) => {
     try {
       if (!options.hostUsage) return response.status(503).json({ type: "unavailable", message: "usage unavailable" });
@@ -1200,6 +1313,10 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
   const pexelsUnavailable = (response: express.Response) => response.status(503).json({
     type: "provider_unavailable",
     message: "Pexels connection is not enabled on this deployment."
+  });
+  const civitaiUnavailable = (response: express.Response) => response.status(503).json({
+    type: "provider_unavailable",
+    message: "Civitai connection is not enabled on this deployment."
   });
 
   const falGenUnavailable = (response: import("express").Response) =>
@@ -1348,6 +1465,85 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       await options.pexelsCredentials.disconnect(String(response.locals.ownerId));
       response.status(204).end();
     } catch (error) { next(error); }
+  });
+  app.get("/api/providers/civitai/credential", async (_request, response, next) => {
+    try {
+      if (!options.civitaiCredentials) return civitaiUnavailable(response);
+      response.json(await options.civitaiCredentials.status(String(response.locals.ownerId)));
+    } catch (error) { next(error); }
+  });
+  app.put("/api/providers/civitai/credential", async (request, response, next) => {
+    try {
+      if (!options.civitaiCredentials) return civitaiUnavailable(response);
+      if (!exactObject(request.body, ["api_key"])) {
+        return response.status(422).json({ type: "validation", message: "Enter a valid Civitai API key." });
+      }
+      response.json(await options.civitaiCredentials.connect(
+        String(response.locals.ownerId),
+        (request.body as { api_key?: unknown }).api_key
+      ));
+    } catch (error) {
+      const mapped = civitaiHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/providers/civitai/credential/test", async (request, response, next) => {
+    try {
+      if (!options.civitaiCredentials) return civitaiUnavailable(response);
+      if (!emptyBody(request.body)) {
+        return response.status(422).json({ type: "validation", message: "This request does not accept fields." });
+      }
+      response.json(await options.civitaiCredentials.test(String(response.locals.ownerId)));
+    } catch (error) {
+      const mapped = civitaiHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.delete("/api/providers/civitai/credential", async (request, response, next) => {
+    try {
+      if (!options.civitaiCredentials) return civitaiUnavailable(response);
+      if (!emptyBody(request.body)) {
+        return response.status(422).json({ type: "validation", message: "This request does not accept fields." });
+      }
+      await options.civitaiCredentials.disconnect(String(response.locals.ownerId));
+      response.status(204).end();
+    } catch (error) { next(error); }
+  });
+  app.get("/api/providers/civitai/settings", async (_request, response, next) => {
+    try {
+      if (!options.civitaiSettings) return civitaiUnavailable(response);
+      const settings = await options.civitaiSettings.get(String(response.locals.ownerId));
+      response.json({
+        max_nsfw_level: settings.maxNsfwLevel,
+        allowed_creators: settings.allowedCreators,
+        min_short_side: settings.minShortSide,
+        server_max_nsfw_level: settings.serverMaxNsfwLevel
+      });
+    } catch (error) {
+      if (error instanceof CivitaiSettingsValidationError) {
+        return response.status(422).json({ type: "validation", message: error.message });
+      }
+      next(error);
+    }
+  });
+  app.put("/api/providers/civitai/settings", async (request, response, next) => {
+    try {
+      if (!options.civitaiSettings) return civitaiUnavailable(response);
+      const settings = await options.civitaiSettings.update(String(response.locals.ownerId), request.body);
+      response.json({
+        max_nsfw_level: settings.maxNsfwLevel,
+        allowed_creators: settings.allowedCreators,
+        min_short_side: settings.minShortSide,
+        server_max_nsfw_level: settings.serverMaxNsfwLevel
+      });
+    } catch (error) {
+      if (error instanceof CivitaiSettingsValidationError) {
+        return response.status(422).json({ type: "validation", message: error.message });
+      }
+      next(error);
+    }
   });
   app.get("/api/projects", async (_request, response, next) => {
     try {
@@ -1923,10 +2119,252 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       next(error);
     }
   });
+  app.get("/api/civitai/search", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      let query: string;
+      let username: string | undefined;
+      let sort: CivitaiSort;
+      let period: CivitaiPeriod;
+      let limit: number;
+      try {
+        query = civitaiQuery(request.query.q);
+        username = civitaiUsername(request.query.username);
+        sort = civitaiSortValue(request.query.sort);
+        period = civitaiPeriodValue(request.query.period);
+        limit = civitaiLimitValue(request.query.limit);
+      } catch (error) {
+        return response.status(422).json({
+          type: "validation",
+          message: error instanceof Error ? error.message : "invalid Civitai query"
+        });
+      }
+      const modelId = request.query.model_id === undefined ? undefined : Number(request.query.model_id);
+      if (modelId !== undefined && (!Number.isInteger(modelId) || modelId <= 0)) {
+        return response.status(422).json({ type: "validation", message: "invalid Civitai model" });
+      }
+      const settings = await civitaiSettingsForOwner(ownerId);
+      const hasKey = await civitaiHasKey(ownerId);
+      let requestedLevel: CivitaiNsfwLevel;
+      try {
+        requestedLevel = civitaiNsfwLevel(request.query.nsfw, civitaiKeylessLevel(settings.maxNsfwLevel, hasKey));
+      } catch (error) {
+        return response.status(422).json({
+          type: "validation",
+          message: error instanceof Error ? error.message : "invalid Civitai NSFW level"
+        });
+      }
+      if (civitaiLevelRank(requestedLevel) > civitaiLevelRank(settings.maxNsfwLevel)) {
+        return response.status(422).json({ type: "validation", message: "Civitai NSFW level exceeds your setting" });
+      }
+      const orientation = request.query.orientation === "landscape" ? "landscape" : "portrait";
+      const cursor = typeof request.query.cursor === "string" ? request.query.cursor : undefined;
+      const policy = civitaiPolicyForOwner(settings, requestedLevel);
+      const client = await civitaiForOwner(options.media, ownerId, policy);
+      const page = await client.search({
+        ...(query ? { query } : {}),
+        ...(username ? { username } : {}),
+        sort,
+        period,
+        limit,
+        orientation,
+        ...(cursor ? { cursor } : {}),
+        ...(modelId ? { modelId } : {})
+      });
+      const intent = query ? await resolveSceneStockIntent(query) : { intent_tokens: [] as string[] };
+      const ranked = await rankCivitaiResults(page.results, intent.intent_tokens, query);
+      response.json({
+        results: ranked.map(({ sourceUrl: _sourceUrl, prompt: _prompt, ...result }) => result),
+        nsfw_level: requestedLevel,
+        ...(page.nextCursor ? { next_cursor: page.nextCursor } : {}),
+        ...(page.modelId ? { model_id: page.modelId } : {})
+      });
+    } catch (error) {
+      const mapped = civitaiHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/projects/:projectId/media/civitai", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      const project = await projects.get(ownerId, request.params.projectId);
+      if (!project) return response.status(404).json({ type: "not_found", message: "not found" });
+      let query: string;
+      try {
+        query = civitaiQuery(request.body?.query);
+      } catch (error) {
+        return response.status(422).json({
+          type: "validation",
+          message: error instanceof Error ? error.message : "invalid Civitai query"
+        });
+      }
+      const civitaiId = Number(request.body?.civitai_id);
+      if (!Number.isInteger(civitaiId) || civitaiId <= 0) {
+        return response.status(422).json({ type: "validation", message: "invalid Civitai result" });
+      }
+      const orientation = pexelsOrientation(project.brief.architecture);
+      const settings = await civitaiSettingsForOwner(ownerId);
+      const hasKey = await civitaiHasKey(ownerId);
+      const policy = civitaiPolicyForOwner(settings, civitaiKeylessLevel(settings.maxNsfwLevel, hasKey));
+      const client = await civitaiForOwner(options.media, ownerId, policy);
+      const selected = await client.imageById(civitaiId, orientation)
+        ?? (await client.search({ query, orientation })).results.find(({ id }) => id === civitaiId);
+      if (!selected) return response.status(404).json({ type: "not_found", message: "Civitai result unavailable" });
+      const asset = await client.copy(
+        ownerId,
+        request.params.projectId,
+        selected,
+        options.media.repository,
+        options.media.store
+      );
+      response.status(201).json({ asset: sceneMediaView(asset) });
+    } catch (error) {
+      const mapped = civitaiHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/projects/:projectId/media/civitai/auto", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      const project = await projects.get(ownerId, request.params.projectId);
+      if (!project) return response.status(404).json({ type: "not_found", message: "not found" });
+      const description = request.body?.description === undefined
+        ? project.brief.purpose
+        : projectBrief({ purpose: request.body.description }).purpose;
+      const settings = await civitaiSettingsForOwner(ownerId);
+      const hasKey = await civitaiHasKey(ownerId);
+      const policy = civitaiPolicyForOwner(settings, civitaiKeylessLevel(settings.maxNsfwLevel, hasKey));
+      const client = await civitaiForOwner(options.media, ownerId, policy);
+      const orientation = pexelsOrientation(project.brief.architecture);
+      const intent = await resolveSceneStockIntent(
+        description,
+        undefined,
+        undefined,
+        project.brief.architecture,
+        project.brief.media_glance
+      );
+      const pick = await pickCivitaiCandidate(
+        client,
+        intent.stock_queries,
+        intent.intent_tokens,
+        orientation,
+        new Set()
+      );
+      if (!pick) {
+        return response.status(404).json({ type: "not_found", message: "No safe Civitai image matched this description" });
+      }
+      const asset = await client.copy(
+        ownerId,
+        request.params.projectId,
+        pick.candidate,
+        options.media.repository,
+        options.media.store
+      );
+      const { sourceUrl: _sourceUrl, prompt: _prompt, ...match } = pick.candidate;
+      response.status(201).json({
+        asset: sceneMediaView(asset),
+        match,
+        query: pick.query,
+        fit: pick.fit
+      });
+    } catch (error) {
+      const mapped = civitaiHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  app.post("/api/projects/:projectId/media/civitai/storyboard", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      const project = await projects.get(ownerId, request.params.projectId);
+      if (!project) return response.status(404).json({ type: "not_found", message: "not found" });
+      if (!project.scenes.length) {
+        return response.status(422).json({ type: "validation", message: "storyboard has no scenes" });
+      }
+      const exclude = new Set<number>();
+      if (request.body && typeof request.body === "object" && !Array.isArray(request.body)
+        && Array.isArray((request.body as { exclude_civitai_ids?: unknown }).exclude_civitai_ids)) {
+        for (const id of (request.body as { exclude_civitai_ids: unknown[] }).exclude_civitai_ids) {
+          if (Number.isInteger(id) && Number(id) > 0) exclude.add(Number(id));
+        }
+      }
+      const settings = await civitaiSettingsForOwner(ownerId);
+      const hasKey = await civitaiHasKey(ownerId);
+      const policy = civitaiPolicyForOwner(settings, civitaiKeylessLevel(settings.maxNsfwLevel, hasKey));
+      const client = await civitaiForOwner(options.media, ownerId, policy);
+      const usedCivitaiIds = new Set(exclude);
+      const results: Array<{
+        scene_id: string;
+        state: "matched" | "no_result" | "skipped";
+        asset?: ReturnType<typeof sceneMediaView>;
+        match?: Omit<Awaited<ReturnType<CivitaiClient["search"]>>["results"][number], "sourceUrl" | "prompt"> & { fit?: number };
+        query?: string;
+        fit?: number;
+        message?: string;
+      }> = [];
+      const orientation = pexelsOrientation(project.brief.architecture);
+      for (const scene of [...project.scenes].sort((a, b) => a.order - b.order)) {
+        if (scene.media_id) {
+          results.push({ scene_id: scene.id, state: "skipped", message: "scene already has media" });
+          continue;
+        }
+        if (!sceneUsesStock(scene)) {
+          results.push({ scene_id: scene.id, state: "skipped", message: "mix scene uses generated media" });
+          continue;
+        }
+        const intent = await resolveSceneStockIntent(
+          project.brief.purpose,
+          scene.caption,
+          scene.visual_prompt,
+          project.brief.architecture,
+          project.brief.media_glance
+        );
+        const pick = await pickCivitaiCandidate(
+          client,
+          intent.stock_queries,
+          intent.intent_tokens,
+          orientation,
+          usedCivitaiIds
+        );
+        if (!pick) {
+          results.push({ scene_id: scene.id, state: "no_result", message: "No safe Civitai image matched this scene" });
+          continue;
+        }
+        usedCivitaiIds.add(pick.candidate.id);
+        const asset = await client.copy(
+          ownerId,
+          request.params.projectId,
+          pick.candidate,
+          options.media.repository,
+          options.media.store
+        );
+        const { sourceUrl: _sourceUrl, prompt: _prompt, ...match } = pick.candidate;
+        results.push({
+          scene_id: scene.id,
+          state: "matched",
+          asset: sceneMediaView(asset),
+          match: { ...match, fit: pick.fit },
+          query: pick.query,
+          fit: pick.fit
+        });
+      }
+      response.status(200).json({ results });
+    } catch (error) {
+      const mapped = civitaiHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
   app.post("/api/projects/:projectId/render", async (request, response, next) => {
     try {
-      const ownerId = String(response.locals.ownerId);
       if (!options.renders) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
       if (!request.body || typeof request.body !== "object" || Array.isArray(request.body)
         || !["preview", "final"].includes(String(request.body.kind))) {
         return response.status(422).json({ type: "validation", message: "invalid render kind" });

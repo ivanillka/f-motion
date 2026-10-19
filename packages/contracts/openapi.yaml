@@ -396,6 +396,104 @@ paths:
               schema: { $ref: "#/components/schemas/TypedError" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /providers/civitai/credential:
+    get:
+      operationId: getCivitaiCredential
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Non-secret Civitai credential view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCredentialView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+    put:
+      operationId: putCivitaiCredential
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [api_key]
+              properties:
+                api_key: { type: string, minLength: 1 }
+              additionalProperties: false
+      responses:
+        "200":
+          description: Connected Civitai credential view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCredentialView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+    delete:
+      operationId: deleteCivitaiCredential
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCredentialView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /providers/civitai/credential/test:
+    post:
+      operationId: testCivitaiCredential
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Credential validated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCredentialView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: Civitai not connected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TypedError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+  /providers/civitai/settings:
+    get:
+      operationId: getCivitaiSettings
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Owner Civitai search settings capped by the server maximum
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CivitaiSettingsView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
+    put:
+      operationId: putCivitaiSettings
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CivitaiSettingsRequest" }
+      responses:
+        "200":
+          description: Updated owner Civitai settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CivitaiSettingsView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ProviderUnavailable" }
   /projects:
     get:
       operationId: listProjects
@@ -658,6 +756,129 @@ paths:
               schema: { $ref: "#/components/schemas/PexelsSearchResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /civitai/search:
+    get:
+      operationId: searchCivitai
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string, maxLength: 100 }
+        - name: username
+          in: query
+          required: false
+          schema: { type: string, minLength: 1, maxLength: 64 }
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [Most Reactions, Most Comments, Most Collected, Newest, Oldest, Random]
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [AllTime, Year, Month, Week, Day]
+        - name: nsfw
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [None, Soft, Mature, X]
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50 }
+        - name: orientation
+          in: query
+          required: false
+          schema: { type: string, enum: [portrait, landscape] }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string }
+        - name: model_id
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Safe bounded Civitai image results without source download URLs
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CivitaiSearchResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /projects/{project_id}/media/civitai:
+    post:
+      operationId: copyCivitai
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CivitaiCopyRequest" }
+      responses:
+        "201":
+          description: Admitted Civitai image for inspection
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CivitaiCopyResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /projects/{project_id}/media/civitai/auto:
+    post:
+      operationId: autoMatchCivitai
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+      responses:
+        "201":
+          description: Auto-matched Civitai image
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CivitaiCopyResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /projects/{project_id}/media/civitai/storyboard:
+    post:
+      operationId: matchStoryboardCivitai
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectId" }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                exclude_civitai_ids:
+                  type: array
+                  items: { type: integer, minimum: 1 }
+              additionalProperties: false
+      responses:
+        "200":
+          description: Per-scene Civitai match results without attaching media_ids
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoryboardCivitaiResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "503": { $ref: "#/components/responses/Unavailable" }
   /projects/{project_id}/media/pexels:
@@ -1086,6 +1307,7 @@ components:
             - fal_generation_busy
             - invalid_provider_credential
             - pexels_not_connected
+            - civitai_not_connected
         message: { type: string }
         current_revision: { type: integer, minimum: 0 }
       additionalProperties: true
@@ -1378,6 +1600,73 @@ components:
           type: array
           items:
             type: object
+            additionalProperties: true
+    CivitaiSettingsView:
+      type: object
+      required: [max_nsfw_level, allowed_creators, min_short_side, server_max_nsfw_level]
+      properties:
+        max_nsfw_level: { type: string, enum: [None, Soft, Mature, X] }
+        allowed_creators:
+          type: array
+          maxItems: 50
+          items: { type: string, minLength: 1, maxLength: 64 }
+        min_short_side: { type: integer, minimum: 480, maximum: 2160 }
+        server_max_nsfw_level: { type: string, enum: [None, Soft, Mature, X] }
+      additionalProperties: false
+    CivitaiSettingsRequest:
+      type: object
+      properties:
+        max_nsfw_level: { type: string, enum: [None, Soft, Mature, X] }
+        allowed_creators:
+          type: array
+          maxItems: 50
+          items: { type: string, minLength: 1, maxLength: 64 }
+        min_short_side: { type: integer, minimum: 480, maximum: 2160 }
+      additionalProperties: false
+    CivitaiSearchResult:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        nsfw_level: { type: string, enum: [None, Soft, Mature, X] }
+        next_cursor: { type: string }
+        model_id: { type: integer, minimum: 1 }
+    CivitaiCopyRequest:
+      type: object
+      required: [query, civitai_id]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 100 }
+        civitai_id: { type: integer, minimum: 1 }
+    CivitaiCopyResult:
+      type: object
+      required: [asset]
+      properties:
+        asset: { $ref: "#/components/schemas/SceneMediaView" }
+        match: { type: object, additionalProperties: true }
+        query: { type: string }
+        fit: { type: integer, minimum: 0, maximum: 100 }
+      additionalProperties: true
+    StoryboardCivitaiResult:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            required: [scene_id, state]
+            properties:
+              scene_id: { type: string }
+              state: { type: string, enum: [matched, no_result, skipped] }
+              asset: { $ref: "#/components/schemas/SceneMediaView" }
+              match: { type: object, additionalProperties: true }
+              query: { type: string }
+              fit: { type: integer, minimum: 0, maximum: 100 }
+              message: { type: string }
             additionalProperties: true
     PexelsSearchResult:
       type: object

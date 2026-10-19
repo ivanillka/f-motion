@@ -1,6 +1,6 @@
 /** Always-visible Create chrome source chips. Extensible without redesign. */
 
-export type SourceId = "own" | "pexels" | "fal" | "more";
+export type SourceId = "own" | "pexels" | "civitai" | "fal" | "more";
 
 export type SourceState = "ready" | "connected" | "locked" | "unavailable" | "coming";
 
@@ -15,6 +15,9 @@ export interface MediaSourcesInput {
   ownCount: number;
   pexelsConnected: boolean;
   pexelsUnavailable?: boolean;
+  civitaiConnected: boolean;
+  civitaiUnavailable?: boolean;
+  civitaiKeyless?: boolean;
   falConnected: boolean;
   falUnavailable?: boolean;
 }
@@ -26,6 +29,9 @@ export function mediaSourceChips(input: MediaSourcesInput): SourceChip[] {
     : input.pexelsConnected
       ? "connected"
       : "locked";
+  const civitaiState: SourceState = input.civitaiConnected || input.civitaiKeyless
+    ? "connected"
+    : "locked";
   const falState: SourceState = input.falUnavailable
     ? "unavailable"
     : input.falConnected
@@ -50,6 +56,14 @@ export function mediaSourceChips(input: MediaSourcesInput): SourceChip[] {
           : "Add your key",
       state: pexelsState
     },
+    ...(!input.civitaiUnavailable ? [{
+      id: "civitai" as const,
+      label: "Civitai",
+      detail: civitaiState === "connected"
+        ? input.civitaiConnected ? "Your key" : "Keyless"
+        : "Add your key",
+      state: civitaiState
+    }] : []),
     {
       id: "fal",
       label: "FAL",
@@ -73,6 +87,34 @@ export function sourceChipTone(state: SourceState): "on" | "warn" | "muted" {
   if (state === "ready" || state === "connected") return "on";
   if (state === "unavailable") return "warn";
   return "muted";
+}
+
+/** Shared Civitai picker query so filters and cursor paging stay testable. */
+export interface CivitaiPickerInput {
+  query: string;
+  orientation: "portrait" | "landscape";
+  username?: string;
+  sort: string;
+  period: string;
+  nsfw: string;
+  cursor?: string;
+  modelId?: number;
+  limit?: number;
+}
+
+export function civitaiPickerParams(input: CivitaiPickerInput): URLSearchParams {
+  const params = new URLSearchParams({
+    q: input.query,
+    orientation: input.orientation,
+    sort: input.sort,
+    period: input.period,
+    nsfw: input.nsfw,
+    limit: String(input.limit ?? 12)
+  });
+  if (input.username?.trim()) params.set("username", input.username.trim());
+  if (input.cursor) params.set("cursor", input.cursor);
+  if (input.modelId) params.set("model_id", String(input.modelId));
+  return params;
 }
 
 /** Reel setting: turn ready photos into motion with FAL image-to-video (your key). */

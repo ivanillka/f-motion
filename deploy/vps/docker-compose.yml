@@ -97,6 +97,7 @@ services:
       FENGINE_ENV: ${FENGINE_ENV:-selfhost}
       FENGINE_ACCESS_MODE: ${FENGINE_ACCESS_MODE:-single_user}
       FENGINE_PEXELS_BYOK_ENABLED: ${FENGINE_PEXELS_BYOK_ENABLED:-1}
+      FENGINE_CIVITAI_BYOK_ENABLED: ${FENGINE_CIVITAI_BYOK_ENABLED:-0}
       FENGINE_FAL_BYOK_ENABLED: ${FENGINE_FAL_BYOK_ENABLED:-1}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -125,6 +126,7 @@ services:
       R2_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-fengine-local-secret}
       R2_REGION: auto
       FENGINE_PEXELS_BYOK_ENABLED: ${FENGINE_PEXELS_BYOK_ENABLED:-1}
+      FENGINE_CIVITAI_BYOK_ENABLED: ${FENGINE_CIVITAI_BYOK_ENABLED:-0}
       FENGINE_FAL_BYOK_ENABLED: ${FENGINE_FAL_BYOK_ENABLED:-1}
     restart: unless-stopped
 

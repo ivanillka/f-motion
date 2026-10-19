@@ -211,6 +211,13 @@ export interface StoredMedia {
     url: string;
     previewUrl?: string;
   } | {
+    source: "Civitai";
+    creator: string;
+    url: string;
+    previewUrl?: string;
+    postId?: number;
+    postUrl?: string;
+  } | {
     source: "Mixkit";
     creator: string;
     url: string;
@@ -235,10 +242,12 @@ export interface SceneMediaView {
     duration_ms?: number;
   };
   attribution?: {
-    source: "Pexels" | "Mixkit";
+    source: "Pexels" | "Civitai" | "Mixkit";
     creator: string;
     attributionUrl: string;
     previewUrl?: string;
+    postId?: number;
+    postUrl?: string;
     title?: string;
   };
   generation?: {
@@ -274,6 +283,27 @@ function safeStockAttribution(value: unknown): SceneMediaView["attribution"] {
       creator,
       attributionUrl,
       ...(previewUrl ? { previewUrl } : {})
+    };
+  }
+  if (attribution.source === "Civitai") {
+    let host = "";
+    try { host = new URL(attributionUrl).hostname; } catch { return undefined; }
+    if (host !== "civitai.com" && !host.endsWith(".civitai.com")) return undefined;
+    const postId = Number(attribution.postId);
+    const postUrl = safeHttpsUrl(attribution.postUrl);
+    const postValid = Number.isInteger(postId) && postId > 0 && postUrl
+      && (() => {
+        try {
+          const parsed = new URL(postUrl);
+          return parsed.hostname === "civitai.com" && parsed.pathname === `/posts/${postId}`;
+        } catch { return false; }
+      })();
+    return {
+      source: "Civitai",
+      creator,
+      attributionUrl,
+      ...(previewUrl ? { previewUrl } : {}),
+      ...(postValid ? { postId, postUrl } : {})
     };
   }
   if (attribution.source === "Mixkit") {
@@ -558,7 +588,7 @@ export interface PexelsResult {
   contentType: string;
 }
 
-/** @deprecated name — use `stockQueriesFromText` from `@f-engine/reel-engine`. */
+/** @deprecated name: use `stockQueriesFromText` from `@f-engine/reel-engine`. */
 export function pexelsQueriesForBrief(brief: string): string[] {
   return stockQueriesFromText(brief);
 }
@@ -592,7 +622,7 @@ export async function resolveSceneStockIntent(
   }, sceneMediaIntent);
 }
 
-/** @deprecated — prefer `resolveSceneStockIntent`. */
+/** @deprecated. Prefer `resolveSceneStockIntent`. */
 export function sceneStockIntent(
   brief: string,
   caption?: string,
@@ -825,7 +855,7 @@ async function sealImportedStillFromFile(
 }
 
 /** ponytail: CopyObject + header range, not a full GET. Stream sha256 when f-motion-worker exists. */
-async function sealImportedStillFromObject(
+export async function sealImportedStillFromObject(
   ownerId: string,
   projectId: string,
   id: string,
