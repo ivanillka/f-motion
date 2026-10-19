@@ -80,8 +80,6 @@ import {
 import {
   CivitaiRequestError,
   defaultCivitaiPolicy,
-  FalClipScorer,
-  MemoryCivitaiEmbeddingCache,
   civitaiLevelRank,
   civitaiPeriods,
   civitaiSorts,
@@ -89,7 +87,6 @@ import {
   pickCivitaiCandidate,
   rankCivitaiResults,
   type CivitaiClient,
-  type CivitaiImageTextScorer,
   type CivitaiNsfwLevel,
   type CivitaiPeriod,
   type CivitaiPolicy,
@@ -163,7 +160,6 @@ interface AppBaseOptions {
   civitaiCredentials?: CivitaiCredentialService;
   civitaiSettings?: CivitaiSettingsService;
   civitaiPolicy?: CivitaiPolicy;
-  civitaiImageTextScorer?: CivitaiImageTextScorer;
   apiKeys?: ApiKeyService;
   hostUsage?: HostUsageService;
   ownerAuth?: SelfhostOwnerAuth;
@@ -1096,7 +1092,6 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     if (media.civitai) return media.civitai;
     throw new CivitaiProviderError("unavailable");
   };
-  const civitaiEmbeddingCache = new MemoryCivitaiEmbeddingCache();
   const civitaiSettingsForOwner = async (ownerId: string) => {
     if (options.civitaiSettings) return options.civitaiSettings.get(ownerId);
     return {
@@ -1124,16 +1119,6 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     allowedCreators: settings.allowedCreators,
     minShortSide: settings.minShortSide
   });
-  const civitaiScorerForOwner = async (ownerId: string): Promise<CivitaiImageTextScorer | undefined> => {
-    if (options.civitaiImageTextScorer) return options.civitaiImageTextScorer;
-    if (!options.falCredentials) return undefined;
-    try {
-      const { apiKey } = await options.falCredentials.decryptForOwner(ownerId);
-      return new FalClipScorer(apiKey, fetch, civitaiEmbeddingCache);
-    } catch {
-      return undefined;
-    }
-  };
   const composeDeps = (ownerId: string): ComposeOneDeps => ({
     projects,
     fillStock: options.media ? async (owner, projectId) => {
@@ -2188,8 +2173,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         ...(modelId ? { modelId } : {})
       });
       const intent = query ? await resolveSceneStockIntent(query) : { intent_tokens: [] as string[] };
-      const scorer = await civitaiScorerForOwner(ownerId);
-      const ranked = await rankCivitaiResults(page.results, intent.intent_tokens, query, scorer);
+      const ranked = await rankCivitaiResults(page.results, intent.intent_tokens, query);
       response.json({
         results: ranked.map(({ sourceUrl: _sourceUrl, prompt: _prompt, ...result }) => result),
         nsfw_level: requestedLevel,
@@ -2256,7 +2240,6 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const hasKey = await civitaiHasKey(ownerId);
       const policy = civitaiPolicyForOwner(settings, civitaiKeylessLevel(settings.maxNsfwLevel, hasKey));
       const client = await civitaiForOwner(options.media, ownerId, policy);
-      const scorer = await civitaiScorerForOwner(ownerId);
       const orientation = pexelsOrientation(project.brief.architecture);
       const intent = await resolveSceneStockIntent(
         description,
@@ -2270,8 +2253,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         intent.stock_queries,
         intent.intent_tokens,
         orientation,
-        new Set(),
-        scorer
+        new Set()
       );
       if (!pick) {
         return response.status(404).json({ type: "not_found", message: "No safe Civitai image matched this description" });
@@ -2316,7 +2298,6 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       const hasKey = await civitaiHasKey(ownerId);
       const policy = civitaiPolicyForOwner(settings, civitaiKeylessLevel(settings.maxNsfwLevel, hasKey));
       const client = await civitaiForOwner(options.media, ownerId, policy);
-      const scorer = await civitaiScorerForOwner(ownerId);
       const usedCivitaiIds = new Set(exclude);
       const results: Array<{
         scene_id: string;
@@ -2349,8 +2330,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           intent.stock_queries,
           intent.intent_tokens,
           orientation,
-          usedCivitaiIds,
-          scorer
+          usedCivitaiIds
         );
         if (!pick) {
           results.push({ scene_id: scene.id, state: "no_result", message: "No safe Civitai image matched this scene" });

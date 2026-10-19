@@ -4442,6 +4442,7 @@ export function App() {
       {!civitaiUnavailable && <article className="settings-card" aria-labelledby="civitai-settings-title">
         <h2 id="civitai-settings-title">Civitai images</h2>
         <p>Browsing at None and Soft works without a key. A Civitai API key is only needed for Mature or X levels. Search uses the host allowlist and never downloads from other origins.</p>
+        <p>Matching uses Civitai text metadata only. It does not call FAL or spend FAL credits.</p>
         <p className="crop-hint">{civitaiRightsNotice}</p>
         <label>Civitai maximum NSFW level
           <select value={civitaiNsfwLevel} onChange={(event) => setCivitaiNsfwLevel(event.target.value as CivitaiLevel)}>

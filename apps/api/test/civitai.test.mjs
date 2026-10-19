@@ -4,8 +4,6 @@ import { createServer } from "node:http";
 import { credentialVaultFromEnv } from "@f-engine/fal-host";
 import {
   CivitaiClient,
-  FalClipScorer,
-  MemoryCivitaiEmbeddingCache,
   civitaiAttributionUrlAllowed,
   civitaiPolicyFromEnv,
   civitaiTextFitScore,
@@ -270,44 +268,33 @@ test("Civitai copy refuses a redirect to a non-allowed host without fetching it"
 });
 
 
-test("Civitai ranking falls back to text and accepts an image-text scorer", async () => {
+test("Civitai ranking uses text only", async () => {
   const results = [
-    selectedImage({ id: 1, previewUrl: "https://image.civitai.com/p1.jpeg" }),
-    selectedImage({ id: 2, previewUrl: "https://image.civitai.com/p2.jpeg", baseModel: "Pony" })
+    selectedImage({ id: 1, prompt: "portrait", previewUrl: "https://image.civitai.com/p1.jpeg" }),
+    selectedImage({ id: 2, prompt: "cinematic", previewUrl: "https://image.civitai.com/p2.jpeg", baseModel: "Pony" })
   ];
-  const fallback = await rankCivitaiResults(results, ["cinematic"], "cinematic");
-  assert.equal(fallback[0].score_source, "text_fallback");
-  const scorer = {
-    async score({ imageId }) {
-      return imageId === 2 ? 1 : 0;
-    }
-  };
-  const ranked = await rankCivitaiResults(results, ["cinematic"], "cinematic", scorer);
+  const ranked = await rankCivitaiResults(results, ["cinematic"], "x");
   assert.equal(ranked[0].id, 2);
-  assert.equal(ranked[0].score_source, "image_text");
+  assert.equal(ranked[0].score_source, "text");
+  assert.equal(ranked[0].fit, 100);
   assert.equal(civitaiTextFitScore(["cinematic"], "cinematic"), 100);
 });
 
-test("FAL CLIP scorer caches image embeddings by image id and uses the owner key", async () => {
-  const bodies = [];
-  const cache = new MemoryCivitaiEmbeddingCache();
-  const scorer = new FalClipScorer("fal-key", async (url, init) => {
-    assert.equal(url, "https://fal.run/fal-ai/clip");
-    assert.equal(init.headers.authorization, "Key fal-key");
-    const body = JSON.parse(init.body);
-    bodies.push(body);
-    return new Response(JSON.stringify(
-      body.image_embedding
-        ? { image_embedding: body.image_embedding, text_embedding: [1, 0] }
-        : { image_embedding: [1, 0], text_embedding: [1, 0] }
-    ), { status: 200, headers: { "content-type": "application/json" } });
-  }, cache);
-  const first = await scorer.score({ imageId: 7, imageUrl: "https://image.civitai.com/x.png", text: "harbor" });
-  const second = await scorer.score({ imageId: 7, imageUrl: "https://image.civitai.com/x.png", text: "harbor" });
-  assert.equal(first, 1);
-  assert.equal(second, 1);
-  assert.equal(bodies[0].image_embedding, undefined);
-  assert.deepEqual(bodies[1].image_embedding, [1, 0]);
+test("Civitai ranking never calls an external FAL scorer", async () => {
+  let calls = 0;
+  const ranked = await rankCivitaiResults(
+    [selectedImage({ id: 1, prompt: "harbor" })],
+    ["harbor"],
+    "harbor",
+    {
+      async score() {
+        calls += 1;
+        return 1;
+      }
+    }
+  );
+  assert.equal(calls, 0);
+  assert.equal(ranked[0].score_source, "text");
 });
 
 

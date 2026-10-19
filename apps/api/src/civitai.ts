@@ -467,106 +467,9 @@ async function readFilePrefix(path: string, maxBytes: number): Promise<Uint8Arra
 }
 
 
-export interface CivitaiImageTextScorer {
-  score(input: { imageId: number; imageUrl: string; text: string }): Promise<number>;
-}
-
-export interface CivitaiEmbeddingCache {
-  get(imageId: number): Promise<number[] | undefined>;
-  set(imageId: number, embedding: readonly number[]): Promise<void>;
-}
-
-export class MemoryCivitaiEmbeddingCache implements CivitaiEmbeddingCache {
-  private readonly values = new Map<number, number[]>();
-
-  constructor(readonly maxEntries = 500) {}
-
-  async get(imageId: number): Promise<number[] | undefined> {
-    const value = this.values.get(imageId);
-    if (!value) return undefined;
-    this.values.delete(imageId);
-    this.values.set(imageId, value);
-    return value;
-  }
-
-  async set(imageId: number, embedding: readonly number[]): Promise<void> {
-    if (!embedding.length) return;
-    this.values.delete(imageId);
-    this.values.set(imageId, [...embedding]);
-    while (this.values.size > this.maxEntries) {
-      const oldest = this.values.keys().next().value;
-      if (oldest === undefined) break;
-      this.values.delete(oldest);
-    }
-  }
-}
-
-function vectorValue(value: unknown): number[] | undefined {
-  if (!Array.isArray(value) || !value.length) return undefined;
-  const vector = value.map(Number);
-  return vector.every(Number.isFinite) ? vector : undefined;
-}
-
-function cosine(left: readonly number[], right: readonly number[]): number {
-  if (left.length !== right.length || !left.length) return 0;
-  let dot = 0;
-  let leftNorm = 0;
-  let rightNorm = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    dot += left[index]! * right[index]!;
-    leftNorm += left[index]! * left[index]!;
-    rightNorm += right[index]! * right[index]!;
-  }
-  if (!leftNorm || !rightNorm) return 0;
-  return dot / Math.sqrt(leftNorm * rightNorm);
-}
-
-export class FalClipScorer implements CivitaiImageTextScorer {
-  constructor(
-    readonly apiKey: string,
-    readonly request: typeof fetch = fetch,
-    readonly cache: CivitaiEmbeddingCache = new MemoryCivitaiEmbeddingCache(),
-    readonly endpoint = "fal-ai/clip"
-  ) {}
-
-  private async call(input: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const response = await this.request(`https://fal.run/${this.endpoint}`, {
-      method: "POST",
-      headers: { authorization: `Key ${this.apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify(input)
-    });
-    if (!response.ok) throw new Error("FAL CLIP unavailable");
-    const body = await response.json() as unknown;
-    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("FAL CLIP response rejected");
-    return body as Record<string, unknown>;
-  }
-
-  async score(input: { imageId: number; imageUrl: string; text: string }): Promise<number> {
-    let imageEmbedding = await this.cache.get(input.imageId);
-    const body = await this.call({
-      prompt: input.text,
-      image_url: input.imageUrl,
-      ...(imageEmbedding ? { image_embedding: imageEmbedding } : {})
-    });
-    const direct = Number(body.score ?? body.similarity);
-    if (Number.isFinite(direct)) return direct;
-    const embeddings = body.embeddings && typeof body.embeddings === "object" && !Array.isArray(body.embeddings)
-      ? body.embeddings as Record<string, unknown>
-      : {};
-    const returnedImage = vectorValue(body.image_embedding ?? body.imageEmbedding ?? embeddings.image);
-    const textEmbedding = vectorValue(body.text_embedding ?? body.textEmbedding ?? embeddings.text);
-    if (returnedImage && !imageEmbedding) {
-      imageEmbedding = returnedImage;
-      await this.cache.set(input.imageId, returnedImage);
-    }
-    if (!imageEmbedding || !textEmbedding) throw new Error("FAL CLIP embeddings missing");
-    return cosine(imageEmbedding, textEmbedding);
-  }
-}
-
 export interface CivitaiRankedResult extends CivitaiResult {
   fit: number;
-  score_source: "image_text" | "text_fallback";
+  score_source: "text";
 }
 
 export function civitaiTextFitScore(intent_tokens: readonly string[], text: string): number {
@@ -585,65 +488,25 @@ function clampFit(value: number): number {
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
-async function scoreWithTimeout(
-  scorer: CivitaiImageTextScorer,
-  input: { imageId: number; imageUrl: string; text: string },
-  timeoutMs: number
-): Promise<number | undefined> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      scorer.score(input),
-      new Promise<undefined>((resolve) => {
-        timer = setTimeout(() => resolve(undefined), timeoutMs);
-      })
-    ]);
-  } catch {
-    return undefined;
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
-function normalizeImageScore(score: number): number {
-  if (!Number.isFinite(score)) return 0;
-  return score > 1 ? score : score * 100;
-}
-
+/**
+ * Text ranking only. FAL has no active CLIP or image-text embedding endpoint:
+ * fal-ai/clip returns 404, arbiter/image/text is deprecated, and the remaining
+ * embedding endpoints are text-only or segmentation-only.
+ */
 export async function rankCivitaiResults(
   results: readonly CivitaiResult[],
   intent_tokens: readonly string[],
-  query: string,
-  scorer?: CivitaiImageTextScorer,
-  scorerTimeoutMs = 1_500
+  query: string
 ): Promise<CivitaiRankedResult[]> {
-  const texts = results.map((result, index) => {
-    const text = [result.prompt, result.baseModel, result.creator].filter(Boolean).join(" ");
-    const textFit = civitaiTextFitScore(intent_tokens, `${query} ${text}`);
-    const apiFit = Math.round(50 * (1 - index / Math.max(1, results.length)));
-    return { result, textFit, apiFit };
-  });
-
-  let imageScores: Array<number | undefined> = [];
-  if (scorer && texts.length) {
-    imageScores = await Promise.all(texts.map(({ result }) =>
-      scoreWithTimeout(scorer, { imageId: result.id, imageUrl: result.previewUrl, text: query }, scorerTimeoutMs)));
-  }
-
-  return texts
-    .map(({ result, textFit, apiFit }, index) => {
-      const imageScore = imageScores[index];
-      if (imageScore === undefined) {
-        return {
-          ...result,
-          fit: clampFit(Math.max(textFit, apiFit)),
-          score_source: "text_fallback" as const
-        };
-      }
+  return results
+    .map((result, index) => {
+      const text = [result.prompt, result.baseModel, result.creator].filter(Boolean).join(" ");
+      const textFit = civitaiTextFitScore(intent_tokens, `${query} ${text}`);
+      const apiFit = Math.round(50 * (1 - index / Math.max(1, results.length)));
       return {
         ...result,
-        fit: clampFit(0.65 * normalizeImageScore(imageScore) + 0.35 * textFit),
-        score_source: "image_text" as const
+        fit: clampFit(Math.max(textFit, apiFit)),
+        score_source: "text" as const
       };
     })
     .sort((left, right) => right.fit - left.fit || left.id - right.id);
@@ -660,13 +523,12 @@ export async function pickCivitaiCandidate(
   queries: readonly string[],
   intent_tokens: readonly string[],
   orientation: "portrait" | "landscape",
-  usedIds: ReadonlySet<number>,
-  scorer?: CivitaiImageTextScorer
+  usedIds: ReadonlySet<number>
 ): Promise<CivitaiCandidatePick | undefined> {
   let best: CivitaiCandidatePick | undefined;
   for (const query of queries) {
     const page = await client.search({ query, orientation });
-    const ranked = await rankCivitaiResults(page.results, intent_tokens, query, scorer);
+    const ranked = await rankCivitaiResults(page.results, intent_tokens, query);
     for (const hit of ranked) {
       if (usedIds.has(hit.id)) continue;
       if (!best || hit.fit > best.fit) {
