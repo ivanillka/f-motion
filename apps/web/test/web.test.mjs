@@ -357,7 +357,9 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.preview-preparing/);
   assert.match(css, /\.scene-card\.is-preparing/);
   assert.match(css, /transform-origin: 50% 50%/);
-  assert.match(css, /preview-zoom \{\s*from \{ transform: scale\(1\.08\)/);
+  assert.match(css, /preview-zoom \{\s*from \{ transform: scale\(1\); \}\s*to \{ transform: scale\(1\.3\); \}/);
+  assert.match(css, /preview-push-wide \{\s*from \{ transform: scale\(1\.25\) translate3d\(10%, 0, 0\)/);
+  assert.match(css, /preview-zoom var\(--scene-ms, 3s\) ease-in-out/);
   assert.match(css, /\.preview img\.is-frozen, \.preview video\.is-frozen \{\s*animation-play-state: paused/);
   assert.match(css, /\.brief-chat/);
   assert.match(css, /\.app-shell-brief/);
