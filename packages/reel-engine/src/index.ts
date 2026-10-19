@@ -1000,13 +1000,94 @@ export function validateRenderProfile(profile: RenderProfile): RenderProfile {
   return profile;
 }
 
+/** Reel export frame rate. Cut planning and clip encode must share one grid. */
+export const RENDER_FPS = 30;
+
+const MIN_SCENE_MS = 500;
+const MAX_SCENE_MS = 15_000;
+
+/** Same 60–200 BPM contract the soundtrack validator enforces. */
+export function clampBpm(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return 120;
+  return Math.min(200, Math.max(60, Math.round(n)));
+}
+
+export function beatMs(bpm: unknown): number {
+  return 60_000 / clampBpm(bpm);
+}
+
+export interface BeatGridCut {
+  scene_id: string;
+  /** Whole beats this shot owns. */
+  beats: number;
+  start_frame: number;
+  /** Absolute cut, rounded to a frame from the cumulative beat time. */
+  end_frame: number;
+  /** Difference from the previous cut, so frame rounding never accumulates. */
+  duration_ms: number;
+}
+
+function boundedBeatDuration(durationMs: number): number {
+  if (!Number.isFinite(durationMs)) return 3_000;
+  return Math.min(MAX_SCENE_MS, Math.max(MIN_SCENE_MS, durationMs));
+}
+
+/**
+ * Every shot's whole-beat count and frame-exact length. Cut times are rounded
+ * from the cumulative beat timeline and then differenced; rounding each shot
+ * on its own lets half a frame of error per cut accumulate into a late reel.
+ */
+export function beatGridCuts(
+  scenes: readonly Pick<Scene, "id" | "order" | "duration_ms">[],
+  bpm: unknown,
+  fps = RENDER_FPS
+): BeatGridCut[] {
+  if (!Number.isFinite(fps) || fps <= 0) throw new Error("invalid beat grid frame rate");
+  const beat = beatMs(bpm);
+  // Keep every shot inside the scene contract even when one beat is shorter.
+  const minBeats = Math.max(1, Math.ceil(MIN_SCENE_MS / beat));
+  const maxBeats = Math.max(minBeats, Math.floor(MAX_SCENE_MS / beat));
+  const order = scenes.map((_, index) => index)
+    .sort((a, b) => (scenes[a]!.order - scenes[b]!.order) || (a - b));
+  const cuts: BeatGridCut[] = [];
+  let beats = 0;
+  let startFrame = 0;
+  for (const index of order) {
+    const scene = scenes[index]!;
+    const shotBeats = Math.min(
+      maxBeats,
+      Math.max(minBeats, Math.round(boundedBeatDuration(scene.duration_ms) / beat))
+    );
+    beats += shotBeats;
+    const endFrame = Math.round((beats * beat / 1000) * fps);
+    cuts[index] = {
+      scene_id: scene.id,
+      beats: shotBeats,
+      start_frame: startFrame,
+      end_frame: endFrame,
+      duration_ms: ((endFrame - startFrame) / fps) * 1000
+    };
+    startFrame = endFrame;
+  }
+  return cuts;
+}
+
 export function renderPlan(snapshot: ProjectSnapshot, profile: RenderProfile): RenderPlan {
   validateRenderProfile(profile);
+  const soundtrack = snapshot.brief.soundtrack;
+  const scenes = snapshot.scenes.map((scene) => ({ ...boundedScene(scene) }));
+  if (soundtrack) {
+    const cuts = beatGridCuts(scenes, soundtrack.bpm);
+    for (const [index, cut] of cuts.entries()) {
+      scenes[index]!.duration_ms = cut.duration_ms;
+    }
+  }
   return {
     revision: snapshot.revision,
     width: profile.width,
     height: profile.height,
     ...(profile.watermark === undefined ? {} : { watermark: profile.watermark }),
-    scenes: snapshot.scenes.map(boundedScene).map((scene) => ({ ...scene, caption_cues: cuesForScene(scene) }))
+    scenes: scenes.map((scene) => ({ ...scene, caption_cues: cuesForScene(scene) }))
   };
 }

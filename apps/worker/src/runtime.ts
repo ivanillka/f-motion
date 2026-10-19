@@ -23,6 +23,7 @@ import { Readable } from "node:stream";
 import { createHash, randomUUID } from "node:crypto";
 import pg from "pg";
 import {
+  renderPlan,
   validateRenderProfile,
   type RenderProfile
 } from "@f-engine/reel-engine";
@@ -593,7 +594,8 @@ export function createQueueHandlers(
           if (!await event(pool, job.jobId, "rendering", 35)) return { state: "cancelled" };
           await renderPreview(output, snapshot, signal, mediaInputs, profile);
           const measured = await probeMediaFile(output, signal, limits.probeTimeoutMs);
-          const expectedDuration = snapshot.scenes.reduce((total, scene) => total + scene.duration_ms, 0);
+          const expectedDuration = renderPlan(snapshot, profile).scenes
+            .reduce((total, scene) => total + scene.duration_ms, 0);
           if (measured.width !== profile.width || measured.height !== profile.height
             || !measured.duration_ms || Math.abs(measured.duration_ms - expectedDuration) > 250) {
             throw new Error("render output does not match immutable profile");

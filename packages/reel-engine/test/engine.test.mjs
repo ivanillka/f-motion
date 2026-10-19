@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief, mixPicture, sceneUsesStock, picturePrompt } from "../dist/index.js";
+import { beatGridCuts, RENDER_FPS, conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief, mixPicture, sceneUsesStock, picturePrompt } from "../dist/index.js";
 
 const EM_DASH = "\u2014";
 
@@ -454,6 +454,45 @@ test("render plan resolves each scene's cue list (derived or explicit)", () => {
   const plan = renderPlan(snapshot, referenceProfile);
   assert.ok(Array.isArray(plan.scenes[0].caption_cues));
   assert.ok(plan.scenes[0].caption_cues.length > 0);
+});
+test("render plan keeps every cut and the final end on the cumulative beat grid", () => {
+  const bpm = 174;
+  const beat = 60_000 / bpm;
+  const beatCounts = [4, 3, 6, 7, 4, 3, 6, 4, 7, 3, 6, 4, 3, 7, 6, 4, 3, 6, 7, 4, 3, 6, 4];
+  const beatSnapshot = {
+    ...snapshot,
+    brief: {
+      ...snapshot.brief,
+      soundtrack: { kind: "stock", stock_id: "pulse", bpm, offset_ms: 0, level: 0.8 }
+    },
+    scenes: beatCounts.map((beats, order) => ({
+      ...snapshot.scenes[0],
+      id: `beat-${order}`,
+      order,
+      caption: `Beat ${order}`,
+      duration_ms: beats * beat
+    }))
+  };
+  const cuts = beatGridCuts(beatSnapshot.scenes, bpm, RENDER_FPS);
+  assert.deepEqual(cuts.map((cut) => cut.beats), beatCounts);
+  const plan = renderPlan(beatSnapshot, referenceProfile);
+  let beatsSoFar = 0;
+  let elapsedMs = 0;
+  for (const [index, scene] of plan.scenes.entries()) {
+    beatsSoFar += beatCounts[index];
+    elapsedMs += scene.duration_ms;
+    const expectedFrame = (beatsSoFar * beat / 1000) * RENDER_FPS;
+    const actualFrame = (elapsedMs / 1000) * RENDER_FPS;
+    assert.ok(
+      Math.abs(actualFrame - expectedFrame) <= 1,
+      `cut ${index} is ${(actualFrame - expectedFrame).toFixed(2)} frames off the beat grid`
+    );
+  }
+  // Per-shot rounding (the old clip planner) drifts several frames by the end.
+  const perShotFrames = beatCounts
+    .reduce((total, beats) => total + Math.round((beats * beat / 1000) * RENDER_FPS), 0);
+  const gridFrames = (beatsSoFar * beat / 1000) * RENDER_FPS;
+  assert.ok(Math.abs(perShotFrames - gridFrames) > 1);
 });
 test("coverCropFilter offsets the crop by the focal point", () => {
   const offCenter = coverCropFilter(720, 1280, 0.75, 0.25);
