@@ -1,6 +1,7 @@
 import { renderNotifyQueue, type RenderNotifyJob } from "@f-engine/contracts/host-notify";
 import pg from "pg";
 import { PgBoss, type Job } from "pg-boss";
+import { coalesce, listenSupported, startOutboxListener, type OutboxListener } from "./outbox-wake.js";
 
 export const inspectionQueue = "inspect-media";
 export const renderQueue = "render-preview";
@@ -53,7 +54,8 @@ const outboxCleanupIntervalMs = 60 * 60 * 1000;
 
 /**
  * Sessions for one worker process. See apps/api/src/db-pool.ts.
- * pg-boss also keeps one LISTEN client outside this max.
+ * The outbox listener keeps one LISTEN session outside this max (pg-boss's own
+ * LISTEN stays off), so the worker holds at most 3 + 4 + 1.
  * ponytail: fixed split, not a setting. Raise these together if the pooler limit grows.
  */
 export const workerDatabasePoolMax = 3;
@@ -68,39 +70,54 @@ export const queueDatabasePoolMax = 4;
 export const workerDatabaseIdleTimeoutMillis = 300_000;
 
 /**
- * Idle pg-boss fetch cadence per queue. pg-boss runs without LISTEN/NOTIFY here
- * (`useListenNotify` defaults to false), so this interval is the delivery
- * latency. The queues a studio user is waiting on stay fast — render-preview,
- * inspect-media, and the speech read at 5s, generate-fal-image at 10s — and only
- * the background queues relax to 30s. The old 1s cadence issued about 547k fetch
- * queries a day against an almost always empty queue.
+ * Delivery is push, not poll. The API (and the worker itself) only ever writes
+ * "WorkOutbox" rows; an insert trigger NOTIFYs `fmotion_work_outbox`, the
+ * worker's listener dispatches the rows to pg-boss at once, and the dispatcher
+ * wakes the matching pg-boss worker in process (`notifyWorker`). Pickup is
+ * tens of milliseconds instead of up to outbox 10s plus queue 30s.
+ *
+ * So the pg-boss fetch poll is only a safety net (retries that become runnable
+ * later, jobs from another process): one empty fetch per queue per minute.
  */
 export const queuePollingSeconds = {
-  [inspectionQueue]: 5, // a studio user is waiting on the verdict
-  [renderQueue]: 5, // ...and on the first preview frame
-  [renderNotifyQueue]: 30,
-  [falImageQueue]: 10, // ...and on the first generated still
-  [falVideoQueue]: 30,
-  [falSpeechQueue]: 5 // ...and on the first spoken line
+  [inspectionQueue]: 60,
+  [renderQueue]: 60,
+  [renderNotifyQueue]: 60,
+  [falImageQueue]: 60,
+  [falVideoQueue]: 60,
+  [falSpeechQueue]: 60
 } as const;
 
 /**
- * pg-boss housekeeping (queue deletion bookkeeping) cadence. The old override
- * ran it every second. This pg-boss build defaults to 24h, so pin the reviewed
- * two minutes instead of tracking the library default.
+ * pg-boss housekeeping. Supervise is the tick that runs the monitor (expired
+ * leases, queue stats) and maintenance (deletion) gates, so all three relax
+ * together. Expiry still fires within two minutes of a lease running out.
  */
-export const queueMaintenanceIntervalSeconds = 120;
-
-/** Queue size/progress sampling for metrics. 10s bought nothing at idle. */
-export const queueMonitorIntervalSeconds = 60;
+export const queueSuperviseIntervalSeconds = 120;
+export const queueMaintenanceIntervalSeconds = 600;
+export const queueMonitorIntervalSeconds = 120;
 
 /**
- * Outbox dispatch cadence. The dispatcher is the crash-window closer for API
- * enqueues, not a latency budget: a row only waits here when the API could not
- * send directly or a pass failed. Every tick costs a `WorkOutbox` scan, so 10s
- * keeps recovery snappy while paying a tenth of the old query volume.
+ * pg-boss loops F-Motion does not use. No cron schedules (`schedule: false`
+ * stops the 5s send-it fetch and the 30s cron check), no flows (navigator
+ * every 5s by default), and the queue cache only changes when this process
+ * creates queues, which evicts it anyway.
+ */
+export const queueBackgroundOptions = {
+  schedule: false,
+  flowIntervalSeconds: 300,
+  queueCacheIntervalSeconds: 300,
+  bamIntervalSeconds: 600
+} as const;
+
+/**
+ * Outbox fallback. With the listener up, the timer only sweeps once a minute
+ * (crash window closer for failed marks). While LISTEN is down or unsupported,
+ * the dispatcher goes back to the old 10s cadence, so delivery degrades to
+ * today's behavior instead of stopping.
  */
 export const outboxDispatchIntervalMs = 10_000;
+export const outboxFallbackIntervalMs = 60_000;
 
 const guardedPools = new WeakSet<object>();
 const guardedQueues = new WeakSet<object>();
@@ -140,7 +157,11 @@ export function outboxRetentionHoursFromEnv(
   return hours;
 }
 
-export async function dispatchOutbox(pool: pg.Pool, boss: PgBoss): Promise<number> {
+export async function dispatchOutbox(
+  pool: pg.Pool,
+  boss: PgBoss,
+  onSent?: (kind: string) => void
+): Promise<number> {
   const rows = await pool.query<OutboxRow>(
     `SELECT id, kind, "dedupeKey", payload
        FROM "WorkOutbox" WHERE "dispatchedAt" IS NULL
@@ -167,6 +188,7 @@ export async function dispatchOutbox(pool: pg.Pool, boss: PgBoss): Promise<numbe
       [row.id]
     );
     dispatched += updated.rowCount ?? 0;
+    onSent?.(row.kind);
   }
   return dispatched;
 }
@@ -193,9 +215,13 @@ export async function cleanupDispatchedOutbox(
 }
 
 /** A refused session must not reject the dispatch timer. The queue logs it and keeps polling. */
-export async function dispatchOutboxSafely(pool: pg.Pool, boss: PgBoss): Promise<void> {
+export async function dispatchOutboxSafely(
+  pool: pg.Pool,
+  boss: PgBoss,
+  onSent?: (kind: string) => void
+): Promise<void> {
   try {
-    await dispatchOutbox(pool, boss);
+    await dispatchOutbox(pool, boss, onSent);
   } catch (error) {
     try {
       boss.emit("error", queueError(error));
@@ -213,7 +239,8 @@ export async function startQueueRuntime(
     max: workerDatabasePoolMax,
     idleTimeoutMillis: workerDatabaseIdleTimeoutMillis
   })),
-  outboxRetentionHours = defaultOutboxRetentionHours
+  outboxRetentionHours = defaultOutboxRetentionHours,
+  env: Record<string, string | undefined> = process.env
 ) {
   guardDatabasePool(pool);
   // pg-boss hands its whole config object to `new pg.Pool(...)`, so
@@ -223,8 +250,10 @@ export async function startQueueRuntime(
     connectionString,
     max: queueDatabasePoolMax,
     idleTimeoutMillis: workerDatabaseIdleTimeoutMillis,
+    superviseIntervalSeconds: queueSuperviseIntervalSeconds,
     maintenanceIntervalSeconds: queueMaintenanceIntervalSeconds,
-    monitorIntervalSeconds: queueMonitorIntervalSeconds
+    monitorIntervalSeconds: queueMonitorIntervalSeconds,
+    ...queueBackgroundOptions
   };
   const boss = await new PgBoss(queueOptions).start();
   guardQueue(boss);
@@ -234,67 +263,71 @@ export async function startQueueRuntime(
   await boss.createQueue(falVideoQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 1200 });
   await boss.createQueue(falSpeechQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 600 });
   await boss.createQueue(renderNotifyQueue, { retryLimit: 2, retryDelay: 1, expireInSeconds: 60 });
-  await boss.work<InspectionJob>(inspectionQueue, { pollingIntervalSeconds: queuePollingSeconds[inspectionQueue] }, async (jobs: Job<InspectionJob>[]) => {
-    const job = jobs[0];
-    if (!job) return;
-    return handlers.inspect(job.data, job.signal);
+  const workers = new Map<string, string>();
+  const work = async <T extends object>(
+    name: keyof typeof queuePollingSeconds,
+    handler: (data: T, signal: AbortSignal) => Promise<Record<string, unknown>>
+  ) => {
+    workers.set(name, await boss.work<T>(name, { pollingIntervalSeconds: queuePollingSeconds[name] }, async (jobs: Job<T>[]) => {
+      const job = jobs[0];
+      if (!job) return;
+      return handler(job.data, job.signal);
+    }));
+  };
+  await work<InspectionJob>(inspectionQueue, handlers.inspect);
+  await work<PreviewJob>(renderQueue, handlers.render);
+  if (handlers.notifyRender) await work<RenderNotifyJob>(renderNotifyQueue, handlers.notifyRender);
+  if (handlers.generateFalImage) await work<FalImageQueueJob>(falImageQueue, handlers.generateFalImage);
+  if (handlers.generateFalVideo) await work<FalVideoQueueJob>(falVideoQueue, handlers.generateFalVideo);
+  if (handlers.generateFalSpeech) await work<FalSpeechQueueJob>(falSpeechQueue, handlers.generateFalSpeech);
+
+  // A sent job wakes its worker in this process, so a fresh job is fetched now
+  // rather than at the next fallback poll.
+  const wakeWorker = (kind: string) => {
+    const id = workers.get(kind);
+    if (id) boss.notifyWorker(id);
+  };
+  let lastDispatchAt = 0;
+  const dispatch = coalesce(async () => {
+    lastDispatchAt = Date.now();
+    await dispatchOutboxSafely(pool, boss, wakeWorker);
   });
-  await boss.work<PreviewJob>(renderQueue, { pollingIntervalSeconds: queuePollingSeconds[renderQueue] }, async (jobs: Job<PreviewJob>[]) => {
-    const job = jobs[0];
-    if (!job) return;
-    return handlers.render(job.data, job.signal);
-  });
-  if (handlers.notifyRender) {
-    await boss.work<RenderNotifyJob>(renderNotifyQueue, { pollingIntervalSeconds: queuePollingSeconds[renderNotifyQueue] }, async (jobs: Job<RenderNotifyJob>[]) => {
-      const job = jobs[0];
-      if (!job) return;
-      return handlers.notifyRender!(job.data, job.signal);
+  const emitError = (error: unknown) => {
+    try {
+      boss.emit("error", queueError(error));
+    } catch (emitError) {
+      console.error("queue error", emitError);
+    }
+  };
+
+  let listener: OutboxListener | undefined;
+  if (listenSupported(connectionString, env)) {
+    listener = startOutboxListener({
+      connectionString,
+      onNotify: () => void dispatch(),
+      onReady: () => void dispatch(),
+      onError: (error) => console.error("outbox listener error", error instanceof Error ? error.message : error)
     });
+  } else {
+    console.error("outbox listener off (transaction pooler or FENGINE_QUEUE_LISTEN=0); polling the outbox every 10s");
   }
-  if (handlers.generateFalImage) {
-    await boss.work<FalImageQueueJob>(falImageQueue, { pollingIntervalSeconds: queuePollingSeconds[falImageQueue] }, async (jobs: Job<FalImageQueueJob>[]) => {
-      const job = jobs[0];
-      if (!job) return;
-      return handlers.generateFalImage!(job.data, job.signal);
-    });
-  }
-  if (handlers.generateFalVideo) {
-    await boss.work<FalVideoQueueJob>(falVideoQueue, { pollingIntervalSeconds: queuePollingSeconds[falVideoQueue] }, async (jobs: Job<FalVideoQueueJob>[]) => {
-      const job = jobs[0];
-      if (!job) return;
-      return handlers.generateFalVideo!(job.data, job.signal);
-    });
-  }
-  if (handlers.generateFalSpeech) {
-    await boss.work<FalSpeechQueueJob>(falSpeechQueue, { pollingIntervalSeconds: queuePollingSeconds[falSpeechQueue] }, async (jobs: Job<FalSpeechQueueJob>[]) => {
-      const job = jobs[0];
-      if (!job) return;
-      return handlers.generateFalSpeech!(job.data, job.signal);
-    });
-  }
-  await dispatchOutboxSafely(pool, boss);
+
+  await dispatch();
   try {
     await cleanupDispatchedOutbox(pool, outboxRetentionHours);
   } catch (error) {
-    boss.emit("error", queueError(error));
+    emitError(error);
   }
-  // ponytail: 10s keeps the API enqueue crash window small without a full
-  // WorkOutbox scan every second. Upgrade: have the API send inline and leave
-  // this as a recovery sweep for failed marks.
-  const dispatchTimer = setInterval(
-    () => void dispatchOutboxSafely(pool, boss),
-    outboxDispatchIntervalMs
-  );
+  // Fallback sweep: every minute while the listener is live, every 10s while it
+  // is down, so a lost NOTIFY or a failed mark is never stuck for long.
+  const dispatchTimer = setInterval(() => {
+    const due = listener?.connected ? outboxFallbackIntervalMs : outboxDispatchIntervalMs;
+    if (Date.now() - lastDispatchAt >= due - 50) void dispatch();
+  }, outboxDispatchIntervalMs);
   // ponytail: one 250-row batch per hour caps cleanup work but may lag a large
   // backlog. Upgrade after measuring cleanup count and oldest-undispatched age.
   const cleanupTimer = setInterval(
-    () => void cleanupDispatchedOutbox(pool, outboxRetentionHours).catch((error) => {
-      try {
-        boss.emit("error", queueError(error));
-      } catch (emitError) {
-        console.error("queue error", emitError);
-      }
-    }),
+    () => void cleanupDispatchedOutbox(pool, outboxRetentionHours).catch(emitError),
     outboxCleanupIntervalMs
   );
   dispatchTimer.unref();
@@ -302,9 +335,11 @@ export async function startQueueRuntime(
   return {
     boss,
     pool,
+    listener,
     stop: async () => {
       clearInterval(dispatchTimer);
       clearInterval(cleanupTimer);
+      await listener?.close();
       await boss.stop();
       await pool.end();
     }
