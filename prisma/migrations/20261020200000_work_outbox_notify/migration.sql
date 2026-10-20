@@ -3,7 +3,7 @@
 -- enqueue never wakes anyone). Postgres folds identical notifications in one
 -- transaction. The payload is empty: the worker still reads "WorkOutbox".
 -- Additive and safe with the old worker (nobody listening is a no-op).
-CREATE FUNCTION public.work_outbox_notify() RETURNS trigger
+CREATE FUNCTION work_outbox_notify() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
   PERFORM pg_notify('fmotion_work_outbox', '');
@@ -13,7 +13,7 @@ $$;
 
 CREATE TRIGGER "WorkOutbox_notify"
 AFTER INSERT ON "WorkOutbox"
-FOR EACH STATEMENT EXECUTE FUNCTION public.work_outbox_notify();
+FOR EACH STATEMENT EXECUTE FUNCTION work_outbox_notify();
 
 -- Same Data API rule as 20261020190000_data_api_lockdown: no anon access.
 DO $$
@@ -22,7 +22,7 @@ DECLARE
 BEGIN
   FOREACH r IN ARRAY ARRAY['anon', 'authenticated'] LOOP
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
-      EXECUTE format('REVOKE ALL ON FUNCTION public.work_outbox_notify() FROM %I', r);
+      EXECUTE format('REVOKE ALL ON FUNCTION work_outbox_notify() FROM %I', r);
     END IF;
   END LOOP;
 END
