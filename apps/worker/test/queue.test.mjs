@@ -15,8 +15,11 @@ import {
   inspectionQueue,
   outboxDispatchIntervalMs,
   outboxRetentionHoursFromEnv,
+  outboxFallbackIntervalMs,
+  queueBackgroundOptions,
   queueDatabasePoolMax,
   queueMaintenanceIntervalSeconds,
+  queueSuperviseIntervalSeconds,
   queueMonitorIntervalSeconds,
   queuePollingSeconds,
   renderNotifyQueue,
@@ -104,7 +107,7 @@ test("database pools stay inside a small shared session pooler", async () => {
   assert.match(workerStart, /max: workerDatabasePoolMax/);
   assert.match(queueSource, /max: queueDatabasePoolMax/);
   assert.match(queueSource, /guardQueue\(boss\)/);
-  assert.match(queueSource, /dispatchOutboxSafely\(pool, boss\)/);
+  assert.match(queueSource, /dispatchOutboxSafely\(pool, boss, wakeWorker\)/);
 });
 
 test("idle pools keep warm clients instead of reconnecting every ten seconds", async () => {
@@ -177,30 +180,60 @@ test("cleanup is one bounded parameterized batch", async () => {
 });
 
 test("idle polling, maintenance, and outbox dispatch stay bounded", async () => {
+  // Delivery is pushed by the outbox NOTIFY; the fetch poll is a one minute safety net.
   assert.deepEqual(
     { ...queuePollingSeconds },
     {
-      // Fast where a studio user is waiting on the result.
-      [inspectionQueue]: 5,
-      [renderQueue]: 5,
-      [falImageQueue]: 10,
-      // Background: relaxed.
-      [renderNotifyQueue]: 30,
-      [falVideoQueue]: 30,
-      [falSpeechQueue]: 5
+      [inspectionQueue]: 60,
+      [renderQueue]: 60,
+      [falImageQueue]: 60,
+      [renderNotifyQueue]: 60,
+      [falVideoQueue]: 60,
+      [falSpeechQueue]: 60
     }
   );
-  assert.equal(queueMaintenanceIntervalSeconds, 120);
-  assert.equal(queueMonitorIntervalSeconds, 60);
+  assert.equal(queueSuperviseIntervalSeconds, 120);
+  assert.equal(queueMaintenanceIntervalSeconds, 600);
+  assert.equal(queueMonitorIntervalSeconds, 120);
+  assert.deepEqual({ ...queueBackgroundOptions }, {
+    schedule: false,
+    flowIntervalSeconds: 300,
+    queueCacheIntervalSeconds: 300,
+    bamIntervalSeconds: 600
+  });
   assert.equal(outboxDispatchIntervalMs, 10_000);
+  assert.equal(outboxFallbackIntervalMs, 60_000);
 
-  // Source guard: a per-second override must not creep back in, and every
-  // worker polls through the map and dispatches on the shared interval.
+  // Source guard: a per-second override must not creep back in, every worker
+  // polls through the map, and the outbox is woken by the listener.
   const source = await readFile(new URL("../src/queue.ts", import.meta.url), "utf8");
-  assert.equal(source.match(/pollingIntervalSeconds: queuePollingSeconds\[/g)?.length, 6);
+  assert.match(source, /pollingIntervalSeconds: queuePollingSeconds\[name\]/);
   assert.doesNotMatch(source, /pollingIntervalSeconds: 1[,}]/);
   assert.doesNotMatch(source, /maintenanceIntervalSeconds: 1[,}]/);
   assert.match(source, /monitorIntervalSeconds: queueMonitorIntervalSeconds/);
-  assert.match(source, /dispatchOutboxSafely\(pool, boss\),\s*\n\s*outboxDispatchIntervalMs/);
+  assert.match(source, /superviseIntervalSeconds: queueSuperviseIntervalSeconds/);
+  assert.match(source, /\.\.\.queueBackgroundOptions/);
+  assert.match(source, /startOutboxListener\(/);
+  assert.match(source, /boss\.notifyWorker\(id\)/);
+  assert.match(source, /listener\?\.connected \? outboxFallbackIntervalMs : outboxDispatchIntervalMs/);
 });
 
+test("dispatch reports each sent kind so its worker wakes at once", async () => {
+  const sent = [];
+  const woken = [];
+  const pool = {
+    async query(sql) {
+      if (sql.includes("SELECT id")) {
+        return { rows: [
+          { id: "a", kind: renderQueue, dedupeKey: "a", payload: {} },
+          { id: "b", kind: inspectionQueue, dedupeKey: "b", payload: {} }
+        ] };
+      }
+      return { rowCount: 1 };
+    }
+  };
+  const boss = { async send(kind) { sent.push(kind); return "id"; } };
+  assert.equal(await dispatchOutbox(pool, boss, (kind) => woken.push(kind)), 2);
+  assert.deepEqual(sent, [renderQueue, inspectionQueue]);
+  assert.deepEqual(woken, [renderQueue, inspectionQueue]);
+});

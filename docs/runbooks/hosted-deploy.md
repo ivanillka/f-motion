@@ -36,6 +36,11 @@ Record two connection strings (they can point at the same database):
 
 - `DATABASE_URL` — used by the API.
 - `QUEUE_DATABASE_URL` — used by the worker (pg-boss).
+  The worker also holds one `LISTEN fmotion_work_outbox` session on it, so it
+  must be a session-mode URL (Supabase session pooler port 5432, or direct).
+  On a transaction pooler (port 6543 or `pgbouncer=true`) or with
+  `FENGINE_QUEUE_LISTEN=0` the listener stays off and the worker polls the
+  outbox every 10 s instead (pickup up to about 10 s, more egress).
 
 ## 2. Provision object storage (R2 or S3-compatible)
 

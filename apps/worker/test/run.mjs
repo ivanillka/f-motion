@@ -11,6 +11,7 @@ const files = [
   "fal-video.test.mjs",
   "fal-speech.test.mjs",
   "queue.test.mjs",
+  "outbox-wake.test.mjs",
   "queue-integration.test.mjs",
   ...(process.env.RUN_WORKER_INTEGRATION === "1" ? ["runtime-integration.test.mjs"] : [])
 ].map((name) => `${here}${name}`);
