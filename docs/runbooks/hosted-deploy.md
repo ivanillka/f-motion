@@ -123,6 +123,20 @@ DATABASE_URL=<your-session-mode-url> npx prisma migrate deploy
 `prisma/schema.prisma` reads `env("DATABASE_URL")`. CI and local stack must
 export the same variable (see `.env.example` and `.github/workflows/ci.yml`).
 
+### New tables and the Supabase Data API
+
+F-Motion talks to Postgres only over direct connections (`pg`, `pg-boss`,
+`prisma migrate`) as the table owner. Nothing uses the Supabase Data API
+(PostgREST, `supabase-js` `.from()`); the web client uses Supabase Auth only.
+
+- Never `GRANT` a table, sequence or function to `anon` or `authenticated`.
+- Every new table gets `ALTER TABLE "Name" ENABLE ROW LEVEL SECURITY;` in the
+  same migration, with no policies. Do not `FORCE` it: the owner must keep
+  access.
+- Migration `20261020190000_data_api_lockdown` enabled RLS on every existing
+  public table and revoked Data API grants (no-op on plain Postgres).
+- `prisma/data-api-lockdown.test.mjs` fails CI if a migration breaks either rule.
+
 ### Enable user-owned provider credential connections
 
 These flags enable authenticated connect, status, test, replace, and disconnect
