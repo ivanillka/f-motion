@@ -3946,7 +3946,15 @@ export function App() {
                   <a href={selectedStockBed.licenseUrl} target="_blank" rel="noreferrer">{selectedStockBed.license}</a>
                   {", excerpt"}
                   {"creditUrl" in selectedStockBed && selectedStockBed.creditUrl ? (
-                    <>{" ("}<a href={selectedStockBed.creditUrl} target="_blank" rel="noreferrer">{selectedStockBed.creditUrl}</a>{")"}</>
+                    <>
+                      {" ("}
+                      {selectedStockBed.creditUrl.split(/\s+/).map((url, index) =>
+                        <span key={url}>
+                          {index > 0 ? " " : null}
+                          <a href={url} target="_blank" rel="noreferrer">{url}</a>
+                        </span>)}
+                      {")"}
+                    </>
                   ) : null}
                 </p>
               ) : null}

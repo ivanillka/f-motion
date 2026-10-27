@@ -137,11 +137,14 @@ test("stock beds carry license metadata and credit without em dashes", () => {
   assert.ok(banger);
   assert.equal(banger.bpm, 170);
   assert.equal(banger.artist, "e s c p");
-  assert.equal(banger.creditUrl, "https://www.escp.space");
+  assert.equal(banger.creditUrl, "https://www.escp.space https://escp-music.bandcamp.com");
   assert.equal(
     stockBedCredit(banger),
-    "Banger by e s c p, CC BY 4.0, excerpt (https://www.escp.space)"
+    "Banger by e s c p, CC BY 4.0, excerpt (https://www.escp.space https://escp-music.bandcamp.com)"
   );
+  for (const bed of stockBeds.filter((item) => item.artist === "Kevin MacLeod")) {
+    assert.match(bed.sourceUrl, /incompetech\.com\/music\/royalty-free\/index\.html\?isrc=USUAN\d+/);
+  }
   assert.ok(stockBeds.some((bed) => bed.id === "rush" && bed.bpm === 168));
 });
 

@@ -744,7 +744,7 @@ test("concat mixdown uses the licensed catalog file for a stock bed", () => {
   assert.match(concat, /Funkorama/);
   assert.match(concat, /Kevin MacLeod/);
   assert.match(concat, /Funkorama by Kevin MacLeod, CC BY 3\.0, excerpt/);
-  assert.match(concat, /comment=https:\/\/incompetech\.com/);
+  assert.match(concat, /comment=https:\/\/incompetech\.com\/music\/royalty-free\/index\.html\?isrc=USUAN1100474/);
   assert.equal(concat.includes("\u2014"), false);
 });
 
@@ -773,7 +773,11 @@ test("new DnB stock beds resolve to files and write title, artist, copyright met
     assert.equal(meta.includes("\u2014"), false);
     if (id === "banger") {
       assert.match(meta, /escp\.space/);
-      assert.match(stockBedCredit(bed), /Banger by e s c p, CC BY 4\.0, excerpt \(https:\/\/www\.escp\.space\)/);
+      assert.match(meta, /escp-music\.bandcamp\.com/);
+      assert.equal(
+        stockBedCredit(bed),
+        "Banger by e s c p, CC BY 4.0, excerpt (https://www.escp.space https://escp-music.bandcamp.com)"
+      );
     }
   }
 });

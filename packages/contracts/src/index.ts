@@ -48,7 +48,7 @@ export const stockBeds = [
     bpm: 115,
     license: "CC BY 3.0",
     licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
-    sourceUrl: "https://incompetech.com"
+    sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100474"
   },
   {
     id: "drive",
@@ -57,7 +57,7 @@ export const stockBeds = [
     bpm: 128,
     license: "CC BY 3.0",
     licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
-    sourceUrl: "https://incompetech.com"
+    sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100672"
   },
   {
     id: "air",
@@ -66,7 +66,7 @@ export const stockBeds = [
     bpm: 80,
     license: "CC BY 3.0",
     licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
-    sourceUrl: "https://incompetech.com"
+    sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100532"
   },
   {
     id: "glow",
@@ -75,7 +75,7 @@ export const stockBeds = [
     bpm: 110,
     license: "CC BY 3.0",
     licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
-    sourceUrl: "https://incompetech.com"
+    sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1200076"
   },
   {
     id: "night",
@@ -84,7 +84,7 @@ export const stockBeds = [
     bpm: 90,
     license: "CC BY 3.0",
     licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
-    sourceUrl: "https://incompetech.com"
+    sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100843"
   },
   {
     id: "rise",
@@ -93,7 +93,7 @@ export const stockBeds = [
     bpm: 140,
     license: "CC BY 3.0",
     licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
-    sourceUrl: "https://incompetech.com"
+    sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100202"
   },
   {
     id: "banger",
@@ -103,7 +103,7 @@ export const stockBeds = [
     license: "CC BY 4.0",
     licenseUrl: "https://creativecommons.org/licenses/by/4.0/",
     sourceUrl: "https://www.free-stock-music.com/fsm-team-banger.html",
-    creditUrl: "https://www.escp.space"
+    creditUrl: "https://www.escp.space https://escp-music.bandcamp.com"
   },
   {
     id: "rush",

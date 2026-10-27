@@ -89,6 +89,7 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /suggestedStockBed/);
   assert.match(source, /selectedStockBed\.sourceUrl/);
   assert.match(source, /selectedStockBed\.licenseUrl/);
+  assert.match(source, /creditUrl\.split/);
   assert.match(source, /, excerpt/);
   assert.doesNotMatch(source, /Classic Kevin MacLeod beds/);
   assert.match(source, /Mixkit/);
@@ -275,7 +276,12 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.ok(stockBeds.every((bed) => stockBedCredit(bed).includes(", excerpt")));
     assert.ok(stockBeds.some((bed) => bed.id === "banger" && bed.bpm === 170));
     assert.ok(stockBeds.some((bed) => bed.id === "rush" && bed.bpm === 168));
-    assert.match(stockBedCredit(stockBeds.find((bed) => bed.id === "banger")), /escp\.space/);
+    assert.equal(
+      stockBedCredit(stockBeds.find((bed) => bed.id === "banger")),
+      "Banger by e s c p, CC BY 4.0, excerpt (https://www.escp.space https://escp-music.bandcamp.com)"
+    );
+    assert.ok(stockBeds.filter((bed) => bed.artist === "Kevin MacLeod").every((bed) =>
+      /incompetech\.com\/music\/royalty-free\/index\.html\?isrc=USUAN\d+/.test(bed.sourceUrl)));
     const partnerToken = `x.${btoa(JSON.stringify({ email: "Owner@Example.com" })).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "")}.x`;
     assert.equal(jwtEmail(partnerToken), "owner@example.com");
     assert.equal(showsPartnerBrands(partnerToken, "owner@example.com"), true);

@@ -17,8 +17,8 @@ The studio shows per-track credit; Export video writes title, artist, copyright,
 
 ## Sources and required credit
 
-Kevin MacLeod tracks: [incompetech.com](https://incompetech.com). Required credit example: **Funkorama by Kevin MacLeod, CC BY 3.0, excerpt**.
+Kevin MacLeod tracks use their incompetech track pages (ISRC links under `sourceUrl` in the catalogue). Required credit example: **Funkorama by Kevin MacLeod, CC BY 3.0, excerpt**.
 
-Banger: [free-stock-music.com/fsm-team-banger.html](https://www.free-stock-music.com/fsm-team-banger.html) (CC BY 4.0). Required credit: **Banger by | e s c p | https://www.escp.space https://escp-music.bandcamp.com**. Catalogue credit (notes the trimmed excerpt): **Banger by e s c p, CC BY 4.0, excerpt (https://www.escp.space)**.
+Banger: [free-stock-music.com/fsm-team-banger.html](https://www.free-stock-music.com/fsm-team-banger.html) (CC BY 4.0). Required credit: **Banger by | e s c p | https://www.escp.space https://escp-music.bandcamp.com**. Catalogue credit (notes the trimmed excerpt): **Banger by e s c p, CC BY 4.0, excerpt (https://www.escp.space https://escp-music.bandcamp.com)**.
 
 Hyper Ultra-Racing: [opengameart.org/content/hyper-ultra-racing](https://opengameart.org/content/hyper-ultra-racing) (CC0 1.0). Credit: **Hyper Ultra-Racing by cynicmusic, CC0 1.0, excerpt**.
