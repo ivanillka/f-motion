@@ -83,7 +83,12 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.doesNotMatch(source, /Fotium Motion|Fotium Studio/);
   assert.match(source, /Search licensed music/);
   assert.match(source, /Export video mixes this bed/);
-  assert.match(source, /Kevin MacLeod/);
+  assert.match(source, /Stock beds/);
+  assert.match(source, /Stock music beds/);
+  assert.match(source, /Suggested for/);
+  assert.match(source, /suggestedStockBed/);
+  assert.match(source, /stockBedCredit/);
+  assert.doesNotMatch(source, /Classic Kevin MacLeod beds/);
   assert.match(source, /Mixkit/);
   assert.match(source, /Trendy/);
   assert.match(source, /update_soundtrack/);
@@ -159,8 +164,9 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.match(source, /overlay-title/);
   assert.match(source, /caption-burn/);
   const apiSource = await readFile(new URL("../src/api.ts", import.meta.url), "utf8");
-  assert.match(apiSource, /Funkorama/);
+  assert.match(apiSource, /@f-engine\/contracts/);
   assert.match(apiSource, /stockBedUrl/);
+  assert.doesNotMatch(apiSource, /export const stockBeds = \[/);
   assert.match(apiSource, /Looking at your photos/);
   assert.match(apiSource, /Add your photos or clips/);
   assert.match(apiSource, /I looked at/);
@@ -196,7 +202,7 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     appType: "custom"
   });
   try {
-    const { clampBpm, clampFocus, clampOffsetMs, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, previewMediaShouldLoop, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, snapScenesToBeat, spokenNarrationReady, stockBedUrl, voiceoverPlayback } = await vite.ssrLoadModule("/src/api.ts");
+    const { clampBpm, clampFocus, clampOffsetMs, focusFromPoint, formatPlayTime, isWideMedia, jwtEmail, livePlayhead, loadSceneMediaViews, musicLaneBeats, nextLiveSceneId, panFocus, previewMediaShouldLoop, scenePreviewUrl, seekLivePlayhead, showsPartnerBrands, snapDurationToBeat, snapScenesToBeat, spokenNarrationReady, stockBedUrl, stockBeds, suggestedStockBed, stockBedCredit, voiceoverPlayback } = await vite.ssrLoadModule("/src/api.ts");
     const project = (id, mediaId) => ({
       id,
       revision: 1,
@@ -255,7 +261,14 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     }
     assert.equal(musicLaneBeats(2000, 120).length, 5);
     assert.equal(stockBedUrl("pulse"), "/music/pulse.mp3");
+    assert.equal(stockBedUrl("banger"), "/music/banger.mp3");
+    assert.equal(stockBedUrl("rush"), "/music/rush.mp3");
     assert.equal(stockBedUrl(undefined), undefined);
+    assert.equal(suggestedStockBed(174)?.id, "rush");
+    assert.ok(stockBeds.every((bed) => bed.license && bed.licenseUrl && bed.bpm));
+    assert.ok(stockBeds.every((bed) => !stockBedCredit(bed).includes("\u2014")));
+    assert.ok(stockBeds.some((bed) => bed.id === "banger" && bed.bpm === 170));
+    assert.ok(stockBeds.some((bed) => bed.id === "rush" && bed.bpm === 172));
     const partnerToken = `x.${btoa(JSON.stringify({ email: "Owner@Example.com" })).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "")}.x`;
     assert.equal(jwtEmail(partnerToken), "owner@example.com");
     assert.equal(showsPartnerBrands(partnerToken, "owner@example.com"), true);
@@ -711,4 +724,18 @@ test("scene editor is split into four accessible tabs (Style, Timing, Text, Medi
   assert.match(source, /scene-panel-timing[\s\S]*duration-\$\{activeScene\.id\}[\s\S]*audio-\$\{activeScene\.id\}[\s\S]*Mute scene/);
   assert.match(source, /scene-panel-text[\s\S]*caption-\$\{activeScene\.id\}[\s\S]*prompt-\$\{activeScene\.id\}/);
   assert.match(source, /scene-panel-media[\s\S]*searchStock[\s\S]*openFalGenerate[\s\S]*openFalAnimate[\s\S]*Upload media/);
+});
+
+test("music catalogue credits and LICENSE.md never use U+2014", async () => {
+  const { stockBeds, stockBedCredit } = await import("@f-engine/contracts");
+  for (const bed of stockBeds) {
+    assert.equal(stockBedCredit(bed).includes("\u2014"), false, bed.id);
+    assert.equal(JSON.stringify(bed).includes("\u2014"), false, bed.id);
+  }
+  const license = await readFile(new URL("../public/music/LICENSE.md", import.meta.url), "utf8");
+  assert.equal(license.includes("\u2014"), false);
+  assert.match(license, /banger\.mp3/);
+  assert.match(license, /rush\.mp3/);
+  assert.match(license, /CC BY 4\.0/);
+  assert.match(license, /CC0 1\.0/);
 });

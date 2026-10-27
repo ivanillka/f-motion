@@ -47,6 +47,7 @@ export interface SoundtrackMix {
   offsetMs: number;
   title?: string;
   artist?: string;
+  license?: string;
 }
 
 export interface MediaLimits {
@@ -626,7 +627,8 @@ export function resolveSoundtrackMix(
     level: bed.level,
     offsetMs: bed.offset_ms,
     title: catalog?.title,
-    artist: catalog?.artist
+    artist: catalog?.artist,
+    license: catalog?.license
   };
 }
 
@@ -641,9 +643,9 @@ export function resolveVoiceoverMix(
   return { path: input.path, level: vo.level, offsetMs: vo.offset_ms };
 }
 
-function soundtrackMetadata(mix: SoundtrackMix): string[] {
+export function soundtrackMetadata(mix: SoundtrackMix): string[] {
   const credit = mix.artist && mix.title
-    ? `${mix.title} by ${mix.artist} — CC BY 3.0`
+    ? `${mix.title} by ${mix.artist}, ${mix.license ?? "licensed"}`
     : "Licensed soundtrack";
   return [
     ...(mix.title ? ["-metadata", `title=${mix.title}`] : []),
