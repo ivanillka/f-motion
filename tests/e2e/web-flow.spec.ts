@@ -444,6 +444,74 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   await expect(page.getByRole("slider", { name: "Play progress" })).toBeVisible();
 });
 
+async function projectSoundtrack(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    const projectId = localStorage.getItem("fengine-project");
+    if (!projectId) throw new Error("project id missing");
+    const response = await fetch(`/api/projects/${projectId}`);
+    if (!response.ok) throw new Error(`project unavailable: ${response.status}`);
+    const { project } = await response.json() as {
+      project: { brief: { soundtrack?: { kind?: string; stock_id?: string; bpm?: number } } };
+    };
+    const soundtrack = project.brief.soundtrack;
+    return soundtrack ? `${soundtrack.kind}:${soundtrack.stock_id}:${soundtrack.bpm}` : "none";
+  });
+}
+
+test("picking a stock bed writes its tempo and a typed tempo stays put", async ({ page }) => {
+  await page.route("https://e2e-storage.invalid/**", (route) =>
+    route.fulfill({ status: 200, body: "" }));
+  await page.route("https://e2e-images.invalid/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="90" height="160"><rect width="90" height="160" fill="#333"/></svg>'
+    }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await describeVideo(page, "A calm studio introduction");
+  await createStoryboard(page);
+
+  const dockToggle = page.locator(".music-dock > summary").last();
+  const beds = page.getByRole("group", { name: "Stock music beds" });
+  const tempo = page.getByLabel("BPM", { exact: true });
+  const catalogue: Array<[string, number]> = [
+    ["Funkorama", 101],
+    ["Space Fighter Loop", 95],
+    ["Dreamy Flashback", 110],
+    ["Easy Lemon", 82],
+    ["Wallpaper", 93],
+    ["Hot Swing", 144],
+    ["Banger", 170],
+    ["Hyper Ultra-Racing", 168]
+  ];
+
+  await dockToggle.click();
+  for (const [title, bpm] of catalogue) {
+    await expect(beds.getByRole("button", { name: new RegExp(`^${title}`) })).toContainText(`${bpm} BPM`);
+  }
+
+  await beds.getByRole("button", { name: /^Funkorama/ }).click();
+  // A pick closes the dock, so reopen it before reading the tempo box.
+  await dockToggle.click();
+  await expect(tempo).toHaveValue("101");
+  await expect.poll(() => projectSoundtrack(page)).toBe("stock:pulse:101");
+
+  await tempo.fill("150");
+  await tempo.press("Tab");
+  await expect(tempo).toHaveValue("150");
+  await expect.poll(() => projectSoundtrack(page)).toBe("stock:pulse:150");
+  // The saved tempo must not snap the box back to the catalogue value.
+  await dockToggle.click();
+  await dockToggle.click();
+  await expect(tempo).toHaveValue("150");
+
+  await beds.getByRole("button", { name: /^Dreamy Flashback/ }).click();
+  await dockToggle.click();
+  await expect(tempo).toHaveValue("110");
+  await expect.poll(() => projectSoundtrack(page)).toBe("stock:air:110");
+});
+
 test("the phone dock leaves the Create composer and studio footers reachable", async ({ page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 390, height: 664 });

@@ -148,10 +148,23 @@ test("stock beds carry license metadata and credit without em dashes", () => {
   assert.ok(stockBeds.some((bed) => bed.id === "rush" && bed.bpm === 168));
 });
 
+test("MacLeod bed tempi follow the measured excerpt tempo", () => {
+  const measured = { pulse: 101, drive: 95, air: 110, glow: 82, night: 93, rise: 144 };
+  for (const [id, bpm] of Object.entries(measured)) {
+    const bed = stockBeds.find((item) => item.id === id);
+    assert.ok(bed, id);
+    assert.equal(bed.bpm, bpm, id);
+    assert.equal(suggestedStockBed(bpm)?.id, id, id);
+  }
+});
+
 test("suggestedStockBed picks the closest bed within five BPM", () => {
   assert.equal(suggestedStockBed(170)?.id, "banger");
   assert.equal(suggestedStockBed(166)?.id, "rush");
   assert.equal(suggestedStockBed(174)?.id, "banger");
+  assert.equal(suggestedStockBed(101)?.id, "pulse");
+  assert.equal(suggestedStockBed(105)?.id, "pulse");
+  assert.equal(suggestedStockBed(93)?.id, "night");
   assert.equal(suggestedStockBed(200), undefined);
 });
 

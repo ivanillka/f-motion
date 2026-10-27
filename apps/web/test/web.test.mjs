@@ -270,12 +270,18 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     assert.equal(suggestedStockBed(170)?.id, "banger");
     assert.equal(suggestedStockBed(166)?.id, "rush");
     assert.equal(suggestedStockBed(174)?.id, "banger");
+    assert.equal(suggestedStockBed(101)?.id, "pulse");
+    assert.equal(suggestedStockBed(95)?.id, "drive");
     assert.equal(suggestedStockBed(200), undefined);
     assert.ok(stockBeds.every((bed) => bed.license && bed.licenseUrl && bed.sourceUrl && bed.bpm));
     assert.ok(stockBeds.every((bed) => !stockBedCredit(bed).includes("\u2014")));
     assert.ok(stockBeds.every((bed) => stockBedCredit(bed).includes(", excerpt")));
     assert.ok(stockBeds.some((bed) => bed.id === "banger" && bed.bpm === 170));
     assert.ok(stockBeds.some((bed) => bed.id === "rush" && bed.bpm === 168));
+    assert.deepEqual(
+      Object.fromEntries(stockBeds.map((bed) => [bed.id, bed.bpm])),
+      { pulse: 101, drive: 95, air: 110, glow: 82, night: 93, rise: 144, banger: 170, rush: 168 }
+    );
     assert.equal(
       stockBedCredit(stockBeds.find((bed) => bed.id === "banger")),
       "Banger by e s c p, CC BY 4.0, excerpt (https://www.escp.space https://escp-music.bandcamp.com)"
@@ -328,6 +334,25 @@ test("draft media hydration replaces project-scoped stock, upload, reopen, and f
     await vite.close();
   }
 });
+test("picking a stock bed carries the bed tempo into the project tempo", async () => {
+  const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
+  // A bed pick owns the tempo: the picker writes the catalogue tempo for the
+  // bed the user chose, not whatever the project happened to sit on before.
+  assert.doesNotMatch(source, /bpm:\s*clampBpm\(soundtrack\?\.bpm \?\? bed\.bpm\)/);
+  assert.match(source, /const bpm = clampBpm\(bed\.bpm\);/);
+  const pick = source.slice(
+    source.indexOf("const bpm = clampBpm(bed.bpm);"),
+    source.indexOf("setMusicOpen(false);", source.indexOf("const bpm = clampBpm(bed.bpm);"))
+  );
+  assert.match(pick, /kind: "stock"/);
+  assert.match(pick, /stock_id: bed\.id/);
+  assert.match(pick, /bpm,/);
+  // The tempo box tracks the project tempo and keeps a typed value in place.
+  assert.match(source, /setBpmDraft\(soundtrack \? String\(clampBpm\(soundtrack\.bpm\)\) : ""\)/);
+  assert.match(source, /value=\{bpmDraft\}/);
+  assert.match(source, /const bpm = clampBpm\(event\.currentTarget\.valueAsNumber\);/);
+});
+
 test("sources ride in the header as slim chips instead of a full-width strip", async () => {
   const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
