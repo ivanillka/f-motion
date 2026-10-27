@@ -6,6 +6,7 @@ import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { ProjectService } from "../dist/domain.js";
 import { renderProfilesFromEnv } from "../dist/render-repository.js";
 import { createApp, createTestApp } from "../dist/server.js";
+import { provisionUser } from "../dist/access-policy.js";
 
 const productVersion = JSON.parse(
   readFileSync(new URL("../../../package.json", import.meta.url), "utf8")
@@ -29,7 +30,7 @@ test("host-owned preview and final profiles are validated at API startup", () =>
   assert.throws(() => renderProfilesFromEnv({ PREVIEW_RENDER_WIDTH: "wide" }), /dimensions/);
 });
 
-async function fixture({ provision = false, accessPolicy } = {}) {
+async function fixture({ provision = false, accessPolicy, seatCapped = false } = {}) {
   const { privateKey, publicKey } = await generateKeyPair("RS256");
   const jwk = { ...await exportJWK(publicKey), kid: "test-key", alg: "RS256", use: "sig" };
   const jwksServer = createServer((_request, response) => {
@@ -39,10 +40,20 @@ async function fixture({ provision = false, accessPolicy } = {}) {
   const jwksOrigin = await listen(jwksServer);
   const states = new Map([["active-owner", "active"], ["suspended-owner", "suspended"]]);
   let insertCalls = 0;
+  // Mirrors start.ts: the real provisionUser over an in-memory User table.
+  const usersDb = {
+    async query(sql, [id, cap]) {
+      if (states.has(id)) return { rowCount: 0 };
+      if (sql.includes("count(*)") && states.size >= cap) return { rowCount: 0 };
+      states.set(id, "active");
+      return { rowCount: 1 };
+    }
+  };
   const ensureUser = provision
     ? async (ownerId) => {
       insertCalls += 1;
-      if (!states.has(ownerId)) states.set(ownerId, "active");
+      if (seatCapped) await provisionUser(usersDb, ownerId, accessPolicy);
+      else if (!states.has(ownerId)) states.set(ownerId, "active");
     }
     : undefined;
   const app = createApp({
@@ -979,5 +990,35 @@ test("scene lifecycle media_id values must be owner-scoped and ready", async () 
     assert.equal(replaceMissing.status, 422);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("open beta provisions any verified subject until the seat cap, then answers 403", async () => {
+  const first = "44444444-4444-4444-8444-444444444444";
+  const late = "55555555-5555-4555-8555-555555555555";
+  // The fixture already holds two accounts, so a cap of 3 leaves one seat.
+  const context = await fixture({
+    provision: true,
+    seatCapped: true,
+    accessPolicy: { mode: "open_beta", allowedOwnerIds: new Set(), maxUsers: 3 }
+  });
+  try {
+    const admitted = await fetch(`${context.apiOrigin}/api/projects`, {
+      headers: { authorization: `Bearer ${await context.token(first)}` }
+    });
+    assert.equal(admitted.status, 200);
+    assert.equal(context.states.get(first), "active");
+    const refused = await fetch(`${context.apiOrigin}/api/projects`, {
+      headers: { authorization: `Bearer ${await context.token(late)}` }
+    });
+    assert.equal(refused.status, 403);
+    assert.equal((await refused.json()).type, "forbidden");
+    assert.equal(context.states.has(late), false);
+    const again = await fetch(`${context.apiOrigin}/api/projects`, {
+      headers: { authorization: `Bearer ${await context.token(first)}` }
+    });
+    assert.equal(again.status, 200);
+  } finally {
+    await context.close();
   }
 });

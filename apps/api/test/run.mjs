@@ -22,3 +22,4 @@ if (process.env.RUN_PROJECT_INTEGRATION === "1") await import("./project-persist
 if (process.env.RUN_RENDER_INTEGRATION === "1") await import("./render-persistence.test.mjs");
 await import("./media-integration.test.mjs");
 await import("./spoken-narration.test.mjs");
+await import("./usage-report.test.mjs");

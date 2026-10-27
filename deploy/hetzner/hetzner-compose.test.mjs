@@ -28,6 +28,7 @@ test("Hetzner hosted compose replaces Fly and keeps invite-only 1080p", async ()
 
   assert.match(envExample, /FENGINE_ENV=hosted/);
   assert.match(envExample, /FENGINE_ACCESS_MODE=invite_only/);
+  assert.match(envExample, /FENGINE_OPEN_BETA_MAX_USERS/);
   assert.match(envExample, /RENDER_WIDTH=1080/);
   assert.match(envExample, /RENDER_HEIGHT=1920/);
 
@@ -42,6 +43,8 @@ test("Hetzner hosted compose replaces Fly and keeps invite-only 1080p", async ()
   assert.match(script, /deploy\/hetzner/);
   assert.match(script, /FENGINE_ENV=hosted/);
   assert.match(script, /invite_only/);
+  assert.match(script, /"\$access_mode" != "open_beta"/);
+  assert.match(script, /"\$access_mode" == "invite_only" && "\$seat_count" -lt 1/);
   assert.match(script, /Destroy the Fly apps/);
 
   assert.match(guide, /Hetzner/);

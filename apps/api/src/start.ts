@@ -1,6 +1,6 @@
 import { S3Client } from "@aws-sdk/client-s3";
 import pg from "pg";
-import { accessPolicyFromEnv } from "./access-policy.js";
+import { accessPolicyFromEnv, provisionUser } from "./access-policy.js";
 import { PostgresApiKeyService } from "./api-keys.js";
 import { externalImportConfigFromEnv } from "./external-import.js";
 import { renderNotifyConfigFromEnv } from "./render-notify.js";
@@ -204,11 +204,11 @@ if (engineEnv(process.env) === "selfhost") {
       return result.rows[0]?.state;
     },
     ensureUser: async (ownerId) => {
-      await pool.query(
-        `INSERT INTO "User" (id, state) VALUES ($1, 'active') ON CONFLICT (id) DO NOTHING`,
-        [ownerId]
-      );
-      await hostUsage.ensureFreeGrant(ownerId);
+      // open_beta refuses new rows past FENGINE_OPEN_BETA_MAX_USERS; the auth
+      // path then sees no account and answers a generic 403.
+      if (await provisionUser(pool, ownerId, accessPolicy)) {
+        await hostUsage.ensureFreeGrant(ownerId);
+      }
     },
     accessPolicy,
     externalImports,

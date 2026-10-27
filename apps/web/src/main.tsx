@@ -665,7 +665,7 @@ export function App() {
       .catch((error) => {
         if (!cancelled) {
           setStatus(error instanceof ApiResponseError && error.status === 403
-            ? "This account is not invited to the hosted studio."
+            ? "This account does not have studio access yet. The beta may be full."
             : "Drafts could not be loaded.");
         }
       })

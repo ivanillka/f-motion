@@ -6,6 +6,10 @@ studio under **Settings → What’s new**. Product version lives in root
 
 ## [Unreleased]
 
+### Access
+
+- Open beta switch: with `FENGINE_ACCESS_MODE=open_beta` the hosted studio lets any verified email sign up, up to `FENGINE_OPEN_BETA_MAX_USERS` accounts (default 50). Each account keeps the one-time free render allowance (`FENGINE_FREE_RENDER_UNITS`, default 25). The default stays invite-only until the operator switches. A weekly usage report (reels per user, new, returning, and retained users) lives in the `fmotion_report` database schema. Ship together with Pages, the API, and the VPS in one release. See `docs/runbooks/open-beta.md`.
+
 ### Studio
 
 - Fallback storyboards now write plain sentence captions such as **My summer trip.** instead of splitting the brief into fragments, and user-facing studio copy no longer uses em dashes. Ship together with Pages, the API, and the VPS in one release.

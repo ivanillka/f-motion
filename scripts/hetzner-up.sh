@@ -41,8 +41,8 @@ if [[ "$fengine_env" != "hosted" ]]; then
   echo "Hosted Hetzner requires FENGINE_ENV=hosted." >&2
   exit 1
 fi
-if [[ "$access_mode" != "invite_only" ]]; then
-  echo "Hosted Hetzner requires FENGINE_ACCESS_MODE=invite_only." >&2
+if [[ "$access_mode" != "invite_only" && "$access_mode" != "open_beta" ]]; then
+  echo "Hosted Hetzner requires FENGINE_ACCESS_MODE=invite_only or open_beta." >&2
   exit 1
 fi
 seat_count=0
@@ -54,7 +54,7 @@ for _seat in "${_seat_parts[@]}"; do
     seat_count=$((seat_count + 1))
   fi
 done
-if [[ "$seat_count" -lt 1 ]]; then
+if [[ "$access_mode" == "invite_only" && "$seat_count" -lt 1 ]]; then
   echo "Hosted Hetzner requires at least one FENGINE_ALLOWED_USER_IDS entry." >&2
   exit 1
 fi

@@ -196,8 +196,10 @@ The compose file sets `FENGINE_ENV=hosted` on the API and worker. **Do not set
 `FENGINE_LOCAL_AUTH`.** The API refuses to boot with it set when
 `NODE_ENV=production` or `FENGINE_ENV=hosted` (`apps/api/src/local-auth.ts`).
 In hosted mode the API also refuses to start unless `FENGINE_ACCESS_MODE` is
-`invite_only` and `FENGINE_ALLOWED_USER_IDS` is a valid non-empty list. Missing
-configuration never falls back to verified-user provisioning.
+`invite_only` with a valid non-empty `FENGINE_ALLOWED_USER_IDS` list, or
+`open_beta` (self-service sign-up up to a seat cap, see
+[open beta](open-beta.md)). Missing configuration never falls back to
+verified-user provisioning.
 
 `FENGINE_ALLOWED_USER_IDS` is identity configuration, not source code. Keep it
 in `deploy/hetzner/.env` on the VPS and never commit real UUIDs. The API
@@ -400,7 +402,9 @@ the storage host, fix bucket CORS (§2) before debugging the API.
 | `R2_ENDPOINT`, `R2_REGION`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | API + worker | private object storage |
 | `SUPABASE_ISSUER`, `SUPABASE_AUDIENCE`, `SUPABASE_JWKS_URL` | API | F-Motion JWT verification |
 | `SUPABASE_ISSUER_EXTRA`, `SUPABASE_JWKS_URL_EXTRA` | API | optional Fotium JWT when Edit hands off a logged-in session |
-| `FENGINE_ACCESS_MODE`, `FENGINE_ALLOWED_USER_IDS` | API | hosted invite-only admission; exact Supabase user UUIDs |
+| `FENGINE_ACCESS_MODE`, `FENGINE_ALLOWED_USER_IDS` | API | hosted admission: `invite_only` with exact Supabase user UUIDs, or `open_beta` |
+| `FENGINE_OPEN_BETA_MAX_USERS` | API | open beta seat cap, default 50 ([open beta](open-beta.md)) |
+| `FENGINE_FREE_RENDER_UNITS` | API | one-time free render units per account, default 25 |
 | `FENGINE_PEXELS_BYOK_ENABLED`, `FENGINE_FAL_BYOK_ENABLED` | API | enable owner-scoped provider connections |
 | `FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION`, `FENGINE_CREDENTIAL_KEY_V<n>` | API + worker (when FAL BYOK on) | encrypt/decrypt user provider credentials |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | web build | F-Motion Supabase client only |
