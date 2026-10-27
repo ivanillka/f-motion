@@ -1004,8 +1004,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   display: grid;
   gap: 6px;
   margin-top: 6px;
-  padding: 0;
+  padding: 0 0 calc(12px + var(--safe-bottom, 0px));
   list-style: none;
+}
+.music-dock .music-classic {
+  padding-bottom: calc(72px + var(--safe-bottom, 0px));
 }
 .music-beds li {
   display: grid;

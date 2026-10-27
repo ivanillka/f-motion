@@ -3,7 +3,15 @@ import { existsSync } from "node:fs";
 import { unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { stockBeds, type CaptionCue, type OverlayLook, type OverlayPlace, type ProjectSnapshot, type Scene } from "@f-engine/contracts";
+import {
+  stockBedCredit,
+  stockBeds,
+  type CaptionCue,
+  type OverlayLook,
+  type OverlayPlace,
+  type ProjectSnapshot,
+  type Scene
+} from "@f-engine/contracts";
 import {
   coverCropFilter,
   RENDER_FPS,
@@ -48,6 +56,8 @@ export interface SoundtrackMix {
   title?: string;
   artist?: string;
   license?: string;
+  sourceUrl?: string;
+  creditUrl?: string;
 }
 
 export interface MediaLimits {
@@ -628,7 +638,9 @@ export function resolveSoundtrackMix(
     offsetMs: bed.offset_ms,
     title: catalog?.title,
     artist: catalog?.artist,
-    license: catalog?.license
+    license: catalog?.license,
+    sourceUrl: catalog?.sourceUrl,
+    creditUrl: catalog && "creditUrl" in catalog ? catalog.creditUrl : undefined
   };
 }
 
@@ -645,12 +657,18 @@ export function resolveVoiceoverMix(
 
 export function soundtrackMetadata(mix: SoundtrackMix): string[] {
   const credit = mix.artist && mix.title
-    ? `${mix.title} by ${mix.artist}, ${mix.license ?? "licensed"}`
+    ? stockBedCredit({
+      title: mix.title,
+      artist: mix.artist,
+      license: mix.license ?? "licensed",
+      ...(mix.creditUrl ? { creditUrl: mix.creditUrl } : {})
+    })
     : "Licensed soundtrack";
   return [
     ...(mix.title ? ["-metadata", `title=${mix.title}`] : []),
     ...(mix.artist ? ["-metadata", `artist=${mix.artist}`] : []),
-    "-metadata", `copyright=${credit}`
+    "-metadata", `copyright=${credit}`,
+    ...(mix.sourceUrl ? ["-metadata", `comment=${mix.sourceUrl}`] : [])
   ];
 }
 

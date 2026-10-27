@@ -109,7 +109,7 @@ test("brief soundtrack is optional and validated when present", () => {
   assert.equal(isSoundtrack({ kind: "stock", stock_id: "pulse", bpm: 120, offset_ms: 0, level: 0.8 }), true);
   assert.equal(isSoundtrack({ kind: "stock", stock_id: "glow", bpm: 110, offset_ms: 0, level: 0.8 }), true);
   assert.equal(isSoundtrack({ kind: "stock", stock_id: "banger", bpm: 170, offset_ms: 0, level: 0.8 }), true);
-  assert.equal(isSoundtrack({ kind: "stock", stock_id: "rush", bpm: 172, offset_ms: 0, level: 0.8 }), true);
+  assert.equal(isSoundtrack({ kind: "stock", stock_id: "rush", bpm: 168, offset_ms: 0, level: 0.8 }), true);
   assert.equal(isSoundtrack({ kind: "stock", stock_id: "nope", bpm: 120, offset_ms: 0, level: 0.8 }), false);
   assert.equal(isProjectSnapshot({
     ...base,
@@ -127,19 +127,28 @@ test("stock beds carry license metadata and credit without em dashes", () => {
     assert.equal(typeof bed.artist, "string");
     assert.equal(typeof bed.license, "string");
     assert.match(bed.licenseUrl, /^https:\/\//);
+    assert.match(bed.sourceUrl, /^https:\/\//);
     assert.equal(typeof bed.bpm, "number");
     const credit = stockBedCredit(bed);
     assert.equal(credit.includes("\u2014"), false);
-    assert.match(credit, new RegExp(`${bed.title} by ${bed.artist}, ${bed.license}`));
+    assert.match(credit, new RegExp(`${bed.title} by ${bed.artist}, ${bed.license}, excerpt`));
   }
-  assert.ok(stockBeds.some((bed) => bed.id === "banger" && bed.bpm === 170));
-  assert.ok(stockBeds.some((bed) => bed.id === "rush" && bed.bpm === 172));
+  const banger = stockBeds.find((bed) => bed.id === "banger");
+  assert.ok(banger);
+  assert.equal(banger.bpm, 170);
+  assert.equal(banger.artist, "e s c p");
+  assert.equal(banger.creditUrl, "https://www.escp.space");
+  assert.equal(
+    stockBedCredit(banger),
+    "Banger by e s c p, CC BY 4.0, excerpt (https://www.escp.space)"
+  );
+  assert.ok(stockBeds.some((bed) => bed.id === "rush" && bed.bpm === 168));
 });
 
 test("suggestedStockBed picks the closest bed within five BPM", () => {
-  assert.equal(suggestedStockBed(174)?.id, "rush");
   assert.equal(suggestedStockBed(170)?.id, "banger");
-  assert.equal(suggestedStockBed(115)?.id, "pulse");
+  assert.equal(suggestedStockBed(166)?.id, "rush");
+  assert.equal(suggestedStockBed(174)?.id, "banger");
   assert.equal(suggestedStockBed(200), undefined);
 });
 

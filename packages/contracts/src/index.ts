@@ -47,7 +47,8 @@ export const stockBeds = [
     artist: "Kevin MacLeod",
     bpm: 115,
     license: "CC BY 3.0",
-    licenseUrl: "https://creativecommons.org/licenses/by/3.0/"
+    licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+    sourceUrl: "https://incompetech.com"
   },
   {
     id: "drive",
@@ -55,7 +56,8 @@ export const stockBeds = [
     artist: "Kevin MacLeod",
     bpm: 128,
     license: "CC BY 3.0",
-    licenseUrl: "https://creativecommons.org/licenses/by/3.0/"
+    licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+    sourceUrl: "https://incompetech.com"
   },
   {
     id: "air",
@@ -63,7 +65,8 @@ export const stockBeds = [
     artist: "Kevin MacLeod",
     bpm: 80,
     license: "CC BY 3.0",
-    licenseUrl: "https://creativecommons.org/licenses/by/3.0/"
+    licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+    sourceUrl: "https://incompetech.com"
   },
   {
     id: "glow",
@@ -71,7 +74,8 @@ export const stockBeds = [
     artist: "Kevin MacLeod",
     bpm: 110,
     license: "CC BY 3.0",
-    licenseUrl: "https://creativecommons.org/licenses/by/3.0/"
+    licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+    sourceUrl: "https://incompetech.com"
   },
   {
     id: "night",
@@ -79,7 +83,8 @@ export const stockBeds = [
     artist: "Kevin MacLeod",
     bpm: 90,
     license: "CC BY 3.0",
-    licenseUrl: "https://creativecommons.org/licenses/by/3.0/"
+    licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+    sourceUrl: "https://incompetech.com"
   },
   {
     id: "rise",
@@ -87,23 +92,27 @@ export const stockBeds = [
     artist: "Kevin MacLeod",
     bpm: 140,
     license: "CC BY 3.0",
-    licenseUrl: "https://creativecommons.org/licenses/by/3.0/"
+    licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+    sourceUrl: "https://incompetech.com"
   },
   {
     id: "banger",
     title: "Banger",
-    artist: "FSM Team & e s c p",
+    artist: "e s c p",
     bpm: 170,
     license: "CC BY 4.0",
-    licenseUrl: "https://creativecommons.org/licenses/by/4.0/"
+    licenseUrl: "https://creativecommons.org/licenses/by/4.0/",
+    sourceUrl: "https://www.free-stock-music.com/fsm-team-banger.html",
+    creditUrl: "https://www.escp.space"
   },
   {
     id: "rush",
     title: "Hyper Ultra-Racing",
     artist: "cynicmusic",
-    bpm: 172,
+    bpm: 168,
     license: "CC0 1.0",
-    licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/"
+    licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/",
+    sourceUrl: "https://opengameart.org/content/hyper-ultra-racing"
   }
 ] as const;
 export type StockBed = (typeof stockBeds)[number];
@@ -111,8 +120,14 @@ export type StockBedId = StockBed["id"];
 export const stockBedIds = stockBeds.map((bed) => bed.id);
 
 /** Credit line for a catalogue bed. Uses ASCII commas only (no U+2014). */
-export function stockBedCredit(bed: Pick<StockBed, "title" | "artist" | "license">): string {
-  return `${bed.title} by ${bed.artist}, ${bed.license}`;
+export function stockBedCredit(bed: {
+  title: string;
+  artist: string;
+  license: string;
+  creditUrl?: string;
+}): string {
+  const base = `${bed.title} by ${bed.artist}, ${bed.license}, excerpt`;
+  return bed.creditUrl ? `${base} (${bed.creditUrl})` : base;
 }
 
 /** Closest catalogue bed within ±5 BPM of `bpm`, or undefined when none match. */

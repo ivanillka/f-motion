@@ -50,7 +50,6 @@ import {
   snapScenesToBeat as snapDurationsToBeat,
   stockBedUrl,
   stockBeds,
-  stockBedCredit,
   suggestedStockBed,
   showsPartnerBrands,
   cuesForScene,
@@ -3939,7 +3938,17 @@ export function App() {
                 })}
               </ul>
               {selectedStockBed ? (
-                <p className="crop-hint">{stockBedCredit(selectedStockBed)}</p>
+                <p className="crop-hint">
+                  <a href={selectedStockBed.sourceUrl} target="_blank" rel="noreferrer">{selectedStockBed.title}</a>
+                  {" by "}
+                  {selectedStockBed.artist}
+                  {", "}
+                  <a href={selectedStockBed.licenseUrl} target="_blank" rel="noreferrer">{selectedStockBed.license}</a>
+                  {", excerpt"}
+                  {"creditUrl" in selectedStockBed && selectedStockBed.creditUrl ? (
+                    <>{" ("}<a href={selectedStockBed.creditUrl} target="_blank" rel="noreferrer">{selectedStockBed.creditUrl}</a>{")"}</>
+                  ) : null}
+                </p>
               ) : null}
             </details>
             {soundtrack ? (

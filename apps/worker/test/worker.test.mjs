@@ -743,7 +743,8 @@ test("concat mixdown uses the licensed catalog file for a stock bed", () => {
   assert.match(concat, /pulse\.mp3/);
   assert.match(concat, /Funkorama/);
   assert.match(concat, /Kevin MacLeod/);
-  assert.match(concat, /Funkorama by Kevin MacLeod, CC BY 3\.0/);
+  assert.match(concat, /Funkorama by Kevin MacLeod, CC BY 3\.0, excerpt/);
+  assert.match(concat, /comment=https:\/\/incompetech\.com/);
   assert.equal(concat.includes("\u2014"), false);
 });
 
@@ -762,11 +763,18 @@ test("new DnB stock beds resolve to files and write title, artist, copyright met
     assert.equal(mix?.title, bed.title);
     assert.equal(mix?.artist, bed.artist);
     assert.equal(mix?.license, bed.license);
+    assert.equal(mix?.sourceUrl, bed.sourceUrl);
     const meta = soundtrackMetadata(mix).join(" ");
     assert.match(meta, new RegExp(`title=${bed.title}`));
     assert.match(meta, new RegExp(`artist=${bed.artist}`));
     assert.match(meta, new RegExp(`copyright=${stockBedCredit(bed).replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    assert.match(meta, new RegExp(`comment=${bed.sourceUrl.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    assert.match(meta, /excerpt/);
     assert.equal(meta.includes("\u2014"), false);
+    if (id === "banger") {
+      assert.match(meta, /escp\.space/);
+      assert.match(stockBedCredit(bed), /Banger by e s c p, CC BY 4\.0, excerpt \(https:\/\/www\.escp\.space\)/);
+    }
   }
 });
 test("render job sorts scenes by order and gives each its own clip", () => {
