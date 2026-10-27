@@ -50,6 +50,7 @@ import {
   snapScenesToBeat as snapDurationsToBeat,
   stockBedUrl,
   stockBeds,
+  suggestedStockBed,
   showsPartnerBrands,
   cuesForScene,
   spokenWordIndex,
@@ -2939,18 +2940,24 @@ export function App() {
       ? stockBedUrl(soundtrack.stock_id)
       : undefined;
   const beatMarks = soundtrack ? musicLaneBeats(playhead.totalMs, soundtrack.bpm) : [];
+  const selectedStockBed = soundtrack?.kind === "stock"
+    ? stockBeds.find((bed) => bed.id === soundtrack.stock_id)
+    : undefined;
   const soundtrackHint = !soundtrack
     ? ""
     : soundtrack.kind === "stock"
-      ? `${stockBeds.find((bed) => bed.id === soundtrack.stock_id)?.label ?? "Catalog"} · Export video mixes this bed`
+      ? `${selectedStockBed?.title ?? "Catalog"} · Export video mixes this bed`
       : soundtrackMedia?.attribution?.source === "Mixkit"
         ? `${soundtrackMedia.attribution.title ?? "Mixkit"} · ${soundtrackMedia.attribution.creator} · Mixkit · Export video mixes this bed`
         : `Uploaded · Export video mixes this bed`;
   const musicLabel = !soundtrack
     ? "Add music"
     : soundtrack.kind === "stock"
-      ? (stockBeds.find((bed) => bed.id === soundtrack.stock_id)?.label ?? "Music bed")
+      ? (selectedStockBed?.title ?? "Music bed")
       : soundtrackMedia?.attribution?.title ?? "Uploaded music";
+  const bpmSuggestion = soundtrack
+    ? suggestedStockBed(clampBpm(soundtrack.bpm))
+    : undefined;
   const voiceover = project?.brief.voiceover;
   const voiceoverUrl = voiceover?.media_id ? scenePreviewUrl(sceneMedia[voiceover.media_id]) : undefined;
   const spokenScriptKey = project ? spokenMixKey(project.scenes) : "";
@@ -3886,31 +3893,71 @@ export function App() {
               </ul>
             ) : null}
             <audio ref={previewAudio} preload="none" hidden onEnded={() => setPreviewingId(undefined)} />
-            <details className="music-classic">
-              <summary>Classic beds</summary>
-              <div className="music-beds" role="group" aria-label="Classic Kevin MacLeod beds">
-                {stockBeds.map((bed) =>
-                  <button
-                    key={bed.id}
-                    type="button"
-                    className={soundtrack?.kind === "stock" && soundtrack.stock_id === bed.id ? undefined : "secondary"}
-                    aria-pressed={soundtrack?.kind === "stock" && soundtrack.stock_id === bed.id}
-                    disabled={busy}
-                    title={`${bed.label} · ${bed.hint}`}
-                    onClick={() => {
-                      void saveSoundtrack({
-                        kind: "stock",
-                        stock_id: bed.id,
-                        bpm: clampBpm(soundtrack?.bpm ?? bed.bpm),
-                        offset_ms: 0,
-                        level: soundtrack?.level ?? 0.8
-                      });
-                      setMusicOpen(false);
-                    }}
-                  >{bed.label}</button>)}
-              </div>
-              <p className="crop-hint">Music by <a href="https://incompetech.com" target="_blank" rel="noreferrer">Kevin MacLeod</a>
-                {" · "}<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noreferrer">CC BY 3.0</a></p>
+            <details className="music-classic" open>
+              <summary>Stock beds</summary>
+              <ul className="music-beds" role="group" aria-label="Stock music beds">
+                {stockBeds.map((bed) => {
+                  const selected = soundtrack?.kind === "stock" && soundtrack.stock_id === bed.id;
+                  const suggested = bpmSuggestion?.id === bed.id;
+                  return (
+                    <li
+                      key={bed.id}
+                      className={suggested ? "is-suggested" : undefined}
+                    >
+                      <button
+                        type="button"
+                        className={selected ? undefined : "secondary"}
+                        aria-pressed={selected}
+                        disabled={busy}
+                        title={`${bed.title} · ${bed.artist} · ${bed.bpm} BPM · ${bed.license}`}
+                        onClick={() => {
+                          void saveSoundtrack({
+                            kind: "stock",
+                            stock_id: bed.id,
+                            bpm: clampBpm(soundtrack?.bpm ?? bed.bpm),
+                            offset_ms: 0,
+                            level: soundtrack?.level ?? 0.8
+                          });
+                          setMusicOpen(false);
+                        }}
+                      >
+                        <span className="music-bed-title">{bed.title}</span>
+                        <span className="music-bed-meta">{bed.artist} · {bed.bpm} BPM</span>
+                      </button>
+                      <a
+                        className="music-bed-license"
+                        href={bed.licenseUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >{bed.license}</a>
+                      {suggested ? (
+                        <span className="music-bed-suggest">Suggested for {clampBpm(soundtrack!.bpm)} BPM</span>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+              {selectedStockBed ? (
+                <p className="crop-hint">
+                  <a href={selectedStockBed.sourceUrl} target="_blank" rel="noreferrer">{selectedStockBed.title}</a>
+                  {" by "}
+                  {selectedStockBed.artist}
+                  {", "}
+                  <a href={selectedStockBed.licenseUrl} target="_blank" rel="noreferrer">{selectedStockBed.license}</a>
+                  {", excerpt"}
+                  {"creditUrl" in selectedStockBed && selectedStockBed.creditUrl ? (
+                    <>
+                      {" ("}
+                      {selectedStockBed.creditUrl.split(/\s+/).map((url, index) =>
+                        <span key={url}>
+                          {index > 0 ? " " : null}
+                          <a href={url} target="_blank" rel="noreferrer">{url}</a>
+                        </span>)}
+                      {")"}
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
             </details>
             {soundtrack ? (
               <>

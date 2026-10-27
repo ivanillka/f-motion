@@ -41,16 +41,109 @@ export interface Scene {
 }
 
 export const stockBeds = [
-  { id: "pulse", title: "Funkorama", artist: "Kevin MacLeod", bpm: 115 },
-  { id: "drive", title: "Space Fighter Loop", artist: "Kevin MacLeod", bpm: 128 },
-  { id: "air", title: "Dreamy Flashback", artist: "Kevin MacLeod", bpm: 80 },
-  { id: "glow", title: "Easy Lemon", artist: "Kevin MacLeod", bpm: 110 },
-  { id: "night", title: "Wallpaper", artist: "Kevin MacLeod", bpm: 90 },
-  { id: "rise", title: "Hot Swing", artist: "Kevin MacLeod", bpm: 140 }
+  {
+    id: "pulse",
+    title: "Funkorama",
+    artist: "Kevin MacLeod",
+    bpm: 115,
+    license: "CC BY 3.0",
+    licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+    sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100474"
+  },
+  {
+    id: "drive",
+    title: "Space Fighter Loop",
+    artist: "Kevin MacLeod",
+    bpm: 128,
+    license: "CC BY 3.0",
+    licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+    sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100672"
+  },
+  {
+    id: "air",
+    title: "Dreamy Flashback",
+    artist: "Kevin MacLeod",
+    bpm: 80,
+    license: "CC BY 3.0",
+    licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+    sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100532"
+  },
+  {
+    id: "glow",
+    title: "Easy Lemon",
+    artist: "Kevin MacLeod",
+    bpm: 110,
+    license: "CC BY 3.0",
+    licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+    sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1200076"
+  },
+  {
+    id: "night",
+    title: "Wallpaper",
+    artist: "Kevin MacLeod",
+    bpm: 90,
+    license: "CC BY 3.0",
+    licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+    sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100843"
+  },
+  {
+    id: "rise",
+    title: "Hot Swing",
+    artist: "Kevin MacLeod",
+    bpm: 140,
+    license: "CC BY 3.0",
+    licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+    sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100202"
+  },
+  {
+    id: "banger",
+    title: "Banger",
+    artist: "e s c p",
+    bpm: 170,
+    license: "CC BY 4.0",
+    licenseUrl: "https://creativecommons.org/licenses/by/4.0/",
+    sourceUrl: "https://www.free-stock-music.com/fsm-team-banger.html",
+    creditUrl: "https://www.escp.space https://escp-music.bandcamp.com"
+  },
+  {
+    id: "rush",
+    title: "Hyper Ultra-Racing",
+    artist: "cynicmusic",
+    bpm: 168,
+    license: "CC0 1.0",
+    licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/",
+    sourceUrl: "https://opengameart.org/content/hyper-ultra-racing"
+  }
 ] as const;
-export type StockBedId = (typeof stockBeds)[number]["id"];
+export type StockBed = (typeof stockBeds)[number];
+export type StockBedId = StockBed["id"];
 export const stockBedIds = stockBeds.map((bed) => bed.id);
-export const stockMusicCredit = "Music by Kevin MacLeod (incompetech.com) — CC BY 3.0";
+
+/** Credit line for a catalogue bed. Uses ASCII commas only (no U+2014). */
+export function stockBedCredit(bed: {
+  title: string;
+  artist: string;
+  license: string;
+  creditUrl?: string;
+}): string {
+  const base = `${bed.title} by ${bed.artist}, ${bed.license}, excerpt`;
+  return bed.creditUrl ? `${base} (${bed.creditUrl})` : base;
+}
+
+/** Closest catalogue bed within ±5 BPM of `bpm`, or undefined when none match. */
+export function suggestedStockBed(bpm: number): StockBed | undefined {
+  let best: StockBed | undefined;
+  let bestDelta = Infinity;
+  for (const bed of stockBeds) {
+    const delta = Math.abs(bed.bpm - bpm);
+    if (delta > 5) continue;
+    if (delta < bestDelta) {
+      best = bed;
+      bestDelta = delta;
+    }
+  }
+  return best;
+}
 
 export interface Soundtrack {
   kind: "stock" | "upload";

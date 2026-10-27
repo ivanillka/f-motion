@@ -16,8 +16,11 @@ import {
   renderObjectKey,
   renderPhases,
   renderPreview as renderPreviewWithProfile,
-  stockBedPath
+  stockBedPath,
+  soundtrackMetadata,
+  resolveSoundtrackMix
 } from "../dist/index.js";
+import { stockBeds, stockBedCredit } from "@f-engine/contracts";
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const referenceProfile = { width: 720, height: 1280, watermark: "Reference preview" };
@@ -740,6 +743,43 @@ test("concat mixdown uses the licensed catalog file for a stock bed", () => {
   assert.match(concat, /pulse\.mp3/);
   assert.match(concat, /Funkorama/);
   assert.match(concat, /Kevin MacLeod/);
+  assert.match(concat, /Funkorama by Kevin MacLeod, CC BY 3\.0, excerpt/);
+  assert.match(concat, /comment=https:\/\/incompetech\.com\/music\/royalty-free\/index\.html\?isrc=USUAN1100474/);
+  assert.equal(concat.includes("\u2014"), false);
+});
+
+test("new DnB stock beds resolve to files and write title, artist, copyright metadata", () => {
+  for (const id of ["banger", "rush"]) {
+    const bed = stockBeds.find((item) => item.id === id);
+    assert.ok(bed, `catalogue entry ${id}`);
+    assert.match(stockBedPath(id) ?? "", new RegExp(`${id}\\.mp3$`));
+    const mix = resolveSoundtrackMix({
+      ...snapshot,
+      brief: {
+        ...snapshot.brief,
+        soundtrack: { kind: "stock", stock_id: id, bpm: bed.bpm, offset_ms: 0, level: 0.8 }
+      }
+    }, {});
+    assert.equal(mix?.title, bed.title);
+    assert.equal(mix?.artist, bed.artist);
+    assert.equal(mix?.license, bed.license);
+    assert.equal(mix?.sourceUrl, bed.sourceUrl);
+    const meta = soundtrackMetadata(mix).join(" ");
+    assert.match(meta, new RegExp(`title=${bed.title}`));
+    assert.match(meta, new RegExp(`artist=${bed.artist}`));
+    assert.match(meta, new RegExp(`copyright=${stockBedCredit(bed).replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    assert.match(meta, new RegExp(`comment=${bed.sourceUrl.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    assert.match(meta, /excerpt/);
+    assert.equal(meta.includes("\u2014"), false);
+    if (id === "banger") {
+      assert.match(meta, /escp\.space/);
+      assert.match(meta, /escp-music\.bandcamp\.com/);
+      assert.equal(
+        stockBedCredit(bed),
+        "Banger by e s c p, CC BY 4.0, excerpt (https://www.escp.space https://escp-music.bandcamp.com)"
+      );
+    }
+  }
 });
 test("render job sorts scenes by order and gives each its own clip", () => {
   const twoScenes = {

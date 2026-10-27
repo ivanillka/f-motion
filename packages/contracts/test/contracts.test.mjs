@@ -1,7 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { acceptsFixture, isProjectSnapshot, isSoundtrack, isVoiceover, isStoryboardScenes, isStoryboardPlan, isSceneBrief } from "../dist/index.js";
+import {
+  acceptsFixture,
+  isProjectSnapshot,
+  isSoundtrack,
+  isVoiceover,
+  isStoryboardScenes,
+  isStoryboardPlan,
+  isSceneBrief,
+  stockBeds,
+  stockBedCredit,
+  suggestedStockBed
+} from "../dist/index.js";
 import { parseNotifyUrl, renderNotifyConfigFromEnv, signRenderNotify, verifyRenderNotify, deliverRenderNotify, buildRenderCompleteNotify } from "../dist/host-notify.js";
 
 const fixture = async (name) => JSON.parse(await readFile(new URL(`../fixtures/${name}`, import.meta.url)));
@@ -97,6 +108,8 @@ test("brief soundtrack is optional and validated when present", () => {
   const base = snapshotWithPrompt("remote island");
   assert.equal(isSoundtrack({ kind: "stock", stock_id: "pulse", bpm: 120, offset_ms: 0, level: 0.8 }), true);
   assert.equal(isSoundtrack({ kind: "stock", stock_id: "glow", bpm: 110, offset_ms: 0, level: 0.8 }), true);
+  assert.equal(isSoundtrack({ kind: "stock", stock_id: "banger", bpm: 170, offset_ms: 0, level: 0.8 }), true);
+  assert.equal(isSoundtrack({ kind: "stock", stock_id: "rush", bpm: 168, offset_ms: 0, level: 0.8 }), true);
   assert.equal(isSoundtrack({ kind: "stock", stock_id: "nope", bpm: 120, offset_ms: 0, level: 0.8 }), false);
   assert.equal(isProjectSnapshot({
     ...base,
@@ -106,6 +119,40 @@ test("brief soundtrack is optional and validated when present", () => {
     ...base,
     brief: { ...base.brief, soundtrack: { kind: "stock", stock_id: "nope", bpm: 120, offset_ms: 0, level: 0.8 } }
   }), false);
+});
+
+test("stock beds carry license metadata and credit without em dashes", () => {
+  for (const bed of stockBeds) {
+    assert.equal(typeof bed.title, "string");
+    assert.equal(typeof bed.artist, "string");
+    assert.equal(typeof bed.license, "string");
+    assert.match(bed.licenseUrl, /^https:\/\//);
+    assert.match(bed.sourceUrl, /^https:\/\//);
+    assert.equal(typeof bed.bpm, "number");
+    const credit = stockBedCredit(bed);
+    assert.equal(credit.includes("\u2014"), false);
+    assert.match(credit, new RegExp(`${bed.title} by ${bed.artist}, ${bed.license}, excerpt`));
+  }
+  const banger = stockBeds.find((bed) => bed.id === "banger");
+  assert.ok(banger);
+  assert.equal(banger.bpm, 170);
+  assert.equal(banger.artist, "e s c p");
+  assert.equal(banger.creditUrl, "https://www.escp.space https://escp-music.bandcamp.com");
+  assert.equal(
+    stockBedCredit(banger),
+    "Banger by e s c p, CC BY 4.0, excerpt (https://www.escp.space https://escp-music.bandcamp.com)"
+  );
+  for (const bed of stockBeds.filter((item) => item.artist === "Kevin MacLeod")) {
+    assert.match(bed.sourceUrl, /incompetech\.com\/music\/royalty-free\/index\.html\?isrc=USUAN\d+/);
+  }
+  assert.ok(stockBeds.some((bed) => bed.id === "rush" && bed.bpm === 168));
+});
+
+test("suggestedStockBed picks the closest bed within five BPM", () => {
+  assert.equal(suggestedStockBed(170)?.id, "banger");
+  assert.equal(suggestedStockBed(166)?.id, "rush");
+  assert.equal(suggestedStockBed(174)?.id, "banger");
+  assert.equal(suggestedStockBed(200), undefined);
 });
 
 test("brief voiceover is optional and validated when present", () => {

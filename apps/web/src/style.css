@@ -1001,12 +1001,40 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .music-classic { font-size: var(--text-support); }
 .music-classic summary { cursor: pointer; color: var(--muted); }
 .music-beds {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 6px;
   margin-top: 6px;
+  padding: 0 0 calc(12px + var(--safe-bottom, 0px));
+  list-style: none;
 }
-.music-beds button { width: auto; min-height: 28px; padding: 3px 8px; font-size: var(--text-micro); }
+.music-dock .music-classic {
+  padding-bottom: calc(72px + var(--safe-bottom, 0px));
+}
+.music-beds li {
+  display: grid;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 8px;
+}
+.music-beds li.is-suggested {
+  outline: 1px solid color-mix(in srgb, var(--accent, #3d7ea6) 70%, var(--border));
+  outline-offset: 0;
+}
+.music-beds button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 0;
+  padding: 6px 8px;
+  text-align: left;
+  font-size: var(--text-micro);
+}
+.music-bed-title { font-weight: 600; font-size: var(--text-support); }
+.music-bed-meta,
+.music-bed-license,
+.music-bed-suggest { color: var(--muted); font-size: var(--text-micro); }
+.music-bed-license { margin-left: 8px; }
+.music-bed-suggest { display: block; margin-left: 8px; font-style: italic; }
 .scene-controls {
   display: grid;
   gap: 8px;
