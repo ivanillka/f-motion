@@ -151,7 +151,7 @@ test("own-media glance notes adapt the next question without a VLM", () => {
 });
 
 const connectedSourceAnswers = {
-  choices: ["Pexels videos", "AI stills with FAL (paid, asks first)", "Use my photos"],
+  choices: ["Pexels videos", "AI images with FAL (paid, asks first)", "Use my photos"],
   connected: ["Pexels", "FAL"],
   hint: ""
 };
@@ -159,7 +159,7 @@ const connectedSourceAnswers = {
 const ownOnlySourceAnswers = {
   choices: ["Use my photos"],
   connected: [],
-  hint: "Pexels, Civitai and FAL are locked. Add your own key in Sources to use them."
+  hint: "Connect Pexels, Civitai and FAL in Settings to use them here."
 };
 
 test("the picture question offers the sources this studio really has", () => {
@@ -174,12 +174,12 @@ test("the picture question offers the sources this studio really has", () => {
   assert.match(question?.prompt ?? "", /Pexels or FAL/);
   assert.doesNotMatch(question?.prompt ?? "", /Civitai/i);
   const falOnly = briefQuestionFor("visuals", "mystery murder in san francisco", false, {
-    choices: ["AI stills with FAL (paid, asks first)", "Use my photos"],
+    choices: ["AI images with FAL (paid, asks first)", "Use my photos"],
     connected: ["FAL"],
-    hint: "Pexels and Civitai are locked. Add your own key in Sources to use them."
+    hint: "Connect Pexels and Civitai in Settings to use them here."
   });
   assert.match(falOnly.prompt, /pictures of San Francisco from FAL/);
-  assert.match(falOnly.prompt, /Pexels and Civitai are locked/);
+  assert.match(falOnly.prompt, /Connect Pexels and Civitai in Settings to use them here\./);
   assert.doesNotMatch(falOnly.prompt, /Pexels videos of/);
 });
 
@@ -205,8 +205,13 @@ test("source answers are read back as the pictures that will really be used", ()
   const plan = recommendVideoArchitecture("harbor night");
   assert.equal(briefWhereFromChat("harbor night\nCivitai images", plan), "Civitai images");
   assert.equal(
+    briefWhereFromChat("harbor night\nAI images with FAL (paid, asks first)", plan),
+    "AI images from your FAL key"
+  );
+  // Chats saved before the label changed still read back the same way.
+  assert.equal(
     briefWhereFromChat("harbor night\nAI stills with FAL (paid, asks first)", plan),
-    "AI stills from your FAL key"
+    "AI images from your FAL key"
   );
   assert.equal(
     briefWhereFromChat("harbor night\nMix my photos and Pexels and FAL", plan),
@@ -230,10 +235,12 @@ test("Civitai and FAL answers count as the picture answer", () => {
     "length"
   );
   assert.equal(
-    nextBriefQuestion("harbor night\nAI stills with FAL (paid, asks first)", false, ["intent", "audience"])?.id,
+    nextBriefQuestion("harbor night\nAI images with FAL (paid, asks first)", false, ["intent", "audience"])?.id,
     "length"
   );
   assert.equal(isBriefAnswerLine("Mix my photos and Pexels and FAL"), true);
+  assert.equal(isBriefAnswerLine("AI images with FAL (paid, asks first)"), true);
+  // The older label is still an answer, not a topic.
   assert.equal(isBriefAnswerLine("AI stills with FAL (paid, asks first)"), true);
   assert.equal(isBriefAnswerLine("harbor night"), false);
   assert.equal(briefPurposeFromChat("harbor night\nMix my photos and Pexels and FAL"), "harbor night");

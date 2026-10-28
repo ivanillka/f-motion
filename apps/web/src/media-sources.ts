@@ -150,9 +150,10 @@ function andList(names: readonly string[]): string {
 /**
  * Chat answers for "where do the pictures come from". Only sources that can
  * deliver right now are offered: own photos always, an external source only
- * when its chip is connected, plus one mix answer when both sides exist.
- * Locked or unavailable sources are named in a single hint line instead of
- * becoming choices, and the "More" slot is never offered as an answer.
+ * when its chip is connected, plus one mix answer whenever a connected source
+ * could share the storyboard with own photos. Locked or unavailable sources are
+ * named in a single hint line that points at Settings instead of becoming
+ * choices, and the "More" slot is never offered as an answer.
  */
 export function visualSourceOptions(
   input: MediaSourcesInput & { remembered?: VisualSourceId }
@@ -171,8 +172,8 @@ export function visualSourceOptions(
     external.push({
       id: "fal",
       name: "FAL",
-      label: "AI stills with FAL (paid, asks first)",
-      where: "AI stills from your FAL key"
+      label: "AI images with FAL (paid, asks first)",
+      where: "AI images from your FAL key"
     });
   }
   const own: VisualSourceChoice = {
@@ -182,7 +183,10 @@ export function visualSourceOptions(
     where: "your photos"
   };
   const names = external.map((choice) => choice.name);
-  const mix: VisualSourceChoice[] = input.ownCount > 0 && external.length > 0
+  // One mix answer as soon as own photos can join a connected source, even
+  // before the photos are added: picking it asks for them instead of quietly
+  // filling the storyboard from the external source alone.
+  const mix: VisualSourceChoice[] = external.length > 0
     ? [{
       id: "mix",
       name: "mix",
@@ -206,7 +210,7 @@ export function visualSourceOptions(
   }
   const hint = [
     locked.length
-      ? `${andList(locked)} ${locked.length === 1 ? "is" : "are"} locked. Add your own key in Sources to use ${locked.length === 1 ? "it" : "them"}.`
+      ? `Connect ${andList(locked)} in Settings to use ${locked.length === 1 ? "it" : "them"} here.`
       : "",
     unavailable.length
       ? `${andList(unavailable)} ${unavailable.length === 1 ? "is" : "are"} not available here.`

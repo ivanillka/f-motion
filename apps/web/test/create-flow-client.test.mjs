@@ -24,6 +24,13 @@ test("an explicit source answer never claims a disconnected source", () => {
   assert.equal(mediaPrefFromPlan(mixed, { hasOwn: false, pexelsConnected: false, choice: "pexels" }), "defer");
   assert.equal(mediaPrefFromPlan(mixed, { hasOwn: true, pexelsConnected: true, choice: "mix" }), "mix");
   assert.equal(mediaPrefFromPlan(mixed, { hasOwn: true, pexelsConnected: false, choice: "mix" }), "own");
+  // A mix without photos is not a mix yet: ask for them instead of claiming
+  // the external source alone.
+  assert.equal(mediaPrefFromPlan(mixed, { hasOwn: false, pexelsConnected: true, choice: "mix" }), "defer");
+  assert.equal(
+    mediaPrefFromPlan(mixed, { hasOwn: false, pexelsConnected: false, falConnected: true, choice: "mix" }),
+    "defer"
+  );
   assert.equal(
     mediaPrefFromPlan(mixed, { hasOwn: true, pexelsConnected: false, falConnected: true, choice: "mix" }),
     "mix"

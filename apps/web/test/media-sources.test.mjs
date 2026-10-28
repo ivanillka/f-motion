@@ -125,7 +125,7 @@ test("picture answers stay truthful when nothing is connected", () => {
   assert.deepEqual(options.connected, []);
   assert.equal(
     options.hint,
-    "Pexels, Civitai and FAL are locked. Add your own key in Sources to use them."
+    "Connect Pexels, Civitai and FAL in Settings to use them here."
   );
   // The "More" slot is a promise, never an answer.
   assert.equal(options.choices.some((choice) => choice.label.includes("New options")), false);
@@ -138,11 +138,30 @@ test("picture answers list every connected source and keep locked ones in the hi
     civitaiConnected: false,
     falConnected: true
   });
-  assert.deepEqual(options.choices.map((choice) => choice.id), ["pexels", "fal", "own"]);
+  assert.deepEqual(options.choices.map((choice) => choice.id), ["pexels", "fal", "own", "mix"]);
   assert.deepEqual(options.connected, ["Pexels", "FAL"]);
-  assert.equal(options.hint, "Civitai is locked. Add your own key in Sources to use it.");
-  assert.match(options.choices[1].label, /FAL/);
+  assert.equal(options.hint, "Connect Civitai in Settings to use it here.");
+  assert.equal(options.choices[1].label, "AI images with FAL (paid, asks first)");
   assert.match(options.choices[1].label, /asks first/);
+});
+
+test("the hint names one locked source, or both, and points at Settings", () => {
+  const one = visualSourceOptions({
+    ownCount: 0,
+    pexelsConnected: true,
+    civitaiConnected: false,
+    falConnected: true
+  });
+  assert.equal(one.hint, "Connect Civitai in Settings to use it here.");
+  const two = visualSourceOptions({
+    ownCount: 0,
+    pexelsConnected: true,
+    civitaiConnected: false,
+    falConnected: false
+  });
+  assert.equal(two.hint, "Connect Civitai and FAL in Settings to use them here.");
+  // "Settings" is the studio's own name for the screen that holds the keys.
+  assert.doesNotMatch(two.hint, /\bSources\b/);
 });
 
 test("keyless Civitai answers in the middle, and unavailable sources are named apart", () => {
@@ -154,12 +173,12 @@ test("keyless Civitai answers in the middle, and unavailable sources are named a
     falConnected: false,
     falUnavailable: true
   });
-  assert.deepEqual(options.choices.map((choice) => choice.id), ["pexels", "civitai", "own"]);
+  assert.deepEqual(options.choices.map((choice) => choice.id), ["pexels", "civitai", "own", "mix"]);
   assert.equal(options.hint, "FAL is not available here.");
   assert.equal(options.choices[1].where, "Civitai images");
 });
 
-test("a mix answer appears only once photos are in the pool", () => {
+test("one mix answer covers every connected source, with or without photos", () => {
   const withPhotos = visualSourceOptions({
     ownCount: 2,
     pexelsConnected: true,
@@ -169,13 +188,30 @@ test("a mix answer appears only once photos are in the pool", () => {
   assert.deepEqual(withPhotos.choices.map((choice) => choice.id), ["own", "pexels", "fal", "mix"]);
   assert.equal(withPhotos.choices[3].label, "Mix my photos and Pexels and FAL");
   assert.equal(withPhotos.choices[3].where, "your photos and Pexels and FAL");
+  // The answer is offered before the photos are added too: the chat then asks
+  // for them instead of filling the storyboard from the external source alone.
+  const withoutPhotos = visualSourceOptions({
+    ownCount: 0,
+    pexelsConnected: true,
+    civitaiConnected: false,
+    falConnected: true
+  });
+  assert.deepEqual(withoutPhotos.choices.map((choice) => choice.id), ["pexels", "fal", "own", "mix"]);
+  assert.equal(withoutPhotos.choices[3].label, "Mix my photos and Pexels and FAL");
   const pexelsOnly = visualSourceOptions({
-    ownCount: 2,
+    ownCount: 0,
     pexelsConnected: true,
     civitaiConnected: false,
     falConnected: false
   });
   assert.equal(pexelsOnly.choices.find((choice) => choice.id === "mix")?.label, "Mix my photos and Pexels");
+  const noExternal = visualSourceOptions({
+    ownCount: 2,
+    pexelsConnected: false,
+    civitaiConnected: false,
+    falConnected: false
+  });
+  assert.equal(noExternal.choices.some((choice) => choice.id === "mix"), false);
 });
 
 test("the remembered source leads, but only while it is still connected", () => {
@@ -186,7 +222,7 @@ test("the remembered source leads, but only while it is still connected", () => 
     falConnected: true,
     remembered: "fal"
   });
-  assert.deepEqual(remembered.choices.map((choice) => choice.id), ["fal", "pexels", "own"]);
+  assert.deepEqual(remembered.choices.map((choice) => choice.id), ["fal", "pexels", "own", "mix"]);
   const disconnected = visualSourceOptions({
     ownCount: 0,
     pexelsConnected: true,
@@ -194,7 +230,7 @@ test("the remembered source leads, but only while it is still connected", () => 
     falConnected: false,
     remembered: "fal"
   });
-  assert.deepEqual(disconnected.choices.map((choice) => choice.id), ["pexels", "own"]);
+  assert.deepEqual(disconnected.choices.map((choice) => choice.id), ["pexels", "own", "mix"]);
 });
 
 test("the remembered source round trips through storage and ignores junk", () => {

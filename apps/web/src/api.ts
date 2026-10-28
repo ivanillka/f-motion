@@ -348,7 +348,7 @@ const briefOwnMediaAnswer =
 
 /** Answers that name only an external source, so no local glance is needed. */
 const briefExternalOnlyAnswer =
-  /\bpexels videos\b|\bcivitai images\b|\bai stills?\b/u;
+  /\bpexels videos\b|\bcivitai images\b|\bai stills?\b|\bai images?\b/u;
 
 /** Own-media or mix answers without files: look at the photos before more questions. */
 export function briefNeedsMediaLook(conversation: string, fileCount: number): boolean {
@@ -446,7 +446,9 @@ export function briefWhereFromChat(
   const mixed = conversation.normalize("NFKC").match(/\bmix my photos and ([^\n]+)/iu)?.[1]?.trim();
   if (mixed) return `your photos and ${mixed}`;
   if (/\bcivitai images\b/u.test(text)) return "Civitai images";
-  if (/\bai stills?\b|\bfal\b/u.test(text)) return "AI stills from your FAL key";
+  // "AI images" is the current answer label; "AI stills" is what older chats
+  // still say, so both read back the same way.
+  if (/\bai stills?\b|\bai images?\b|\bfal\b/u.test(text)) return "AI images from your FAL key";
   if (/\buse both photos and pexels\b/u.test(text)) return "your photos and Pexels";
   if (/\bpexels videos\b/u.test(text)) return plan.media === "mixed" ? "your photos and Pexels" : "Pexels videos";
   if (/\buse my photos\b/u.test(text)) return "your photos";

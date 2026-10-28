@@ -859,6 +859,23 @@ export function App() {
     rememberVisualSource(match.id);
   }
 
+  /** The external sources that can share a mixed storyboard, named for the chat. */
+  function mixFillSources(): string {
+    // Civitai is left out: it lends references, not scene-ready media.
+    return visualSources.choices
+      .filter((pick) => pick.id === "pexels" || pick.id === "fal")
+      .map((pick) => pick.name)
+      .join(" and ");
+  }
+
+  /** Ask for the photos that make a mix real instead of filling from stock alone. */
+  function mixPhotoAsk(): string {
+    const rest = mixFillSources();
+    return rest
+      ? `Add the photos you want to mix, one per scene; ${rest} can fill the rest.`
+      : "Add the photos you want to mix, one per scene.";
+  }
+
   /** Honest next step when the storyboard was not filled automatically. */
   function ownMediaStatus(choice: VisualSourceId | undefined): string {
     if (choice === "civitai") {
@@ -867,7 +884,12 @@ export function App() {
         : "Storyboard ready. Civitai images are references: pick one per scene, or add your own photos.";
     }
     if (choice === "fal") {
-      return "Storyboard ready. Make AI stills scene by scene with your FAL key; each one shows its price first.";
+      return "Storyboard ready. Make AI images scene by scene with your FAL key; each one shows its price first.";
+    }
+    if (choice === "mix") {
+      // The mix answer was offered before the photos were added, so ask for
+      // them instead of quietly filling every scene from the external source.
+      return `Storyboard ready. ${mixPhotoAsk()}`;
     }
     if (choice === "own") {
       return pexelsReady
@@ -876,7 +898,7 @@ export function App() {
     }
     return pexelsReady
       ? "Storyboard ready. Add your own photos or search Pexels for each scene."
-      : "Storyboard ready. Add your own photos; any other source needs a key in Sources first.";
+      : "Storyboard ready. Add your own photos; any other source needs a key in Settings first.";
   }
 
   async function lookAtOwnMedia(userLine?: string) {
@@ -947,7 +969,9 @@ export function App() {
     briefDraftRef.current = conversation;
     setDraft(conversation);
     if (briefNeedsMediaLook(conversation, pendingFiles.length)) {
-      setBriefChat((current) => [...current, user, { role: "assistant", text: DROP_OWN_MEDIA }]);
+      // A mix answer without photos asks for them instead of filling from stock.
+      const ask = visualSourceFromLine(briefDraftRef.current) === "mix" ? mixPhotoAsk() : DROP_OWN_MEDIA;
+      setBriefChat((current) => [...current, user, { role: "assistant", text: ask }]);
       return;
     }
     if (briefShouldGlance(conversation, pendingFiles.length)) {
@@ -1099,13 +1123,15 @@ export function App() {
       if (options.animateStills) await beginAnimateStillsQueue(current.id);
       return;
     }
-    // Own photos, Civitai references and FAL stills are placed scene by scene,
-    // so only a real Pexels answer fills the whole storyboard at once.
+    // Own photos, Civitai references, FAL images and a mix that still needs the
+    // photos are placed scene by scene, so only a real Pexels answer fills the
+    // whole storyboard at once.
     const fillFromStock = pexelsReady
       && plan.media !== "own"
       && options.choice !== "own"
       && options.choice !== "civitai"
-      && options.choice !== "fal";
+      && options.choice !== "fal"
+      && options.choice !== "mix";
     if (!fillFromStock) {
       setStatus(ownMediaStatus(options.choice));
       if (options.animateStills) {
@@ -1118,7 +1144,7 @@ export function App() {
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.type : undefined;
       setStatus(type === "pexels_not_connected"
-        ? "Storyboard ready. Connect Pexels in Sources, or add your own photos."
+        ? "Storyboard ready. Connect Pexels in Settings, or add your own photos."
         : "Storyboard ready. Pexels videos could not be matched yet. Add your own photos or try Settings.");
     }
   }
@@ -1126,7 +1152,7 @@ export function App() {
   /** Sequential FAL image-to-video for ready photos, price first, then confirm (one at a time). */
   async function beginAnimateStillsQueue(projectId: string) {
     if (!falCredential?.connected || falUnavailable) {
-      setStatus("Turning photos into motion needs FAL connected in Sources (your key).");
+      setStatus("Turning photos into motion needs FAL connected in Settings (your key).");
       return;
     }
     let snapshot: ProjectSnapshot;

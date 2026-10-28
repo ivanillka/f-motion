@@ -107,9 +107,11 @@ export function mediaPrefFromPlan(
   // the storyboard is never filled from it automatically.
   if (choice === "civitai") return opts.hasOwn ? "own" : "defer";
   if (choice === "mix") {
-    if (opts.hasOwn && (opts.pexelsConnected || falConnected)) return "mix";
-    if (opts.hasOwn) return "own";
-    return prefForSource(opts.pexelsConnected, opts.hasOwn, "pexels");
+    // A mix without photos cannot be honoured: ask for them (defer) instead of
+    // quietly claiming the external source alone.
+    if (!opts.hasOwn) return "defer";
+    if (opts.pexelsConnected || falConnected) return "mix";
+    return "own";
   }
   if (plan.media === "own") return opts.hasOwn ? "own" : "defer";
   if (plan.media === "mixed") {
