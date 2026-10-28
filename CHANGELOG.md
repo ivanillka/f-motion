@@ -15,6 +15,7 @@ studio under **Settings → What’s new**. Product version lives in root
 - Phone widths (≤899px) keep the Create composer's **Send** button, the Storyboard actions, and every studio footer above the bottom dock, and the dock reserves the iOS home-indicator inset.
 - Create leads with its task: media sources sit in the header as slim chips (Own, Pexels, FAL, More, and the Animate stills toggle with its reason) instead of a full-width sources row, and Drafts no longer repeats that row in prose.
 - Create asks where the pictures come from based on the sources the studio really has: **Pexels videos**, **Civitai images**, and **AI images with FAL (paid, asks first)** appear only while that source is connected, one **Mix my photos and Pexels** answer appears as soon as a connected source can share the storyboard, and locked or unavailable sources stay in one hint line that points at **Settings**. Picking mix before the photos are added asks for them instead of filling the storyboard from stock alone, and a studio with only its own photos is not asked at all. The answer decides what the storyboard fills with, and the last picked source leads the next Create chat. Ship together with Pages, the API, and the VPS in one release.
+- Photos to reel shows how many photos are picked, such as **23 photos picked** or **No photos picked yet**, in a live region beside the file input. The input still clears after every pick, so the count is the place to confirm that a second drop of the same file took.
 
 ### Site
 
@@ -22,10 +23,12 @@ studio under **Settings → What’s new**. Product version lives in root
 - Hosted Login and `/studio` are open again on f-motion.com. Uninvited accounts still get 403. How it works stays coming soon. Set `VITE_STUDIO_COMING_SOON=1` to re-gate the studio.
 - Splash feature buttons are Studio, How it works, GitHub, and Self-host. GitHub opens the agent skill (`skills/fmotion`). Hosted was the same CTA as Studio and is gone; `/hosted` still opens home.
 - Cursor `frontend-design` skill lives in `.cursor/skills/` and follows `DESIGN.md`. The splash is a glass cube in space holding the wordmark on every public page. Stars speed up while the site is loading or swapping pages, then ease back to slow. Fog stays faint and out at the edges. Reduced motion freezes the sky and the cube.
+- `/app/manifest.webmanifest` now returns the real manifest instead of the studio HTML shell, so an installed copy reads **F-Motion**, opens at `/app/`, and keeps its icon. Ship together with Pages, the API, and the VPS in one release.
 
 ### Hosted deploy
 
 - Hosted f-motion.com runs on a Hetzner VPS (`deploy/hetzner`, `npm run hetzner:up`). Fly.io configs are removed.
+- Hosted photo and clip uploads are no longer blocked by the web app policy: `connect-src` allows `https://*.r2.cloudflarestorage.com` in `apps/web/public/_headers`, `deploy/hetzner/nginx.conf`, and `deploy/vps/nginx.conf`. Apply `deploy/r2-cors.json` to the bucket, which allows the app origins, `PUT`, `GET`, `HEAD`, `Content-Type`, and exposes `ETag` for the upload response. Details in `docs/runbooks/hosted-deploy.md` §2.
 
 ### Ephemeral bulk (agent / CLI)
 

@@ -1,0 +1,17 @@
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": [
+          "https://f-motion.com",
+          "https://www.f-motion.com",
+          "https://f-motion.pages.dev"
+        ],
+        "methods": ["PUT", "GET", "HEAD"],
+        "headers": ["Content-Type"]
+      },
+      "exposeHeaders": ["ETag"],
+      "maxAgeSeconds": 3600
+    }
+  ]
+}

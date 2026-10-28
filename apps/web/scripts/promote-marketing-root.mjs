@@ -34,6 +34,13 @@ async function main() {
     await rename(resolve(dist, "assets"), resolve(app, "assets"));
   }
 
+  // The manifest is linked from the SPA, which lives under /app/, so it has to
+  // sit next to the SPA. Serving it from the site root made nginx and Pages
+  // answer /app/manifest.webmanifest with the SPA HTML fallback.
+  if (await exists(resolve(dist, "manifest.webmanifest"))) {
+    await cp(resolve(dist, "manifest.webmanifest"), resolve(app, "manifest.webmanifest"));
+  }
+
   // Lift marketing to site root (overwrite nothing critical; SPA already moved)
   await cp(web, dist, { recursive: true });
 

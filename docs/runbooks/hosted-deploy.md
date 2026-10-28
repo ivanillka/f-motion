@@ -49,51 +49,101 @@ scoped to it. Record: `R2_ENDPOINT`, `R2_REGION` (use `auto` for R2),
 `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`. The bucket must stay
 private — the API only ever hands out short-lived signed URLs.
 
-### CORS (required for browser uploads)
+### CORS and CSP connect-src (required for browser uploads)
 
 The web client uploads with a browser `PUT` straight to the presigned
-object-storage URL. That request is **cross-origin** (web app origin → bucket
-host), so the bucket must allow CORS for the **hosted web origin** (e.g.
-`https://app.example.com`).
+object-storage URL. That request is **cross-origin** (web app origin to bucket
+host), so two settings have to line up. If either one is missing, the browser
+drops the upload before it reaches the API.
 
-Configure bucket CORS with at least:
+1. `connect-src` in the web app CSP must allow the bucket origin.
+2. The bucket CORS policy must allow the web app origin.
 
-- **Allowed origins**: your web app origin (not `*` in production unless you
-  accept the risk on a private demo).
-- **Allowed methods**: `PUT`, `GET`, `HEAD` (`GET` for signed download URLs).
-- **Allowed headers**: `Content-Type` (the client sends the file's MIME type
-  on upload). `*` is acceptable for a private demo bucket.
+**connect-src.** The shipped policy allows `https://*.r2.cloudflarestorage.com`,
+so an R2 bucket needs no CSP change. Any other S3-compatible endpoint (MinIO,
+Backblaze B2, AWS S3) has to be added to `connect-src` in all three copies of the
+policy, which must keep the identical policy text:
 
-**Cloudflare R2** (dashboard → bucket → Settings → CORS policy) or API — example
-JSON shape:
+- `apps/web/public/_headers` (Cloudflare Pages)
+- `deploy/hetzner/nginx.conf`
+- `deploy/vps/nginx.conf`
+
+`apps/api/test/upload-csp.test.mjs` signs a throwaway upload and checks every
+copy covers its origin, so drift fails `npm test`.
+
+**Bucket CORS.** CORS lives on the **bucket**, not on the API. The policy this
+deployment ships is `deploy/r2-cors.json`:
+
+```json
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": [
+          "https://f-motion.com",
+          "https://www.f-motion.com",
+          "https://f-motion.pages.dev"
+        ],
+        "methods": ["PUT", "GET", "HEAD"],
+        "headers": ["Content-Type"]
+      },
+      "exposeHeaders": ["ETag"],
+      "maxAgeSeconds": 3600
+    }
+  ]
+}
+```
+
+- **origins**: every hostname that serves the studio. Replace them with your own
+  origin for a different install, and never use `*` on a private bucket. A local
+  dev server pointed at the same bucket needs its own entry, such as
+  `http://localhost:5173`.
+- **methods**: `PUT` for the presigned upload, `GET` and `HEAD` for signed
+  downloads and the media inspector.
+- **headers**: the client sends the file MIME type as `Content-Type`, which is
+  not a CORS safelisted value, so the browser preflights every upload.
+- **exposeHeaders**: `ETag`, so the upload response can report the stored object
+  version.
+- **maxAgeSeconds**: 3600 caches the preflight for an hour.
+
+Apply it with Wrangler, using the committed file as is:
+
+```sh
+npx wrangler r2 bucket cors set <your-bucket> --file deploy/r2-cors.json
+npx wrangler r2 bucket cors list <your-bucket>
+```
+
+Or in the dashboard: R2 object storage, select the bucket, **Settings**, **CORS
+Policy**, **Add CORS policy**, JSON tab, paste the S3 form of the same policy and
+**Save**:
 
 ```json
 [
   {
-    "AllowedOrigins": ["https://app.example.com"],
+    "AllowedOrigins": ["https://f-motion.com", "https://www.f-motion.com", "https://f-motion.pages.dev"],
     "AllowedMethods": ["PUT", "GET", "HEAD"],
     "AllowedHeaders": ["Content-Type"],
+    "ExposeHeaders": ["ETag"],
     "MaxAgeSeconds": 3600
   }
 ]
 ```
 
-**S3-compatible** (AWS CLI or any store that accepts the S3 CORS API):
+CORS rule propagation can take up to 30 seconds. For any other S3-compatible
+store, use the same rules through the S3 CORS API:
 
 ```sh
 aws s3api put-bucket-cors --bucket <your-bucket> --endpoint-url <R2_ENDPOINT> \
   --cors-configuration '{
     "CORSRules": [{
-      "AllowedOrigins": ["https://app.example.com"],
+      "AllowedOrigins": ["https://f-motion.com", "https://www.f-motion.com", "https://f-motion.pages.dev"],
       "AllowedMethods": ["PUT", "GET", "HEAD"],
       "AllowedHeaders": ["Content-Type"],
+      "ExposeHeaders": ["ETag"],
       "MaxAgeSeconds": 3600
     }]
   }'
 ```
-
-Replace `<your-bucket>`, `<R2_ENDPOINT>`, and the origin with your values. CORS
-lives on the **bucket**, not the API.
 
 ## 3. Create the Supabase project (auth)
 
@@ -389,7 +439,9 @@ Then, from the hosted web origin: request a magic-link email, follow the
 link, create a brief, choose a media source, attach media, render, and download —
 end to end through the hosted API/worker/storage/Postgres. Upload a small
 JPEG or MP4 from the editor — if the browser console shows a CORS error on
-the storage host, fix bucket CORS (§2) before debugging the API.
+the storage host, fix bucket CORS (§2) before debugging the API; if instead it
+shows `Refused to connect` or a CSP violation naming the storage host, fix
+`connect-src` (§2).
 
 ## Required secrets (names only — never commit values)
 

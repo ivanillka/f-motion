@@ -3855,6 +3855,11 @@ export function App() {
                   event.target.value = "";
                 }}
               />
+              <span id="photos-to-reel-picked" className="photos-to-reel-picked" aria-live="polite">
+                {photosToReelFiles.length
+                  ? `${photosToReelFiles.length} ${photosToReelFiles.length === 1 ? "photo" : "photos"} picked`
+                  : "No photos picked yet"}
+              </span>
             </label>
             <label htmlFor="photos-to-reel-bpm">BPM
               <input

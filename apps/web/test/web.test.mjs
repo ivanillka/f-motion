@@ -552,6 +552,13 @@ test("build puts marketing at site root with studio under /app", async () => {
   const { readdir } = await import("node:fs/promises");
   const assets = await readdir(new URL("app/assets/", dist));
   assert.ok(assets.some((name) => name.startsWith("main-") && name.endsWith(".js")));
+  // The SPA links /app/manifest.webmanifest, so the file has to ship next to the SPA.
+  const manifest = JSON.parse(await readFile(new URL("app/manifest.webmanifest", dist), "utf8"));
+  assert.equal(manifest.name, "F-Motion");
+  assert.equal(manifest.start_url, "/app/");
+  assert.equal(manifest.scope, "/app/");
+  assert.equal(manifest.icons[0].src, "/icon.svg");
+  await access(new URL("icon.svg", dist));
   assert.match(redirects, /\/studio\/ \/\s*app\//);
   assert.match(redirects, /\/web\/ \/\s*301/);
   const integrateLive = await readFile(new URL("integrate.html", dist), "utf8");
@@ -560,6 +567,21 @@ test("build puts marketing at site root with studio under /app", async () => {
   assert.doesNotMatch(integrateLive, /id="root"/);
   const agentsLive = await readFile(new URL("agents.html", dist), "utf8");
   assert.match(agentsLive, /Ask an agent\. Keep the draft/);
+});
+
+test("photos to reel shows how many photos the picker kept", async () => {
+  const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
+  assert.match(source, /id="photos-to-reel-picked"/);
+  // The input clears its own value so the same file can be picked again, and the
+  // browser then shows "No file chosen", so the count sits under the picker.
+  assert.match(source, /setPhotosToReelFiles\(picked\);\s*event\.target\.value = "";/);
+  assert.match(
+    source,
+    /\$\{photosToReelFiles\.length\} \$\{photosToReelFiles\.length === 1 \? "photo" : "photos"\} picked/
+  );
+  assert.match(source, /No photos picked yet/);
+  assert.match(css, /\.photos-to-reel-picked\s*\{/);
 });
 
 test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind", async () => {
@@ -664,6 +686,8 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.match(headers, /Content-Security-Policy/);
   assert.match(headers, /connect-src[^;]*https:\/\/\*\.supabase\.co/);
   assert.match(headers, /connect-src[^;]*wss:\/\/\*\.supabase\.co/);
+  // Presigned R2 uploads leave the origin, so connect-src has to allow it.
+  assert.match(headers, /connect-src[^;]*https:\/\/\*\.r2\.cloudflarestorage\.com/);
   assert.match(headers, /X-Content-Type-Options:\s*nosniff/);
   for (const asset of [
     "hero-reel.jpg",
@@ -701,7 +725,7 @@ test("landing CSP matches Pages and both web nginx configs", async () => {
     "font-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     "script-src 'self' https://static.cloudflareinsights.com",
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cloudflareinsights.com",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cloudflareinsights.com https://*.r2.cloudflarestorage.com",
     "upgrade-insecure-requests"
   ].join("; ");
   const headers = await readFile(new URL("../public/_headers", import.meta.url), "utf8");

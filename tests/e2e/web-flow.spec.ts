@@ -793,6 +793,8 @@ test("photos to reel builds beat snapped scenes with a title, an end card, and f
     const panel = page.locator("#photos-to-reel-panel");
     await expect(panel).toBeVisible();
     await expect(panel.getByRole("status")).toHaveText("Pick at least one photo to see the beat layout.");
+    // The picker clears its own value, so the count has to stay on screen.
+    await expect(panel.locator("#photos-to-reel-picked")).toHaveText("No photos picked yet");
 
     // The wide still is over MEDIA_MAX_WIDTH, so the studio has to fit it.
     await panel.locator("#photos-to-reel-files").setInputFiles([
@@ -910,10 +912,12 @@ test("photos to reel takes 23 photos as 24 shots and stops one photo before the 
     // 32 photos would need 33 shots, one more than a reel holds.
     await files.setInputFiles(photos);
     await expect(panel.getByRole("status")).toHaveText("Pick up to 31 photos. The last shot is the end card.");
+    await expect(panel.locator("#photos-to-reel-picked")).toHaveText("32 photos picked");
     await expect(build).toBeDisabled();
 
     // 23 photos plus the end card is the 24 shot reel this used to refuse.
     await files.setInputFiles(photos.slice(0, 23));
+    await expect(panel.locator("#photos-to-reel-picked")).toHaveText("23 photos picked");
     await panel.locator("#photos-to-reel-bpm").fill("174");
     await panel.locator("#photos-to-reel-pattern").fill("2,3,8");
     await panel.locator("#photos-to-reel-title").fill("Long weekend");
