@@ -29,6 +29,7 @@ import {
   mediaNotesFromGlances,
   type BriefChatMessage,
   type BriefQuestionId,
+  type BriefVisualSources,
   focusFromPoint,
   formatPlayTime,
   livePlayhead,
@@ -101,8 +102,12 @@ import {
   countStillFiles,
   isReadyStillMedia,
   mediaSourceChips,
+  readRememberedVisualSource,
+  rememberVisualSource,
   sourceChipTone,
-  type SourceId
+  visualSourceOptions,
+  type SourceId,
+  type VisualSourceId
 } from "./media-sources";
 import "./style.css";
 
@@ -412,6 +417,36 @@ export function App() {
   const [civitaiKey, setCivitaiKey] = useState("");
   const [civitaiBusy, setCivitaiBusy] = useState(false);
   const [featureLock, setFeatureLock] = useState<FeatureLock>();
+  /** Picture source the owner picked in the Create chat, remembered next time. */
+  const [visualSource, setVisualSource] = useState<VisualSourceId | undefined>(
+    () => readRememberedVisualSource()
+  );
+  /**
+   * One honest picture of every media source. The header chips, the Create
+   * chat answers and the storyboard fill all read this, so no copy can claim a
+   * source the studio cannot reach right now.
+   */
+  const mediaSources = {
+    ownCount: pendingFiles.length + (project?.scenes.filter((scene) => scene.media_id).length ?? 0),
+    pexelsConnected: Boolean(pexelsCredential?.connected),
+    pexelsUnavailable,
+    civitaiConnected: Boolean(civitaiCredential?.connected),
+    civitaiUnavailable,
+    civitaiKeyless: Boolean(civitaiCredential && !civitaiCredential.connected),
+    falConnected: Boolean(falCredential?.connected),
+    falUnavailable
+  };
+  const sourceChips = mediaSourceChips(mediaSources);
+  /** Answers the Create chat offers, built from the sources that work now. */
+  const visualSources = visualSourceOptions({ ...mediaSources, remembered: visualSource });
+  const briefSources: BriefVisualSources = {
+    choices: visualSources.choices.map((choice) => choice.label),
+    connected: visualSources.connected,
+    hint: visualSources.hint
+  };
+  /** Connected and usable, not merely configured. */
+  const pexelsReady = Boolean(pexelsCredential?.connected && !pexelsUnavailable);
+  const falReady = Boolean(falCredential?.connected && !falUnavailable);
   const api = useMemo(() => new ApiClient(
     () => tokenRef.current,
     () => {
@@ -803,6 +838,69 @@ export function App() {
     };
   }
 
+  /**
+   * The source a chat answer picked, from the last answer line. Only labels the
+   * chat actually offered count, so typing the topic can never pick a source.
+   */
+  function visualSourceFromLine(text: string): VisualSourceId | undefined {
+    const lines = text.split("\n").map((line) => line.trim());
+    for (const line of [...lines].reverse()) {
+      const match = visualSources.choices.find((choice) => choice.label === line);
+      if (match) return match.id;
+    }
+    return undefined;
+  }
+
+  /** Remember the picked source: the next Create chats lead with it. */
+  function rememberPickedSource(label: string) {
+    const match = visualSources.choices.find((choice) => choice.label === label);
+    if (!match) return;
+    setVisualSource(match.id);
+    rememberVisualSource(match.id);
+  }
+
+  /** The external sources that can share a mixed storyboard, named for the chat. */
+  function mixFillSources(): string {
+    // Civitai is left out: it lends references, not scene-ready media.
+    return visualSources.choices
+      .filter((pick) => pick.id === "pexels" || pick.id === "fal")
+      .map((pick) => pick.name)
+      .join(" and ");
+  }
+
+  /** Ask for the photos that make a mix real instead of filling from stock alone. */
+  function mixPhotoAsk(): string {
+    const rest = mixFillSources();
+    return rest
+      ? `Add the photos you want to mix, one per scene; ${rest} can fill the rest.`
+      : "Add the photos you want to mix, one per scene.";
+  }
+
+  /** Honest next step when the storyboard was not filled automatically. */
+  function ownMediaStatus(choice: VisualSourceId | undefined): string {
+    if (choice === "civitai") {
+      return pexelsReady
+        ? "Storyboard ready. Civitai images are references: pick one per scene, or search Pexels."
+        : "Storyboard ready. Civitai images are references: pick one per scene, or add your own photos.";
+    }
+    if (choice === "fal") {
+      return "Storyboard ready. Make AI images scene by scene with your FAL key; each one shows its price first.";
+    }
+    if (choice === "mix") {
+      // The mix answer was offered before the photos were added, so ask for
+      // them instead of quietly filling every scene from the external source.
+      return `Storyboard ready. ${mixPhotoAsk()}`;
+    }
+    if (choice === "own") {
+      return pexelsReady
+        ? "Storyboard ready. Add your own photos for each scene, or search Pexels."
+        : "Storyboard ready. Add your own photos for each scene.";
+    }
+    return pexelsReady
+      ? "Storyboard ready. Add your own photos or search Pexels for each scene."
+      : "Storyboard ready. Add your own photos; any other source needs a key in Settings first.";
+  }
+
   async function lookAtOwnMedia(userLine?: string) {
     const files = pendingFiles;
     if (mediaLookLock.current || files.length === 0) return;
@@ -815,6 +913,8 @@ export function App() {
       const conversation = [briefDraftRef.current, userLine].filter(Boolean).join("\n").slice(0, 2000);
       briefDraftRef.current = conversation;
       setDraft(conversation);
+      // Dropping photos on the pictures question is an "use my photos" answer.
+      rememberPickedSource(userLine);
     }
     setBriefChat((chat) => {
       const withUser: BriefChatMessage[] = userLine ? [...chat, { role: "user", text: userLine }] : chat;
@@ -829,11 +929,11 @@ export function App() {
       const nextDraft = [briefDraftRef.current, notes].filter(Boolean).join("\n").slice(0, 2000);
       briefDraftRef.current = nextDraft;
       setDraft(nextDraft);
-      const next = nextBriefQuestion(nextDraft, true, asked);
+      const next = nextBriefQuestion(nextDraft, true, asked, briefSources);
       setBriefChat((chat) => {
         const stripped = chat.filter((message) => message.text !== LOOKING_AT_MEDIA);
         const withNotes: BriefChatMessage[] = [...stripped, { role: "assistant", text: notes }];
-        if (!next) return [...withNotes, { role: "assistant", text: briefReadyMessage(nextDraft) }];
+        if (!next) return [...withNotes, { role: "assistant", text: briefReadyMessage(nextDraft, briefSources) }];
         return [...withNotes, {
           role: "assistant",
           text: next.prompt,
@@ -860,6 +960,8 @@ export function App() {
       return;
     }
     const said = trimmed || `I added ${pendingFiles.length} photo${pendingFiles.length === 1 ? "" : "s"}.`;
+    // A source answer is also the owner's choice for the storyboard fill.
+    if (trimmed) rememberPickedSource(trimmed);
     const continuing = briefChat.some((message) => message.role === "user");
     const conversation = (continuing ? [draft, said] : [said]).filter(Boolean).join("\n").slice(0, 2000);
     const user = { role: "user" as const, text: said };
@@ -867,7 +969,9 @@ export function App() {
     briefDraftRef.current = conversation;
     setDraft(conversation);
     if (briefNeedsMediaLook(conversation, pendingFiles.length)) {
-      setBriefChat((current) => [...current, user, { role: "assistant", text: DROP_OWN_MEDIA }]);
+      // A mix answer without photos asks for them instead of filling from stock.
+      const ask = visualSourceFromLine(briefDraftRef.current) === "mix" ? mixPhotoAsk() : DROP_OWN_MEDIA;
+      setBriefChat((current) => [...current, user, { role: "assistant", text: ask }]);
       return;
     }
     if (briefShouldGlance(conversation, pendingFiles.length)) {
@@ -875,12 +979,12 @@ export function App() {
       void lookAtOwnMedia();
       return;
     }
-    const next = nextBriefQuestion(conversation, pendingFiles.length > 0, briefAsked);
+    const next = nextBriefQuestion(conversation, pendingFiles.length > 0, briefAsked, briefSources);
     if (!next) {
       setBriefChat((current) => {
         const last = current[current.length - 1];
         if (last && isBriefReadyMessage(last.text)) return [...current, user];
-        return [...current, user, { role: "assistant", text: briefReadyMessage(conversation) }];
+        return [...current, user, { role: "assistant", text: briefReadyMessage(conversation, briefSources) }];
       });
       void continueToStoryboard();
       return;
@@ -894,6 +998,8 @@ export function App() {
     const brief = briefForStoryboard();
     if (!brief.purpose) return;
     const plan = planFromChat();
+    // The answer the chat got decides the fill, not a guess about Pexels.
+    const choice = visualSourceFromLine(briefDraftRef.current);
     storyboardLock.current = true;
     mediaTransition.current += 1;
     setSceneMedia({});
@@ -910,7 +1016,7 @@ export function App() {
           setProject(opened);
           localStorage.setItem("fengine-project", opened.id);
           if (!opened.scenes.length) {
-            await buildStoryboard(opened, plan);
+            await buildStoryboard(opened, plan, choice);
           } else {
             try {
               setSceneMedia(await loadSceneMediaViews(api, opened));
@@ -929,11 +1035,12 @@ export function App() {
       // Create spine → reel module generate → existing storyboard editor/export.
       const mediaSourcePref = mediaPrefFromPlan(plan, {
         hasOwn: pendingFiles.length > 0,
-        pexelsConnected: Boolean(pexelsCredential?.connected && !pexelsUnavailable),
-        falConnected: Boolean(falCredential?.connected && !falUnavailable)
+        pexelsConnected: pexelsReady,
+        falConnected: falReady,
+        choice
       });
       const wantAnimateStills = animateStills
-        && Boolean(falCredential?.connected && !falUnavailable)
+        && falReady
         && countStillFiles(pendingFiles) > 0;
       const { craft } = await generateReelSession(api, {
         purpose: brief.purpose,
@@ -950,7 +1057,8 @@ export function App() {
       });
       const current = await materializeReelProject(craft, brief);
       await hydrateReelEditor(current, plan, {
-        animateStills: craft.animateStills === true || wantAnimateStills
+        animateStills: craft.animateStills === true || wantAnimateStills,
+        choice
       });
     } catch (error) {
       const detail = error instanceof ApiResponseError
@@ -1000,7 +1108,7 @@ export function App() {
   async function hydrateReelEditor(
     current: ProjectSnapshot,
     plan: VideoArchitecture,
-    options: { animateStills?: boolean } = {}
+    options: { animateStills?: boolean; choice?: VisualSourceId } = {}
   ) {
     setStep("editor");
     if (pendingFiles.length) {
@@ -1015,13 +1123,17 @@ export function App() {
       if (options.animateStills) await beginAnimateStillsQueue(current.id);
       return;
     }
-    if (plan.media === "own" || mediaPrefFromPlan(plan, {
-      hasOwn: false,
-      pexelsConnected: Boolean(pexelsCredential?.connected && !pexelsUnavailable)
-    }) === "defer") {
-      setStatus(pexelsCredential?.connected
-        ? "Storyboard ready. Add your own photos or search Pexels for each scene."
-        : "Storyboard ready. Add your own photos, or connect Pexels in Sources.");
+    // Own photos, Civitai references, FAL images and a mix that still needs the
+    // photos are placed scene by scene, so only a real Pexels answer fills the
+    // whole storyboard at once.
+    const fillFromStock = pexelsReady
+      && plan.media !== "own"
+      && options.choice !== "own"
+      && options.choice !== "civitai"
+      && options.choice !== "fal"
+      && options.choice !== "mix";
+    if (!fillFromStock) {
+      setStatus(ownMediaStatus(options.choice));
       if (options.animateStills) {
         setStatus("Turn photos into motion is on. Drop photos on scenes, then use Animate this image (your FAL key).");
       }
@@ -1032,7 +1144,7 @@ export function App() {
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.type : undefined;
       setStatus(type === "pexels_not_connected"
-        ? "Storyboard ready. Connect Pexels in Sources, or add your own photos."
+        ? "Storyboard ready. Connect Pexels in Settings, or add your own photos."
         : "Storyboard ready. Pexels videos could not be matched yet. Add your own photos or try Settings.");
     }
   }
@@ -1040,7 +1152,7 @@ export function App() {
   /** Sequential FAL image-to-video for ready photos, price first, then confirm (one at a time). */
   async function beginAnimateStillsQueue(projectId: string) {
     if (!falCredential?.connected || falUnavailable) {
-      setStatus("Turning photos into motion needs FAL connected in Sources (your key).");
+      setStatus("Turning photos into motion needs FAL connected in Settings (your key).");
       return;
     }
     let snapshot: ProjectSnapshot;
@@ -1094,7 +1206,11 @@ export function App() {
     openFalAnimate(next, { autoQuote: true });
   }
 
-  async function buildStoryboard(snapshot: ProjectSnapshot, plan: VideoArchitecture) {
+  async function buildStoryboard(
+    snapshot: ProjectSnapshot,
+    plan: VideoArchitecture,
+    choice?: VisualSourceId
+  ) {
     let current = snapshot;
     if (!current.scenes.length) {
       current = await api.command(current.id, current.revision, "select_concept", {
@@ -1126,8 +1242,8 @@ export function App() {
       }
       return;
     }
-    if (plan.media === "own") {
-      setStatus("Storyboard ready. Upload media for each scene.");
+    if (plan.media === "own" || choice === "own" || choice === "civitai" || choice === "fal") {
+      setStatus(ownMediaStatus(choice));
       return;
     }
     try {
@@ -3365,16 +3481,6 @@ export function App() {
   const projectTitle = project?.brief.purpose?.trim() || "Untitled draft";
   const saveBusy = busy || status === "Saving…";
   const saveLabel = saveBusy ? "Saving…" : (status.startsWith("✓") || !status ? "Saved" : status);
-  const sourceChips = mediaSourceChips({
-    ownCount: pendingFiles.length + (project?.scenes.filter((scene) => scene.media_id).length ?? 0),
-    pexelsConnected: Boolean(pexelsCredential?.connected),
-    pexelsUnavailable,
-    civitaiConnected: Boolean(civitaiCredential?.connected),
-    civitaiUnavailable,
-    civitaiKeyless: Boolean(civitaiCredential && !civitaiCredential.connected),
-    falConnected: Boolean(falCredential?.connected),
-    falUnavailable
-  });
   const poolStillCount = countStillFiles(pendingFiles)
     + Object.values(sceneMedia).filter((media) => isReadyStillMedia(media)).length;
   const animateToggle = animateStillsToggleState({

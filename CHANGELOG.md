@@ -14,6 +14,7 @@ studio under **Settings → What’s new**. Product version lives in root
 - Drafts list has a per-item **Delete** control with a confirm step. It calls the existing hard-purge `DELETE /projects/{id}` (project row, cascaded children, outbox rows, and best-effort object-storage blobs).
 - Phone widths (≤899px) keep the Create composer's **Send** button, the Storyboard actions, and every studio footer above the bottom dock, and the dock reserves the iOS home-indicator inset.
 - Create leads with its task: media sources sit in the header as slim chips (Own, Pexels, FAL, More, and the Animate stills toggle with its reason) instead of a full-width sources row, and Drafts no longer repeats that row in prose.
+- Create asks where the pictures come from based on the sources the studio really has: **Pexels videos**, **Civitai images**, and **AI images with FAL (paid, asks first)** appear only while that source is connected, one **Mix my photos and Pexels** answer appears as soon as a connected source can share the storyboard, and locked or unavailable sources stay in one hint line that points at **Settings**. Picking mix before the photos are added asks for them instead of filling the storyboard from stock alone, and a studio with only its own photos is not asked at all. The answer decides what the storyboard fills with, and the last picked source leads the next Create chat. Ship together with Pages, the API, and the VPS in one release.
 
 ### Site
 

@@ -187,6 +187,19 @@ export interface BriefQuestion {
   choices: readonly string[];
 }
 
+/**
+ * Picture sources the studio can really offer right now. The Create chat asks
+ * about the sources that are connected instead of assuming Pexels.
+ */
+export interface BriefVisualSources {
+  /** Answer labels, in the order to offer them. */
+  choices: readonly string[];
+  /** Short names of connected external sources, for example ["Pexels", "FAL"]. */
+  connected?: readonly string[];
+  /** One line about sources that cannot be used yet, or "". */
+  hint?: string;
+}
+
 export interface BriefChatMessage {
   role: "assistant" | "user";
   text: string;
@@ -329,34 +342,56 @@ export function aggregateMediaGlance(glances: readonly LocalMediaGlance[]): Medi
   };
 }
 
+/** Answers that promise the owner's own photos, alone or mixed with a source. */
+const briefOwnMediaAnswer =
+  /\buse my photos\b|\bmix my photos\b|\bboth photos and pexels\b/u;
+
+/** Answers that name only an external source, so no local glance is needed. */
+const briefExternalOnlyAnswer =
+  /\bpexels videos\b|\bcivitai images\b|\bai stills?\b|\bai images?\b/u;
+
 /** Own-media or mix answers without files: look at the photos before more questions. */
 export function briefNeedsMediaLook(conversation: string, fileCount: number): boolean {
   if (fileCount > 0) return false;
   const text = conversation.normalize("NFKC").toLowerCase();
-  if (/\bpexels videos\b/u.test(text) && !/\buse my photos\b/u.test(text) && !/\bboth photos and pexels\b/u.test(text)) return false;
-  return /\buse my photos\b/u.test(text)
-    || /\bboth photos and pexels\b/u.test(text)
-    || (/\b(my|our)\s+(photos?|videos?|footage|clips?)\b/u.test(text) && !/\bpexels\b/u.test(text));
+  if (briefOwnMediaAnswer.test(text)) return true;
+  if (briefExternalOnlyAnswer.test(text) || /\bpexels\b/u.test(text)) return false;
+  return /\b(my|our)\s+(photos?|videos?|footage|clips?)\b/u.test(text);
 }
 
-/** Files are present and we have not glanced yet. Skip Pexels-only chats. */
+/** Files are present and we have not glanced yet. Skip external-only chats. */
 export function briefShouldGlance(conversation: string, fileCount: number): boolean {
   if (fileCount <= 0 || /\bI looked at\b/iu.test(conversation)) return false;
   const text = conversation.normalize("NFKC").toLowerCase();
-  if (/\bboth photos and pexels\b/u.test(text)) return true;
-  if (/\bpexels videos\b/u.test(text) && !/\buse my photos\b/u.test(text)) return false;
-  return /\buse my photos\b/u.test(text)
-    || /\bi added \d+ photos?\./u.test(text)
-    || (/\b(my|our)\s+(photos?|videos?|footage|clips?)\b/u.test(text) && !/\bpexels\b/u.test(text));
+  if (briefOwnMediaAnswer.test(text)) return true;
+  if (briefExternalOnlyAnswer.test(text) || /\bpexels\b/u.test(text)) return false;
+  return /\bi added \d+ photos?\./u.test(text)
+    || /\b(my|our)\s+(photos?|videos?|footage|clips?)\b/u.test(text);
 }
 
 const briefMetaLine = /^(I looked at|I added |File names:|Looking at your photos|That is enough (?:for|to make))/iu;
 
+/** Every static chip answer, so a fixed label never reads as the video topic. */
+const briefChipLines = new Set(
+  Object.values(briefChoiceSets).flat().map((choice) => choice.toLowerCase())
+);
+
+/**
+ * Source answers stay answers even when the chat offers a dynamic label list
+ * built from the connected sources.
+ */
+const briefVisualAnswerLine =
+  /^(?:use my photos|pexels videos|civitai images|use both photos and pexels|mix my photos\b.*|ai stills?\b.*|ai images?\b.*|my photos\b.*|your photos\b.*)$/u;
+
+export function isBriefAnswerLine(line: string): boolean {
+  const text = line.trim().toLowerCase();
+  return briefChipLines.has(text) || briefVisualAnswerLine.test(text);
+}
+
 /** First user topic, not the later chip answers or glance notes. */
 export function briefPurposeFromChat(conversation: string, fileCount = 0): string {
-  const chips = new Set(Object.values(briefChoiceSets).flat().map((choice) => choice.toLowerCase()));
   const first = conversation.split(/\n+/u).map((line) => line.trim()).find((line) =>
-    line && !briefMetaLine.test(line) && !chips.has(line.toLowerCase())
+    line && !briefMetaLine.test(line) && !isBriefAnswerLine(line)
   ) ?? "";
   const purpose = first.slice(0, 500).trim();
   if (purpose) return purpose;
@@ -365,11 +400,10 @@ export function briefPurposeFromChat(conversation: string, fileCount = 0): strin
 }
 
 function briefTopicLine(conversation: string): string {
-  const chips = new Set(Object.values(briefChoiceSets).flat().map((choice) => choice.toLowerCase()));
   const topics: string[] = [];
   for (const line of conversation.split(/\n+/u).map((row) => row.trim())) {
     if (!line || briefMetaLine.test(line)) continue;
-    if (chips.has(line.toLowerCase())) break;
+    if (isBriefAnswerLine(line)) break;
     topics.push(line);
   }
   return topics[topics.length - 1] ?? "";
@@ -398,21 +432,47 @@ export function isBriefReadyMessage(text: string): boolean {
   return text.startsWith(BRIEF_READY);
 }
 
-export function briefReadyMessage(conversation: string): string {
+/**
+ * Where the pictures come from, read from the answer the chat actually got.
+ * Falls back to the connected sources and then to the architecture's media plan.
+ */
+export function briefWhereFromChat(
+  conversation: string,
+  plan: VideoArchitecture,
+  sources?: BriefVisualSources
+): string {
+  const text = conversation.normalize("NFKC").toLowerCase();
+  // Keep the owner's own capitalisation for source names in the mix answer.
+  const mixed = conversation.normalize("NFKC").match(/\bmix my photos and ([^\n]+)/iu)?.[1]?.trim();
+  if (mixed) return `your photos and ${mixed}`;
+  if (/\bcivitai images\b/u.test(text)) return "Civitai images";
+  // "AI images" is the current answer label; "AI stills" is what older chats
+  // still say, so both read back the same way.
+  if (/\bai stills?\b|\bai images?\b|\bfal\b/u.test(text)) return "AI images from your FAL key";
+  if (/\buse both photos and pexels\b/u.test(text)) return "your photos and Pexels";
+  if (/\bpexels videos\b/u.test(text)) return plan.media === "mixed" ? "your photos and Pexels" : "Pexels videos";
+  if (/\buse my photos\b/u.test(text)) return "your photos";
+  // Nothing external is connected, so the video can only use own media.
+  if (sources && sources.choices.length === 1 && !sources.connected?.length) return "your photos";
+  if (plan.media === "own") return "your photos";
+  if (plan.media === "mixed") return "your photos and Pexels";
+  return "Pexels videos";
+}
+
+export function briefReadyMessage(
+  conversation: string,
+  sources?: BriefVisualSources
+): string {
   if (!conversation.trim()) return BRIEF_READY;
   const { plan } = briefTopic(conversation);
-  const where = plan.media === "own"
-    ? "your photos"
-    : plan.media === "mixed"
-      ? "your photos and Pexels"
-      : "Pexels videos";
-  return `${BRIEF_READY} It will run about ${plan.durationSeconds} seconds and use ${where}.`;
+  return `${BRIEF_READY} It will run about ${plan.durationSeconds} seconds and use ${briefWhereFromChat(conversation, plan, sources)}.`;
 }
 
 export function briefQuestionFor(
   id: BriefQuestionId,
   conversation: string,
-  hasOwnMedia: boolean
+  hasOwnMedia: boolean,
+  sources?: BriefVisualSources
 ): BriefQuestion {
   const { subject, place, hook, plan } = briefTopic(conversation);
   const looked = /\bI looked at\b/iu.test(conversation);
@@ -453,13 +513,24 @@ export function briefQuestionFor(
             : `About how long should ${about} run?`;
     return { id, prompt, choices };
   }
-  const stock = place ? `Pexels videos of ${hook}` : "Pexels videos";
+  const connected = sources?.connected ?? [];
+  // Only claim stock wording when Pexels is really the source on offer.
+  const externalNames = connected.length ? connected.join(" or ") : "Pexels";
+  const pexelsOnly = connected.length === 0
+    || (connected.length === 1 && connected[0] === "Pexels");
+  const stock = pexelsOnly
+    ? (place ? `Pexels videos of ${hook}` : "Pexels videos")
+    : (place ? `pictures of ${hook} from ${externalNames}` : `pictures from ${externalNames}`);
   const prompt = hasOwnMedia
-    ? `Should ${about} use the photos you added, photos plus Pexels, or Pexels only?`
+    ? `Should ${about} use the photos you added, or add ${externalNames} for the other scenes?`
     : plan.structure === "mystery"
       ? `Do you have photos, or should I use ${stock}?`
       : `Where should pictures for ${about} come from?`;
-  return { id, prompt, choices: briefChoiceSets.visuals };
+  return {
+    id,
+    prompt: [prompt, sources?.hint?.trim()].filter(Boolean).join(" "),
+    choices: sources?.choices?.length ? sources.choices : briefChoiceSets.visuals
+  };
 }
 
 export function answeredBriefQuestions(conversation: string, hasOwnMedia: boolean): Set<BriefQuestionId> {
@@ -480,7 +551,7 @@ export function answeredBriefQuestions(conversation: string, hasOwnMedia: boolea
   }
   if (
     hasOwnMedia
-    || matches(/\b(stock|pexels|open source|generated|ai visuals?)\b/u)
+    || matches(/\b(stock|pexels|civitai|fal|open source|generated|ai visuals?|ai stills?|ai images?)\b/u)
     || matches(/\b(my|our)\s+(photos?|videos?|footage|media|gallery|assets?|images?)\b/u)
     || matches(/\bmy own media\b/u)
   ) {
@@ -492,13 +563,16 @@ export function answeredBriefQuestions(conversation: string, hasOwnMedia: boolea
 export function nextBriefQuestion(
   conversation: string,
   hasOwnMedia: boolean,
-  asked: readonly BriefQuestionId[]
+  asked: readonly BriefQuestionId[],
+  sources?: BriefVisualSources
 ): BriefQuestion | undefined {
   if (asked.length >= 4) return undefined;
   const answered = answeredBriefQuestions(conversation, hasOwnMedia);
   for (const id of briefQuestionIds) {
     if (answered.has(id) || asked.includes(id)) continue;
-    return briefQuestionFor(id, conversation, hasOwnMedia);
+    // A single possible source is not a choice: go straight on to the next topic.
+    if (id === "visuals" && sources?.choices?.length === 1) continue;
+    return briefQuestionFor(id, conversation, hasOwnMedia, sources);
   }
   return undefined;
 }

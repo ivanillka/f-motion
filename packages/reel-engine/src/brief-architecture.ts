@@ -57,7 +57,10 @@ export function recommendVideoArchitecture(conversation: string): VideoArchitect
         ? 45
         : 30;
   const ownMedia = matches(/\b(my|our)\s+(photos?|videos?|footage|media|gallery|assets?|images?)\b/u);
-  const externalMedia = matches(/\b(stock|pexels|open source|generated|ai visuals?)\b/u);
+  // Every outside source counts as external media, including the newer ones.
+  const externalMedia = matches(
+    /\b(stock|pexels|civitai|fal|ai stills?|ai images?|open source|generated|ai visuals?)\b/u
+  );
   const media: VideoArchitecture["media"] = matches(/\b(mix|mixed|both|combine)\b/u) || (ownMedia && externalMedia)
     ? "mixed"
     : ownMedia

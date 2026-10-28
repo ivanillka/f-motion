@@ -121,6 +121,23 @@ async function nextBriefChoice(page: Page) {
   return page.locator(".brief-chat-choices button:not(.is-primary)").first();
 }
 
+/** Answers offered by the current brief question, without the primary action. */
+function briefChoiceLabels(page: Page) {
+  return page.locator(".brief-chat-choices button:not(.is-primary)");
+}
+
+/** Clicks the audience and length answers a topic alone cannot give. */
+async function answerBriefSetup(
+  page: Page,
+  answers: readonly string[] = ["General viewers", "About 30 seconds"]
+): Promise<void> {
+  for (const answer of answers) {
+    const choice = page.getByRole("button", { name: answer, exact: true });
+    await expect(choice).toBeVisible();
+    await choice.click();
+  }
+}
+
 async function describeVideo(page: Page, text: string): Promise<void> {
   await page.getByLabel("Message F-Motion").fill(text);
   await page.getByRole("button", { name: "Send" }).click();
@@ -970,4 +987,195 @@ test("the storyboard fills to 32 scenes and then stops adding", async ({ page })
   expect(scenes).toHaveLength(32);
   expect(scenes.map((scene) => scene.order)).toEqual(Array.from({ length: 32 }, (_, order) => order));
 });
+
+test("the pictures question offers the connected sources, not a Pexels-only list", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
+  await page.getByRole("button", { name: "Send" }).click();
+  await answerBriefSetup(page);
+  await expect(briefChoiceLabels(page)).toHaveText([
+    "Pexels videos",
+    "AI images with FAL (paid, asks first)",
+    "Use my photos",
+    "Mix my photos and Pexels and FAL"
+  ]);
+  // Pexels and FAL are connected in this harness; Civitai is unreachable here,
+  // so it is neither offered as an answer nor advertised in the strip.
+  await expect(page.getByText(/should I use pictures of San Francisco from Pexels or FAL\?/).first()).toBeVisible();
+  await expect(page.locator(".media-sources-strip .media-source-chip").filter({ hasText: "Civitai" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Civitai images" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Use my photos", exact: true }).click();
+  // With no files yet the chat asks for the photos instead of faking a fill.
+  await expect(page.getByText("Add your photos or clips. I will look at them first, then ask only what is still missing.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toHaveCount(0);
+  // The answer is remembered for the next Create chat.
+  expect(await page.evaluate(() => localStorage.getItem("fengine-visual-source"))).toBe("own");
+});
+
+test("choosing AI images from FAL on a 390px phone makes AI images instead of stock", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
+  await page.getByRole("button", { name: "Send" }).click();
+  await answerBriefSetup(page);
+  await page.getByRole("button", { name: "AI images with FAL (paid, asks first)" }).click();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({
+    hasText: "Make AI images scene by scene with your FAL key"
+  }).first()).toBeVisible();
+  // Nothing was auto-matched from Pexels behind the answer.
+  await expect(page.getByRole("button", { name: "Edit scene 1" }).locator("img")).toHaveCount(0);
+});
+
+test("a Civitai answer stays references and never auto-fills the storyboard", async ({ page }) => {
+  await page.route("**/api/providers/civitai/credential", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ provider: "civitai", connected: true, hint: "1234" })
+    });
+  });
+  await page.route("**/api/providers/civitai/settings", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        max_nsfw_level: "Soft",
+        allowed_creators: [],
+        min_short_side: 1024,
+        server_max_nsfw_level: "Soft"
+      })
+    });
+  });
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
+  await page.getByRole("button", { name: "Send" }).click();
+  await answerBriefSetup(page);
+  await expect(briefChoiceLabels(page)).toHaveText([
+    "Pexels videos",
+    "Civitai images",
+    "AI images with FAL (paid, asks first)",
+    "Use my photos",
+    "Mix my photos and Pexels, Civitai and FAL"
+  ]);
+  await expect(page.locator(".media-sources-strip .media-source-chip").filter({ hasText: "Civitai" }))
+    .toHaveAttribute("data-state", "connected");
+  await page.getByRole("button", { name: "Civitai images" }).click();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "Civitai images are references" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit scene 1" }).locator("img")).toHaveCount(0);
+});
+
+test("a Pexels-only studio offers one mix answer and names the locked key in Settings", async ({ page }) => {
+  await stubProvidersDisconnected(page, ["fal"]);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
+  await page.getByRole("button", { name: "Send" }).click();
+  await answerBriefSetup(page);
+  await expect(briefChoiceLabels(page)).toHaveText([
+    "Pexels videos",
+    "Use my photos",
+    "Mix my photos and Pexels"
+  ]);
+  // The locked key is never an answer, only one line that says where to fix it.
+  await expect(page.getByText("Connect FAL in Settings to use it here.").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "AI images with FAL (paid, asks first)" })).toHaveCount(0);
+  const calls: string[] = [];
+  page.on("request", (request) => calls.push(`${request.method()} ${request.url()}`));
+  await page.getByRole("button", { name: "Mix my photos and Pexels" }).click();
+  // A mix without photos asks for them in the chat instead of quietly using
+  // stock alone, and no storyboard opens until the photos arrive.
+  await expect(page.getByText("Add the photos you want to mix, one per scene; Pexels can fill the rest.").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add photos or clips" })).toBeVisible();
+  expect(calls.filter((call) => call.includes("/api/pexels/search"))).toEqual([]);
+  expect(await page.evaluate(() => localStorage.getItem("fengine-visual-source"))).toBe("mix");
+});
+
+test("a mix answer on a 390px phone asks for photos without buying stock or images", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
+  await page.getByRole("button", { name: "Send" }).click();
+  await answerBriefSetup(page);
+  const calls: string[] = [];
+  page.on("request", (request) => calls.push(`${request.method()} ${request.url()}`));
+  await page.getByRole("button", { name: "Mix my photos and Pexels and FAL" }).click();
+  await expect(page.getByText("Add the photos you want to mix, one per scene; Pexels and FAL can fill the rest.").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toHaveCount(0);
+  // No licensed search, no FAL quote, so the answer costs nothing yet.
+  const paid = calls.filter((call) => /\/api\/pexels\/search|\/fal\/(image|video)-quotes/.test(call));
+  expect(paid).toEqual([]);
+});
+
+test("the remembered picture answer leads the next Create chat", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signIn(page);
+  await page.evaluate(() => localStorage.setItem("fengine-visual-source", "fal"));
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
+  await page.getByRole("button", { name: "Send" }).click();
+  await answerBriefSetup(page);
+  await expect(briefChoiceLabels(page).first()).toHaveText("AI images with FAL (paid, asks first)");
+});
+
+test("a remembered picture answer is dropped once its key goes away", async ({ page }) => {
+  await stubProvidersDisconnected(page, ["fal"]);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signIn(page);
+  await page.evaluate(() => localStorage.setItem("fengine-visual-source", "fal"));
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
+  await page.getByRole("button", { name: "Send" }).click();
+  await answerBriefSetup(page);
+  // The key is gone, so its answer is gone too: Pexels leads and says where FAL lives.
+  await expect(briefChoiceLabels(page).first()).toHaveText("Pexels videos");
+  await expect(page.getByRole("button", { name: "AI images with FAL (paid, asks first)" })).toHaveCount(0);
+  await expect(page.getByText("Connect FAL in Settings to use it here.").first()).toBeVisible();
+});
+
+/** Makes a provider answer as "no key saved" in this harness. */
+async function stubProvidersDisconnected(page: Page, providers: readonly string[]): Promise<void> {
+  for (const provider of providers) {
+    await page.route(`**/api/providers/${provider}/credential`, async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ provider, connected: false })
+      });
+    });
+  }
+}
+
+test("a studio with only own photos is never asked where pictures come from", async ({ page }) => {
+  await stubProvidersDisconnected(page, ["pexels", "fal"]);
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
+  await page.getByRole("button", { name: "Send" }).click();
+  await answerBriefSetup(page);
+  // A single possible source is not a question, so the chat never asks.
+  await expect(page.getByRole("button", { name: "Pexels videos" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Use my photos", exact: true })).toHaveCount(0);
+  await expect(page.getByText(/use your photos\./).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({
+    hasText: "any other source needs a key in Settings first"
+  })).toBeVisible();
+});
+
 
