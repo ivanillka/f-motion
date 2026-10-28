@@ -1182,4 +1182,39 @@ test("a studio with only own photos is never asked where pictures come from", as
   })).toBeVisible();
 });
 
+test("a blocked microphone points at site settings instead of a dead end", async ({ page }) => {
+  // Production sent microphone=(), so getUserMedia rejected for the studio too
+  // and every failure showed the same "Microphone is blocked" line.
+  await page.addInitScript(() => {
+    const denied = () => Promise.reject(new DOMException("Permission denied", "NotAllowedError"));
+    const mediaDevices = navigator.mediaDevices ?? {};
+    Object.defineProperty(mediaDevices, "getUserMedia", { value: denied, configurable: true });
+    Object.defineProperty(navigator, "mediaDevices", { value: mediaDevices, configurable: true });
+  });
+  await page.route("https://e2e-images.invalid/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="90" height="160"><rect width="90" height="160" fill="#333"/></svg>'
+    }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await describeVideo(page, "A calm studio introduction");
+  // Let the storyboard finish attaching media before the status line matters.
+  await expect(page.getByRole("status").filter({
+    hasText: /Licensed media attached for every scene|scenes have media/
+  })).toBeVisible({ timeout: 60_000 });
+
+  await page.locator("details.voice-dock > summary").click();
+  await page.getByRole("button", { name: "Record voice-over" }).click();
+  await expect(page.getByRole("status").filter({
+    hasText: "Microphone access is off for F-Motion. Allow it in your browser's site settings"
+  })).toBeVisible();
+  await expect(page.getByRole("status").filter({
+    hasText: "Microphone is blocked. Upload a WAV, MP3, or M4A instead."
+  })).toHaveCount(0);
+  // The failed start releases the recorder, so the button stays on Record.
+  await expect(page.getByRole("button", { name: "Record voice-over" })).toBeVisible();
+});
+
 

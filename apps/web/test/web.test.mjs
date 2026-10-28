@@ -688,6 +688,8 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.match(headers, /connect-src[^;]*wss:\/\/\*\.supabase\.co/);
   // Presigned R2 uploads leave the origin, so connect-src has to allow it.
   assert.match(headers, /connect-src[^;]*https:\/\/\*\.r2\.cloudflarestorage\.com/);
+  // Record voice-over needs the microphone, for this origin only.
+  assert.match(headers, /Permissions-Policy:\s*camera=\(\), microphone=\(self\), geolocation=\(\), payment=\(\)/);
   assert.match(headers, /X-Content-Type-Options:\s*nosniff/);
   for (const asset of [
     "hero-reel.jpg",
@@ -739,6 +741,7 @@ test("landing CSP matches Pages and both web nginx configs", async () => {
   for (const rel of ["../../../deploy/hetzner/nginx.conf", "../../../deploy/vps/nginx.conf"]) {
     const nginx = await readFile(new URL(rel, import.meta.url), "utf8");
     assert.match(nginx, new RegExp(`add_header Content-Security-Policy "${policy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}" always;`));
+    assert.match(nginx, /add_header Permissions-Policy "camera=\(\), microphone=\(self\), geolocation=\(\), payment=\(\)" always;/);
   }
   const hetzner = await readFile(new URL("../../../deploy/hetzner/nginx.conf", import.meta.url), "utf8");
   const apiServer = hetzner.split("server {")[1] ?? "";
