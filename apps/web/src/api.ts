@@ -1,4 +1,5 @@
 import {
+  MAX_STORYBOARD_SCENES,
   stockBeds,
   suggestedStockBed,
   stockBedCredit,
@@ -26,15 +27,43 @@ import {
   VOICEOVER_DUCK,
   COMMENT_CTA,
   mixPicture,
+  parseBeatPattern,
+  photoFitTarget,
+  photoReelText,
+  photosToReelPlan,
+  photosToReelScenes,
+  photosToReelShotBeats,
+  PHOTOS_TO_REEL_MAX_MS,
+  PHOTOS_TO_REEL_MOTIONS,
+  PHOTOS_TO_REEL_PATTERN,
+  PHOTOS_TO_REEL_TITLE,
+  PhotoReelTooLongError,
   picturePrompt,
   sceneUsesStock,
   type Concept,
   type MediaGlanceHints,
   type MediaIntentAdapter,
+  type PhotoFitLimits,
+  type PhotosToReelPlan,
   type VideoArchitecture
 } from "@f-engine/reel-engine";
 
 export { beatMs, clampBpm, spokenMixKey, spokenNarrationReady };
+export {
+  MAX_STORYBOARD_SCENES,
+  parseBeatPattern,
+  photoFitTarget,
+  photoReelText,
+  photosToReelPlan,
+  photosToReelScenes,
+  photosToReelShotBeats,
+  PHOTOS_TO_REEL_MAX_MS,
+  PHOTOS_TO_REEL_MOTIONS,
+  PHOTOS_TO_REEL_PATTERN,
+  PHOTOS_TO_REEL_TITLE,
+  PhotoReelTooLongError
+};
+export type { PhotoFitLimits, PhotosToReelPlan };
 export { stockBeds, suggestedStockBed, stockBedCredit };
 export type { StockBed, StockBedId };
 
@@ -45,7 +74,7 @@ export interface Scene {
   duration_ms: number;
   focal_x: number;
   focal_y: number;
-  motion: "none" | "push" | "zoom";
+  motion: "none" | "push" | "zoom" | "zoom_out";
   audio_level: number;
   ducking: boolean;
   media_id?: string;

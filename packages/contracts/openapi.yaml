@@ -1524,14 +1524,14 @@ components:
         scenes:
           type: array
           minItems: 1
-          maxItems: 8
+          maxItems: 32
           items: { $ref: "#/components/schemas/Scene" }
     AddScenePayload:
       type: object
       required: [scene, at]
       properties:
         scene: { $ref: "#/components/schemas/Scene" }
-        at: { type: integer, minimum: 0, maximum: 8 }
+        at: { type: integer, minimum: 0, maximum: 32 }
     RemoveScenePayload:
       type: object
       required: [scene_id]

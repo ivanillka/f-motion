@@ -70,6 +70,8 @@ test("private package tarballs install and run outside the monorepo without regi
       "dist/index.js",
       "dist/media-intent.d.ts",
       "dist/media-intent.js",
+      "dist/photos-to-reel.d.ts",
+      "dist/photos-to-reel.js",
       "dist/spoken-narration.d.ts",
       "dist/spoken-narration.js",
       "package.json"
@@ -101,7 +103,7 @@ test("private package tarballs install and run outside the monorepo without regi
     "--eval",
     `
       const contracts = await import("@f-engine/contracts");
-      const { renderPlan } = await import("@f-engine/reel-engine");
+      const { renderPlan, parseBeatPattern } = await import("@f-engine/reel-engine");
       const snapshot = {
         schema_version: 1,
         id: "fixture",
@@ -119,13 +121,15 @@ test("private package tarballs install and run outside the monorepo without regi
       process.stdout.write(JSON.stringify({
         width: plan.width,
         height: plan.height,
-        watermark: plan.watermark
+        watermark: plan.watermark,
+        beat_pattern: parseBeatPattern("2, 3")
       }));
     `
   ], consumer);
   assert.deepEqual(JSON.parse(output), {
     width: 1080,
     height: 1920,
-    watermark: "Consumer"
+    watermark: "Consumer",
+    beat_pattern: [2, 3]
   });
 });

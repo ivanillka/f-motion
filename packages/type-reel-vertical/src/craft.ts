@@ -1,4 +1,5 @@
 import type { MediaRef, SharedMediaCatalog } from "@f-engine/content-type-contract";
+import { MAX_STORYBOARD_SCENES } from "@f-engine/contracts";
 import type { Scene, VideoArchitecture } from "@f-engine/contracts";
 import {
   buildStoryboardDraft,
@@ -132,10 +133,16 @@ export function isReelCraftPayload(value: unknown): value is ReelCraftPayload {
     && craft.editorModel === "storyboard";
 }
 
-/** Polish bar: storyboard present, intentional duration, unique media when pool exists. */
+/**
+ * Polish bar: storyboard present, intentional duration, unique media when pool
+ * exists. The scene count follows MAX_STORYBOARD_SCENES so a longer reel is
+ * graded on its duration and media, not on a count the studio no longer holds.
+ * The 3 s to 60 s duration bar stays: craft payloads are planned beats, and the
+ * longer photo reels never come through this path.
+ */
 export function qaReelCraft(payload: unknown, catalog: SharedMediaCatalog): "ready" | "below_bar" {
   if (!isReelCraftPayload(payload)) return "below_bar";
-  if (payload.scenes.length < 1 || payload.scenes.length > 8) return "below_bar";
+  if (payload.scenes.length < 1 || payload.scenes.length > MAX_STORYBOARD_SCENES) return "below_bar";
   const duration = payload.scenes.reduce((sum, scene) => sum + scene.duration_ms, 0);
   if (duration < 3_000 || duration > 60_000) return "below_bar";
   const poolSize = catalog.ownRanked.length + (catalog.pexelsShortlist?.length ?? 0);

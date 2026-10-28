@@ -15,7 +15,7 @@ import {
   type RenderNotifyJob
 } from "@f-engine/contracts/host-notify";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { finished, pipeline } from "node:stream/promises";
@@ -29,11 +29,13 @@ import {
 } from "@f-engine/reel-engine";
 import {
   defaultMediaLimits,
+  downscaleStillFile,
   inspectMedia,
   MediaProbeError,
   probeMediaFile,
   renderObjectKey,
   renderPreview,
+  stillScaleTarget,
   type DetectedMedia,
   type MediaLimits,
   type MediaInput
@@ -56,6 +58,18 @@ interface InspectionResult {
 
 export interface WorkerObjectStore {
   inspect(objectKey: string, maxBytes: number, signal?: AbortSignal): Promise<InspectionResult>;
+  /**
+   * Optional rewrite of an oversized still in place at the fitted size. The
+   * caller re-inspects afterwards, so a store that cannot re-encode simply
+   * leaves the still to the normal size rejection.
+   */
+  downscale?(
+    objectKey: string,
+    identity: ObjectIdentity,
+    target: { width: number; height: number },
+    type: string,
+    signal?: AbortSignal
+  ): Promise<void>;
   seal(sourceKey: string, sealedKey: string, identity: ObjectIdentity, signal?: AbortSignal): Promise<ObjectIdentity>;
   downloadSealed(objectKey: string, destination: string, identity: ObjectIdentity, signal?: AbortSignal): Promise<void>;
   delete(objectKey: string, signal?: AbortSignal): Promise<void>;
@@ -157,6 +171,30 @@ export class S3WorkerObjectStore implements WorkerObjectStore {
         detected: { ...probed, bytes },
         identity
       };
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+
+  /**
+   * Rewrite an oversized still in place at the fitted size. The stored object
+   * keeps its encoding family, so the probed and sealed content type stay the
+   * same; the caller re-inspects after this resolves.
+   */
+  async downscale(
+    objectKey: string,
+    identity: ObjectIdentity,
+    target: { width: number; height: number },
+    type: string,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const directory = await mkdtemp(join(tmpdir(), "fengine-downscale-"));
+    const path = join(directory, "object");
+    try {
+      await this.download(objectKey, path, identity.etag, identity.versionId, signal);
+      const scaled = await downscaleStillFile(path, target, type, signal);
+      const body = await readFile(scaled);
+      await this.put(objectKey, body, type, body.byteLength, signal);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -478,7 +516,20 @@ export function createQueueHandlers(
       }
 
       if (!asset.inspectionSha256) {
-        const inspection = await store.inspect(asset.quarantineObjectKey, asset.maxBytes, signal);
+        let inspection = await store.inspect(asset.quarantineObjectKey, asset.maxBytes, signal);
+        // A 36 MP phone photo fits the reel once it is scaled down, so fit it
+        // before the accepted probe instead of rejecting the whole photo set.
+        const fitted = stillScaleTarget(inspection.detected, limits);
+        if (fitted && inspection.identity && store.downscale) {
+          await store.downscale(
+            asset.quarantineObjectKey,
+            inspection.identity,
+            fitted,
+            inspection.detected.type,
+            signal
+          );
+          inspection = await store.inspect(asset.quarantineObjectKey, asset.maxBytes, signal);
+        }
         const accepted = inspectMedia(
           asset.declaredType,
           inspection.detected,

@@ -7,6 +7,7 @@ import {
   stockBedCredit,
   stockBeds,
   type CaptionCue,
+  type MotionPreset,
   type OverlayLook,
   type OverlayPlace,
   type ProjectSnapshot,
@@ -14,6 +15,7 @@ import {
 } from "@f-engine/contracts";
 import {
   coverCropFilter,
+  photoFitTarget,
   RENDER_FPS,
   renderPlan,
   spokenWordsForCues,
@@ -110,6 +112,20 @@ export function inspectMedia(
       || detected.duration_ms > limits.maxVideoDurationMs) return { accepted: false };
   }
   return { accepted: true };
+}
+
+/**
+ * Fitted size for a still that is over the media limits, or undefined when the
+ * probe already fits or the media is not a still. Aspect ratio is kept and both
+ * sides round down, so the result can never land back over a limit.
+ */
+export function stillScaleTarget(
+  detected: Pick<DetectedMedia, "type" | "width" | "height">,
+  limits: MediaLimits = defaultMediaLimits
+): { width: number; height: number } | undefined {
+  if (!stillProbeTypes.has(detected.type)) return undefined;
+  if (!detected.width || !detected.height) return undefined;
+  return photoFitTarget(detected.width, detected.height, limits);
 }
 
 function mimeFromProbe(
@@ -252,6 +268,31 @@ export async function runFfmpeg(args: string[], signal?: AbortSignal): Promise<v
   });
 }
 
+/**
+ * Re-encode one oversized still at the fitted size and return the new path. The
+ * encoding family follows the probed type so the stored content type stays
+ * honest, and callers replace the original only after this resolves.
+ */
+export async function downscaleStillFile(
+  source: string,
+  target: { width: number; height: number },
+  type: string,
+  signal?: AbortSignal
+): Promise<string> {
+  const extension = type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg";
+  const destination = `${source}.scaled.${extension}`;
+  await runFfmpeg([
+    "-y",
+    "-v", "error",
+    "-i", source,
+    "-vf", `scale=${target.width}:${target.height}:flags=lanczos`,
+    "-frames:v", "1",
+    ...(type === "image/jpeg" ? ["-q:v", "3"] : []),
+    destination
+  ], signal);
+  return destination;
+}
+
 function escapeDrawtext(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll(":", "\\:").replaceAll("'", "\\'");
 }
@@ -296,7 +337,7 @@ function easeExpr(frames: number): string {
 }
 
 function motionFilter(
-  motion: "none" | "push" | "zoom",
+  motion: MotionPreset,
   durationSeconds: number,
   width: number,
   height: number,
@@ -308,6 +349,12 @@ function motionFilter(
   if (motion === "zoom") {
     const range = (MOTION_ZOOM_END - MOTION_ZOOM_START).toFixed(4);
     return `zoompan=z='${MOTION_ZOOM_START}+${range}*${ease}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+  }
+  // Photo reels alternate zoom in and zoom out, so the pull out is the same
+  // eased travel in reverse and lands on the plain cover.
+  if (motion === "zoom_out") {
+    const range = (MOTION_ZOOM_END - MOTION_ZOOM_START).toFixed(4);
+    return `zoompan=z='${MOTION_ZOOM_END}-${range}*${ease}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
   }
   // ponytail: "push" is a Ken Burns pan, not a transition. Wide sources pan X;
   // tall/unknown pan Y so the extra cover-crop pixels actually move. The pan

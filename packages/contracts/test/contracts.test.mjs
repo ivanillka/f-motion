@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
+  MAX_SPOKEN_AUDIO_ENTRIES,
+  MAX_STORYBOARD_SCENES,
   acceptsFixture,
   isProjectSnapshot,
   isSoundtrack,
@@ -200,10 +202,29 @@ test("storyboard lifecycle validation enforces scene count, IDs, order, and prom
   const scene = snapshotWithPrompt("remote island").scenes[0];
   assert.equal(isStoryboardScenes([scene], true), true);
   assert.equal(isStoryboardScenes([], true), false);
-  assert.equal(isStoryboardScenes(Array.from({ length: 9 }, (_, order) => ({ ...scene, id: `scene-${order}`, order })), true), false);
+  assert.equal(isStoryboardScenes(Array.from({ length: MAX_STORYBOARD_SCENES }, (_, order) => ({ ...scene, id: `scene-${order}`, order })), true), true);
+  assert.equal(isStoryboardScenes(Array.from({ length: MAX_STORYBOARD_SCENES + 1 }, (_, order) => ({ ...scene, id: `scene-${order}`, order })), true), false);
   assert.equal(isStoryboardScenes([scene, { ...scene, order: 1 }], true), false);
   assert.equal(isStoryboardScenes([scene, { ...scene, id: "scene-2", order: 2 }], true), false);
   assert.equal(isStoryboardScenes([{ ...scene, visual_prompt: undefined }], true), false);
+});
+
+test("a full storyboard still fits its spoken audio list", () => {
+  const base = snapshotWithPrompt("remote island");
+  const scene = base.scenes[0];
+  // One line per scene plus the mixed track is the most a storyboard can ask for.
+  const spoken = (count) => Array.from({ length: count }, (_, index) => ({
+    role: index === count - 1 ? "mix" : "line",
+    key: `${String(index).padStart(8, "0")}`,
+    media_id: `spoken-${index}`
+  }));
+  const full = {
+    ...base,
+    scenes: Array.from({ length: MAX_STORYBOARD_SCENES }, (_, order) => ({ ...scene, id: `scene-${order}`, order }))
+  };
+  assert.equal(MAX_SPOKEN_AUDIO_ENTRIES, MAX_STORYBOARD_SCENES + 1);
+  assert.equal(isProjectSnapshot({ ...full, brief: { ...base.brief, spoken_audio: spoken(MAX_SPOKEN_AUDIO_ENTRIES) } }), true);
+  assert.equal(isProjectSnapshot({ ...full, brief: { ...base.brief, spoken_audio: spoken(MAX_SPOKEN_AUDIO_ENTRIES + 1) } }), false);
 });
 
 test("openapi documents a typed host import contract", () => {
