@@ -734,7 +734,7 @@ test("concat mixdown uses the licensed catalog file for a stock bed", () => {
     ...snapshot,
     brief: {
       ...snapshot.brief,
-      soundtrack: { kind: "stock", stock_id: "pulse", bpm: 115, offset_ms: 0, level: 0.8 }
+      soundtrack: { kind: "stock", stock_id: "pulse", bpm: 101, offset_ms: 0, level: 0.8 }
     }
   };
   const job = buildRenderJob(withBed, "preview.mp4", {}, "/tmp/job");

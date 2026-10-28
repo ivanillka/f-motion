@@ -336,6 +336,7 @@ export function App() {
   const [musicHits, setMusicHits] = useState<MixkitMatch[]>([]);
   const [musicQuery, setMusicQuery] = useState("trendy");
   const [musicOpen, setMusicOpen] = useState(false);
+  const [bpmDraft, setBpmDraft] = useState("");
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [previewingId, setPreviewingId] = useState<number>();
@@ -2958,6 +2959,12 @@ export function App() {
   const bpmSuggestion = soundtrack
     ? suggestedStockBed(clampBpm(soundtrack.bpm))
     : undefined;
+  // The BPM box follows the project tempo, including the tempo a bed pick just
+  // wrote. A hand typed value stays in the box until the next bed pick or until
+  // the saved project tempo catches up with it.
+  useEffect(() => {
+    setBpmDraft(soundtrack ? String(clampBpm(soundtrack.bpm)) : "");
+  }, [project?.id, soundtrack?.kind, soundtrack?.stock_id, soundtrack?.bpm]);
   const voiceover = project?.brief.voiceover;
   const voiceoverUrl = voiceover?.media_id ? scenePreviewUrl(sceneMedia[voiceover.media_id]) : undefined;
   const spokenScriptKey = project ? spokenMixKey(project.scenes) : "";
@@ -3911,10 +3918,12 @@ export function App() {
                         disabled={busy}
                         title={`${bed.title} · ${bed.artist} · ${bed.bpm} BPM · ${bed.license}`}
                         onClick={() => {
+                          const bpm = clampBpm(bed.bpm);
+                          setBpmDraft(String(bpm));
                           void saveSoundtrack({
                             kind: "stock",
                             stock_id: bed.id,
-                            bpm: clampBpm(soundtrack?.bpm ?? bed.bpm),
+                            bpm,
                             offset_ms: 0,
                             level: soundtrack?.level ?? 0.8
                           });
@@ -3964,10 +3973,11 @@ export function App() {
                 <p className="crop-hint">{soundtrackHint}</p>
                 <div className="inspector-pair">
                   <label htmlFor="music-bpm">BPM
-                    <input id="music-bpm" type="number" min="60" max="200" step="1" defaultValue={clampBpm(soundtrack.bpm)}
+                    <input id="music-bpm" type="number" min="60" max="200" step="1" value={bpmDraft}
+                      onChange={(event) => setBpmDraft(event.currentTarget.value)}
                       onBlur={(event) => {
                         const bpm = clampBpm(event.currentTarget.valueAsNumber);
-                        event.currentTarget.value = String(bpm);
+                        setBpmDraft(String(bpm));
                         void saveSoundtrack({ ...soundtrack, bpm });
                       }} />
                   </label>

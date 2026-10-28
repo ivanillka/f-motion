@@ -40,12 +40,18 @@ export interface Scene {
   picture?: PictureKind;
 }
 
+/**
+ * Catalogue tempo for each bed is the tempo of the 32 second excerpt in
+ * apps/web/public/music, measured with librosa beat tracking plus a fine comb
+ * scan of the onset envelope. The beat grid follows these numbers, so a wrong
+ * value drifts away from the audio. See docs/review/stock-bed-bpm.
+ */
 export const stockBeds = [
   {
     id: "pulse",
     title: "Funkorama",
     artist: "Kevin MacLeod",
-    bpm: 115,
+    bpm: 101,
     license: "CC BY 3.0",
     licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
     sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100474"
@@ -54,7 +60,7 @@ export const stockBeds = [
     id: "drive",
     title: "Space Fighter Loop",
     artist: "Kevin MacLeod",
-    bpm: 128,
+    bpm: 95,
     license: "CC BY 3.0",
     licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
     sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100672"
@@ -63,7 +69,7 @@ export const stockBeds = [
     id: "air",
     title: "Dreamy Flashback",
     artist: "Kevin MacLeod",
-    bpm: 80,
+    bpm: 110,
     license: "CC BY 3.0",
     licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
     sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100532"
@@ -72,7 +78,7 @@ export const stockBeds = [
     id: "glow",
     title: "Easy Lemon",
     artist: "Kevin MacLeod",
-    bpm: 110,
+    bpm: 82,
     license: "CC BY 3.0",
     licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
     sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1200076"
@@ -81,7 +87,7 @@ export const stockBeds = [
     id: "night",
     title: "Wallpaper",
     artist: "Kevin MacLeod",
-    bpm: 90,
+    bpm: 93,
     license: "CC BY 3.0",
     licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
     sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100843"
@@ -90,7 +96,7 @@ export const stockBeds = [
     id: "rise",
     title: "Hot Swing",
     artist: "Kevin MacLeod",
-    bpm: 140,
+    bpm: 144,
     license: "CC BY 3.0",
     licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
     sourceUrl: "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100202"
