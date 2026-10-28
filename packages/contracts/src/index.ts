@@ -1,5 +1,13 @@
 export const contractVersion = 1 as const;
 
+/**
+ * Scenes one project storyboard can hold. Manual storyboards and photo reels
+ * share the cap, and a photo reel spends its last scene on the end card, so the
+ * studio takes at most 31 photos. Render cost follows total frames, not the
+ * scene count, because the worker renders one clip at a time.
+ */
+export const MAX_STORYBOARD_SCENES = 32;
+
 export type AccountState = "active" | "suspended" | "deletion_pending";
 export type MotionPreset = "none" | "push" | "zoom" | "zoom_out";
 export const overlayPlaces = ["bottom", "center", "top"] as const;
@@ -296,8 +304,15 @@ export function isSoundtrack(value: unknown): value is Soundtrack {
 
 const spokenKeyPattern = /^[a-f0-9]{8,64}$/;
 
+/**
+ * Spoken audio entries a full storyboard can produce: one line per scene with a
+ * Spoken caption (keys are unique, so MAX_STORYBOARD_SCENES lines at most) plus
+ * the mixed track.
+ */
+export const MAX_SPOKEN_AUDIO_ENTRIES = MAX_STORYBOARD_SCENES + 1;
+
 export function isSpokenAudio(value: unknown): value is SpokenAudioRef[] {
-  if (!Array.isArray(value) || value.length > 24) return false;
+  if (!Array.isArray(value) || value.length > MAX_SPOKEN_AUDIO_ENTRIES) return false;
   const seen = new Set<string>();
   return value.every((item) => {
     if (!isRecord(item) || (item.role !== "line" && item.role !== "mix")) return false;
@@ -445,7 +460,7 @@ export function isStoryboardPlan(value: unknown): value is SceneBrief[] {
 
 /** Validates an authoritative lifecycle payload, not historical empty projects. */
 export function isStoryboardScenes(value: unknown, requireVisualPrompt = false): value is Scene[] {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 8) return false;
+  if (!Array.isArray(value) || value.length < 1 || value.length > MAX_STORYBOARD_SCENES) return false;
   const ids = new Set<string>();
   return value.every((scene, order) => {
     if (!isScene(scene, order) || ids.has(scene.id) || (requireVisualPrompt && !scene.visual_prompt)) return false;

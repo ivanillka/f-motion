@@ -11,11 +11,28 @@ export const PHOTOS_TO_REEL_PATTERN: readonly number[] = [2, 3, 8];
 export const PHOTOS_TO_REEL_MOTIONS: readonly MotionPreset[] = ["zoom", "zoom_out", "push"];
 
 /**
- * Shots one project storyboard can hold. Mirrors the scene cap the contracts
- * enforce (isStoryboardScenes), so the studio builds at most 7 photos plus the
- * end card.
+ * Longest photo reel the studio builds. A pattern of long looks at a slow tempo
+ * runs past a comfortable reel long before it runs out of scenes, so the length
+ * is its own plain limit rather than a second scene cap.
  */
-export const PHOTOS_TO_REEL_MAX_SHOTS = 8;
+export const PHOTOS_TO_REEL_MAX_MS = 90_000;
+
+/**
+ * Thrown when the picked shots add up to a reel longer than
+ * PHOTOS_TO_REEL_MAX_MS. The studio turns this into plain advice instead of a
+ * generic failure.
+ */
+export class PhotoReelTooLongError extends Error {
+  readonly total_ms: number;
+  readonly limit_ms: number;
+
+  constructor(total_ms: number, limit_ms: number) {
+    super(`photo reel runs ${Math.round(total_ms / 1000)} seconds, over the ${limit_ms / 1000} second limit`);
+    this.name = "PhotoReelTooLongError";
+    this.total_ms = total_ms;
+    this.limit_ms = limit_ms;
+  }
+}
 
 /** Plain default title for the first shot. */
 export const PHOTOS_TO_REEL_TITLE = "My photos";

@@ -57,10 +57,11 @@ import {
   spokenWordsForCues,
   VOICEOVER_DUCK,
   COMMENT_CTA,
-  PHOTOS_TO_REEL_MAX_SHOTS,
+  MAX_STORYBOARD_SCENES,
   PHOTOS_TO_REEL_MOTIONS,
   PHOTOS_TO_REEL_PATTERN,
   PHOTOS_TO_REEL_TITLE,
+  PhotoReelTooLongError,
   parseBeatPattern,
   photosToReelPlan,
   photosToReelScenes,
@@ -1409,22 +1410,34 @@ export function App() {
   }
 
   /** Photos a photo reel can take: one scene per photo plus the end card. */
-  const photosToReelPhotoLimit = PHOTOS_TO_REEL_MAX_SHOTS - 1;
+  const photosToReelPhotoLimit = MAX_STORYBOARD_SCENES - 1;
 
-  /** Beat reading for the picked photos, or undefined when they do not fit a reel. */
-  function photosToReelReading() {
-    const photoCount = Math.min(photosToReelFiles.length, photosToReelPhotoLimit);
-    if (!project || photoCount < 1) return undefined;
+  /** Plain studio copy for a photo plan the engine refuses to build. */
+  function photoReelProblem(error: unknown) {
+    return error instanceof PhotoReelTooLongError
+      ? `That reel would run ${formatPlayTime(error.total_ms)}. Use fewer photos, a shorter pattern or a faster BPM.`
+      : `That photo count does not fit a reel. Pick 1 to ${photosToReelPhotoLimit} photos.`;
+  }
+
+  /**
+   * Beat reading for the picked photos, or the plain reason they do not fit a
+   * reel yet.
+   */
+  function photosToReelReading(): { plan?: ReturnType<typeof photosToReelPlan>; problem?: string } {
+    const photoCount = photosToReelFiles.length;
+    if (!project || photoCount < 1) return {};
     try {
-      return photosToReelPlan({
-        photoCount,
-        bpm: photosToReelBpm.trim() || project.brief.soundtrack?.bpm,
-        pattern: photosToReelPattern,
-        title: photosToReelTitle,
-        endCard: photosToReelEndCard
-      });
-    } catch {
-      return undefined;
+      return {
+        plan: photosToReelPlan({
+          photoCount,
+          bpm: photosToReelBpm.trim() || project.brief.soundtrack?.bpm,
+          pattern: photosToReelPattern,
+          title: photosToReelTitle,
+          endCard: photosToReelEndCard
+        })
+      };
+    } catch (error) {
+      return { problem: photoReelProblem(error) };
     }
   }
 
@@ -1436,7 +1449,7 @@ export function App() {
   async function buildPhotosToReel() {
     if (!project || photosToReelBusy) return;
     if (photosToReelFiles.length > photosToReelPhotoLimit) {
-      setStatus(`A reel holds ${PHOTOS_TO_REEL_MAX_SHOTS} shots. Pick up to ${photosToReelPhotoLimit} photos, because the last shot is the end card.`);
+      setStatus(`A reel holds ${MAX_STORYBOARD_SCENES} shots. Pick up to ${photosToReelPhotoLimit} photos, because the last shot is the end card.`);
       return;
     }
     if (!photosToReelFiles.length) {
@@ -1458,8 +1471,8 @@ export function App() {
         ids: plan.shots.map(() => newCommandId()),
         captions: files.map((file) => photoCaptionFromName(file.name))
       });
-    } catch {
-      setStatus(`That photo count does not fit a reel. Pick 1 to ${photosToReelPhotoLimit} photos.`);
+    } catch (error) {
+      setStatus(photoReelProblem(error));
       return;
     }
     setPhotosToReelBusy(true);
@@ -1781,7 +1794,7 @@ export function App() {
   }
 
   async function addScene() {
-    if (!project || project.scenes.length >= 8) return;
+    if (!project || project.scenes.length >= MAX_STORYBOARD_SCENES) return;
     const activeIndex = Math.max(0, project.scenes.findIndex(({ id }) => id === activeSceneId));
     const picture = project.brief.mix ? mixPicture(activeIndex + 1) : undefined;
     const beat = `${project.brief.purpose.slice(0, 180).trim()}. Additional visual beat`;
@@ -3732,7 +3745,7 @@ export function App() {
                 accept="image/jpeg,image/png,image/webp"
                 onChange={(event) => {
                   const picked = Array.from(event.target.files ?? []);
-                  if (picked.length) setPhotosToReelFiles(picked.slice(0, photosToReelPhotoLimit));
+                  if (picked.length) setPhotosToReelFiles(picked);
                   event.target.value = "";
                 }}
               />
@@ -3785,13 +3798,13 @@ export function App() {
               ? `Pick up to ${photosToReelPhotoLimit} photos. The last shot is the end card.`
               : (() => {
                 const reading = photosToReelReading();
-                return reading
-                  ? `${reading.shots.length} shots · ${formatPlayTime(reading.total_ms)} at ${reading.bpm} BPM · beats ${reading.pattern.join(", ")} · ${PHOTOS_TO_REEL_MOTIONS.join(", ")}`
-                  : "Pick at least one photo to see the beat layout.";
+                return reading.plan
+                  ? `${reading.plan.shots.length} shots · ${formatPlayTime(reading.plan.total_ms)} at ${reading.plan.bpm} BPM · beats ${reading.plan.pattern.join(", ")} · ${PHOTOS_TO_REEL_MOTIONS.join(", ")}`
+                  : reading.problem ?? "Pick at least one photo to see the beat layout.";
               })()}
           </p>
           <div className="photos-to-reel-actions">
-            <button type="submit" disabled={photosToReelBusy || busy || !photosToReelFiles.length}>
+            <button type="submit" disabled={photosToReelBusy || busy || !photosToReelFiles.length || photosToReelFiles.length > photosToReelPhotoLimit}>
               {photosToReelBusy ? "Building…" : "Build reel"}
             </button>
             <button type="button" className="secondary" disabled={photosToReelBusy} onClick={() => setPhotosToReelOpen(false)}>Close</button>
@@ -3853,7 +3866,7 @@ export function App() {
           <div className="scene-strip-actions">
             <button className="secondary" disabled={activeScene.order === 0} aria-label={`Move scene ${activeSceneNumber} earlier`} onClick={() => void moveScene(activeScene.id, activeScene.order - 1)}>Up</button>
             <button className="secondary" disabled={activeScene.order === project.scenes.length - 1} aria-label={`Move scene ${activeSceneNumber} later`} onClick={() => void moveScene(activeScene.id, activeScene.order + 1)}>Down</button>
-            <button className="secondary" disabled={project.scenes.length >= 8} onClick={() => void addScene()}>Add scene</button>
+            <button className="secondary" disabled={project.scenes.length >= MAX_STORYBOARD_SCENES} onClick={() => void addScene()}>Add scene</button>
             <button className="secondary" disabled={project.scenes.length <= 1} aria-label={`Remove scene ${activeSceneNumber}`} onClick={() => void removeScene(activeScene.id)}>Remove</button>
           </div>
       </nav>

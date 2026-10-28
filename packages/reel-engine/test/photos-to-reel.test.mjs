@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  PHOTOS_TO_REEL_MAX_SHOTS,
+  MAX_STORYBOARD_SCENES,
+  PHOTOS_TO_REEL_MAX_MS,
   PHOTOS_TO_REEL_MOTIONS,
   PHOTOS_TO_REEL_PATTERN,
   PHOTOS_TO_REEL_TITLE,
+  PhotoReelTooLongError,
   RENDER_FPS,
   applyCommand,
   beatMs,
@@ -25,7 +27,7 @@ const ids = (count) => Array.from({ length: count }, (_, index) => `shot-${index
 test("photo reel defaults are plain and fit the storyboard cap", () => {
   assert.deepEqual(PHOTOS_TO_REEL_PATTERN, [2, 3, 8]);
   assert.deepEqual(PHOTOS_TO_REEL_MOTIONS, ["zoom", "zoom_out", "push"]);
-  assert.equal(PHOTOS_TO_REEL_MAX_SHOTS, 8);
+  assert.equal(PHOTOS_TO_REEL_MAX_MS, 90_000);
   for (const text of [PHOTOS_TO_REEL_TITLE, ...PHOTOS_TO_REEL_MOTIONS]) {
     assert.ok(!String(text).includes(EM_DASH), `${text} must not carry an em dash`);
   }
@@ -44,9 +46,57 @@ test("beat pattern reading keeps whole beats and falls back to the default", () 
 
 test("photo reel takes one shot per photo plus the end card, and no more", () => {
   assert.throws(() => photosToReelPlan({ photoCount: 0, bpm: 120 }), /at least one photo/);
-  assert.throws(() => photosToReelPlan({ photoCount: 23, bpm: 174 }), /8 shots/);
-  assert.equal(photosToReelPlan({ photoCount: PHOTOS_TO_REEL_MAX_SHOTS - 1, bpm: 120 }).shots.length, PHOTOS_TO_REEL_MAX_SHOTS);
+  assert.throws(() => photosToReelPlan({ photoCount: MAX_STORYBOARD_SCENES, bpm: 120 }), /31 photos/);
+  assert.equal(photosToReelPlan({ photoCount: MAX_STORYBOARD_SCENES - 1, bpm: 174 }).shots.length, MAX_STORYBOARD_SCENES);
   assert.deepEqual(photosToReelShotBeats(3), [2, 3, 8, 2]);
+});
+
+test("23 photos plus the end card build 24 beat snapped shots", () => {
+  const plan = photosToReelPlan({ photoCount: 23, bpm: 174 });
+  assert.equal(plan.shots.length, 24);
+  assert.equal(plan.shots.filter((shot) => shot.role === "photo").length, 23);
+  assert.equal(plan.shots.at(-1).role, "end_card");
+  assert.equal(plan.total_frames, 1076);
+  assert.equal(plan.total_ms, (1076 / RENDER_FPS) * 1000);
+  assert.equal(Math.round(plan.total_ms), 35_867);
+  assert.ok(plan.total_ms <= PHOTOS_TO_REEL_MAX_MS, "the usual 23 photo reel stays under the length limit");
+  const beat = beatMs(174);
+  for (const shot of plan.shots) {
+    assert.ok(Math.abs(shot.duration_ms - shot.beats * beat) <= FRAME_MS, `shot ${shot.index} drifts off the beat`);
+    assert.ok(shot.duration_ms >= 500 && shot.duration_ms <= 15_000, `shot ${shot.index} must fit the scene contract`);
+  }
+  const scenes = photosToReelScenes(plan, { ids: ids(24) });
+  const applied = applyCommand({
+    schema_version: 1,
+    id: "p1",
+    owner_id: "u1",
+    revision: 0,
+    brief: { purpose: "Launch", audience: "Teams", tone: "Warm" },
+    scenes: [{ ...scenes[0], id: "old-0", caption: "Old shot" }]
+  }, {
+    command_id: "photo-reel-23",
+    project_id: "p1",
+    base_revision: 0,
+    client_timestamp: "diagnostic",
+    kind: "replace_storyboard",
+    payload: { scenes }
+  });
+  assert.equal(applied.scenes.length, 24);
+  assert.deepEqual(applied.scenes.map((scene) => scene.order), Array.from({ length: 24 }, (_, order) => order));
+});
+
+test("a photo reel over the length limit names its running time", () => {
+  // 13 shots of 12 beats at 60 BPM is 156 seconds, well past the limit.
+  const tooLong = () => photosToReelPlan({ photoCount: 12, bpm: 60, pattern: "12" });
+  assert.throws(tooLong, PhotoReelTooLongError);
+  assert.throws(tooLong, /over the 90 second limit/);
+  try {
+    tooLong();
+  } catch (error) {
+    assert.ok(error instanceof PhotoReelTooLongError);
+    assert.equal(error.total_ms, 156_000);
+    assert.equal(error.limit_ms, PHOTOS_TO_REEL_MAX_MS);
+  }
 });
 
 test("photo reel at 174 BPM lands every cut on the beat grid", () => {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { beatGridCuts, RENDER_FPS, conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief, mixPicture, sceneUsesStock, picturePrompt } from "../dist/index.js";
+import { beatGridCuts, RENDER_FPS, MAX_STORYBOARD_SCENES, conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief, mixPicture, sceneUsesStock, picturePrompt } from "../dist/index.js";
 
 const EM_DASH = "\u2014";
 
@@ -288,8 +288,8 @@ test("update_scene rejects captions over 180 characters", () => assert.throws(
   () => applyCommand(snapshot, { command_id: "c6", project_id: "p1", base_revision: 0, client_timestamp: "", kind: "update_scene", payload: { scene: { ...snapshot.scenes[0], caption: "x".repeat(181) } } }),
   /caption exceeds/
 ));
-test("replace_storyboard accepts one, four, and eight ordered scenes", () => {
-  for (const count of [1, 4, 8]) {
+test("replace_storyboard accepts one, four, and a full storyboard of scenes", () => {
+  for (const count of [1, 4, 8, MAX_STORYBOARD_SCENES]) {
     const scenes = Array.from({ length: count }, (_, order) => lifecycleScene(`s${order + 1}`, order));
     const result = applyCommand(snapshot, command("replace_storyboard", { scenes }));
     assert.equal(result.scenes.length, count);
@@ -299,7 +299,7 @@ test("replace_storyboard accepts one, four, and eight ordered scenes", () => {
 test("replace_storyboard enforces size, unique IDs, contiguous order, and visual prompts", () => {
   for (const scenes of [
     [],
-    Array.from({ length: 9 }, (_, order) => lifecycleScene(`s${order}`, order)),
+    Array.from({ length: MAX_STORYBOARD_SCENES + 1 }, (_, order) => lifecycleScene(`s${order}`, order)),
     [lifecycleScene("same", 0), lifecycleScene("same", 1)],
     [lifecycleScene("s1", 0), lifecycleScene("s2", 2)],
     [{ ...lifecycleScene("s1", 0), visual_prompt: undefined }]
@@ -329,9 +329,14 @@ test("add_scene inserts at the beginning, middle, and end and normalizes order",
     { id: "s4", order: 4 }
   ]);
 });
-test("add_scene rejects a ninth scene and duplicate IDs", () => {
-  const full = { ...snapshot, scenes: Array.from({ length: 8 }, (_, order) => lifecycleScene(`s${order}`, order)) };
-  assert.throws(() => applyCommand(full, command("add_scene", { scene: lifecycleScene("s8", 8), at: 8 })), /8 scenes/);
+test("add_scene fills the storyboard and rejects one more scene or duplicate IDs", () => {
+  const full = { ...snapshot, scenes: Array.from({ length: MAX_STORYBOARD_SCENES - 1 }, (_, order) => lifecycleScene(`s${order}`, order)) };
+  const filled = applyCommand(full, command("add_scene", { scene: lifecycleScene("last", MAX_STORYBOARD_SCENES - 1), at: MAX_STORYBOARD_SCENES - 1 }));
+  assert.equal(filled.scenes.length, MAX_STORYBOARD_SCENES);
+  assert.throws(
+    () => applyCommand(filled, command("add_scene", { scene: lifecycleScene("overflow", MAX_STORYBOARD_SCENES), at: MAX_STORYBOARD_SCENES }, filled.revision)),
+    new RegExp(`${MAX_STORYBOARD_SCENES} scenes`)
+  );
   assert.throws(() => applyCommand(snapshot, command("add_scene", { scene: lifecycleScene("s1", 1), at: 1 })), /duplicate/);
 });
 test("remove_scene normalizes order and retains at least one scene", () => {

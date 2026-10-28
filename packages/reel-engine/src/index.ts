@@ -1,4 +1,5 @@
 import {
+  MAX_STORYBOARD_SCENES,
   isMediaGlanceHints,
   isSoundtrack,
   isVideoArchitecture,
@@ -26,10 +27,11 @@ import {
 } from "./media-intent.js";
 
 import {
-  PHOTOS_TO_REEL_MAX_SHOTS,
+  PHOTOS_TO_REEL_MAX_MS,
   PHOTOS_TO_REEL_MOTIONS,
   PHOTOS_TO_REEL_PATTERN,
   PHOTOS_TO_REEL_TITLE,
+  PhotoReelTooLongError,
   parseBeatPattern,
   photoFitTarget,
   photoReelText,
@@ -41,10 +43,12 @@ import {
   type PhotosToReelShot
 } from "./photos-to-reel.js";
 export {
-  PHOTOS_TO_REEL_MAX_SHOTS,
+  MAX_STORYBOARD_SCENES,
+  PHOTOS_TO_REEL_MAX_MS,
   PHOTOS_TO_REEL_MOTIONS,
   PHOTOS_TO_REEL_PATTERN,
   PHOTOS_TO_REEL_TITLE,
+  PhotoReelTooLongError,
   parseBeatPattern,
   photoFitTarget,
   photoReelText,
@@ -81,8 +85,6 @@ export {
 } from "./spoken-narration.js";
 export type { SpokenLineSlot } from "./spoken-narration.js";
 export type { MediaGlanceHints, VideoArchitecture } from "@f-engine/contracts";
-
-const MAX_STORYBOARD_SCENES = 8;
 
 export interface Concept {
   id: string;
@@ -765,7 +767,7 @@ function copyScene(scene: Scene): Scene {
 
 function validatedStoryboard(value: unknown, requireVisualPrompt: boolean): Scene[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > MAX_STORYBOARD_SCENES) {
-    throw new Error("storyboard must contain 1 to 8 scenes");
+    throw new Error(`storyboard must contain 1 to ${MAX_STORYBOARD_SCENES} scenes`);
   }
   const scenes = value.map(validatedScene);
   if (!isStoryboardScenes(scenes, requireVisualPrompt)) throw new Error("invalid storyboard scenes");
@@ -825,7 +827,9 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
     };
   }
   if (command.kind === "add_scene") {
-    if (snapshot.scenes.length >= MAX_STORYBOARD_SCENES) throw new Error("storyboard already has 8 scenes");
+    if (snapshot.scenes.length >= MAX_STORYBOARD_SCENES) {
+      throw new Error(`storyboard already has ${MAX_STORYBOARD_SCENES} scenes`);
+    }
     const at = command.payload.at;
     if (!Number.isInteger(at) || (at as number) < 0 || (at as number) > snapshot.scenes.length) {
       throw new Error("invalid insertion order");
@@ -949,8 +953,8 @@ function applyReel(snapshot: ProjectSnapshot, payload: Record<string, unknown>):
           ...outro,
           duration_ms: last.duration_ms
         };
-      } else if (scenes.length >= 8 && last) {
-        // ponytail: the storyboard holds 8 scenes, so the outro replaces the last beat.
+      } else if (scenes.length >= MAX_STORYBOARD_SCENES && last) {
+        // ponytail: the storyboard is full, so the outro replaces the last beat.
         scenes[scenes.length - 1] = { ...last, ...outro };
       } else {
         scenes.push({
@@ -1125,8 +1129,8 @@ export function photosToReelPlan(input: PhotosToReelInput): PhotosToReelPlan {
   if (!Number.isInteger(photoCount) || photoCount < 1) {
     throw new Error("photo reel needs at least one photo");
   }
-  if (photoCount + 1 > PHOTOS_TO_REEL_MAX_SHOTS) {
-    throw new Error(`photo reel holds ${PHOTOS_TO_REEL_MAX_SHOTS} shots including the end card`);
+  if (photoCount + 1 > MAX_STORYBOARD_SCENES) {
+    throw new Error(`photo reel takes up to ${MAX_STORYBOARD_SCENES - 1} photos plus the end card`);
   }
   const bpm = clampBpm(input.bpm);
   const pattern = parseBeatPattern(input.pattern);
@@ -1144,6 +1148,8 @@ export function photosToReelPlan(input: PhotosToReelInput): PhotosToReelPlan {
     motion: PHOTOS_TO_REEL_MOTIONS[index % PHOTOS_TO_REEL_MOTIONS.length]!
   }));
   const last = shots[shots.length - 1]!;
+  const totalMs = (last.end_frame / RENDER_FPS) * 1000;
+  if (totalMs > PHOTOS_TO_REEL_MAX_MS) throw new PhotoReelTooLongError(totalMs, PHOTOS_TO_REEL_MAX_MS);
   return {
     bpm,
     pattern,
@@ -1151,7 +1157,7 @@ export function photosToReelPlan(input: PhotosToReelInput): PhotosToReelPlan {
     end_card: photoReelText(input.endCard, 180) || COMMENT_CTA,
     shots,
     total_frames: last.end_frame,
-    total_ms: (last.end_frame / RENDER_FPS) * 1000
+    total_ms: totalMs
   };
 }
 

@@ -857,3 +857,117 @@ test("photos to reel stays usable on a 390px phone", async ({ page }) => {
   expect(widths.panel).toBeLessThanOrEqual(widths.viewport);
   await expectNothingUnderPhoneDock(page, "photos to reel keeps its controls clear of the dock");
 });
+
+test("photos to reel takes 23 photos as 24 shots and stops one photo before the storyboard cap", async ({ page }) => {
+  test.setTimeout(300_000);
+  // The e2e storage is a stub, so uploads only need to answer 200.
+  await page.route("https://e2e-storage.invalid/**", (route) => route.fulfill({ status: 200, body: "" }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await briefWithOwnStill(page, "Photos from a long weekend");
+  await createStoryboard(page);
+
+  const directory = await mkdtemp(join(tmpdir(), "fengine-photo-cap-"));
+  try {
+    // Distinct sizes and colours keep every still its own upload.
+    const photos: string[] = [];
+    for (let index = 0; index < 32; index += 1) {
+      const path = join(directory, `photo-${String(index + 1).padStart(2, "0")}.jpg`);
+      const size = 48 + index * 3;
+      const colour = (0x204060 + index * 0x040404).toString(16).slice(-6);
+      execFileSync("ffmpeg", [
+        "-y", "-v", "error",
+        "-f", "lavfi", "-i", `color=c=0x${colour}:s=${size}x${size}`,
+        "-frames:v", "1", "-q:v", "5", path
+      ]);
+      photos.push(path);
+    }
+
+    await page.getByRole("button", { name: "Photos to reel", exact: true }).click();
+    const panel = page.locator("#photos-to-reel-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel.locator("label[for=photos-to-reel-files]")).toContainText("up to 31");
+    const files = panel.locator("#photos-to-reel-files");
+    const build = panel.getByRole("button", { name: "Build reel" });
+
+    // 32 photos would need 33 shots, one more than a reel holds.
+    await files.setInputFiles(photos);
+    await expect(panel.getByRole("status")).toHaveText("Pick up to 31 photos. The last shot is the end card.");
+    await expect(build).toBeDisabled();
+
+    // 23 photos plus the end card is the 24 shot reel this used to refuse.
+    await files.setInputFiles(photos.slice(0, 23));
+    await panel.locator("#photos-to-reel-bpm").fill("174");
+    await panel.locator("#photos-to-reel-pattern").fill("2,3,8");
+    await panel.locator("#photos-to-reel-title").fill("Long weekend");
+    await panel.locator("#photos-to-reel-end-card").fill("Follow for part two");
+    await expect(panel.getByRole("status")).toHaveText(
+      "24 shots · 0:35 at 174 BPM · beats 2, 3, 8 · zoom, zoom_out, push");
+    await expect(build).toBeEnabled();
+    await build.click();
+    await expect(page.getByRole("status").filter({
+      hasText: "Photo reel built: 24 shots at 174 BPM, title on shot one and the end card last."
+    })).toBeVisible({ timeout: 240_000 });
+
+    const editScenes = page.getByRole("button", { name: /^Edit scene \d+$/ });
+    await expect(editScenes).toHaveCount(24);
+    const scenes = await projectScenes(page);
+    expect(scenes).toHaveLength(24);
+    expect(scenes.map((scene) => scene.order)).toEqual(Array.from({ length: 24 }, (_, order) => order));
+    // 104 beats at 174 BPM on the 30 fps grid is 1076 frames, i.e. 35.87 seconds.
+    const totalMs = scenes.reduce((total, scene) => total + scene.duration_ms, 0);
+    expect(totalMs).toBeGreaterThan(35_800);
+    expect(totalMs).toBeLessThan(35_900);
+    expect(scenes[0]?.title).toBe("Long weekend");
+    expect(scenes[23]?.caption).toBe("Follow for part two");
+    expect(scenes.slice(1).every((scene) => !scene.title)).toBe(true);
+
+    // The longer storyboard still fits a phone and a desktop: the strip scrolls
+    // inside its own box instead of pushing the page sideways.
+    for (const [width, height] of [[390, 664], [1440, 900]] as const) {
+      await page.setViewportSize({ width, height });
+      const layout = await page.evaluate(() => {
+        const strip = document.querySelector(".scene-strip");
+        return {
+          viewport: window.innerWidth,
+          document: document.documentElement.scrollWidth,
+          stripBox: strip ? Math.round(strip.getBoundingClientRect().width) : 0,
+          stripScrolls: strip ? strip.scrollWidth > strip.clientWidth : false
+        };
+      });
+      expect(layout.document, `no sideways scroll at ${width}px`).toBeLessThanOrEqual(layout.viewport);
+      expect(layout.stripBox, `storyboard strip stays inside ${width}px`).toBeLessThanOrEqual(layout.viewport);
+      // Under 980px the strip is a horizontal row, so 24 shots scroll inside it.
+      if (width < 980) {
+        expect(layout.stripScrolls, `24 shots scroll inside the strip at ${width}px`).toBe(true);
+      }
+      await expect(editScenes).toHaveCount(24);
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("the storyboard fills to 32 scenes and then stops adding", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.route("https://e2e-storage.invalid/**", (route) => route.fulfill({ status: 200, body: "" }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await briefWithOwnStill(page, "A calm launch teaser for a small team");
+  await createStoryboard(page);
+
+  const addScene = page.getByRole("button", { name: "Add scene", exact: true });
+  const editScenes = page.getByRole("button", { name: /^Edit scene \d+$/ });
+  const start = await editScenes.count();
+  expect(start).toBeGreaterThan(0);
+  expect(start).toBeLessThan(32);
+  for (let count = start; count < 32; count += 1) {
+    await addScene.click();
+    await expect(editScenes).toHaveCount(count + 1);
+  }
+  await expect(addScene).toBeDisabled();
+  const scenes = await projectScenes(page);
+  expect(scenes).toHaveLength(32);
+  expect(scenes.map((scene) => scene.order)).toEqual(Array.from({ length: 32 }, (_, order) => order));
+});
+

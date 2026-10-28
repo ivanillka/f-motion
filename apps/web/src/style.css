@@ -563,6 +563,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .scene-strip {
     grid-auto-flow: row;
     grid-auto-columns: unset;
+    /* A full 32 scene storyboard scrolls instead of squeezing its rows. */
+    grid-auto-rows: max-content;
+    align-content: start;
     overflow-x: visible;
     overflow-y: auto;
     max-height: calc(100dvh - 160px);

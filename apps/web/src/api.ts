@@ -1,4 +1,5 @@
 import {
+  MAX_STORYBOARD_SCENES,
   stockBeds,
   suggestedStockBed,
   stockBedCredit,
@@ -32,10 +33,11 @@ import {
   photosToReelPlan,
   photosToReelScenes,
   photosToReelShotBeats,
-  PHOTOS_TO_REEL_MAX_SHOTS,
+  PHOTOS_TO_REEL_MAX_MS,
   PHOTOS_TO_REEL_MOTIONS,
   PHOTOS_TO_REEL_PATTERN,
   PHOTOS_TO_REEL_TITLE,
+  PhotoReelTooLongError,
   picturePrompt,
   sceneUsesStock,
   type Concept,
@@ -48,16 +50,18 @@ import {
 
 export { beatMs, clampBpm, spokenMixKey, spokenNarrationReady };
 export {
+  MAX_STORYBOARD_SCENES,
   parseBeatPattern,
   photoFitTarget,
   photoReelText,
   photosToReelPlan,
   photosToReelScenes,
   photosToReelShotBeats,
-  PHOTOS_TO_REEL_MAX_SHOTS,
+  PHOTOS_TO_REEL_MAX_MS,
   PHOTOS_TO_REEL_MOTIONS,
   PHOTOS_TO_REEL_PATTERN,
-  PHOTOS_TO_REEL_TITLE
+  PHOTOS_TO_REEL_TITLE,
+  PhotoReelTooLongError
 };
 export type { PhotoFitLimits, PhotosToReelPlan };
 export { stockBeds, suggestedStockBed, stockBedCredit };

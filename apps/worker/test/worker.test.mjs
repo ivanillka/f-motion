@@ -5,7 +5,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { RENDER_FPS, renderPlan } from "@f-engine/reel-engine";
+import { RENDER_FPS, photosToReelPlan, photosToReelScenes, renderPlan } from "@f-engine/reel-engine";
 import {
   IdempotentResults,
   MediaProbeError,
@@ -710,6 +710,25 @@ test("render job gives every clip a frame-exact cut on the cumulative beat grid"
     assert.match(clip.args.join(" "), new RegExp(`-r ${RENDER_FPS} `));
   }
 });
+test("a 23 photo reel renders 24 clips, in shot order, at 1076 frames", () => {
+  const plan = photosToReelPlan({ photoCount: 23, bpm: 174 });
+  const scenes = photosToReelScenes(plan, { ids: plan.shots.map((_, index) => `photo-${index}`) });
+  const job = buildRenderJob({ ...snapshot, scenes }, "preview.mp4", {}, "/tmp/job");
+  assert.equal(scenes.length, 24);
+  assert.equal(job.clips.length, 24);
+  assert.deepEqual(
+    job.clips.map((clip) => clip.scene.id),
+    scenes.map((scene) => scene.id)
+  );
+  // The concat list is the render order, one line per clip.
+  assert.deepEqual(
+    job.listContents.trimEnd().split("\n"),
+    job.clips.map((clip) => `file '${clip.path}'`)
+  );
+  const frames = job.clips.reduce((sum, clip) => sum + clip.scene.duration_ms, 0) / 1000 * RENDER_FPS;
+  assert.equal(Math.round(frames), 1076);
+  assert.equal(job.clips.at(-1).scene.id, "photo-23");
+});
 test("concat mixdown amixes an uploaded soundtrack under the cut", () => {
   const withBed = {
     ...snapshot,
@@ -979,6 +998,24 @@ test("worker concatenates every scene's media with an honest total duration", as
   const audio = await probeAudioStream(output);
   assert.ok(audio, "expected an audio stream on the concatenated preview");
   assert.equal(audio.codec_name, "aac");
+  assert.deepEqual(await readdir(directory), ["preview.mp4"]);
+});
+test("worker renders a 24 shot photo reel end to end", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fengine-photo-reel-render-"));
+  const output = join(directory, "preview.mp4");
+  const plan = photosToReelPlan({ photoCount: 23, bpm: 174 });
+  const scenes = photosToReelScenes(plan, { ids: plan.shots.map((_, index) => `photo-${index}`) })
+    .map((scene) => ({ ...scene, media_id: "asset-1" }));
+  // A compact frame keeps the render quick. Clip count and reel length are the point.
+  await renderPreviewWithProfile(output, { ...snapshot, scenes }, undefined, {
+    "asset-1": { path: join(fixtures, "still.jpg"), type: "image/jpeg" }
+  }, { width: 180, height: 320 });
+  const probed = await probeMediaFile(output);
+  assert.ok(
+    Math.abs((probed.duration_ms ?? 0) - plan.total_ms) < 500,
+    `expected ~${Math.round(plan.total_ms)}ms, got ${probed.duration_ms}`
+  );
+  assert.ok(await probeAudioStream(output), "expected an audio stream on the photo reel preview");
   assert.deepEqual(await readdir(directory), ["preview.mp4"]);
 });
 test("worker renders image-only scene with a silent audio pad", async () => {
