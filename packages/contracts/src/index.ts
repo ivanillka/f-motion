@@ -1,7 +1,7 @@
 export const contractVersion = 1 as const;
 
 export type AccountState = "active" | "suspended" | "deletion_pending";
-export type MotionPreset = "none" | "push" | "zoom";
+export type MotionPreset = "none" | "push" | "zoom" | "zoom_out";
 export const overlayPlaces = ["bottom", "center", "top"] as const;
 export type OverlayPlace = (typeof overlayPlaces)[number];
 export const overlayLooks = ["caption", "title", "poster", "spoken"] as const;
@@ -359,7 +359,7 @@ function isScene(value: unknown, order: number): value is Scene {
     || !isFiniteNumber(value.focal_y)
     || value.focal_y < 0
     || value.focal_y > 1
-    || !["none", "push", "zoom"].includes(String(value.motion))
+    || !["none", "push", "zoom", "zoom_out"].includes(String(value.motion))
     || !isFiniteNumber(value.audio_level)
     || value.audio_level < 0
     || value.audio_level > 1

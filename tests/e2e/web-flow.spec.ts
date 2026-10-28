@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type APIResponse, type Page } from "@playwright/test";
@@ -18,6 +18,65 @@ async function projectDurationMs(page: Page): Promise<number> {
     const { project } = await response.json() as { project: { scenes: Array<{ duration_ms: number }> } };
     return project.scenes.reduce((total, scene) => total + scene.duration_ms, 0);
   });
+}
+
+interface StudioScene {
+  id: string;
+  order: number;
+  caption: string;
+  title?: string;
+  motion: string;
+  duration_ms: number;
+  media_id?: string;
+}
+
+async function projectScenes(page: Page): Promise<StudioScene[]> {
+  return page.evaluate(async () => {
+    const projectId = localStorage.getItem("fengine-project");
+    if (!projectId) throw new Error("project id missing");
+    const response = await fetch(`/api/projects/${projectId}`);
+    if (!response.ok) throw new Error(`project unavailable: ${response.status}`);
+    const { project } = await response.json() as { project: { scenes: StudioScene[] } };
+    return project.scenes;
+  });
+}
+
+/** Type of every attached asset, in scene order. */
+async function sceneMediaTypes(page: Page): Promise<Array<{ order: number; type: string }>> {
+  return page.evaluate(async () => {
+    const projectId = localStorage.getItem("fengine-project");
+    if (!projectId) throw new Error("project id missing");
+    const found = await fetch(`/api/projects/${projectId}`);
+    if (!found.ok) throw new Error(`project unavailable: ${found.status}`);
+    const { project } = await found.json() as { project: { scenes: Array<{ order: number; media_id?: string }> } };
+    const types: Array<{ order: number; type: string }> = [];
+    for (const scene of project.scenes) {
+      if (!scene.media_id) continue;
+      const response = await fetch(`/api/projects/${projectId}/media/${scene.media_id}`);
+      if (!response.ok) throw new Error(`media unavailable: ${response.status}`);
+      const media = await response.json() as { detected?: { type: string } };
+      types.push({ order: scene.order, type: media.detected?.type ?? "" });
+    }
+    return types;
+  });
+}
+
+/** Frame size from a JPEG SOF marker, i.e. what the browser really uploaded. */
+function jpegSize(bytes: Buffer): { width: number; height: number } | undefined {
+  for (let at = 2; at + 9 < bytes.length;) {
+    if (bytes[at] !== 0xff) {
+      at += 1;
+      continue;
+    }
+    const marker = bytes[at + 1] ?? 0;
+    if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+      return { width: bytes.readUInt16BE(at + 7), height: bytes.readUInt16BE(at + 5) };
+    }
+    const length = bytes.readUInt16BE(at + 2);
+    if (length < 2) return undefined;
+    at += 2 + length;
+  }
+  return undefined;
 }
 
 async function expectRenderedProject(
@@ -683,4 +742,118 @@ test("scene editor tabs switch via click and keyboard, show at most 4 controls, 
   // Switch to Text and verify caption is still saved
   await textTab.click();
   await expect(page.getByLabel("Scene 1 caption")).toHaveValue("Updated scene caption for tab test");
+});
+
+
+test("photos to reel builds beat snapped scenes with a title, an end card, and fitted stills", async ({ page }) => {
+  test.setTimeout(180_000);
+  // The e2e storage is a stub, so the upload itself is where the fitted size shows.
+  const uploaded: Array<{ width: number; height: number }> = [];
+  await page.route("https://e2e-storage.invalid/**", async (route) => {
+    const bytes = route.request().postDataBuffer();
+    const size = bytes ? jpegSize(bytes) : undefined;
+    if (size) uploaded.push(size);
+    await route.fulfill({ status: 200, body: "" });
+  });
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await briefWithOwnStill(page, "Photos from a road trip");
+  await createStoryboard(page);
+
+  const directory = await mkdtemp(join(tmpdir(), "fengine-photo-reel-"));
+  try {
+    const wide = join(directory, "wide-shoot.jpg");
+    execFileSync("ffmpeg", [
+      "-y", "-v", "error",
+      "-f", "lavfi", "-i", "color=c=0x2f6f8f:s=5000x1000",
+      "-frames:v", "1", "-q:v", "3", wide
+    ]);
+
+    const toggle = page.getByRole("button", { name: "Photos to reel", exact: true });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const panel = page.locator("#photos-to-reel-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel.getByRole("status")).toHaveText("Pick at least one photo to see the beat layout.");
+
+    // The wide still is over MEDIA_MAX_WIDTH, so the studio has to fit it.
+    await panel.locator("#photos-to-reel-files").setInputFiles([
+      { name: "wide-shoot.jpg", mimeType: "image/jpeg", buffer: await readFile(wide) },
+      { name: "still.jpg", mimeType: "image/jpeg", buffer: await readFile("apps/worker/test/fixtures/still.jpg") }
+    ]);
+    await panel.locator("#photos-to-reel-bpm").fill("120");
+    await panel.locator("#photos-to-reel-pattern").fill("2,3");
+    await panel.locator("#photos-to-reel-title").fill("Summer trip");
+    await panel.locator("#photos-to-reel-end-card").fill("Follow for part two");
+    // Two photos plus the end card: 2 + 3 + 2 beats at 120 BPM is 3.5 seconds.
+    await expect(panel.getByRole("status")).toHaveText(
+      "3 shots · 0:03 at 120 BPM · beats 2, 3 · zoom, zoom_out, push");
+
+    // The brief still went through the same stub, so the reel uploads start here.
+    const briefUploads = uploaded.length;
+    await panel.getByRole("button", { name: "Build reel" }).click();
+    await expect(page.getByRole("status").filter({
+      hasText: "Photo reel built: 3 shots at 120 BPM, title on shot one and the end card last."
+    })).toBeVisible({ timeout: 120_000 });
+    await expect(panel).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Edit scene/ })).toHaveCount(3);
+
+    const scenes = await projectScenes(page);
+    // One scene per photo plus the end card, alternating the photo reel motions.
+    expect(scenes.map((scene) => scene.motion)).toEqual(["zoom", "zoom_out", "push"]);
+    // Every cut sits on the 120 BPM grid: 2, 3, and 2 beats at 500 ms.
+    expect(scenes.map((scene) => scene.duration_ms)).toEqual([1000, 1500, 1000]);
+    expect(scenes[0]?.title).toBe("Summer trip");
+    expect(scenes[2]?.caption).toBe("Follow for part two");
+    expect(scenes.slice(1).every((scene) => !scene.title)).toBe(true);
+
+    const sizes = await sceneMediaTypes(page);
+    // Both photos reach their own scene as ready JPEGs.
+    expect(sizes).toEqual([
+      { order: 0, type: "image/jpeg" },
+      { order: 1, type: "image/jpeg" }
+    ]);
+    // The 5000px still is fitted before upload, the 64px one is sent untouched.
+    expect(uploaded.slice(briefUploads)).toEqual([
+      { width: 4096, height: 819 },
+      { width: 64, height: 64 }
+    ]);
+
+    // The new motion stays editable after the build, so a reviewer can flip a shot back.
+    await page.getByRole("button", { name: "Edit scene 2" }).click();
+    await expect(page.getByLabel("Scene 2 motion")).toHaveValue("zoom_out");
+    await expect(page.locator('select[aria-label="Scene 2 motion"] option[value="zoom_out"]')).toHaveText("Zoom out");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("photos to reel stays usable on a 390px phone", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.route("https://e2e-storage.invalid/**", (route) =>
+    route.fulfill({ status: 200, body: "" }));
+  await page.setViewportSize({ width: 390, height: 664 });
+  await signIn(page);
+  await page.addStyleTag({ content: ":root { --safe-bottom: 34px; }" });
+  await page.locator(".app-dock").getByRole("button", { name: "Create" }).click();
+  await briefWithOwnStill(page, "A calm launch teaser for a small team");
+  await createStoryboard(page);
+
+  await page.getByRole("button", { name: "Photos to reel", exact: true }).click();
+  const panel = page.locator("#photos-to-reel-panel");
+  await expect(panel).toBeVisible();
+  for (const field of ["files", "bpm", "pattern", "title", "end-card"]) {
+    await expect(page.locator(`#photos-to-reel-${field}`)).toBeVisible();
+  }
+  await expect(page.getByRole("button", { name: "Build reel" })).toBeDisabled();
+
+  const widths = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth,
+    panel: document.querySelector("#photos-to-reel-panel")?.getBoundingClientRect().width ?? 0
+  }));
+  expect(widths.document).toBeLessThanOrEqual(widths.viewport);
+  expect(widths.panel).toBeLessThanOrEqual(widths.viewport);
+  await expectNothingUnderPhoneDock(page, "photos to reel keeps its controls clear of the dock");
 });

@@ -9,7 +9,7 @@ export interface ReelScene {
   duration_ms: number;
   focal_x: number;
   focal_y: number;
-  motion: "none" | "push" | "zoom";
+  motion: "none" | "push" | "zoom" | "zoom_out";
   audio_level: number;
   ducking: boolean;
   media_id?: string;

@@ -516,6 +516,30 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   gap: 8px;
   align-items: center;
 }
+.photos-to-reel {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.photos-to-reel h2 { margin: 0; font-size: var(--text-card); }
+.photos-to-reel .crop-hint { margin: 0; text-align: left; }
+.photos-to-reel-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+.photos-to-reel-fields label { display: grid; gap: 4px; font-size: var(--text-support); }
+.photos-to-reel-fields label:first-child { grid-column: 1 / -1; }
+.photos-to-reel-fields input { width: 100%; min-height: 36px; }
+.photos-to-reel-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 720px) {
+  .photos-to-reel-fields { grid-template-columns: 1fr 1fr; }
+}
 .studio-board {
   display: grid;
   gap: 16px;
@@ -679,6 +703,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .preview img.motion-zoom, .preview video.motion-zoom {
   animation: preview-zoom var(--scene-ms, 3s) ease-in-out forwards;
 }
+.preview img.motion-zoom_out, .preview video.motion-zoom_out {
+  animation: preview-zoom-out var(--scene-ms, 3s) ease-in-out forwards;
+}
 .preview-grade {
   z-index: 3;
   pointer-events: none;
@@ -699,6 +726,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 @keyframes preview-zoom {
   from { transform: scale(1); }
   to { transform: scale(1.3); }
+}
+/* Zoom out is the same travel in reverse, so it lands on the plain frame. */
+@keyframes preview-zoom-out {
+  from { transform: scale(1.3); }
+  to { transform: scale(1); }
 }
 .preview img.is-frozen, .preview video.is-frozen {
   animation-play-state: paused;

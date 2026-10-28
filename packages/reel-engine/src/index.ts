@@ -25,6 +25,34 @@ import {
   type SceneMediaIntentInput
 } from "./media-intent.js";
 
+import {
+  PHOTOS_TO_REEL_MAX_SHOTS,
+  PHOTOS_TO_REEL_MOTIONS,
+  PHOTOS_TO_REEL_PATTERN,
+  PHOTOS_TO_REEL_TITLE,
+  parseBeatPattern,
+  photoFitTarget,
+  photoReelText,
+  photosToReelScenes,
+  photosToReelShotBeats,
+  type PhotoFitLimits,
+  type PhotosToReelPlan,
+  type PhotosToReelSceneOptions,
+  type PhotosToReelShot
+} from "./photos-to-reel.js";
+export {
+  PHOTOS_TO_REEL_MAX_SHOTS,
+  PHOTOS_TO_REEL_MOTIONS,
+  PHOTOS_TO_REEL_PATTERN,
+  PHOTOS_TO_REEL_TITLE,
+  parseBeatPattern,
+  photoFitTarget,
+  photoReelText,
+  photosToReelScenes,
+  photosToReelShotBeats
+};
+export type { PhotoFitLimits, PhotosToReelPlan, PhotosToReelSceneOptions, PhotosToReelShot };
+
 export {
   defaultVideoArchitecture,
   recommendVideoArchitecture
@@ -711,7 +739,9 @@ function validatedScene(value: unknown): Scene {
     || typeof scene.duration_ms !== "number"
     || typeof scene.focal_x !== "number"
     || typeof scene.focal_y !== "number"
-    || !["none", "push", "zoom"].includes(String(scene.motion))
+    // Keep the accepted motions in step with the `MotionPreset` contract: the
+    // photo reel alternates zoom and zoom_out, so the pull out must validate.
+    || !["none", "push", "zoom", "zoom_out"].includes(String(scene.motion))
     || typeof scene.audio_level !== "number"
     || typeof scene.ducking !== "boolean"
     || ("media_id" in scene && (typeof scene.media_id !== "string" || !scene.media_id))
@@ -1071,6 +1101,58 @@ export function beatGridCuts(
     startFrame = endFrame;
   }
   return cuts;
+}
+
+export interface PhotosToReelInput {
+  /** Photos picked in the studio, in playback order. */
+  photoCount: unknown;
+  bpm: unknown;
+  /** Beat counts such as "2,3,8". Unreadable input falls back to the default. */
+  pattern?: unknown;
+  title?: unknown;
+  /** End card text. Falls back to the plain reel CTA. */
+  endCard?: unknown;
+}
+
+/**
+ * Beat snapped photo reel: one shot per photo plus an end card last. Shot
+ * lengths repeat the beat pattern through the same cumulative grid the rest of
+ * the engine cuts on, so `renderPlan` finds the reel already snapped and leaves
+ * every shot length alone. Motions alternate zoom in, zoom out and pan.
+ */
+export function photosToReelPlan(input: PhotosToReelInput): PhotosToReelPlan {
+  const photoCount = Math.trunc(Number(input.photoCount));
+  if (!Number.isInteger(photoCount) || photoCount < 1) {
+    throw new Error("photo reel needs at least one photo");
+  }
+  if (photoCount + 1 > PHOTOS_TO_REEL_MAX_SHOTS) {
+    throw new Error(`photo reel holds ${PHOTOS_TO_REEL_MAX_SHOTS} shots including the end card`);
+  }
+  const bpm = clampBpm(input.bpm);
+  const pattern = parseBeatPattern(input.pattern);
+  const beat = beatMs(bpm);
+  const placeholders = photosToReelShotBeats(photoCount, pattern)
+    .map((beats, index) => ({ id: `photo-${index}`, order: index, duration_ms: beats * beat }));
+  const cuts = beatGridCuts(placeholders, bpm);
+  const shots: PhotosToReelShot[] = cuts.map((cut, index) => ({
+    index,
+    role: index === photoCount ? "end_card" : "photo",
+    beats: cut.beats,
+    start_frame: cut.start_frame,
+    end_frame: cut.end_frame,
+    duration_ms: cut.duration_ms,
+    motion: PHOTOS_TO_REEL_MOTIONS[index % PHOTOS_TO_REEL_MOTIONS.length]!
+  }));
+  const last = shots[shots.length - 1]!;
+  return {
+    bpm,
+    pattern,
+    title: photoReelText(input.title, 60) || PHOTOS_TO_REEL_TITLE,
+    end_card: photoReelText(input.endCard, 180) || COMMENT_CTA,
+    shots,
+    total_frames: last.end_frame,
+    total_ms: (last.end_frame / RENDER_FPS) * 1000
+  };
 }
 
 /**

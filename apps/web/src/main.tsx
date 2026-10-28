@@ -57,6 +57,13 @@ import {
   spokenWordsForCues,
   VOICEOVER_DUCK,
   COMMENT_CTA,
+  PHOTOS_TO_REEL_MAX_SHOTS,
+  PHOTOS_TO_REEL_MOTIONS,
+  PHOTOS_TO_REEL_PATTERN,
+  PHOTOS_TO_REEL_TITLE,
+  parseBeatPattern,
+  photosToReelPlan,
+  photosToReelScenes,
   type ProjectSnapshot,
   type ProjectSummary,
   type Scene,
@@ -67,6 +74,7 @@ import {
   type Voiceover
 } from "./api";
 import { glanceLocalMedia } from "./local-media";
+import { fitPhotoForUpload, photoCaptionFromName } from "./photos-to-reel";
 import { APP_VERSION, RELEASE_NOTES } from "./release";
 import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOrigin } from "./auth";
 import { clearImportedProject, isImportedProjectId, rememberImportedProject, storyboardProjectAction } from "./imported-project";
@@ -381,6 +389,15 @@ export function App() {
   const [falVideoJob, setFalVideoJob] = useState<GenerationJobView>();
   const [falVideoBusy, setFalVideoBusy] = useState(false);
   const falVideoPollRef = useRef<string | undefined>(undefined);
+  /** Photos to reel: pick stills, set the tempo, and build the beat cut. */
+  const [photosToReelOpen, setPhotosToReelOpen] = useState(false);
+  const [photosToReelFiles, setPhotosToReelFiles] = useState<File[]>([]);
+  const [photosToReelBpm, setPhotosToReelBpm] = useState("");
+  const [photosToReelPattern, setPhotosToReelPattern] = useState(PHOTOS_TO_REEL_PATTERN.join(","));
+  const [photosToReelTitle, setPhotosToReelTitle] = useState(PHOTOS_TO_REEL_TITLE);
+  const [photosToReelEndCard, setPhotosToReelEndCard] = useState("");
+  const [photosToReelBusy, setPhotosToReelBusy] = useState(false);
+  const photosToReelUpload = useRef<HTMLInputElement>(null);
   /** Reel setting: animate pool stills via existing FAL image-to-video (default off). */
   const [animateStills, setAnimateStills] = useState(false);
   const animateStillQueueRef = useRef<string[]>([]);
@@ -1388,6 +1405,89 @@ export function App() {
         return;
       }
       setStatus("Scenes could not be snapped to the beat.");
+    }
+  }
+
+  /** Photos a photo reel can take: one scene per photo plus the end card. */
+  const photosToReelPhotoLimit = PHOTOS_TO_REEL_MAX_SHOTS - 1;
+
+  /** Beat reading for the picked photos, or undefined when they do not fit a reel. */
+  function photosToReelReading() {
+    const photoCount = Math.min(photosToReelFiles.length, photosToReelPhotoLimit);
+    if (!project || photoCount < 1) return undefined;
+    try {
+      return photosToReelPlan({
+        photoCount,
+        bpm: photosToReelBpm.trim() || project.brief.soundtrack?.bpm,
+        pattern: photosToReelPattern,
+        title: photosToReelTitle,
+        endCard: photosToReelEndCard
+      });
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Build a beat snapped photo reel: the storyboard becomes one shot per photo
+   * plus the end card, then each photo is uploaded onto its own shot. Large
+   * stills are fitted to the media limits before they leave the browser.
+   */
+  async function buildPhotosToReel() {
+    if (!project || photosToReelBusy) return;
+    if (photosToReelFiles.length > photosToReelPhotoLimit) {
+      setStatus(`A reel holds ${PHOTOS_TO_REEL_MAX_SHOTS} shots. Pick up to ${photosToReelPhotoLimit} photos, because the last shot is the end card.`);
+      return;
+    }
+    if (!photosToReelFiles.length) {
+      setStatus("Pick the photos you want in the reel first.");
+      return;
+    }
+    const files = photosToReelFiles;
+    let plan: ReturnType<typeof photosToReelPlan>;
+    let scenes: Scene[];
+    try {
+      plan = photosToReelPlan({
+        photoCount: files.length,
+        bpm: photosToReelBpm.trim() || project.brief.soundtrack?.bpm,
+        pattern: photosToReelPattern,
+        title: photosToReelTitle,
+        endCard: photosToReelEndCard
+      });
+      scenes = photosToReelScenes(plan, {
+        ids: plan.shots.map(() => newCommandId()),
+        captions: files.map((file) => photoCaptionFromName(file.name))
+      });
+    } catch {
+      setStatus(`That photo count does not fit a reel. Pick 1 to ${photosToReelPhotoLimit} photos.`);
+      return;
+    }
+    setPhotosToReelBusy(true);
+    setBusy(true);
+    setStatus("Building the photo reel…");
+    try {
+      let current = await api.command(project.id, project.revision, "replace_storyboard", { scenes });
+      if (!current.brief.brand_mark) {
+        current = await api.command(current.id, current.revision, "update_reel", { brand_mark: true });
+      }
+      setProject(current);
+      setPhotosToReelOpen(false);
+      for (const [index, file] of files.entries()) {
+        const fitted = await fitPhotoForUpload(file);
+        await admitFile(fitted, scenes[index]!.id, current);
+      }
+      setStatus(`Photo reel built: ${scenes.length} shots at ${plan.bpm} BPM, title on shot one and the end card last.`);
+    } catch (error) {
+      if (error instanceof ApiResponseError && error.status === 409) {
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          operation: "photos to reel"
+        });
+        return;
+      }
+      setStatus("The photo reel could not be built. Try again.");
+    } finally {
+      setPhotosToReelBusy(false);
+      setBusy(false);
     }
   }
 
@@ -3595,9 +3695,109 @@ export function App() {
             : "Review each beat and replace a still only when another visual fits better."}</p>
         </div>
         <div className="editor-toolbar-actions">
+          <button
+            className="secondary"
+            type="button"
+            aria-expanded={photosToReelOpen}
+            aria-controls="photos-to-reel-panel"
+            disabled={busy}
+            onClick={() => setPhotosToReelOpen((open) => !open)}
+          >Photos to reel</button>
           <button className="secondary" disabled={!allScenesHaveMedia} onClick={() => void requestRender("final")}>Export video</button>
         </div>
       </div>
+
+      {photosToReelOpen && (
+        <form
+          id="photos-to-reel-panel"
+          className="photos-to-reel"
+          aria-label="Photos to reel"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void buildPhotosToReel();
+          }}
+        >
+          <h2>Photos to reel</h2>
+          <p className="crop-hint">
+            Every cut lands on the beat. Shot one holds the title and the last shot is the end card.
+            Large stills are scaled down for you before upload.
+          </p>
+          <div className="photos-to-reel-fields">
+            <label htmlFor="photos-to-reel-files">Photos · up to {photosToReelPhotoLimit}
+              <input
+                id="photos-to-reel-files"
+                ref={photosToReelUpload}
+                type="file"
+                multiple
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) => {
+                  const picked = Array.from(event.target.files ?? []);
+                  if (picked.length) setPhotosToReelFiles(picked.slice(0, photosToReelPhotoLimit));
+                  event.target.value = "";
+                }}
+              />
+            </label>
+            <label htmlFor="photos-to-reel-bpm">BPM
+              <input
+                id="photos-to-reel-bpm"
+                type="number"
+                min="60"
+                max="200"
+                step="1"
+                placeholder={String(clampBpm(project.brief.soundtrack?.bpm))}
+                value={photosToReelBpm}
+                onChange={(event) => setPhotosToReelBpm(event.target.value)}
+              />
+            </label>
+            <label htmlFor="photos-to-reel-pattern">Beats per shot
+              <input
+                id="photos-to-reel-pattern"
+                type="text"
+                inputMode="numeric"
+                maxLength={23}
+                placeholder={PHOTOS_TO_REEL_PATTERN.join(",")}
+                value={photosToReelPattern}
+                onChange={(event) => setPhotosToReelPattern(event.target.value)}
+              />
+            </label>
+            <label htmlFor="photos-to-reel-title">Title on shot one
+              <input
+                id="photos-to-reel-title"
+                type="text"
+                maxLength={60}
+                value={photosToReelTitle}
+                onChange={(event) => setPhotosToReelTitle(event.target.value)}
+              />
+            </label>
+            <label htmlFor="photos-to-reel-end-card">End card
+              <input
+                id="photos-to-reel-end-card"
+                type="text"
+                maxLength={180}
+                placeholder={COMMENT_CTA}
+                value={photosToReelEndCard}
+                onChange={(event) => setPhotosToReelEndCard(event.target.value)}
+              />
+            </label>
+          </div>
+          <p className="crop-hint" role="status">
+            {photosToReelFiles.length > photosToReelPhotoLimit
+              ? `Pick up to ${photosToReelPhotoLimit} photos. The last shot is the end card.`
+              : (() => {
+                const reading = photosToReelReading();
+                return reading
+                  ? `${reading.shots.length} shots · ${formatPlayTime(reading.total_ms)} at ${reading.bpm} BPM · beats ${reading.pattern.join(", ")} · ${PHOTOS_TO_REEL_MOTIONS.join(", ")}`
+                  : "Pick at least one photo to see the beat layout.";
+              })()}
+          </p>
+          <div className="photos-to-reel-actions">
+            <button type="submit" disabled={photosToReelBusy || busy || !photosToReelFiles.length}>
+              {photosToReelBusy ? "Building…" : "Build reel"}
+            </button>
+            <button type="button" className="secondary" disabled={photosToReelBusy} onClick={() => setPhotosToReelOpen(false)}>Close</button>
+          </div>
+        </form>
+      )}
 
       <div className="studio-board">
       <nav className="scene-strip" aria-label="Storyboard scenes">{project.scenes.map((scene) => {
@@ -4074,7 +4274,7 @@ export function App() {
             </div>
             <label htmlFor={`motion-${activeScene.id}`}>{wideStill ? "Pan" : "Motion"}
               <select id={`motion-${activeScene.id}`} aria-label={`Scene ${activeSceneNumber} motion`} value={activeScene.motion} onChange={(event) => void saveScenePatch(activeScene.id, { motion: event.target.value as Scene["motion"] })}>
-                <option value="none">None</option><option value="push">{wideStill ? "Pan sideways" : "Push"}</option><option value="zoom">Zoom</option>
+                <option value="none">None</option><option value="push">{wideStill ? "Pan sideways" : "Push"}</option><option value="zoom">Zoom</option><option value="zoom_out">Zoom out</option>
               </select>
             </label>
           </div>

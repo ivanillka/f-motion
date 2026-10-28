@@ -11,12 +11,14 @@ import {
   MediaProbeError,
   buildCaptionAss,
   buildRenderJob as buildRenderJobWithProfile,
+  downscaleStillFile,
   inspectMedia,
   probeMediaFile,
   renderObjectKey,
   renderPhases,
   renderPreview as renderPreviewWithProfile,
   stockBedPath,
+  stillScaleTarget,
   soundtrackMetadata,
   resolveSoundtrackMix
 } from "../dist/index.js";
@@ -279,6 +281,57 @@ test("ffprobe accepts fixture media and rejects corrupt bytes", async () => {
   assert.equal(png.type, "image/png");
 
   await assert.rejects(probeMediaFile(join(fixtures, "corrupt.bin")));
+});
+
+test("still scaling only touches oversized stills, never video or complete fits", () => {
+  assert.equal(stillScaleTarget({ type: "image/jpeg", width: 1080, height: 1920 }), undefined);
+  assert.equal(stillScaleTarget({ type: "image/png", width: 4000, height: 4000 }), undefined);
+  assert.deepEqual(stillScaleTarget({ type: "image/png", width: 4096, height: 4096 }), { width: 4000, height: 4000 });
+  assert.deepEqual(stillScaleTarget({ type: "image/webp", width: 7360, height: 4912 }), { width: 4096, height: 2733 });
+  // Video keeps the plain rejection so a re-encode never hides a bad upload.
+  assert.equal(stillScaleTarget({ type: "video/mp4", width: 7360, height: 4912 }), undefined);
+  assert.equal(stillScaleTarget({ type: "image/jpeg" }), undefined);
+  assert.equal(stillScaleTarget({ type: "application/octet-stream", width: 7360, height: 4912 }), undefined);
+});
+
+test("oversized still is downscaled into the limits before the accepted probe", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fengine-still-downscale-"));
+  const source = join(directory, "phone-photo.jpg");
+  try {
+    await new Promise((resolve, reject) => {
+      const child = spawn("ffmpeg", [
+        "-y",
+        "-v", "error",
+        "-f", "lavfi",
+        "-i", "color=c=0x2f6f8f:s=7360x4912",
+        "-frames:v", "1",
+        "-q:v", "2",
+        source
+      ], { stdio: ["ignore", "pipe", "ignore"] });
+      child.stdout.resume();
+      child.once("error", reject);
+      child.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`)));
+    });
+
+    const probed = await probeMediaFile(source);
+    assert.equal(probed.type, "image/jpeg");
+    assert.ok(probed.width > 4096 && probed.height > 4096, "fixture must exceed the side ceiling");
+    assert.equal(inspectMedia("image/jpeg", { ...probed, bytes: 1000 }, 1000).accepted, false);
+
+    const target = stillScaleTarget(probed);
+    assert.deepEqual(target, { width: 4096, height: 2733 });
+    const fitted = await probeMediaFile(await downscaleStillFile(source, target, probed.type));
+    assert.equal(fitted.type, "image/jpeg");
+    assert.deepEqual({ width: fitted.width, height: fitted.height }, target);
+    assert.ok((fitted.width ?? 0) * (fitted.height ?? 0) <= 16_000_000);
+    assert.equal(inspectMedia("image/jpeg", { ...fitted, bytes: 1000 }, 1000).accepted, true);
+    // Scaling keeps the still a still, so a video declaration stays rejected.
+    assert.equal(inspectMedia("video/mp4", { ...fitted, bytes: 1000 }, 1000).accepted, false);
+    // The fitted photo already fits, so a second pass does no work.
+    assert.equal(stillScaleTarget(fitted), undefined);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("render progress has named phases", () => assert.deepEqual(renderPhases, ["queued", "preparing", "rendering", "uploading", "complete"]));
@@ -1054,8 +1107,8 @@ test("final concat copies clip video and remuxes a soundtrack without a second v
   assert.ok(audio, "expected mixed audio on the final export");
   assert.equal(audio.codec_name, "aac");
 });
-test("worker renders zoompan motion (zoom and push) without ffmpeg errors", async () => {
-  for (const motion of ["zoom", "push"]) {
+test("worker renders zoompan motion (zoom, zoom out, and push) without ffmpeg errors", async () => {
+  for (const motion of ["zoom", "zoom_out", "push"]) {
     const directory = await mkdtemp(join(tmpdir(), `fengine-motion-${motion}-`));
     const output = join(directory, "preview.mp4");
     const withMotion = {
@@ -1140,6 +1193,20 @@ test("zoom eases from 1.0 to 1.30 and stays centred", () => {
   assert.ok(Math.abs(end.zoom - 1.3) < 1e-9);
   assert.ok(Math.abs(mid.zoom - 1.15) < 1e-6, "ease-in-out is symmetric");
   assert.ok(zoompanAt(filter, 3, iw, ih).zoom - first.zoom < (end.zoom - first.zoom) / 89, "eases in");
+  for (const on of [0, 30, 60, last]) {
+    const at = zoompanAt(filter, on, iw, ih);
+    assert.ok(at.x >= 0 && at.x + iw / at.zoom <= iw + 1e-6, "no edge on x");
+    assert.ok(at.y >= 0 && at.y + ih / at.zoom <= ih + 1e-6, "no edge on y");
+  }
+});
+test("zoom out starts at 1.30 and eases back to the plain cover", () => {
+  const filter = motionFilterFor("zoom_out", { path: "/tmp/w.jpg", type: "image/jpeg", width: 3000, height: 2000 });
+  const iw = 2160, ih = 3840, last = 89;
+  const first = zoompanAt(filter, 0, iw, ih), mid = zoompanAt(filter, 44.5, iw, ih), end = zoompanAt(filter, last, iw, ih);
+  assert.ok(Math.abs(first.zoom - 1.3) < 1e-9);
+  assert.ok(Math.abs(end.zoom - 1) < 1e-9);
+  assert.ok(Math.abs(mid.zoom - 1.15) < 1e-6, "ease-in-out is symmetric");
+  assert.ok(first.zoom - zoompanAt(filter, 3, iw, ih).zoom < (first.zoom - end.zoom) / 89, "eases out");
   for (const on of [0, 30, 60, last]) {
     const at = zoompanAt(filter, on, iw, ih);
     assert.ok(at.x >= 0 && at.x + iw / at.zoom <= iw + 1e-6, "no edge on x");
