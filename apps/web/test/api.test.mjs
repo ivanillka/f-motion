@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, briefNeedsMediaLook, briefPurposeFromChat, briefReadyMessage, briefShouldGlance, buildStoryboardDraft, conceptIdForArchitecture, mediaNotesFromGlances, newCommandId, nextBriefQuestion, parseBriefChat, recommendVideoArchitecture, sceneDurationForMedia, sampleCanvasStats, toneFromSample } from "../src/api.ts";
+import { ApiClient, ApiResponseError, briefNeedsMediaLook, briefPurposeFromChat, briefQuestionFor, briefReadyMessage, briefShouldGlance, briefWhereFromChat, buildStoryboardDraft, conceptIdForArchitecture, isBriefAnswerLine, mediaNotesFromGlances, newCommandId, nextBriefQuestion, parseBriefChat, recommendVideoArchitecture, sceneDurationForMedia, sampleCanvasStats, toneFromSample } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
@@ -149,6 +149,96 @@ test("own-media glance notes adapt the next question without a VLM", () => {
   assert.equal(mixNext?.id, "audience");
   assert.match(mixNext?.prompt ?? "", /San Francisco mystery/);
 });
+
+const connectedSourceAnswers = {
+  choices: ["Pexels videos", "AI stills with FAL (paid, asks first)", "Use my photos"],
+  connected: ["Pexels", "FAL"],
+  hint: ""
+};
+
+const ownOnlySourceAnswers = {
+  choices: ["Use my photos"],
+  connected: [],
+  hint: "Pexels, Civitai and FAL are locked. Add your own key in Sources to use them."
+};
+
+test("the picture question offers the sources this studio really has", () => {
+  const question = nextBriefQuestion(
+    "mystery murder in san francisco\nTell a story\nGeneral viewers\nAbout 30 seconds",
+    false,
+    ["intent", "audience", "length"],
+    connectedSourceAnswers
+  );
+  assert.equal(question?.id, "visuals");
+  assert.deepEqual(question?.choices, connectedSourceAnswers.choices);
+  assert.match(question?.prompt ?? "", /Pexels or FAL/);
+  assert.doesNotMatch(question?.prompt ?? "", /Civitai/i);
+  const falOnly = briefQuestionFor("visuals", "mystery murder in san francisco", false, {
+    choices: ["AI stills with FAL (paid, asks first)", "Use my photos"],
+    connected: ["FAL"],
+    hint: "Pexels and Civitai are locked. Add your own key in Sources to use them."
+  });
+  assert.match(falOnly.prompt, /pictures of San Francisco from FAL/);
+  assert.match(falOnly.prompt, /Pexels and Civitai are locked/);
+  assert.doesNotMatch(falOnly.prompt, /Pexels videos of/);
+});
+
+test("a studio with only own photos is never asked where pictures come from", () => {
+  assert.equal(
+    nextBriefQuestion(
+      "mystery murder in san francisco\nTell a story\nGeneral viewers\nAbout 30 seconds",
+      false,
+      ["intent", "audience", "length"],
+      ownOnlySourceAnswers
+    ),
+    undefined
+  );
+  const ready = briefReadyMessage(
+    "mystery murder in san francisco\nTell a story\nGeneral viewers\nAbout 30 seconds",
+    ownOnlySourceAnswers
+  );
+  assert.match(ready, /use your photos\./);
+  assert.doesNotMatch(ready, /Pexels/);
+});
+
+test("source answers are read back as the pictures that will really be used", () => {
+  const plan = recommendVideoArchitecture("harbor night");
+  assert.equal(briefWhereFromChat("harbor night\nCivitai images", plan), "Civitai images");
+  assert.equal(
+    briefWhereFromChat("harbor night\nAI stills with FAL (paid, asks first)", plan),
+    "AI stills from your FAL key"
+  );
+  assert.equal(
+    briefWhereFromChat("harbor night\nMix my photos and Pexels and FAL", plan),
+    "your photos and Pexels and FAL"
+  );
+  assert.equal(briefWhereFromChat("harbor night\nUse my photos", plan), "your photos");
+  assert.equal(briefWhereFromChat("harbor night\nPexels videos", plan), "Pexels videos");
+  assert.match(
+    briefReadyMessage("harbor night\nCivitai images", {
+      choices: ["Civitai images", "Use my photos"],
+      connected: ["Civitai"],
+      hint: ""
+    }),
+    /use Civitai images\./
+  );
+});
+
+test("Civitai and FAL answers count as the picture answer", () => {
+  assert.equal(
+    nextBriefQuestion("harbor night\nCivitai images", false, ["intent", "audience"])?.id,
+    "length"
+  );
+  assert.equal(
+    nextBriefQuestion("harbor night\nAI stills with FAL (paid, asks first)", false, ["intent", "audience"])?.id,
+    "length"
+  );
+  assert.equal(isBriefAnswerLine("Mix my photos and Pexels and FAL"), true);
+  assert.equal(isBriefAnswerLine("AI stills with FAL (paid, asks first)"), true);
+  assert.equal(isBriefAnswerLine("harbor night"), false);
+  assert.equal(briefPurposeFromChat("harbor night\nMix my photos and Pexels and FAL"), "harbor night");
+});
+
 
 const ids = () => {
   let value = 0;

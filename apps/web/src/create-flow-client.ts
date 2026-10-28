@@ -71,11 +71,46 @@ function freshId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
-/** Honest pref: never claim Pexels/FAL without a connected key. */
+/** The source the owner actually picked in the Create chat, when there was one. */
+export type VisualSourceChoiceId = "own" | "pexels" | "civitai" | "fal" | "mix";
+
+function prefForSource(
+  connected: boolean,
+  hasOwn: boolean,
+  source: MediaSourcePref
+): MediaSourcePref {
+  if (connected) return source;
+  return hasOwn ? "own" : "defer";
+}
+
+/**
+ * Honest pref: never claim Pexels, FAL or Civitai without a connected key.
+ * An explicit chat answer wins over the guessed plan, because the owner knows
+ * which source they meant; without one the plan is guessed as before.
+ */
 export function mediaPrefFromPlan(
   plan: { media: "stock" | "own" | "mixed" },
-  opts: { hasOwn: boolean; pexelsConnected: boolean; falConnected?: boolean }
+  opts: {
+    hasOwn: boolean;
+    pexelsConnected: boolean;
+    falConnected?: boolean;
+    /** Explicit source answer from the Create chat. */
+    choice?: VisualSourceChoiceId;
+  }
 ): MediaSourcePref {
+  const choice = opts.choice;
+  const falConnected = opts.falConnected === true;
+  if (choice === "own") return opts.hasOwn ? "own" : "defer";
+  if (choice === "pexels") return prefForSource(opts.pexelsConnected, opts.hasOwn, "pexels");
+  if (choice === "fal") return prefForSource(falConnected, opts.hasOwn, "fal");
+  // Civitai lends references, not scene-ready media, so the pref stays thin and
+  // the storyboard is never filled from it automatically.
+  if (choice === "civitai") return opts.hasOwn ? "own" : "defer";
+  if (choice === "mix") {
+    if (opts.hasOwn && (opts.pexelsConnected || falConnected)) return "mix";
+    if (opts.hasOwn) return "own";
+    return prefForSource(opts.pexelsConnected, opts.hasOwn, "pexels");
+  }
   if (plan.media === "own") return opts.hasOwn ? "own" : "defer";
   if (plan.media === "mixed") {
     if (opts.hasOwn && opts.pexelsConnected) return "mix";

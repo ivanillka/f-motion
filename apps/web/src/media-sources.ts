@@ -89,6 +89,132 @@ export function sourceChipTone(state: SourceState): "on" | "warn" | "muted" {
   return "muted";
 }
 
+/** Where the Create chat's picture answer really points. */
+export type VisualSourceId = "own" | "pexels" | "civitai" | "fal" | "mix";
+
+export interface VisualSourceChoice {
+  id: VisualSourceId;
+  /** Chat answer label; also what the studio remembers for next time. */
+  label: string;
+  /** Short source name used inside mix labels and prompts. */
+  name: string;
+  /** Honest "where the pictures come from" phrase for ready lines. */
+  where: string;
+}
+
+export interface VisualSourceOptions {
+  choices: VisualSourceChoice[];
+  /** Short names of connected external sources, in chip order. */
+  connected: string[];
+  /** One line about sources that cannot be used yet, or "" when all are usable. */
+  hint: string;
+}
+
+/** Remembers the last picture source the owner chose in the Create chat. */
+export const VISUAL_SOURCE_STORAGE_KEY = "fengine-visual-source";
+
+const visualSourceIds: readonly VisualSourceId[] = ["own", "pexels", "civitai", "fal", "mix"];
+
+export function readRememberedVisualSource(
+  storage?: Pick<Storage, "getItem">
+): VisualSourceId | undefined {
+  try {
+    const store = storage ?? (typeof localStorage === "undefined" ? undefined : localStorage);
+    const value = store?.getItem(VISUAL_SOURCE_STORAGE_KEY) as VisualSourceId | null | undefined;
+    return value && visualSourceIds.includes(value) ? value : undefined;
+  } catch {
+    // private mode blocks storage; the answer still works for this session
+    return undefined;
+  }
+}
+
+export function rememberVisualSource(
+  id: VisualSourceId | undefined,
+  storage?: Pick<Storage, "setItem" | "removeItem">
+): void {
+  try {
+    const store = storage ?? (typeof localStorage === "undefined" ? undefined : localStorage);
+    if (!store) return;
+    if (id) store.setItem(VISUAL_SOURCE_STORAGE_KEY, id);
+    else store.removeItem(VISUAL_SOURCE_STORAGE_KEY);
+  } catch {
+    // private mode blocks storage; the answer still works for this session
+  }
+}
+
+function andList(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/**
+ * Chat answers for "where do the pictures come from". Only sources that can
+ * deliver right now are offered: own photos always, an external source only
+ * when its chip is connected, plus one mix answer when both sides exist.
+ * Locked or unavailable sources are named in a single hint line instead of
+ * becoming choices, and the "More" slot is never offered as an answer.
+ */
+export function visualSourceOptions(
+  input: MediaSourcesInput & { remembered?: VisualSourceId }
+): VisualSourceOptions {
+  const chips = mediaSourceChips(input);
+  const state = (id: SourceId): SourceState | undefined =>
+    chips.find((chip) => chip.id === id)?.state;
+  const external: VisualSourceChoice[] = [];
+  if (state("pexels") === "connected") {
+    external.push({ id: "pexels", name: "Pexels", label: "Pexels videos", where: "Pexels videos" });
+  }
+  if (state("civitai") === "connected") {
+    external.push({ id: "civitai", name: "Civitai", label: "Civitai images", where: "Civitai images" });
+  }
+  if (state("fal") === "connected") {
+    external.push({
+      id: "fal",
+      name: "FAL",
+      label: "AI stills with FAL (paid, asks first)",
+      where: "AI stills from your FAL key"
+    });
+  }
+  const own: VisualSourceChoice = {
+    id: "own",
+    name: "My photos",
+    label: "Use my photos",
+    where: "your photos"
+  };
+  const names = external.map((choice) => choice.name);
+  const mix: VisualSourceChoice[] = input.ownCount > 0 && external.length > 0
+    ? [{
+      id: "mix",
+      name: "mix",
+      label: `Mix my photos and ${andList(names)}`,
+      where: `your photos and ${andList(names)}`
+    }]
+    : [];
+  // Photos already added lead; otherwise the connected stock answer leads.
+  const choices = input.ownCount > 0 ? [own, ...external, ...mix] : [...external, own, ...mix];
+  const remembered = input.remembered;
+  const ordered = remembered
+    ? [...choices].sort((left, right) =>
+      Number(right.id === remembered) - Number(left.id === remembered))
+    : choices;
+  const locked: string[] = [];
+  const unavailable: string[] = [];
+  for (const chip of chips) {
+    if (chip.id === "more" || chip.id === "own") continue;
+    if (chip.state === "locked") locked.push(chip.label);
+    if (chip.state === "unavailable") unavailable.push(chip.label);
+  }
+  const hint = [
+    locked.length
+      ? `${andList(locked)} ${locked.length === 1 ? "is" : "are"} locked. Add your own key in Sources to use ${locked.length === 1 ? "it" : "them"}.`
+      : "",
+    unavailable.length
+      ? `${andList(unavailable)} ${unavailable.length === 1 ? "is" : "are"} not available here.`
+      : ""
+  ].filter(Boolean).join(" ");
+  return { choices: ordered, connected: names, hint };
+}
+
 /** Shared Civitai picker query so filters and cursor paging stay testable. */
 export interface CivitaiPickerInput {
   query: string;

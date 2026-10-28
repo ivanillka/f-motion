@@ -6,7 +6,11 @@ import {
   countStillFiles,
   isReadyStillMedia,
   mediaSourceChips,
-  sourceChipTone
+  readRememberedVisualSource,
+  rememberVisualSource,
+  sourceChipTone,
+  visualSourceOptions,
+  VISUAL_SOURCE_STORAGE_KEY
 } from "../src/media-sources.ts";
 // node --experimental-strip-types (see package.json test script)
 
@@ -108,4 +112,104 @@ test("animate stills toggle stays off unless FAL is connected and pool has still
   assert.equal(countStillFiles([{ type: "image/jpeg" }, { type: "video/mp4" }]), 1);
   assert.equal(isReadyStillMedia({ state: "ready", detected: { type: "image/jpeg" } }), true);
   assert.equal(isReadyStillMedia({ state: "ready", detected: { type: "video/mp4" } }), false);
+});
+
+test("picture answers stay truthful when nothing is connected", () => {
+  const options = visualSourceOptions({
+    ownCount: 0,
+    pexelsConnected: false,
+    civitaiConnected: false,
+    falConnected: false
+  });
+  assert.deepEqual(options.choices.map((choice) => choice.id), ["own"]);
+  assert.deepEqual(options.connected, []);
+  assert.equal(
+    options.hint,
+    "Pexels, Civitai and FAL are locked. Add your own key in Sources to use them."
+  );
+  // The "More" slot is a promise, never an answer.
+  assert.equal(options.choices.some((choice) => choice.label.includes("New options")), false);
+});
+
+test("picture answers list every connected source and keep locked ones in the hint", () => {
+  const options = visualSourceOptions({
+    ownCount: 0,
+    pexelsConnected: true,
+    civitaiConnected: false,
+    falConnected: true
+  });
+  assert.deepEqual(options.choices.map((choice) => choice.id), ["pexels", "fal", "own"]);
+  assert.deepEqual(options.connected, ["Pexels", "FAL"]);
+  assert.equal(options.hint, "Civitai is locked. Add your own key in Sources to use it.");
+  assert.match(options.choices[1].label, /FAL/);
+  assert.match(options.choices[1].label, /asks first/);
+});
+
+test("keyless Civitai answers in the middle, and unavailable sources are named apart", () => {
+  const options = visualSourceOptions({
+    ownCount: 0,
+    pexelsConnected: true,
+    civitaiConnected: false,
+    civitaiKeyless: true,
+    falConnected: false,
+    falUnavailable: true
+  });
+  assert.deepEqual(options.choices.map((choice) => choice.id), ["pexels", "civitai", "own"]);
+  assert.equal(options.hint, "FAL is not available here.");
+  assert.equal(options.choices[1].where, "Civitai images");
+});
+
+test("a mix answer appears only once photos are in the pool", () => {
+  const withPhotos = visualSourceOptions({
+    ownCount: 2,
+    pexelsConnected: true,
+    civitaiConnected: false,
+    falConnected: true
+  });
+  assert.deepEqual(withPhotos.choices.map((choice) => choice.id), ["own", "pexels", "fal", "mix"]);
+  assert.equal(withPhotos.choices[3].label, "Mix my photos and Pexels and FAL");
+  assert.equal(withPhotos.choices[3].where, "your photos and Pexels and FAL");
+  const pexelsOnly = visualSourceOptions({
+    ownCount: 2,
+    pexelsConnected: true,
+    civitaiConnected: false,
+    falConnected: false
+  });
+  assert.equal(pexelsOnly.choices.find((choice) => choice.id === "mix")?.label, "Mix my photos and Pexels");
+});
+
+test("the remembered source leads, but only while it is still connected", () => {
+  const remembered = visualSourceOptions({
+    ownCount: 0,
+    pexelsConnected: true,
+    civitaiConnected: false,
+    falConnected: true,
+    remembered: "fal"
+  });
+  assert.deepEqual(remembered.choices.map((choice) => choice.id), ["fal", "pexels", "own"]);
+  const disconnected = visualSourceOptions({
+    ownCount: 0,
+    pexelsConnected: true,
+    civitaiConnected: false,
+    falConnected: false,
+    remembered: "fal"
+  });
+  assert.deepEqual(disconnected.choices.map((choice) => choice.id), ["pexels", "own"]);
+});
+
+test("the remembered source round trips through storage and ignores junk", () => {
+  const store = new Map();
+  const storage = {
+    getItem: (key) => store.get(key) ?? null,
+    setItem: (key, value) => store.set(key, value),
+    removeItem: (key) => store.delete(key)
+  };
+  assert.equal(readRememberedVisualSource(storage), undefined);
+  rememberVisualSource("civitai", storage);
+  assert.equal(store.get(VISUAL_SOURCE_STORAGE_KEY), "civitai");
+  assert.equal(readRememberedVisualSource(storage), "civitai");
+  rememberVisualSource(undefined, storage);
+  assert.equal(readRememberedVisualSource(storage), undefined);
+  store.set(VISUAL_SOURCE_STORAGE_KEY, "dropbox");
+  assert.equal(readRememberedVisualSource(storage), undefined);
 });

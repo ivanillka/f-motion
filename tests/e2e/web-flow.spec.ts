@@ -121,6 +121,23 @@ async function nextBriefChoice(page: Page) {
   return page.locator(".brief-chat-choices button:not(.is-primary)").first();
 }
 
+/** Answers offered by the current brief question, without the primary action. */
+function briefChoiceLabels(page: Page) {
+  return page.locator(".brief-chat-choices button:not(.is-primary)");
+}
+
+/** Clicks the audience and length answers a topic alone cannot give. */
+async function answerBriefSetup(
+  page: Page,
+  answers: readonly string[] = ["General viewers", "About 30 seconds"]
+): Promise<void> {
+  for (const answer of answers) {
+    const choice = page.getByRole("button", { name: answer, exact: true });
+    await expect(choice).toBeVisible();
+    await choice.click();
+  }
+}
+
 async function describeVideo(page: Page, text: string): Promise<void> {
   await page.getByLabel("Message F-Motion").fill(text);
   await page.getByRole("button", { name: "Send" }).click();
@@ -970,4 +987,112 @@ test("the storyboard fills to 32 scenes and then stops adding", async ({ page })
   expect(scenes).toHaveLength(32);
   expect(scenes.map((scene) => scene.order)).toEqual(Array.from({ length: 32 }, (_, order) => order));
 });
+
+test("the pictures question offers the connected sources, not a Pexels-only list", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
+  await page.getByRole("button", { name: "Send" }).click();
+  await answerBriefSetup(page);
+  await expect(briefChoiceLabels(page)).toHaveText([
+    "Pexels videos",
+    "AI stills with FAL (paid, asks first)",
+    "Use my photos"
+  ]);
+  // Pexels and FAL are connected in this harness; Civitai is not offered here.
+  await expect(page.getByText(/should I use pictures of San Francisco from Pexels or FAL\?/).first()).toBeVisible();
+  await expect(page.locator(".media-sources-strip .media-source-chip").filter({ hasText: "Civitai" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Civitai images" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Use my photos", exact: true }).click();
+  // With no files yet the chat asks for the photos instead of faking a fill.
+  await expect(page.getByText("Add your photos or clips. I will look at them first, then ask only what is still missing.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toHaveCount(0);
+  // The answer is remembered for the next Create chat.
+  expect(await page.evaluate(() => localStorage.getItem("fengine-visual-source"))).toBe("own");
+});
+
+test("choosing FAL stills on a 390px phone makes AI stills instead of stock", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
+  await page.getByRole("button", { name: "Send" }).click();
+  await answerBriefSetup(page);
+  await page.getByRole("button", { name: "AI stills with FAL (paid, asks first)" }).click();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({
+    hasText: "Make AI stills scene by scene with your FAL key"
+  }).first()).toBeVisible();
+  // Nothing was auto-matched from Pexels behind the answer.
+  await expect(page.getByRole("button", { name: "Edit scene 1" }).locator("img")).toHaveCount(0);
+});
+
+test("a Civitai answer stays references and never auto-fills the storyboard", async ({ page }) => {
+  await page.route("**/api/providers/civitai/credential", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ provider: "civitai", connected: true, hint: "1234" })
+    });
+  });
+  await page.route("**/api/providers/civitai/settings", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        max_nsfw_level: "Soft",
+        allowed_creators: [],
+        min_short_side: 1024,
+        server_max_nsfw_level: "Soft"
+      })
+    });
+  });
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
+  await page.getByRole("button", { name: "Send" }).click();
+  await answerBriefSetup(page);
+  await expect(briefChoiceLabels(page)).toHaveText([
+    "Pexels videos",
+    "Civitai images",
+    "AI stills with FAL (paid, asks first)",
+    "Use my photos"
+  ]);
+  await expect(page.locator(".media-sources-strip .media-source-chip").filter({ hasText: "Civitai" }))
+    .toHaveAttribute("data-state", "connected");
+  await page.getByRole("button", { name: "Civitai images" }).click();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "Civitai images are references" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit scene 1" }).locator("img")).toHaveCount(0);
+});
+
+test("a studio with only own photos is never asked where pictures come from", async ({ page }) => {
+  for (const provider of ["pexels", "fal"]) {
+    await page.route(`**/api/providers/${provider}/credential`, async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ provider, connected: false })
+      });
+    });
+  }
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
+  await page.getByRole("button", { name: "Send" }).click();
+  await answerBriefSetup(page);
+  // A single possible source is not a question, so the chat never asks.
+  await expect(page.getByRole("button", { name: "Pexels videos" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Use my photos", exact: true })).toHaveCount(0);
+  await expect(page.getByText(/use your photos\./).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({
+    hasText: "any other source needs a key in Sources first"
+  })).toBeVisible();
+});
+
 

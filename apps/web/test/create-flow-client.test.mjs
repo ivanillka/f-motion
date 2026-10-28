@@ -16,6 +16,37 @@ test("mediaPrefFromPlan never claims Pexels without a key", () => {
   assert.equal(mediaPrefFromPlan({ media: "own" }, { hasOwn: false, pexelsConnected: true }), "defer");
 });
 
+test("an explicit source answer never claims a disconnected source", () => {
+  const mixed = { media: "mixed" };
+  assert.equal(mediaPrefFromPlan(mixed, { hasOwn: true, pexelsConnected: true, choice: "own" }), "own");
+  assert.equal(mediaPrefFromPlan(mixed, { hasOwn: false, pexelsConnected: true, choice: "own" }), "defer");
+  assert.equal(mediaPrefFromPlan(mixed, { hasOwn: true, pexelsConnected: false, choice: "pexels" }), "own");
+  assert.equal(mediaPrefFromPlan(mixed, { hasOwn: false, pexelsConnected: false, choice: "pexels" }), "defer");
+  assert.equal(mediaPrefFromPlan(mixed, { hasOwn: true, pexelsConnected: true, choice: "mix" }), "mix");
+  assert.equal(mediaPrefFromPlan(mixed, { hasOwn: true, pexelsConnected: false, choice: "mix" }), "own");
+  assert.equal(
+    mediaPrefFromPlan(mixed, { hasOwn: true, pexelsConnected: false, falConnected: true, choice: "mix" }),
+    "mix"
+  );
+  assert.equal(
+    mediaPrefFromPlan({ media: "stock" }, { hasOwn: true, pexelsConnected: false, falConnected: true, choice: "fal" }),
+    "fal"
+  );
+  assert.equal(
+    mediaPrefFromPlan({ media: "stock" }, { hasOwn: true, pexelsConnected: false, falConnected: false, choice: "fal" }),
+    "own"
+  );
+  assert.equal(
+    mediaPrefFromPlan({ media: "stock" }, { hasOwn: false, pexelsConnected: false, choice: "fal" }),
+    "defer"
+  );
+  // Civitai only lends references, so it never becomes the storyboard source.
+  assert.equal(mediaPrefFromPlan({ media: "stock" }, { hasOwn: true, pexelsConnected: true, choice: "civitai" }), "own");
+  assert.equal(mediaPrefFromPlan({ media: "stock" }, { hasOwn: false, pexelsConnected: true, choice: "civitai" }), "defer");
+  // The answer the chat received outranks the guess made from the topic.
+  assert.equal(mediaPrefFromPlan({ media: "own" }, { hasOwn: true, pexelsConnected: true, choice: "pexels" }), "pexels");
+});
+
 test("scenesFromReelCraft drops catalog media ids and reindexes", () => {
   const craft = {
     kind: "reel_storyboard",
