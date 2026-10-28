@@ -18,7 +18,7 @@ import {
   previewMediaShouldLoop,
   nextBriefQuestion,
   parseBriefChat,
-  BRIEF_OPENING,
+  createEntryState,
   DROP_OWN_MEDIA,
   LOOKING_AT_MEDIA,
   MAKE_STORYBOARD_NOW,
@@ -307,6 +307,9 @@ export function App() {
   const mediaLookLock = useRef(false);
   const mediaLookKey = useRef("");
   const storyboardLock = useRef(false);
+  // A made storyboard ends its intake, so nothing is stored again until the next
+  // real message. Without this a reload would reopen the finished chat.
+  const intakeStored = useRef(true);
   briefDraftRef.current = draft;
   briefAskedRef.current = briefAsked;
   const [project, setProject] = useState<ProjectSnapshot>();
@@ -638,8 +641,12 @@ export function App() {
       window.removeEventListener("offline", down);
     };
   }, []);
-  useEffect(() => localStorage.setItem("fengine-draft", draft), [draft]);
   useEffect(() => {
+    if (!intakeStored.current) return;
+    localStorage.setItem("fengine-draft", draft);
+  }, [draft]);
+  useEffect(() => {
+    if (!intakeStored.current) return;
     localStorage.setItem("fengine-brief-chat", JSON.stringify({ messages: briefChat, asked: briefAsked, composer }));
   }, [briefChat, briefAsked, composer]);
   useEffect(() => {
@@ -957,6 +964,7 @@ export function App() {
   function sendBrief(text: string) {
     const trimmed = text.trim();
     if (!trimmed && !pendingFiles.length) return;
+    keepIntake();
     // The first choice after an upload never waits for the remaining questions.
     if (trimmed === MAKE_STORYBOARD_NOW) {
       setComposer("");
@@ -1020,6 +1028,7 @@ export function App() {
           const opened = await attachSpokenVoice(imported);
           setProject(opened);
           localStorage.setItem("fengine-project", opened.id);
+          forgetIntake();
           if (!opened.scenes.length) {
             await buildStoryboard(opened, plan, choice);
           } else {
@@ -1065,6 +1074,8 @@ export function App() {
         animateStills: craft.animateStills === true || wantAnimateStills,
         choice
       });
+      // The storyboard exists now, so this intake is finished for good.
+      forgetIntake();
     } catch (error) {
       const detail = error instanceof ApiResponseError
         ? (typeof error.body.message === "string" ? error.body.message : error.type)
@@ -1338,7 +1349,19 @@ export function App() {
     }
   }
 
-  function startCreate() {
+  /** A made storyboard ends its intake: drop the chat instead of reopening it. */
+  function forgetIntake() {
+    intakeStored.current = false;
+    localStorage.removeItem("fengine-draft");
+    localStorage.removeItem("fengine-brief-chat");
+  }
+
+  /** The first real message starts keeping the intake again. */
+  function keepIntake() {
+    intakeStored.current = true;
+  }
+
+  function startCreate(options: { fresh?: boolean } = {}) {
     importEditLock.current = false;
     importedProjectRef.current = "";
     clearImportedProject(sessionStorage, localStorage);
@@ -1355,31 +1378,28 @@ export function App() {
     setCandidates([]);
     setArchitecture(defaultVideoArchitecture);
     setPendingFiles([]);
-    const stored = parseBriefChat(localStorage.getItem("fengine-brief-chat"));
-    const hasUser = stored.messages.some((message) => message.role === "user");
-    if (!hasUser) {
-      const leftover = stored.composer.trim();
-      if (!leftover) {
-        localStorage.removeItem("fengine-draft");
-        localStorage.removeItem("fengine-brief-chat");
-        briefDraftRef.current = "";
-        setDraft("");
-        setComposer("");
-      } else {
-        setComposer(leftover);
-        briefDraftRef.current = leftover;
-      }
-      setBriefChat([BRIEF_OPENING]);
-      setBriefAsked([]);
-    } else {
-      setBriefChat(stored.messages.length ? stored.messages : [BRIEF_OPENING]);
-      setBriefAsked(stored.asked);
-      setComposer(stored.composer || "");
-      setDraft(localStorage.getItem("fengine-draft") ?? "");
-      briefDraftRef.current = localStorage.getItem("fengine-draft") ?? "";
+    const entry = createEntryState(
+      parseBriefChat(localStorage.getItem("fengine-brief-chat")),
+      { fresh: options.fresh === true, draft: localStorage.getItem("fengine-draft") ?? "" }
+    );
+    if (!entry.keepStored) {
+      localStorage.removeItem("fengine-draft");
+      localStorage.removeItem("fengine-brief-chat");
     }
+    intakeStored.current = entry.keepStored;
+    briefDraftRef.current = entry.conversation;
+    setDraft(entry.conversation);
+    setBriefChat(entry.messages);
+    setBriefAsked(entry.asked);
+    setComposer(entry.composer);
     setStatus("");
     setStep("brief");
+  }
+
+  /** Clearing the conversation is a deliberate reset, so it asks first. */
+  function startOver() {
+    if (!window.confirm("Start over with a new video? This clears this conversation. Your drafts stay.")) return;
+    startCreate({ fresh: true });
   }
 
   function addPendingFiles(list: FileList | File[]) {
@@ -1388,6 +1408,7 @@ export function App() {
       setStatus("Choose JPEG, PNG, WebP, or MP4 files you have permission to use.");
       return;
     }
+    keepIntake();
     setPendingFiles((current) => [...current, ...accepted].slice(0, 8));
     setStatus("");
   }
@@ -3505,7 +3526,13 @@ export function App() {
   // After an upload the main action is always one tap away, even before the
   // next question arrives; with a question on screen that choice row owns it.
   const lastBriefMessage = briefChat[briefChat.length - 1];
-  const offerMakeNow = step === "brief" && pendingFiles.length > 0 && !lastBriefMessage?.choices;
+  // The ready line always keeps its next action on screen, so a chat that came
+  // back from storage or a storyboard that failed can never end in a dead end.
+  const briefReady = Boolean(lastBriefMessage && lastBriefMessage.role === "assistant"
+    && isBriefReadyMessage(lastBriefMessage.text));
+  const briefStarted = briefChat.some((message) => message.role === "user");
+  const offerMakeNow = step === "brief" && pendingFiles.length > 0 && !lastBriefMessage?.choices && !briefReady;
+  const offerStoryboard = step === "brief" && briefReady && !status.startsWith("Your storyboard could not");
 
   function onSourceChip(id: SourceId) {
     if (id === "own") {
@@ -3681,7 +3708,7 @@ export function App() {
         </button>
         <button className="secondary" onClick={() => setStep("settings")}>Choose video sources</button>
       </aside>
-      <button onClick={startCreate}>Create new video</button>
+      <button onClick={() => startCreate({ fresh: true })}>Create new video</button>
       <button type="button" className="secondary" onClick={() => setTemplatesOpen(true)}>Templates</button>
       {draftsLoading && <p role="status">Loading drafts…</p>}
       {!draftsLoading && drafts.length === 0 && <div className="empty-drafts">
@@ -3746,6 +3773,9 @@ export function App() {
         />
         Mix in Pexels videos, images made with AI, and diagrams
       </label>
+      {briefStarted && <div className="brief-head">
+        <button type="button" className="secondary" disabled={busy || mediaLooking} onClick={startOver}>Start over</button>
+      </div>}
       <div ref={briefChatPane} className="brief-chat" aria-label="Create chat" aria-live="polite" aria-busy={mediaLooking || undefined}>
         {briefChat.map((message, index) =>
           <div key={`${message.role}:${index}:${message.text.slice(0, 24)}`} className={`brief-chat-msg is-${message.role}`}>
@@ -3784,7 +3814,10 @@ export function App() {
           maxLength={500}
           rows={1}
           placeholder="What do you want to make?"
-          onChange={(event) => setComposer(event.target.value)}
+          onChange={(event) => {
+            keepIntake();
+            setComposer(event.target.value);
+          }}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
@@ -3796,6 +3829,11 @@ export function App() {
         {offerMakeNow && (
           <button type="button" className="brief-make-now" disabled={busy || mediaLooking} onClick={() => sendBrief(MAKE_STORYBOARD_NOW)}>
             Make my storyboard now
+          </button>
+        )}
+        {offerStoryboard && (
+          <button type="button" className="brief-make-now" disabled={busy || mediaLooking} onClick={() => void continueToStoryboard()}>
+            Make my storyboard
           </button>
         )}
         {status.startsWith("Your storyboard could not") && (
@@ -4564,7 +4602,7 @@ export function App() {
       {downloadUrl && <button className="secondary" onClick={() => setStep("render")}>{renderKind === "final" ? "View final export" : "View accurate preview"}{previewRevision !== project.revision ? " · older" : ""}</button>}
       <button className="secondary" disabled={busy || !project.scenes.length} onClick={() => openSaveTemplate()}>Save as template</button>
       <button className="secondary" disabled={busy} onClick={() => setTemplatesOpen(true)}>Templates</button>
-      <button className="secondary" onClick={() => setStep("brief")}>Start a different description</button>
+      <button className="secondary" onClick={() => startCreate({ fresh: true })}>Start a different description</button>
       <button className="secondary" onClick={() => setStep("drafts")}>Back to drafts</button>
       </div>
       {saveTemplateOpen && project && <dialog open aria-labelledby="save-template-title">

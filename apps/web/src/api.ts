@@ -604,6 +604,47 @@ export function parseBriefChat(raw: string | null): {
   }
 }
 
+/** What the Create screen opens with, before any React state is touched. */
+export interface BriefEntry {
+  messages: BriefChatMessage[];
+  asked: BriefQuestionId[];
+  composer: string;
+  /** The brief conversation that matches the chat on screen. */
+  conversation: string;
+  /** False when the stored intake must be dropped instead of reopened. */
+  keepStored: boolean;
+}
+
+function emptyBriefEntry(): BriefEntry {
+  return { messages: [BRIEF_OPENING], asked: [], composer: "", conversation: "", keepStored: false };
+}
+
+/**
+ * Decides what Create opens with. A new video always starts clean, while an
+ * unfinished chat comes back with the answer it was still waiting for. A line
+ * someone typed but never sent is offered again instead of being lost.
+ */
+export function createEntryState(
+  stored: { messages: BriefChatMessage[]; asked: BriefQuestionId[]; composer: string },
+  options: { fresh?: boolean; draft?: string } = {}
+): BriefEntry {
+  if (options.fresh) return emptyBriefEntry();
+  const started = stored.messages.some((message) => message.role === "user");
+  if (!started) {
+    const leftover = stored.composer.trim();
+    return leftover
+      ? { ...emptyBriefEntry(), composer: leftover, conversation: leftover, keepStored: true }
+      : emptyBriefEntry();
+  }
+  return {
+    messages: stored.messages,
+    asked: stored.asked,
+    composer: stored.composer,
+    conversation: options.draft ?? "",
+    keepStored: true
+  };
+}
+
 /** Uses the inspected clip length while keeping it inside the engine's scene bounds. */
 export function sceneDurationForMedia(detectedDurationMs: unknown, fallbackMs: number): number {
   if (typeof detectedDurationMs !== "number" || !Number.isFinite(detectedDurationMs)) return fallbackMs;

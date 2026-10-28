@@ -1445,6 +1445,15 @@ label.mix-choice input {
   overflow: hidden;
   clip: rect(0 0 0 0);
 }
+/* Starting over clears the conversation below it, so the control sits above. */
+.brief-head {
+  display: flex;
+  justify-content: flex-end;
+}
+.brief-head button {
+  padding: 0 14px;
+  font-size: var(--text-support);
+}
 .brief-chat {
   display: grid;
   gap: 10px;

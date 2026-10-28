@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, briefNeedsMediaLook, briefPurposeFromChat, briefQuestionFor, briefReadyMessage, briefShouldGlance, briefWhereFromChat, buildStoryboardDraft, conceptIdForArchitecture, isBriefAnswerLine, mediaNotesFromGlances, newCommandId, nextBriefQuestion, parseBriefChat, recommendVideoArchitecture, sceneDurationForMedia, sampleCanvasStats, toneFromSample } from "../src/api.ts";
+import { ApiClient, ApiResponseError, BRIEF_OPENING, briefNeedsMediaLook, briefPurposeFromChat, briefQuestionFor, briefReadyMessage, briefShouldGlance, briefWhereFromChat, buildStoryboardDraft, conceptIdForArchitecture, createEntryState, isBriefAnswerLine, mediaNotesFromGlances, newCommandId, nextBriefQuestion, parseBriefChat, recommendVideoArchitecture, sceneDurationForMedia, sampleCanvasStats, toneFromSample } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
@@ -108,6 +108,42 @@ test("create chat asks only missing brief questions, at most four", () => {
   }));
   assert.equal(stored.composer, "mystery murder in san francisco");
   assert.deepEqual(stored.asked, ["audience"]);
+});
+
+test("create opens a fresh intake and only resumes what was started", () => {
+  const chat = [
+    { role: "assistant", text: "What do you want to make?" },
+    { role: "user", text: "mystery murder in san francisco" }
+  ];
+  const stored = { messages: chat, asked: ["audience"], composer: "About 30 seconds" };
+  // A new video never carries the last chat, even when that chat is unfinished.
+  assert.deepEqual(createEntryState(stored, { fresh: true, draft: "mystery murder in san francisco" }), {
+    messages: [BRIEF_OPENING],
+    asked: [],
+    composer: "",
+    conversation: "",
+    keepStored: false
+  });
+  // The sidebar Create entry resumes the chat and the brief behind it.
+  const resumed = createEntryState(stored, { draft: "mystery murder in san francisco\nGeneral viewers" });
+  assert.equal(resumed.messages, chat);
+  assert.deepEqual(resumed.asked, ["audience"]);
+  assert.equal(resumed.composer, "About 30 seconds");
+  assert.equal(resumed.conversation, "mystery murder in san francisco\nGeneral viewers");
+  assert.equal(resumed.keepStored, true);
+  // A line typed but never sent is offered again instead of being lost.
+  const typed = createEntryState({ messages: [BRIEF_OPENING], asked: [], composer: "  launch teaser  " });
+  assert.deepEqual(typed, {
+    messages: [BRIEF_OPENING],
+    asked: [],
+    composer: "launch teaser",
+    conversation: "launch teaser",
+    keepStored: true
+  });
+  assert.deepEqual(
+    createEntryState({ messages: [BRIEF_OPENING], asked: [], composer: "launch teaser" }, { fresh: true }),
+    { messages: [BRIEF_OPENING], asked: [], composer: "", conversation: "", keepStored: false }
+  );
 });
 
 test("own-media glance notes adapt the next question without a VLM", () => {

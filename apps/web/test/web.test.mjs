@@ -141,7 +141,8 @@ test("required recovery, accessibility, and preview language is present", async 
   assert.doesNotMatch(source, /Plan the video/);
   assert.doesNotMatch(source, /More settings/);
   assert.doesNotMatch(source, /architecture-summary/);
-  assert.match(source, /BRIEF_OPENING/);
+  // Create opens on createEntryState, which always starts with the opening line.
+  assert.match(source, /createEntryState\(/);
   assert.match(source, /LOOKING_AT_MEDIA/);
   assert.match(source, /DROP_OWN_MEDIA/);
   assert.match(source, /glanceLocalMedia/);
