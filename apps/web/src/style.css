@@ -536,6 +536,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .photos-to-reel-fields label { display: grid; gap: 4px; font-size: var(--text-support); }
 .photos-to-reel-fields label:first-child { grid-column: 1 / -1; }
 .photos-to-reel-fields input { width: 100%; min-height: 36px; }
+.photos-to-reel-picked { color: var(--muted); font-size: var(--text-support); }
 .photos-to-reel-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 @media (max-width: 720px) {
   .photos-to-reel-fields { grid-template-columns: 1fr 1fr; }
