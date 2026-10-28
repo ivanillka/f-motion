@@ -109,6 +109,11 @@ import {
   type SourceId,
   type VisualSourceId
 } from "./media-sources";
+import {
+  VOICE_RECORD_UNSUPPORTED_MESSAGE,
+  voiceRecordErrorMessage,
+  voiceRecordSupported
+} from "./voice-record";
 import "./style.css";
 
 type Step = "sign-in" | "drafts" | "brief" | "media" | "editor" | "render" | "settings";
@@ -1754,6 +1759,13 @@ export function App() {
   async function startVoiceRecord() {
     if (!project || recording || busy) return;
     if (livePlaying) pauseLivePreview();
+    // No mediaDevices (plain http) or no MediaRecorder (old browser) means no
+    // prompt can ever appear, so say that instead of blaming a blocked mic.
+    if (!voiceRecordSupported()) {
+      releaseRecorder();
+      setStatus(VOICE_RECORD_UNSUPPORTED_MESSAGE);
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recordStream.current = stream;
@@ -1770,9 +1782,11 @@ export function App() {
       setRecording(true);
       setVoiceOpen(true);
       setStatus("Recording voice-over…");
-    } catch {
+    } catch (error) {
+      // The page policy, the site setting, a missing device, and a browser
+      // without MediaRecorder all land here, and each needs its own fix.
       releaseRecorder();
-      setStatus("Microphone is blocked. Upload a WAV, MP3, or M4A instead.");
+      setStatus(voiceRecordErrorMessage(error));
     }
   }
 

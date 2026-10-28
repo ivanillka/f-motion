@@ -8,6 +8,7 @@ studio under **Settings → What’s new**. Product version lives in root
 
 ### Studio
 
+- **Record voice-over** works in the browser again: the shipped `Permissions-Policy` allows the microphone for the studio only (`microphone=(self)`) in `apps/web/public/_headers`, `deploy/hetzner/nginx.conf`, and `deploy/vps/nginx.conf`, and a blocked, missing, or unsupported microphone now says what to do. Camera, location, and payment stay off. Ship together with Pages, the API, and the VPS in one release.
 - Fallback storyboards now write plain sentence captions such as **My summer trip.** instead of splitting the brief into fragments, and user-facing studio copy no longer uses em dashes. Ship together with Pages, the API, and the VPS in one release.
 - Create speaks plain language end to end: no reel, stock, footage, or package jargon; captions read as short plain sentences; and **Make my storyboard now** is the first action after an upload, so nobody has to answer every question first. Scene cards show the caption, or a short **Add a short caption** hint, instead of the internal image prompt. The export button reads **Export video**, and messages point at Sources, not a strip. Ship together with Pages, the API, and the VPS in one release.
 - Scene editor is split into four tabs: Style, Timing, Text, and Media, showing at most four controls at once while keeping full keyboard and screen reader access. Edits persist across tab switches. Ship together with Pages, the API, and the VPS in one release.
