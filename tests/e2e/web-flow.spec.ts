@@ -350,7 +350,9 @@ test("upload journey, natural conflict recovery, render, and download", async ({
   await page.getByLabel("Message F-Motion").fill("Launch a product for small teams");
   await page.reload();
   await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
-  await page.getByRole("button", { name: "Create new video" }).click();
+  // The unsent line stays with the sidebar Create entry, which resumes the
+  // unfinished intake; a new video from Drafts always starts clean.
+  await page.locator(".app-dock").getByRole("button", { name: "Create" }).click();
   await expect(page.getByLabel("Message F-Motion")).toHaveValue("Launch a product for small teams");
   await briefWithOwnStill(page, "Launch a product for small teams");
   await createStoryboard(page);
@@ -1215,6 +1217,92 @@ test("a blocked microphone points at site settings instead of a dead end", async
   })).toHaveCount(0);
   // The failed start releases the recorder, so the button stays on Record.
   await expect(page.getByRole("button", { name: "Record voice-over" })).toBeVisible();
+});
+
+for (const [width, height] of [[1440, 900], [390, 844]] as const) {
+  test(`Create new video opens a clean intake at ${width}px`, async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.route("https://e2e-storage.invalid/**", (route) => route.fulfill({ status: 200, body: "" }));
+    await page.setViewportSize({ width, height });
+    await signIn(page);
+    await page.getByRole("button", { name: "Create new video" }).click();
+    await describeVideo(page, "A calm studio introduction");
+    await page.getByRole("button", { name: "Back to drafts" }).click();
+    await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
+    await expect(page.getByRole("button").filter({ hasText: "A calm studio introduction" }).first()).toBeVisible();
+
+    // The made storyboard ends its intake, so the next new video starts clean
+    // instead of reopening a chat that already became a storyboard.
+    await page.getByRole("button", { name: "Create new video" }).click();
+    await expect(page.getByLabel("Create chat")).toContainText("What do you want to make?");
+    await expect(page.locator(".brief-chat-msg")).toHaveCount(1);
+    await expect(page.locator(".brief-chat-msg.is-user")).toHaveCount(0);
+    await expect(page.getByLabel("Message F-Motion")).toHaveValue("");
+    await expect(page.getByRole("button", { name: "Start over", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Make my storyboard", exact: true })).toHaveCount(0);
+  });
+}
+
+test("a storyboard that failed keeps its ready line usable after a reload", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("https://e2e-storage.invalid/**", (route) => route.fulfill({ status: 200, body: "" }));
+  await page.route("**/api/projects", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ type: "unavailable", message: "Studio is busy" })
+    });
+  });
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
+  await page.getByRole("button", { name: "Send" }).click();
+  await answerBriefSetup(page);
+  await page.getByRole("button", { name: "Pexels videos", exact: true }).click();
+  await expect(page.getByRole("status").filter({
+    hasText: "Your storyboard could not be made"
+  })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Try again", exact: true })).toBeVisible();
+
+  // The chat never resumes as a dead end: the ready line keeps its action.
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
+  await page.locator(".app-dock").getByRole("button", { name: "Create" }).click();
+  await expect(page.getByLabel("Create chat")).toContainText("mystery murder in san francisco");
+  const make = page.getByRole("button", { name: "Make my storyboard", exact: true });
+  await expect(make).toBeEnabled();
+  await page.unroute("**/api/projects");
+  await make.click();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 60_000 });
+});
+
+test("Start over asks before it clears the create chat", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  const chat = page.getByLabel("Create chat");
+  const startOver = page.getByRole("button", { name: "Start over", exact: true });
+  await expect(startOver).toHaveCount(0);
+  await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(chat).toContainText("mystery murder in san francisco");
+  await expect(startOver).toBeVisible();
+
+  // Dismissing the confirm leaves the conversation exactly as it was.
+  page.once("dialog", (dialog) => void dialog.dismiss());
+  await startOver.click();
+  await expect(chat).toContainText("mystery murder in san francisco");
+  await expect(page.locator(".brief-chat-msg.is-user")).toHaveCount(1);
+
+  page.once("dialog", (dialog) => void dialog.accept());
+  await startOver.click();
+  await expect(page.locator(".brief-chat-msg.is-user")).toHaveCount(0);
+  await expect(page.locator(".brief-chat-msg")).toHaveCount(1);
+  await expect(chat).toContainText("What do you want to make?");
+  await expect(page.getByLabel("Message F-Motion")).toHaveValue("");
+  await expect(startOver).toHaveCount(0);
 });
 
 
