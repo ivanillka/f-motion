@@ -128,6 +128,19 @@ export interface ProjectSummary {
   brief: ProjectSnapshot["brief"];
 }
 
+/**
+ * Command responses can land out of order, so a late snapshot from an older
+ * revision of the same project must never replace the newer one on screen.
+ */
+export function newerSnapshot(
+  current: ProjectSnapshot | undefined,
+  incoming: ProjectSnapshot
+): ProjectSnapshot {
+  return current && current.id === incoming.id && current.revision > incoming.revision
+    ? current
+    : incoming;
+}
+
 export interface SceneMediaView {
   id: string;
   state: "admitted" | "inspecting" | "ready" | "quarantined" | "rejected";

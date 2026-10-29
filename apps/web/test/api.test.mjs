@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiResponseError, BRIEF_OPENING, briefNeedsMediaLook, briefPurposeFromChat, briefQuestionFor, briefReadyMessage, briefShouldGlance, briefWhereFromChat, buildStoryboardDraft, conceptIdForArchitecture, createEntryState, isBriefAnswerLine, mediaNotesFromGlances, newCommandId, nextBriefQuestion, parseBriefChat, recommendVideoArchitecture, sceneDurationForMedia, sampleCanvasStats, toneFromSample } from "../src/api.ts";
+import { ApiClient, ApiResponseError, BRIEF_OPENING, briefNeedsMediaLook, briefPurposeFromChat, briefQuestionFor, briefReadyMessage, briefShouldGlance, briefWhereFromChat, buildStoryboardDraft, conceptIdForArchitecture, createEntryState, isBriefAnswerLine, mediaNotesFromGlances, newCommandId, newerSnapshot, nextBriefQuestion, parseBriefChat, recommendVideoArchitecture, sceneDurationForMedia, sampleCanvasStats, toneFromSample } from "../src/api.ts";
 
 test("inspected video duration becomes a bounded scene duration", () => {
   assert.equal(sceneDurationForMedia(12_345.4, 3000), 12_345);
@@ -476,4 +476,16 @@ test("deleteProject hard-deletes via DELETE and returns storage cleanup result",
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("a late response from an older revision never replaces a newer project", () => {
+  const newer = { id: "p1", revision: 5, brief: { soundtrack: null }, scenes: [] };
+  const older = { id: "p1", revision: 4, brief: { soundtrack: null }, scenes: [] };
+  assert.equal(newerSnapshot(newer, older), newer);
+  assert.equal(newerSnapshot(older, newer), newer);
+  const same = { ...newer, brief: { soundtrack: { kind: "stock", stock_id: "pulse", bpm: 101, offset_ms: 0, level: 0.6 } } };
+  assert.equal(newerSnapshot(newer, same), same);
+  const otherProject = { ...older, id: "p2" };
+  assert.equal(newerSnapshot(newer, otherProject), otherProject);
+  assert.equal(newerSnapshot(undefined, otherProject), otherProject);
 });

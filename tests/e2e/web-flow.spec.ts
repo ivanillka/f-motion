@@ -536,6 +536,32 @@ async function projectSoundtrack(page: Page): Promise<string> {
   });
 }
 
+/** Writes a music bed straight to the API, the way another tab would. */
+async function setServerSoundtrack(
+  page: Page,
+  soundtrack: { kind: "stock"; stock_id: string; bpm: number; offset_ms: number; level: number } | null
+): Promise<void> {
+  await page.evaluate(async (next) => {
+    const projectId = localStorage.getItem("fengine-project");
+    if (!projectId) throw new Error("project id missing");
+    const found = await fetch(`/api/projects/${projectId}`);
+    if (!found.ok) throw new Error(`project unavailable: ${found.status}`);
+    const { project } = await found.json() as { project: { revision: number } };
+    const saved = await fetch(`/api/projects/${projectId}/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command_id: crypto.randomUUID(),
+        base_revision: project.revision,
+        client_timestamp: new Date().toISOString(),
+        kind: "update_soundtrack",
+        payload: { soundtrack: next }
+      })
+    });
+    if (!saved.ok) throw new Error(`soundtrack update failed: ${saved.status}`);
+  }, soundtrack);
+}
+
 test("picking a stock bed writes its tempo and a typed tempo stays put", async ({ page }) => {
   await page.route("https://e2e-storage.invalid/**", (route) =>
     route.fulfill({ status: 200, body: "" }));
@@ -588,6 +614,83 @@ test("picking a stock bed writes its tempo and a typed tempo stays put", async (
   await dockToggle.click();
   await expect(tempo).toHaveValue("110");
   await expect.poll(() => projectSoundtrack(page)).toBe("stock:air:110");
+});
+
+test("Remove bed wins over a pending tempo edit instead of asking for a conflict", async ({ page }) => {
+  await page.route("https://e2e-storage.invalid/**", (route) =>
+    route.fulfill({ status: 200, body: "" }));
+  await page.route("https://e2e-images.invalid/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="90" height="160"><rect width="90" height="160" fill="#333"/></svg>'
+    }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await describeVideo(page, "A calm studio introduction");
+  await createStoryboard(page);
+
+  const dockToggle = page.locator(".music-dock > summary").last();
+  const beds = page.getByRole("group", { name: "Stock music beds" });
+  const tempo = page.getByLabel("BPM", { exact: true });
+  await dockToggle.click();
+  await beds.getByRole("button", { name: /^Banger/ }).click();
+  await expect.poll(() => projectSoundtrack(page)).toBe("stock:banger:170");
+
+  await dockToggle.click();
+  // Typing a tempo and reaching straight for Remove bed used to save the bed
+  // and then the removal from the same base revision, so one of them 409ed.
+  await tempo.fill("150");
+  await page.getByRole("button", { name: "Remove bed" }).click();
+  await expect(page.getByRole("heading", { name: "Newer changes exist" })).toHaveCount(0);
+  await expect(dockToggle).toHaveText("Add music");
+  await expect.poll(() => projectSoundtrack(page)).toBe("none");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
+  await page.getByRole("button").filter({ hasText: "A calm studio introduction" }).first().click();
+  await expect(dockToggle).toHaveText("Add music");
+  await expect(page.getByLabel("BPM", { exact: true })).toHaveCount(0);
+});
+
+test("Reload latest reads the newest music bed instead of the 409 snapshot", async ({ page }) => {
+  await page.route("https://e2e-storage.invalid/**", (route) =>
+    route.fulfill({ status: 200, body: "" }));
+  await page.route("https://e2e-images.invalid/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="90" height="160"><rect width="90" height="160" fill="#333"/></svg>'
+    }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await describeVideo(page, "A calm studio introduction");
+  await createStoryboard(page);
+
+  const dockToggle = page.locator(".music-dock > summary").last();
+  const beds = page.getByRole("group", { name: "Stock music beds" });
+  const tempo = page.getByLabel("BPM", { exact: true });
+  await dockToggle.click();
+  await beds.getByRole("button", { name: /^Banger/ }).click();
+  await expect.poll(() => projectSoundtrack(page)).toBe("stock:banger:170");
+
+  // Another tab picks Dreamy Flashback, then this tab types a tempo on the old
+  // base revision and really conflicts.
+  await setServerSoundtrack(page, { kind: "stock", stock_id: "air", bpm: 110, offset_ms: 0, level: 0.35 });
+  await dockToggle.click();
+  await tempo.fill("150");
+  await tempo.press("Tab");
+  await expect(page.getByRole("heading", { name: "Newer changes exist" })).toBeVisible();
+
+  // The bed moved again after the 409 was written, so Reload latest has to
+  // fetch the project rather than trust the snapshot inside the error.
+  await setServerSoundtrack(page, { kind: "stock", stock_id: "pulse", bpm: 101, offset_ms: 0, level: 0.6 });
+  await page.getByRole("button", { name: "Reload latest" }).click();
+  await expect(page.getByRole("heading", { name: "Newer changes exist" })).toHaveCount(0);
+  await expect(tempo).toHaveValue("101");
+  await expect(page.locator("label[for='music-level']")).toContainText("Level · 60%");
+  await expect(beds.getByRole("button", { name: /^Funkorama/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(beds.getByRole("button", { name: /^Banger/ })).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(() => projectSoundtrack(page)).toBe("stock:pulse:101");
 });
 
 test("the phone dock leaves the Create composer and studio footers reachable", async ({ page }) => {
@@ -1304,5 +1407,4 @@ test("Start over asks before it clears the create chat", async ({ page }) => {
   await expect(page.getByLabel("Message F-Motion")).toHaveValue("");
   await expect(startOver).toHaveCount(0);
 });
-
 

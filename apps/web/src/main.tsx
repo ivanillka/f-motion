@@ -66,6 +66,7 @@ import {
   parseBeatPattern,
   photosToReelPlan,
   photosToReelScenes,
+  newerSnapshot,
   type ProjectSnapshot,
   type ProjectSummary,
   type Scene,
@@ -313,6 +314,19 @@ export function App() {
   briefDraftRef.current = draft;
   briefAskedRef.current = briefAsked;
   const [project, setProject] = useState<ProjectSnapshot>();
+  // Saves need the newest revision before React re-renders, and a late response
+  // must not roll the project back.
+  const projectRef = useRef<ProjectSnapshot | undefined>(undefined);
+  projectRef.current = project;
+
+  /** Applies a server snapshot unless this project already moved past it. */
+  function applyProject(snapshot: ProjectSnapshot) {
+    const next = newerSnapshot(projectRef.current, snapshot);
+    projectRef.current = next;
+    setProject(next);
+    return next;
+  }
+
   const [templates, setTemplates] = useState<StoryboardTemplate[]>(() => readStoryboardTemplates());
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
@@ -359,6 +373,13 @@ export function App() {
   const [musicQuery, setMusicQuery] = useState("trendy");
   const [musicOpen, setMusicOpen] = useState(false);
   const [bpmDraft, setBpmDraft] = useState("");
+  const [levelDraft, setLevelDraft] = useState(0.8);
+  // Music saves run one at a time and only the newest one is sent, so a tempo
+  // blur and a Remove bed click never carry the same base revision.
+  const soundtrackSeq = useRef(0);
+  const soundtrackWanted = useRef<{ seq: number; projectId: string; soundtrack: Soundtrack | null } | undefined>(undefined);
+  const soundtrackQueue = useRef<Promise<boolean>>(Promise.resolve(true));
+
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [previewingId, setPreviewingId] = useState<number>();
@@ -1110,7 +1131,7 @@ export function App() {
     });
     updated = await attachSpokenVoice(updated);
     setSceneMedia({});
-    setProject(updated);
+    applyProject(updated);
     setActiveSceneId(updated.scenes[0]?.id ?? "");
     setDraft(updated.brief.purpose);
     if (updated.brief.architecture) setArchitecture(updated.brief.architecture);
@@ -1236,7 +1257,7 @@ export function App() {
       });
     }
     current = await attachSpokenVoice(current);
-    setProject(current);
+    applyProject(current);
     setActiveSceneId(current.scenes[0]?.id ?? "");
     if (current.brief.voiceover?.media_id) {
       try {
@@ -1429,7 +1450,7 @@ export function App() {
     setStatus("Saving…");
     try {
       const updated = await api.command(project.id, project.revision, "update_scene", { scene: next });
-      setProject(updated);
+      applyProject(updated);
       setStatus("✓ All changes saved");
     } catch (error) {
       if (error instanceof ApiResponseError && error.status === 409) {
@@ -1444,23 +1465,59 @@ export function App() {
   }
 
   async function saveSoundtrack(soundtrack: Soundtrack | null) {
+    const project = projectRef.current;
     if (!project) return false;
+    const seq = ++soundtrackSeq.current;
+    soundtrackWanted.current = { seq, projectId: project.id, soundtrack };
+    const save = soundtrackQueue.current.then(() => drainSoundtrackSave(seq));
+    soundtrackQueue.current = save;
+    return save;
+  }
+
+  /** Sends the newest music change at the newest revision, dropping stale ones. */
+  async function drainSoundtrackSave(seq: number): Promise<boolean> {
+    const wanted = soundtrackWanted.current;
+    if (!wanted || wanted.seq !== seq) return true;
+    const project = projectRef.current;
+    if (!project || project.id !== wanted.projectId) return true;
     setStatus("Saving…");
     try {
-      const updated = await api.command(project.id, project.revision, "update_soundtrack", { soundtrack });
-      setProject(updated);
+      const updated = await api.command(project.id, project.revision, "update_soundtrack", {
+        soundtrack: wanted.soundtrack
+      });
+      applyProject(updated);
       setStatus("✓ All changes saved");
       return true;
     } catch (error) {
       if (error instanceof ApiResponseError && error.status === 409) {
+        // A newer music change is already queued, so this stale failure is not
+        // the user's problem to resolve.
+        if (wanted.seq !== soundtrackSeq.current) return true;
         openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
           operation: "music bed"
         });
         return false;
       }
+      if (wanted.seq !== soundtrackSeq.current) return true;
       setStatus("Music bed could not be saved.");
       return false;
     }
+  }
+
+  /** Reloading a conflict reads the project again; the 409 snapshot can be older. */
+  async function reloadLatest() {
+    if (!conflict) return;
+    let latest = conflict;
+    try {
+      latest = (await api.getProject(conflict.id)).project;
+    } catch {
+      // The 409 snapshot is still newer than the base revision that failed.
+    }
+    const applied = applyProject(latest);
+    setActiveSceneId(applied.scenes.some(({ id }) => id === activeSceneId) ? activeSceneId : (applied.scenes[0]?.id ?? ""));
+    setBpmDraft(applied.brief.soundtrack ? String(clampBpm(applied.brief.soundtrack.bpm)) : "");
+    setLevelDraft(applied.brief.soundtrack?.level ?? 0.8);
+    dismissConflict();
   }
 
   function spokenVoiceFailure(error: unknown): string {
@@ -1489,7 +1546,7 @@ export function App() {
     setStatus("Saving…");
     try {
       const updated = await api.command(project.id, project.revision, "update_voiceover", { voiceover });
-      setProject(updated);
+      applyProject(updated);
       setStatus("✓ All changes saved");
       return true;
     } catch (error) {
@@ -1509,7 +1566,7 @@ export function App() {
     setStatus("Saving…");
     try {
       const updated = await api.command(project.id, project.revision, "update_reel", patch);
-      setProject(updated);
+      applyProject(updated);
       setStatus("✓ All changes saved");
       return true;
     } catch (error) {
@@ -1538,7 +1595,7 @@ export function App() {
           scene: { ...scene, duration_ms }
         });
       }
-      setProject(current);
+      applyProject(current);
       setStatus("✓ Scenes snapped to the beat");
     } catch (error) {
       if (error instanceof ApiResponseError && error.status === 409) {
@@ -1625,7 +1682,7 @@ export function App() {
       if (!current.brief.brand_mark) {
         current = await api.command(current.id, current.revision, "update_reel", { brand_mark: true });
       }
-      setProject(current);
+      applyProject(current);
       setPhotosToReelOpen(false);
       for (const [index, file] of files.entries()) {
         const fitted = await fitPhotoForUpload(file);
@@ -1867,7 +1924,7 @@ export function App() {
               media_id: assetId
             }
           });
-          setProject(updated);
+          applyProject(updated);
           setSceneMedia((current) => ({ ...current, [media.id]: media }));
           setSceneProgress((current) => ({ ...current, [intendedSceneId]: "ready" }));
           return true;
@@ -1930,7 +1987,7 @@ export function App() {
     if (!project) return;
     try {
       const updated = await api.command(project.id, project.revision, "reorder_scene", { scene_id: sceneId, to });
-      setProject(updated);
+      applyProject(updated);
       setStatus("✓ All changes saved");
     } catch (error) {
       if (error instanceof ApiResponseError && error.status === 409) {
@@ -1957,7 +2014,7 @@ export function App() {
     };
     try {
       const updated = await api.command(project.id, project.revision, "add_scene", { scene, at: activeIndex + 1 });
-      setProject(updated);
+      applyProject(updated);
       setActiveSceneId(scene.id);
       setStatus("Scene added.");
     } catch (error) {
@@ -1972,7 +2029,7 @@ export function App() {
     const index = project.scenes.findIndex(({ id }) => id === sceneId);
     try {
       const updated = await api.command(project.id, project.revision, "remove_scene", { scene_id: sceneId });
-      setProject(updated);
+      applyProject(updated);
       if (activeSceneId === sceneId) setActiveSceneId(updated.scenes[Math.min(index, updated.scenes.length - 1)]?.id ?? "");
       setStatus("Scene removed.");
     } catch (error) {
@@ -2221,7 +2278,7 @@ export function App() {
       });
       updated = await api.command(updated.id, updated.revision, "replace_storyboard", { scenes });
       setSceneMedia({});
-      setProject(updated);
+      applyProject(updated);
       setActiveSceneId(updated.scenes[0]?.id ?? "");
       setDraft(updated.brief.purpose);
       if (updated.brief.architecture) setArchitecture(updated.brief.architecture);
@@ -2863,7 +2920,7 @@ export function App() {
           media_id: media.id
         }
       });
-      setProject(updated);
+      applyProject(updated);
       setSceneMedia((current) => ({ ...current, [media.id]: media }));
       setSceneProgress((current) => ({ ...current, [scene.id]: "ready" }));
       localStorage.removeItem(falJobStorageKey(project.id, scene.id));
@@ -3063,7 +3120,7 @@ export function App() {
       const updated = await api.command(project.id, project.revision, "update_scene", {
         scene: { ...scene, media_id: media.id }
       });
-      setProject(updated);
+      applyProject(updated);
       setSceneMedia((current) => ({ ...current, [media.id]: media }));
       setSceneProgress((current) => ({ ...current, [scene.id]: "ready" }));
       localStorage.removeItem(falVideoStorageKey(project.id, scene.id));
@@ -3220,15 +3277,21 @@ export function App() {
     : soundtrack.kind === "stock"
       ? (selectedStockBed?.title ?? "Music bed")
       : soundtrackMedia?.attribution?.title ?? "Uploaded music";
-  const bpmSuggestion = soundtrack
-    ? suggestedStockBed(clampBpm(soundtrack.bpm))
-    : undefined;
+  // The suggestion follows the tempo in the box, which is the tempo the next
+  // blur saves; a cleared box falls back to the saved project tempo.
+  const typedBpm = bpmDraft.trim() === "" ? undefined : clampBpm(Number(bpmDraft));
+  const suggestionBpm = soundtrack ? typedBpm ?? clampBpm(soundtrack.bpm) : undefined;
+  const bpmSuggestion = suggestionBpm === undefined ? undefined : suggestedStockBed(suggestionBpm);
   // The BPM box follows the project tempo, including the tempo a bed pick just
   // wrote. A hand typed value stays in the box until the next bed pick or until
   // the saved project tempo catches up with it.
   useEffect(() => {
     setBpmDraft(soundtrack ? String(clampBpm(soundtrack.bpm)) : "");
   }, [project?.id, soundtrack?.kind, soundtrack?.stock_id, soundtrack?.bpm]);
+  // The level slider is controlled so a reload or a newer snapshot moves it too.
+  useEffect(() => {
+    setLevelDraft(soundtrack?.level ?? 0.8);
+  }, [project?.id, soundtrack?.kind, soundtrack?.stock_id, soundtrack?.media_id, soundtrack?.level]);
   const voiceover = project?.brief.voiceover;
   const voiceoverUrl = voiceover?.media_id ? scenePreviewUrl(sceneMedia[voiceover.media_id]) : undefined;
   const spokenScriptKey = project ? spokenMixKey(project.scenes) : "";
@@ -4316,7 +4379,7 @@ export function App() {
                         rel="noreferrer"
                       >{bed.license}</a>
                       {suggested ? (
-                        <span className="music-bed-suggest">Suggested for {clampBpm(soundtrack!.bpm)} BPM</span>
+                        <span className="music-bed-suggest">Suggested for {suggestionBpm} BPM</span>
                       ) : null}
                     </li>
                   );
@@ -4354,13 +4417,17 @@ export function App() {
                       onBlur={(event) => {
                         const bpm = clampBpm(event.currentTarget.valueAsNumber);
                         setBpmDraft(String(bpm));
-                        void saveSoundtrack({ ...soundtrack, bpm });
+                        if (bpm !== clampBpm(soundtrack.bpm)) void saveSoundtrack({ ...soundtrack, bpm });
                       }} />
                   </label>
-                  <label htmlFor="music-level">Level · {Math.round(soundtrack.level * 100)}%
-                    <input id="music-level" type="range" min="0" max="1" step="0.05" defaultValue={soundtrack.level}
+                  <label htmlFor="music-level">Level · {Math.round(levelDraft * 100)}%
+                    <input id="music-level" type="range" min="0" max="1" step="0.05" value={levelDraft}
+                      onChange={(event) => setLevelDraft(event.currentTarget.valueAsNumber)}
                       onBlur={(event) => {
-                        void saveSoundtrack({ ...soundtrack, level: event.currentTarget.valueAsNumber });
+                        const level = event.currentTarget.valueAsNumber;
+                        if (Math.round(level * 100) !== Math.round(soundtrack.level * 100)) {
+                          void saveSoundtrack({ ...soundtrack, level });
+                        }
                       }} />
                   </label>
                 </div>
@@ -4757,11 +4824,7 @@ export function App() {
           const what = conflictNotice?.operation ?? "edits";
           return `Your pending ${what}${where} was not merged. Reload the latest storyboard, or save your local scene edits as a new project.`;
         })()}</p>
-        <button onClick={() => {
-          setProject(conflict);
-          setActiveSceneId(conflict.scenes.some(({ id }) => id === activeScene.id) ? activeScene.id : (conflict.scenes[0]?.id ?? ""));
-          dismissConflict();
-        }}>Reload latest</button>
+        <button onClick={() => void reloadLatest()}>Reload latest</button>
         <button onClick={() => void saveAsNewProject()}>Save as new project</button>
       </dialog>}
     </section>}
