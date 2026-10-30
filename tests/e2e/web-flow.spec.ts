@@ -246,6 +246,45 @@ async function scrollStudioToEnd(page: Page): Promise<void> {
   });
 }
 
+interface CreateAttachmentsLayout {
+  chatHeight: number;
+  stripHeight: number;
+  lastMessageInChat: boolean;
+  stripInView: boolean;
+  stripAboveComposer: boolean;
+  composerInView: boolean;
+  sendInView: boolean;
+  sideways: boolean;
+}
+
+/**
+ * What the Create card did with the chat, the attached photos, and the composer.
+ * Short screens scroll the card itself, so "in view" means inside the viewport
+ * with the pinned composer still clear of the strip above it.
+ */
+async function createAttachmentsLayout(page: Page): Promise<CreateAttachmentsLayout> {
+  return page.evaluate(() => {
+    const inPort = (rect?: DOMRect) => !!rect && rect.width > 0 && rect.height > 0
+      && rect.top >= -0.5 && rect.bottom <= window.innerHeight + 0.5;
+    const box = (selector: string) => document.querySelector(selector)?.getBoundingClientRect();
+    const chat = box(".brief-chat");
+    const last = box(".brief-chat-msg:last-of-type");
+    const strip = box(".create-attachments");
+    const composer = box(".brief-composer");
+    return {
+      chatHeight: Math.round(chat?.height ?? 0),
+      stripHeight: Math.round(strip?.height ?? 0),
+      lastMessageInChat: !!chat && !!last
+        && last.top >= chat.top - 0.5 && last.bottom <= chat.bottom + 0.5,
+      stripInView: inPort(strip),
+      stripAboveComposer: !!strip && !!composer && strip.bottom <= composer.top + 0.5,
+      composerInView: inPort(composer),
+      sendInView: inPort(box(".brief-composer button[type=submit]")),
+      sideways: document.documentElement.scrollWidth > document.documentElement.clientWidth
+    };
+  });
+}
+
 /**
  * Phone screens keep growing after a step change (fonts, decoded media, the live
  * cut), so re-scroll and re-measure until the tail stops moving instead of
@@ -1406,5 +1445,90 @@ test("Start over asks before it clears the create chat", async ({ page }) => {
   await expect(chat).toContainText("What do you want to make?");
   await expect(page.getByLabel("Message F-Motion")).toHaveValue("");
   await expect(startOver).toHaveCount(0);
+});
+
+test.describe("Create keeps the chat readable with a batch of photos", () => {
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 1024, height: 700 },
+    { width: 390, height: 844 }
+  ]) {
+    test(`six photos at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+      test.setTimeout(90_000);
+      await page.setViewportSize(viewport);
+      // The e2e storage is a stub, so uploads only need to answer 200.
+      await page.route("https://e2e-storage.invalid/**", (route) => route.fulfill({ status: 200, body: "" }));
+      await signIn(page);
+      await page.getByRole("button", { name: "Create new video" }).click();
+      await page.getByLabel("Message F-Motion").fill("A calm launch teaser for a small team");
+      await page.getByRole("button", { name: "Send" }).click();
+      await expect(page.locator(".brief-chat-msg.is-user")).toHaveCount(1);
+
+      // Six stills with their own names: one compact strip, not six full rows.
+      const still = await readFile("apps/worker/test/fixtures/still.jpg");
+      await page.locator("section.create-brief input[type=file]").setInputFiles(
+        Array.from({ length: 6 }, (_, index) => ({
+          name: `_IMG${8733 - index}.jpg`,
+          mimeType: "image/jpeg",
+          buffer: still
+        }))
+      );
+      await expect(page.locator(".create-attachments-count")).toHaveText("6 photos added");
+      await expect(page.locator(".create-attachments-list li")).toHaveCount(6);
+      await expect(page.locator(".create-attachments-list img")).toHaveCount(6);
+      // The local glance answers the batch with another line, which moves the card,
+      // so measure once the conversation has settled on its next question.
+      await expect(page.locator(".brief-chat-choices").last()).toBeVisible({ timeout: 30_000 });
+
+      await expect.poll(async () => {
+        const layout = await createAttachmentsLayout(page);
+        return {
+          lastMessageInChat: layout.lastMessageInChat,
+          stripInView: layout.stripInView,
+          stripAboveComposer: layout.stripAboveComposer,
+          composerInView: layout.composerInView,
+          sendInView: layout.sendInView,
+          sideways: layout.sideways
+        };
+      }, {
+        message: `the chat, the photos, and the composer share ${viewport.width}x${viewport.height}`,
+        timeout: 15_000
+      }).toEqual({
+        lastMessageInChat: true,
+        stripInView: true,
+        stripAboveComposer: true,
+        composerInView: true,
+        sendInView: true,
+        sideways: false
+      });
+
+      // A readable pane, not the caption sliver six full rows used to leave.
+      const layout = await createAttachmentsLayout(page);
+      expect(layout.chatHeight, "the chat keeps a readable height").toBeGreaterThanOrEqual(220);
+      expect(layout.stripHeight, "six photos take at most two rows").toBeLessThanOrEqual(200);
+
+      // Removing one photo keeps the strip and the composer where they were.
+      await page.locator(".create-attachments-list li").first().getByRole("button", { name: /^Remove / }).click();
+      await expect(page.locator(".create-attachments-count")).toHaveText("5 photos added");
+      await expect(page.locator(".create-attachments-list li")).toHaveCount(5);
+      await expect(page.locator(".create-attachments-list button")).toHaveCount(5);
+      const afterRemove = await createAttachmentsLayout(page);
+      expect(afterRemove.composerInView).toBe(true);
+      expect(afterRemove.stripAboveComposer).toBe(true);
+
+      // Eight is the cap, and the strip still reads as two rows at the cap.
+      await page.locator("section.create-brief input[type=file]").setInputFiles(
+        Array.from({ length: 3 }, (_, index) => ({
+          name: `_IMG${8710 - index}.jpg`,
+          mimeType: "image/jpeg",
+          buffer: still
+        }))
+      );
+      await expect(page.locator(".create-attachments-count")).toHaveText("8 photos added");
+      await expect(page.locator(".create-attachments-list li")).toHaveCount(8);
+      const atCap = await createAttachmentsLayout(page);
+      expect(atCap.stripHeight, "eight photos stay within two rows").toBeLessThanOrEqual(200);
+    });
+  }
 });
 
