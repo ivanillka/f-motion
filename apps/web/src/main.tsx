@@ -263,6 +263,13 @@ export const sceneTabs = [
 
 export type SceneTabId = typeof sceneTabs[number]["id"];
 
+/** One count line stands in for the file names the old full rows repeated. */
+function pendingFilesLabel(files: ReadonlyArray<{ type: string }>): string {
+  const stills = countStillFiles(files);
+  if (stills === files.length) return `${files.length} photo${files.length === 1 ? "" : "s"} added`;
+  return `${files.length} file${files.length === 1 ? "" : "s"} added`;
+}
+
 export function App() {
   const authSetup = useMemo(() => {
     try {
@@ -303,6 +310,8 @@ export function App() {
   const [mediaLooking, setMediaLooking] = useState(false);
   const createUpload = useRef<HTMLInputElement>(null);
   const briefChatPane = useRef<HTMLDivElement>(null);
+  const createAttachments = useRef<HTMLDivElement>(null);
+  const pendingPreviewUrls = useRef(new Map<File, string>());
   const briefDraftRef = useRef(draft);
   const briefAskedRef = useRef(briefAsked);
   const mediaLookLock = useRef(false);
@@ -677,8 +686,30 @@ export function App() {
     setArchitecture(next);
   }, [draft, composer, briefChat, pendingFiles]);
   useEffect(() => {
+    // Attaching files shrinks the pane, so the newest line has to follow it down.
     briefChatPane.current?.scrollTo({ top: briefChatPane.current.scrollHeight });
-  }, [briefChat, mediaLooking]);
+  }, [briefChat, mediaLooking, pendingFiles.length]);
+  /* On screens too short for the whole card, the thumbnail strip can land behind
+     the pinned composer, and every new chat line pushes it down again. Following
+     it down keeps the files and the composer in view together. */
+  useEffect(() => {
+    const card = createAttachments.current?.closest(".app-shell");
+    if (card) card.scrollTo({ top: card.scrollHeight });
+  }, [briefChat, mediaLooking, pendingFiles.length]);
+  /* Thumbnails outlive a render, so an attached file drops its object URL as soon
+     as it leaves the pending set, and the whole set frees on unmount. */
+  useEffect(() => {
+    const urls = pendingPreviewUrls.current;
+    for (const [file, url] of urls) {
+      if (pendingFiles.includes(file)) continue;
+      URL.revokeObjectURL(url);
+      urls.delete(file);
+    }
+  }, [pendingFiles]);
+  useEffect(() => () => {
+    for (const url of pendingPreviewUrls.current.values()) URL.revokeObjectURL(url);
+    pendingPreviewUrls.current.clear();
+  }, []);
   useEffect(() => {
     if (step !== "brief" || !pendingFiles.length || mediaLookLock.current) return;
     const last = briefChat[briefChat.length - 1];
@@ -1421,6 +1452,15 @@ export function App() {
   function startOver() {
     if (!window.confirm("Start over with a new video? This clears this conversation. Your drafts stay.")) return;
     startCreate({ fresh: true });
+  }
+
+  /** One object URL per attached file, reused across renders and revoked on removal. */
+  function pendingPreviewUrl(file: File) {
+    const cached = pendingPreviewUrls.current.get(file);
+    if (cached) return cached;
+    const url = URL.createObjectURL(file);
+    pendingPreviewUrls.current.set(file, url);
+    return url;
   }
 
   function addPendingFiles(list: FileList | File[]) {
@@ -3857,11 +3897,21 @@ export function App() {
             ) : null}
           </div>)}
       </div>
-      {pendingFiles.length > 0 && <ul className="create-pending-files">{pendingFiles.map((file, index) =>
-        <li key={`${file.name}-${index}`}>
-          <span>{file.name}</span>
-          <button type="button" className="secondary" onClick={() => setPendingFiles((current) => current.filter((_, item) => item !== index))}>Remove</button>
-        </li>)}</ul>}
+      {pendingFiles.length > 0 && <div ref={createAttachments} className="create-attachments">
+        <p className="create-attachments-count">{pendingFilesLabel(pendingFiles)}</p>
+        <ul className="create-attachments-list" aria-label="Attached files">{pendingFiles.map((file, index) =>
+          <li key={`${file.name}-${index}`} className="create-attachment" title={file.name}>
+            {file.type.startsWith("video/")
+              ? <span className="create-attachment-frame is-clip" aria-hidden="true">Clip</span>
+              : <img className="create-attachment-frame" src={pendingPreviewUrl(file)} alt={file.name} loading="lazy" />}
+            <button
+              type="button"
+              className="create-attachment-remove"
+              aria-label={`Remove ${file.name}`}
+              onClick={() => setPendingFiles((current) => current.filter((_, item) => item !== index))}
+            ><span aria-hidden="true">×</span></button>
+          </li>)}</ul>
+      </div>}
       <form
         className="brief-composer"
         onSubmit={(event) => {
