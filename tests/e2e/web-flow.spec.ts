@@ -26,6 +26,7 @@ interface StudioScene {
   caption: string;
   title?: string;
   motion: string;
+  fit?: string;
   duration_ms: number;
   media_id?: string;
 }
@@ -39,6 +40,24 @@ async function projectScenes(page: Page): Promise<StudioScene[]> {
     const { project } = await response.json() as { project: { scenes: StudioScene[] } };
     return project.scenes;
   });
+}
+
+/** One saved brief field, read back from the API so a save can be awaited. */
+async function savedBrief(page: Page): Promise<Record<string, unknown>> {
+  return page.evaluate(async () => {
+    const projectId = localStorage.getItem("fengine-project");
+    if (!projectId) throw new Error("project id missing");
+    const response = await fetch(`/api/projects/${projectId}`);
+    if (!response.ok) throw new Error(`project unavailable: ${response.status}`);
+    const { project } = await response.json() as { project: { brief: Record<string, unknown> } };
+    return project.brief;
+  });
+}
+
+/** Fit of the first scene, read back from the API so a save can be awaited. */
+async function firstSceneFit(page: Page): Promise<string> {
+  const scenes = await projectScenes(page);
+  return scenes[0]?.fit ?? "cover";
 }
 
 /** Type of every attached asset, in scene order. */
@@ -108,6 +127,49 @@ async function expectRenderedProject(
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+/** A flat still with white bands at 1.0 to 2.2 percent and 9.0 to 12.0 percent. */
+const EDGE_STILL = "apps/worker/test/fixtures/edge-text.jpg";
+
+/** One rendered frame as 8 bit gray pixels, so bands can be measured. */
+function renderedFrameGrays(video: string, atSeconds: number): Buffer {
+  return execFileSync("ffmpeg", [
+    "-v", "error",
+    "-ss", atSeconds.toFixed(3),
+    "-i", video,
+    "-frames:v", "1",
+    "-vf", "format=gray",
+    "-f", "rawvideo",
+    "-"
+  ], { maxBuffer: 64 * 1024 * 1024 });
+}
+
+/**
+ * Rows of one frame whose average luma clears 200, as fractions of the frame
+ * height. The edge fixture is flat slate apart from its two white bands, so a
+ * band that survives proves that part of the picture was not cropped away.
+ */
+function brightBands(gray: Buffer, size: { width: number; height: number }): Array<[number, number]> {
+  const bands: Array<[number, number]> = [];
+  let start = -1;
+  for (let row = 0; row < size.height; row += 1) {
+    let total = 0;
+    for (let column = 0; column < size.width; column += 1) total += gray[row * size.width + column] ?? 0;
+    const bright = total / size.width >= 200;
+    if (bright && start < 0) start = row;
+    if (!bright && start >= 0) {
+      bands.push([start / size.height, (row - 1) / size.height]);
+      start = -1;
+    }
+  }
+  if (start >= 0) bands.push([start / size.height, 1]);
+  return bands;
+}
+
+/** Bands long enough to be the baked in text line, not a resampled sliver. */
+function textLineBands(bands: Array<[number, number]>): Array<[number, number]> {
+  return bands.filter(([from, to]) => to - from > 0.008);
 }
 
 async function signIn(page: import("@playwright/test").Page) {
@@ -339,6 +401,137 @@ test("E2E worker rejects empty snapshots and missing fixture mappings", async ({
     }
   });
   expect(missing.status()).toBe(400);
+});
+
+test("the gentle default keeps printed text that the strong crop eats, and the whole picture keeps it all", async ({ request }) => {
+  test.setTimeout(120_000);
+  const directory = await mkdtemp(join(tmpdir(), "fengine-e2e-edge-"));
+  const size = { width: 1080, height: 1920 };
+  const render = async (
+    name: string,
+    jobNumber: string,
+    brief: Record<string, unknown>,
+    scene: Record<string, unknown>
+  ): Promise<string> => {
+    const jobId = `00000000-0000-4000-8000-0000000000${jobNumber}`;
+    const posted = await request.post("http://127.0.0.1:43141/jobs", {
+      data: {
+        jobId,
+        projectId: "edge-text",
+        revision: 1,
+        kind: "final",
+        renderProfile: size,
+        snapshot: {
+          schema_version: 1,
+          id: "edge-text",
+          owner_id: "owner",
+          revision: 1,
+          brief: { purpose: "Edge text", audience: "Teams", tone: "Warm", ...brief },
+          scenes: [{
+            id: "edge-scene",
+            order: 0,
+            caption: "Edge",
+            duration_ms: 1200,
+            focal_x: 0.5,
+            focal_y: 0.5,
+            motion: "zoom",
+            media_id: "edge-media",
+            audio_level: 1,
+            ducking: false,
+            ...scene
+          }]
+        },
+        mediaInputs: { "edge-media": { path: EDGE_STILL, type: "image/jpeg" } }
+      }
+    });
+    const detail = await posted.text();
+    expect(posted.ok(), `${name} render: ${detail}`).toBeTruthy();
+    const download = await request.get(`http://127.0.0.1:43141/downloads/${jobId}`);
+    expect(download.ok(), `${name} download`).toBeTruthy();
+    const path = join(directory, `${name}.mp4`);
+    await writeFile(path, await download.body());
+    return path;
+  };
+  try {
+    // The zoom widens toward the end of the clip, so read the last frame.
+    const gentle = brightBands(renderedFrameGrays(await render("gentle", "11", {}, {}), 1.1), size);
+    // Gentle keeps the 9 percent band whole, inside a 1.06 zoom.
+    expect(textLineBands(gentle).some(([from, to]) => from > 0.04 && from < 0.1 && to - from > 0.015)).toBe(true);
+    // The 1 percent band at the very edge is still cover cropped, so the
+    // studio offers a per scene whole picture switch for pictures like it.
+    expect(textLineBands(gentle).every(([from]) => from > 0.02)).toBe(true);
+
+    // Strong is the old 1.30 move, which cropped the 9 percent band away.
+    const strong = brightBands(renderedFrameGrays(await render("strong", "12", { motion_strength: "strong" }, {}), 1.1), size);
+    expect(textLineBands(strong).filter(([from]) => from < 0.2)).toEqual([]);
+
+    // The whole picture keeps both bands, even with the strong fill behind it.
+    const contain = brightBands(
+      renderedFrameGrays(await render("contain", "13", { motion_strength: "strong" }, { fit: "contain" }), 1.1),
+      size
+    );
+    expect(textLineBands(contain).some(([from, to]) => from < 0.03 && to - from > 0.01)).toBe(true);
+    expect(textLineBands(contain).some(([from, to]) => from > 0.04 && from < 0.1 && to - from > 0.015)).toBe(true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("studio options drive the same gentle motion, whole picture, and quiet mark presets as the worker", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.route("https://e2e-storage.invalid/**", (route) =>
+    route.fulfill({ status: 200, body: "" }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await briefWithOwnStill(page, "A calm launch teaser for a small team");
+  await createStoryboard(page);
+  // The brief upload already lands on scene 1, which is what the preview shows.
+  await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
+  await page.getByLabel("Scene 1 motion").selectOption("zoom");
+  await expect(page.getByRole("status").filter({ hasText: "All changes saved" })).toBeVisible();
+
+  // Motion defaults to gentle: the 1.00 to 1.06 move the worker renders.
+  await expect(page.locator("#reel-motion")).toHaveValue("gentle");
+  const motionVars = await page.locator(".preview img").first().evaluate((node) => {
+    const style = getComputedStyle(node);
+    return ["--zoom-from", "--zoom-to", "--pan-scale", "--pan-travel"]
+      .map((name) => style.getPropertyValue(name).trim());
+  });
+  expect(motionVars).toEqual(["1", "1.06", "1.06", "0.06"]);
+
+  // The mark is a quiet corner credit sized by the shared compact layout.
+  await page.locator("#reel-mark").click();
+  await expect.poll(async () => (await savedBrief(page)).brand_mark).toBe(true);
+  await expect(page.locator("#reel-mark-size")).toHaveValue("compact");
+  await expect(page.locator("#reel-mark-size")).toBeEnabled();
+  const markBox = page.locator(".preview .reel-mark");
+  await expect(markBox).toBeVisible();
+  const mark = await page.locator(".preview").evaluate((preview) => {
+    const node = preview.querySelector(".reel-mark");
+    if (!node) throw new Error("mark missing");
+    const box = preview.getBoundingClientRect();
+    const markRect = node.getBoundingClientRect();
+    return {
+      widthDelta: Math.abs(markRect.width - preview.clientWidth * 0.2),
+      rightDelta: Math.abs((box.right - 1 - markRect.right) - preview.clientWidth * 0.04),
+      topDelta: Math.abs((markRect.top - box.top - 1) - preview.clientHeight * 0.035),
+      opacity: Number(getComputedStyle(node).opacity)
+    };
+  });
+  expect(mark.widthDelta).toBeLessThan(1.5);
+  expect(mark.rightDelta).toBeLessThan(1.5);
+  expect(mark.topDelta).toBeLessThan(1.5);
+  expect(mark.opacity).toBeCloseTo(0.45, 2);
+
+  // Whole picture swaps the cover crop for a contained picture over a fill.
+  await page.getByLabel("Show the whole picture").click();
+  await expect.poll(() => firstSceneFit(page)).toBe("contain");
+  await expect(page.locator(".preview .preview-fit-picture img")).toHaveCSS("object-fit", "contain");
+  await expect(page.locator(".preview .preview-fit-backdrop img")).toHaveCSS("object-fit", "cover");
+
+  await page.getByLabel("Show the whole picture").click();
+  await expect.poll(() => firstSceneFit(page)).toBe("cover");
+  await expect(page.locator(".preview .preview-fit-picture")).toHaveCount(0);
 });
 
 test("locked provider actions explain the blocker and next action", async ({ page }) => {
@@ -684,9 +877,12 @@ test("Remove bed wins over a pending tempo edit instead of asking for a conflict
   await expect(page.getByRole("heading", { name: "Newer changes exist" })).toHaveCount(0);
   await expect(dockToggle).toHaveText("Add music");
   await expect.poll(() => projectSoundtrack(page)).toBe("none");
+  // Several drafts share this title, so reopen the one this test just edited.
+  const projectId = await page.evaluate(() => localStorage.getItem("fengine-project"));
+  expect(projectId).toBeTruthy();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
-  await page.getByRole("button").filter({ hasText: "A calm studio introduction" }).first().click();
+  await page.locator(`.draft-open[data-project-id="${projectId}"]`).click();
   await expect(dockToggle).toHaveText("Add music");
   await expect(page.getByLabel("BPM", { exact: true })).toHaveCount(0);
 });

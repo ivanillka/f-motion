@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   stockBedCredit,
   stockBeds,
+  type BrandMarkSize,
   type CaptionCue,
   type MotionPreset,
   type OverlayLook,
@@ -15,11 +16,16 @@ import {
 } from "@f-engine/contracts";
 import {
   coverCropFilter,
+  brandMarkLayout,
+  MOTION_PRESETS,
+  motionTuning,
+  motionZoomRange,
   photoFitTarget,
   RENDER_FPS,
   renderPlan,
   spokenWordsForCues,
   VOICEOVER_DUCK,
+  type MotionTuning,
   type RenderPlan,
   type RenderProfile,
   type SpokenWord
@@ -317,12 +323,9 @@ function escapeAssText(value: string): string {
 }
 
 const MOTION_FPS = 30;
-// Match apps/web preview-zoom / preview-push (style.css), both eased in and out.
-// Zoom pushes in from the plain cover (1.0) to 1.30. Push overscales the still
-// to 1.25 and travels across the whole overscan, which is 25% of the frame.
-export const MOTION_ZOOM_START = 1.0;
-export const MOTION_ZOOM_END = 1.3;
-export const MOTION_PAN_SCALE = 1.25;
+// MOTION_PRESETS in @f-engine/reel-engine is the one table the studio preview
+// and this filter read, so a scene moves the same amount in both. Gentle is the
+// default: the old 1.30 push cropped any text printed near a picture's edges.
 const MOTION_SAMPLE_SCALE = 2;
 
 function lanczosCoverCrop(width: number, height: number, focal_x: number, focal_y: number): string[] {
@@ -341,29 +344,30 @@ function motionFilter(
   durationSeconds: number,
   width: number,
   height: number,
-  source?: Pick<MediaInput, "width" | "height">
+  source: Pick<MediaInput, "width" | "height"> | undefined,
+  tuning: MotionTuning = MOTION_PRESETS.gentle
 ): string | undefined {
   if (motion === "none") return undefined;
   const frames = Math.max(2, Math.round(durationSeconds * MOTION_FPS));
   const ease = easeExpr(frames);
+  const range = motionZoomRange(tuning).toFixed(4);
+  const centred = "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'";
   if (motion === "zoom") {
-    const range = (MOTION_ZOOM_END - MOTION_ZOOM_START).toFixed(4);
-    return `zoompan=z='${MOTION_ZOOM_START}+${range}*${ease}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+    return `zoompan=z='${tuning.zoomStart}+${range}*${ease}':${centred}:d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
   }
   // Photo reels alternate zoom in and zoom out, so the pull out is the same
   // eased travel in reverse and lands on the plain cover.
   if (motion === "zoom_out") {
-    const range = (MOTION_ZOOM_END - MOTION_ZOOM_START).toFixed(4);
-    return `zoompan=z='${MOTION_ZOOM_END}-${range}*${ease}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+    return `zoompan=z='${tuning.zoomEnd}-${range}*${ease}':${centred}:d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
   }
   // ponytail: "push" is a Ken Burns pan, not a transition. Wide sources pan X;
   // tall/unknown pan Y so the extra cover-crop pixels actually move. The pan
   // stays inside the overscaled cover, so it never shows an edge.
   const wide = Boolean(source?.width && source.height && source.width > source.height);
   if (wide) {
-    return `zoompan=z=${MOTION_PAN_SCALE}:x='(iw-iw/zoom)*${ease}':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+    return `zoompan=z=${tuning.panScale}:x='(iw-iw/zoom)*${ease}':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
   }
-  return `zoompan=z=${MOTION_PAN_SCALE}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*${ease}':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
+  return `zoompan=z=${tuning.panScale}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*${ease}':d=1:s=${width}x${height}:fps=${MOTION_FPS}`;
 }
 
 const overlayFontsDir = fileURLToPath(new URL("../assets/fonts", import.meta.url));
@@ -376,6 +380,16 @@ const ASS_WHITE = "&H00FFFFFF";
 const ASS_BLACK = "&H00000000";
 const CAPTION_PILL = "&H61000000";
 
+/**
+ * Overlay text keeps 6% of the frame width clear on each side. ASS margins are
+ * PlayRes units, so a landscape frame scales its inset with its own width.
+ */
+const OVERLAY_SAFE_INSET = 0.06;
+
+function overlaySideMargin(playResWidth: number): number {
+  return Math.ceil(playResWidth * OVERLAY_SAFE_INSET);
+}
+
 function assStyle(
   name: string,
   font: string,
@@ -386,40 +400,113 @@ function assStyle(
   outline: number,
   shadow: number,
   secondary = "&H00AAAAAA",
-  box: { align?: number; l?: number; r?: number; v?: number } = {}
+  box: { align?: number; l?: number; r?: number; v?: number; side?: number } = {}
 ): string {
   const align = box.align ?? 2;
-  const marginL = box.l ?? 40;
-  const marginR = box.r ?? 40;
+  // A look may ask for more inset than the safe zone, never less.
+  const marginL = Math.max(box.side ?? overlaySideMargin(720), box.l ?? 0);
+  const marginR = Math.max(box.side ?? overlaySideMargin(720), box.r ?? 0);
   const marginV = box.v ?? 140;
   return `Style: ${name},${font},${size},${ASS_WHITE},${secondary},${ASS_BLACK},${back},0,0,0,0,100,100,${spacing},0,${borderStyle},${outline},${shadow},${align},${marginL},${marginR},${marginV},1`;
 }
 
-function overlayAssStyles(look: OverlayLook): { title: string; caption: string } {
+function overlayAssStyles(
+  look: OverlayLook,
+  playResWidth = 720
+): { title: string; caption: string; titleSize: number; captionSize: number } {
+  const side = overlaySideMargin(playResWidth);
+  const style = (
+    name: string,
+    font: string,
+    size: number,
+    back: string,
+    spacing: number,
+    borderStyle: 1 | 3,
+    outline: number,
+    shadow: number,
+    extra: {
+      secondary?: string;
+      box?: { align?: number; l?: number; r?: number; v?: number };
+    } = {}
+  ) => assStyle(name, font, size, back, spacing, borderStyle, outline, shadow, extra.secondary, {
+    side,
+    ...extra.box
+  });
   if (look === "title") {
     return {
-      title: assStyle("Title", TITLE_FONT, 78, ASS_BLACK, -3, 1, 3, 2),
-      caption: assStyle("Caption", CAPTION_FONT, 26, CAPTION_PILL, 0, 3, 8, 0)
+      title: style("Title", TITLE_FONT, 78, ASS_BLACK, -3, 1, 3, 2),
+      caption: style("Caption", CAPTION_FONT, 26, CAPTION_PILL, 0, 3, 8, 0),
+      titleSize: 78,
+      captionSize: 26
     };
   }
   if (look === "poster") {
     return {
-      title: assStyle("Title", TITLE_FONT, 52, ASS_BLACK, -2, 1, 2, 2),
-      caption: assStyle("Caption", CAPTION_FONT, 26, ASS_BLACK, 0, 1, 0, 1)
+      title: style("Title", TITLE_FONT, 52, ASS_BLACK, -2, 1, 2, 2),
+      caption: style("Caption", CAPTION_FONT, 26, ASS_BLACK, 0, 1, 0, 1),
+      titleSize: 52,
+      captionSize: 26
     };
   }
   if (look === "spoken") {
     return {
-      title: assStyle("Title", TITLE_FONT, 68, ASS_BLACK, -1, 1, 3, 2),
-      caption: assStyle("Caption", TITLE_FONT, 68, ASS_BLACK, -1, 1, 3, 2, "&H80FFFFFF", {
-        align: 5, l: 80, r: 80, v: 0
-      })
+      title: style("Title", TITLE_FONT, 68, ASS_BLACK, -1, 1, 3, 2),
+      caption: style("Caption", TITLE_FONT, 68, ASS_BLACK, -1, 1, 3, 2, {
+        secondary: "&H80FFFFFF",
+        box: { align: 5, l: 80, r: 80, v: 0 }
+      }),
+      titleSize: 68,
+      captionSize: 68
     };
   }
   return {
-    title: assStyle("Title", TITLE_FONT, 64, ASS_BLACK, -2, 1, 2, 3),
-    caption: assStyle("Caption", CAPTION_FONT, 26, CAPTION_PILL, 0, 3, 8, 0)
+    title: style("Title", TITLE_FONT, 64, ASS_BLACK, -2, 1, 2, 3),
+    caption: style("Caption", CAPTION_FONT, 26, CAPTION_PILL, 0, 3, 8, 0),
+    titleSize: 64,
+    captionSize: 26
   };
+}
+
+/**
+ * ASS WrapStyle 0 wraps on spaces only, so one long word walks straight past
+ * the safe zone. A line whose longest word does not fit takes a font-size
+ * override; a word that stays too wide even shrunk is hard-broken instead.
+ * ponytail: the advance is a deliberate overestimate for Inter Display
+ * ExtraBold uppercase, so the rendered bounds test is the real check.
+ */
+const OVERLAY_GLYPH_ADVANCE = 0.75;
+const OVERLAY_MIN_SCALE = 0.55;
+
+export interface OverlayTextFit {
+  /** Font size override for the line, when the style size is too wide. */
+  fontSize?: number;
+  /** Characters per line for a word too wide even at the smallest size. */
+  chunk?: number;
+}
+
+function fitOverlayText(words: string[], size: number, safeWidth: number): OverlayTextFit {
+  const longest = words.reduce((max, word) => Math.max(max, word.trim().length), 0);
+  if (longest === 0) return {};
+  const expected = (chars: number, at: number) => chars * at * OVERLAY_GLYPH_ADVANCE;
+  if (expected(longest, size) <= safeWidth) return {};
+  const scale = safeWidth / expected(longest, size);
+  if (scale >= OVERLAY_MIN_SCALE) return { fontSize: Math.max(16, Math.floor(size * scale)) };
+  return { chunk: Math.max(1, Math.floor(safeWidth / (size * OVERLAY_GLYPH_ADVANCE))) };
+}
+
+/** `\N` inside a word is the only line break ASS honors without a space. */
+function breakOverlayWord(word: string, chunk: number): string {
+  if (word.length <= chunk) return escapeAssText(word);
+  const pieces: string[] = [];
+  for (let index = 0; index < word.length; index += chunk) {
+    pieces.push(escapeAssText(word.slice(index, index + chunk)));
+  }
+  return pieces.join("\\N");
+}
+
+function overlayAssText(text: string, chunk?: number): string {
+  if (!chunk) return escapeAssText(text);
+  return text.split(" ").map((word) => breakOverlayWord(word, chunk)).join(" ");
 }
 
 function overlayLayout(
@@ -445,10 +532,14 @@ function assDialogue(
   endMs: number,
   text: string,
   marginV: number,
-  an: number
+  an: number,
+  fit: OverlayTextFit = {}
 ): string {
-  const tag = an !== 2 ? `{\\an${an}}` : "";
-  return `Dialogue: 0,${assTimestamp(startMs)},${assTimestamp(endMs)},${style},,0,0,${marginV},,${tag}${escapeAssText(text)}`;
+  const tags = [fit.fontSize ? `\\fs${fit.fontSize}` : "", an !== 2 ? `\\an${an}` : ""]
+    .filter(Boolean)
+    .join("");
+  const tag = tags ? `{${tags}}` : "";
+  return `Dialogue: 0,${assTimestamp(startMs)},${assTimestamp(endMs)},${style},,0,0,${marginV},,${tag}${overlayAssText(text, fit.chunk)}`;
 }
 
 function assKaraokeDialogue(
@@ -457,15 +548,18 @@ function assKaraokeDialogue(
   marginV: number,
   an: number,
   marginL = 0,
-  marginR = 0
+  marginR = 0,
+  fit: OverlayTextFit = {}
 ): string {
   const startMs = words[0]?.start_ms ?? 0;
   const endMs = words[words.length - 1]?.end_ms ?? 0;
-  const align = an !== 2 ? `\\an${an}` : "";
+  const align = [fit.fontSize ? `\\fs${fit.fontSize}` : "", an !== 2 ? `\\an${an}` : ""]
+    .filter(Boolean)
+    .join("");
   const text = words.map((word, index) => {
     const cs = Math.max(1, Math.round((word.end_ms - word.start_ms) / 10));
     const open = index === 0 && align ? `{${align}\\k${cs}}` : `{\\k${cs}}`;
-    return `${open}${escapeAssText(word.text)}`;
+    return `${open}${overlayAssText(word.text, fit.chunk)}`;
   }).join(" ");
   return `Dialogue: 0,${assTimestamp(startMs)},${assTimestamp(endMs)},${style},,${marginL},${marginR},${marginV},,${text}`;
 }
@@ -488,6 +582,14 @@ function assTimestamp(ms: number): string {
  * PlayRes so captions are not mapped through a portrait script.
  * 40px side margins, text bottom-anchored 140px above the frame bottom
  * so it clears the watermark band.
+ */
+/**
+ * Deterministic ASS subtitle document with one `Dialogue` line per timed
+ * cue. Portrait stays PlayRes 720x1280. A landscape plan uses its own
+ * PlayRes so captions are not mapped through a portrait script.
+ * Every line keeps a 6% side inset, bottom text sits 140px above the frame
+ * bottom so it clears the watermark band, and a line whose longest word cannot
+ * fit the inset drops its font size instead of running off the frame.
  */
 export function buildCaptionAss(
   cues: CaptionCue[],
@@ -514,20 +616,39 @@ export function buildCaptionAss(
   const place = overlay.place
     ?? (look === "title" ? "center" : "bottom");
   const layout = overlayLayout(place, Boolean(title), captionCues.length > 0, look);
-  const styles = overlayAssStyles(look);
+  const landscape = Boolean(playRes && playRes.width > playRes.height);
+  const playResWidth = landscape && playRes ? playRes.width : 720;
+  const styles = overlayAssStyles(look, playResWidth);
+  const safeWidth = playResWidth - 2 * overlaySideMargin(playResWidth);
   const titleEnd = overlay.durationMs ?? captionCues.at(-1)?.end_ms ?? 0;
   const captionWords = spokenWordsForCues(captionCues);
+  const titleFit = title
+    ? fitOverlayText([title], styles.titleSize, safeWidth)
+    : {};
+  const captionFit = captionWords.length
+    ? fitOverlayText(captionWords.map((word) => word.text), styles.captionSize, safeWidth)
+    : {};
   const dialogues = [
-    ...(title && titleEnd > 0 ? [assDialogue("Title", 0, titleEnd, title, layout.titleV, layout.an)] : []),
+    ...(title && titleEnd > 0
+      ? [assDialogue("Title", 0, titleEnd, title, layout.titleV, layout.an, titleFit)]
+      : []),
     ...(captionWords.length
-      ? [assKaraokeDialogue("Caption", captionWords, layout.captionV, layout.an, layout.marginL, layout.marginR)]
+      ? [assKaraokeDialogue(
+        "Caption",
+        captionWords,
+        layout.captionV,
+        layout.an,
+        layout.marginL,
+        layout.marginR,
+        captionFit
+      )]
       : [])
   ];
   return [
     "[Script Info]",
     "ScriptType: v4.00+",
-    `PlayResX: ${playRes && playRes.width > playRes.height ? playRes.width : 720}`,
-    `PlayResY: ${playRes && playRes.width > playRes.height ? playRes.height : 1280}`,
+    `PlayResX: ${playResWidth}`,
+    `PlayResY: ${landscape && playRes ? playRes.height : 1280}`,
     "WrapStyle: 0",
     "ScaledBorderAndShadow: yes",
     "",
@@ -564,11 +685,22 @@ export function brandMarkAssetPath(): string {
   return fileURLToPath(new URL("../assets/brand/f-motion-mark.webm", import.meta.url));
 }
 
-export function brandMarkOverlay(width: number, height: number): { width: number; x: number; y: number } {
+/**
+ * Wordmark in the top right corner. Compact is a fifth of the frame at 45%
+ * alpha, which keeps it clear of the top caption band; standard is the old
+ * full-strength card for callers that ask for it.
+ */
+export function brandMarkOverlay(
+  width: number,
+  height: number,
+  size?: BrandMarkSize
+): { width: number; x: number; y: number; opacity: number } {
+  const layout = brandMarkLayout(size);
   return {
-    width: Math.max(96, Math.round(width * 0.42)),
-    x: Math.round(width * 0.06),
-    y: Math.round(height * 0.05)
+    width: Math.max(48, Math.round(width * layout.width)),
+    x: Math.round(width * layout.right),
+    y: Math.round(height * layout.top),
+    opacity: layout.opacity
   };
 }
 
@@ -613,6 +745,43 @@ const emptyScene: Scene = {
   ducking: false
 };
 
+/**
+ * Contain keeps the whole picture: a blurred cover of the same source fills the
+ * frame and carries the motion, and the picture itself is scaled to fit inside
+ * the frame without being zoomed. Overlay text is burned after the composite in
+ * both fits, so the motion never scales or crops it.
+ */
+function containChain(
+  plan: RenderPlan,
+  scene: Scene,
+  motion: string | undefined,
+  captions: string[]
+): string {
+  const sample = motion ? MOTION_SAMPLE_SCALE : 1;
+  const backdrop = [
+    ...lanczosCoverCrop(
+      plan.width * sample,
+      plan.height * sample,
+      scene.focal_x,
+      scene.focal_y
+    ),
+    ...(motion ? [motion] : []),
+    `gblur=sigma=${Math.max(8, Math.round(plan.height / 60))}`,
+    "eq=brightness=-0.14:saturation=0.85"
+  ];
+  const picture = [
+    `scale=${plan.width}:${plan.height}:force_original_aspect_ratio=decrease:flags=lanczos`,
+    "setsar=1"
+  ];
+  const composite = `overlay=(W-w)/2:(H-h)/2:shortest=1${captions.length ? `,${captions.join(",")}` : ""},setsar=1`;
+  return [
+    "[0:v]split=2[fill][whole]",
+    `[fill]${backdrop.join(",")}[back]`,
+    `[whole]${picture.join(",")}[fit]`,
+    `[back][fit]${composite}[vout]`
+  ].join(";");
+}
+
 export function sceneClipArguments(
   plan: RenderPlan,
   scene: Scene,
@@ -622,15 +791,9 @@ export function sceneClipArguments(
 ): string[] {
   const duration = Math.max(0.2, scene.duration_ms / 1000);
   const captions = captionFilters(captionAssPath);
-  const motion = motionFilter(scene.motion, duration, plan.width, plan.height, media);
+  const tuning = motionTuning(plan.motion_strength);
+  const motion = motionFilter(scene.motion, duration, plan.width, plan.height, media, tuning);
   if (media) {
-    // Ken Burns from a 2× cover so zoompan is not sampling an already-tiny crop.
-    const sample = motion ? MOTION_SAMPLE_SCALE : 1;
-    const cover = [
-      ...lanczosCoverCrop(plan.width * sample, plan.height * sample, scene.focal_x, scene.focal_y),
-      ...(motion ? [motion] : []),
-      ...captions
-    ];
     const still = media.type === "image/jpeg" || media.type === "image/png" || media.type === "image/webp";
     const padAudio = still || media.hasAudio === false;
     const input = still
@@ -638,6 +801,24 @@ export function sceneClipArguments(
       : ["-stream_loop", "-1", "-t", String(duration), "-i", media.path];
     const audioInput = padAudio ? silentAudioInput(duration) : [];
     const audioMap = padAudio ? "1:a" : "0:a";
+    if (scene.fit === "contain") {
+      return [
+        "-y",
+        ...input,
+        ...audioInput,
+        "-filter_complex", containChain(plan, scene, motion, captions),
+        ...audioFilterArgs(scene.audio_level),
+        ...clipOutputArgs("[vout]", audioMap),
+        clipPath
+      ];
+    }
+    // Ken Burns from a 2× cover so zoompan is not sampling an already-tiny crop.
+    const sample = motion ? MOTION_SAMPLE_SCALE : 1;
+    const cover = [
+      ...lanczosCoverCrop(plan.width * sample, plan.height * sample, scene.focal_x, scene.focal_y),
+      ...(motion ? [motion] : []),
+      ...captions
+    ];
     return [
       "-y",
       ...input,
@@ -719,9 +900,12 @@ export function soundtrackMetadata(mix: SoundtrackMix): string[] {
   ];
 }
 
-function brandVideoChain(mark: { width: number; x: number; y: number }, draws: string[]): { filter: string; label: string } {
+function brandVideoChain(
+  mark: { width: number; x: number; y: number; opacity: number },
+  draws: string[]
+): { filter: string; label: string } {
   const parts = [
-    `[1:v]scale=${mark.width}:-1:flags=lanczos,format=yuva420p[mark]`,
+    `[1:v]scale=${mark.width}:-1:flags=lanczos,format=yuva420p,colorchannelmixer=aa=${mark.opacity.toFixed(2)}[mark]`,
     `[0:v][mark]overlay=main_w-overlay_w-${mark.x}:${mark.y}:shortest=1:format=auto[branded]`
   ];
   if (!draws.length) return { filter: parts.join(";"), label: "branded" };
@@ -739,7 +923,9 @@ export function concatArguments(
 ): string[] {
   const comment = `comment=project ${snapshot.id} revision ${snapshot.revision}`;
   const draws = plan.watermark ? watermarkFilters(plan.watermark) : [];
-  const mark = snapshot.brief.brand_mark ? brandMarkOverlay(plan.width, plan.height) : undefined;
+  const mark = snapshot.brief.brand_mark
+    ? brandMarkOverlay(plan.width, plan.height, snapshot.brief.brand_mark_size)
+    : undefined;
   const encodeVideo = draws.length > 0 || Boolean(mark);
   if (!soundtrack && !voiceover && !mark) {
     return [

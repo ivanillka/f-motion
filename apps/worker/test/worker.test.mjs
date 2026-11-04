@@ -5,7 +5,13 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { RENDER_FPS, photosToReelPlan, photosToReelScenes, renderPlan } from "@f-engine/reel-engine";
+import {
+  MOTION_PRESETS,
+  RENDER_FPS,
+  photosToReelPlan,
+  photosToReelScenes,
+  renderPlan
+} from "@f-engine/reel-engine";
 import {
   IdempotentResults,
   MediaProbeError,
@@ -407,7 +413,8 @@ test("caption ass builder freezes the safe-area layout", () => {
   assert.match(ass, /PlayResX: 720/);
   assert.match(ass, /PlayResY: 1280/);
   assert.match(ass, /Style: Caption,Inter SemiBold,/);
-  assert.match(ass, /Style: Caption,.*,40,40,140,1$/m, "40px side inset, 140px bottom margin clears the watermark band");
+  assert.match(ass, /Style: Caption,.*,44,44,140,1$/m, "6% side inset, 140px bottom margin clears the watermark band");
+  assert.match(ass, /Style: Title,.*,44,44,/m, "title copy keeps the same side inset");
   assert.match(ass, /&H61000000/, "pill BackColour alpha 0x61 is ~62% opaque, matching the editor overlay");
   assert.match(ass, /^Dialogue: 0,0:00:00\.00,0:00:00\.50,Caption,,0,0,0,,\{\\k\d+\}Project \{\\k\d+\}caption$/m);
 });
@@ -432,8 +439,9 @@ test("brand mark overlays the tumbling cube in the top right and stays off unles
   const args = marked.concatArgs.join(" ");
   assert.match(args, /f-motion-mark\.webm/);
   assert.match(args, /-c:v libvpx-vp9 -stream_loop -1 -i .*f-motion-mark\.webm/);
-  assert.match(args, /scale=302:-1:flags=lanczos,format=yuva420p\[mark\]/);
-  assert.match(args, /overlay=main_w-overlay_w-43:64:shortest=1:format=auto/);
+  // Compact is the default: a fifth of the frame at 45% alpha, corner inset 4%.
+  assert.match(args, /scale=144:-1:flags=lanczos,format=yuva420p,colorchannelmixer=aa=0\.45\[mark\]/);
+  assert.match(args, /overlay=main_w-overlay_w-29:45:shortest=1:format=auto/);
   assert.doesNotMatch(args, /drawtext=text='F-Motion'/);
   assert.doesNotMatch(args, /Fotium/i);
   const finalMark = buildRenderJobWithProfile({
@@ -441,10 +449,17 @@ test("brand mark overlays the tumbling cube in the top right and stays off unles
     brief: { ...snapshot.brief, brand_mark: true }
   }, "final.mp4", {}, "/tmp/job", { width: 1080, height: 1920 });
   const finalArgs = finalMark.concatArgs.join(" ");
-  assert.match(finalArgs, /scale=454:-1:flags=lanczos,format=yuva420p\[mark\]/);
-  assert.match(finalArgs, /overlay=main_w-overlay_w-65:96:shortest=1/);
+  assert.match(finalArgs, /scale=216:-1:flags=lanczos,format=yuva420p,colorchannelmixer=aa=0\.45\[mark\]/);
+  assert.match(finalArgs, /overlay=main_w-overlay_w-43:67:shortest=1/);
   assert.match(finalArgs, /-c:v h264/);
   assert.doesNotMatch(finalArgs, /-c:v copy/);
+  const standard = buildRenderJobWithProfile({
+    ...snapshot,
+    brief: { ...snapshot.brief, brand_mark: true, brand_mark_size: "standard" }
+  }, "final.mp4", {}, "/tmp/job", { width: 1080, height: 1920 });
+  const standardArgs = standard.concatArgs.join(" ");
+  assert.match(standardArgs, /scale=454:-1:flags=lanczos,format=yuva420p,colorchannelmixer=aa=0\.45\[mark\]/);
+  assert.match(standardArgs, /overlay=main_w-overlay_w-65:96:shortest=1/);
 });
 test("brand mark asset tumbles instead of sitting still", async () => {
   const path = fileURLToPath(new URL("../assets/brand/f-motion-mark.webm", import.meta.url));
@@ -487,11 +502,27 @@ test("rendered brand mark reads in the top right and leaves the center clear", a
     return [raw[i], raw[i + 1], raw[i + 2]];
   };
   const near = (color, expected, slack) => color.every((channel, index) => Math.abs(channel - expected[index]) < slack);
-  assert.ok(near(px(360, 640), [32, 32, 39], 12), `center should stay clear, got ${px(360, 640)}`);
-  assert.ok(near(px(390, 70), [32, 32, 39], 18), `mark padding should stay transparent, got ${px(390, 70)}`);
-  const word = px(560, 110);
-  const gap = Math.abs(word[0] - 32) + Math.abs(word[1] - 32) + Math.abs(word[2] - 39);
-  assert.ok(gap > 80, `wordmark should read in the top right, got ${word}`);
+  const background = [32, 32, 39];
+  const gapAt = (x, y) => {
+    const [r, g, b] = px(x, y);
+    return Math.abs(r - background[0]) + Math.abs(g - background[1]) + Math.abs(b - background[2]);
+  };
+  const brightest = (x0, y0, x1, y1) => {
+    let best = 0;
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) best = Math.max(best, gapAt(x, y));
+    }
+    return best;
+  };
+  // Compact lockup in a 720x1280 frame: 144 wide, right inset 29, top 45, so the
+  // wordmark box is x 547..691 and y 45..75.
+  assert.ok(near(px(360, 640), background, 12), `center should stay clear, got ${px(360, 640)}`);
+  assert.ok(brightest(300, 45, 540, 220) < 24, "the frame left of the mark stays clear");
+  assert.ok(brightest(547, 90, 700, 220) < 24, "the frame under the compact mark stays clear");
+  assert.ok(
+    brightest(547, 45, 691, 75) > 120,
+    "wordmark reads in the top right corner, quieted by the 45% alpha"
+  );
 });
 test("title overlay burns above the caption and honors place", () => {
   const stacked = buildCaptionAss(
@@ -562,7 +593,13 @@ test("caption near the 180-char limit still produces a non-empty dialogue line",
   const long = "x".repeat(179);
   const ass = buildCaptionAss([{ text: long, start_ms: 0, end_ms: 500 }]);
   const dialogue = ass.split("\n").find((line) => line.startsWith("Dialogue:"));
-  assert.match(dialogue, new RegExp(`${long}$`));
+  assert.match(dialogue, /\{\\k\d+\}x/);
+  // One unbroken 179-char word cannot fit the 6% inset, so it is hard-broken
+  // into chunks that each fit the 632px safe width at 26px.
+  const chunks = dialogue.replace(/^Dialogue:[^,]*,[^,]*,[^,]*,[^,]*,,0,0,0,,/, "").replace(/\{\\k\d+\}/, "").split("\\N");
+  assert.ok(chunks.length > 1, "a single oversized word is broken instead of running off frame");
+  for (const chunk of chunks) assert.ok(chunk.length <= 32, `chunk too wide: ${chunk.length}`);
+  assert.equal(chunks.join(""), long, "no characters are dropped when a word is broken");
 });
 test("render job clip uses attached media input when provided", () => {
   const withMedia = {
@@ -642,7 +679,7 @@ test("render job clip crops around the scene's focal point", () => {
   }, "/tmp/job");
   assert.match(job.clips[0].args.join(" "), /crop=720:1280:\(iw-ow\)\*0\.8:\(ih-oh\)\*0\.2/);
 });
-test("zoom motion Ken Burns from a 2× cover matching the preview 1.0→1.30 eased range", () => {
+test("zoom motion Ken Burns from a 2x cover with the gentle default and the strong preset", () => {
   const zoomJob = buildRenderJob({
     ...snapshot,
     scenes: [{ ...snapshot.scenes[0], motion: "zoom", media_id: "asset-1" }]
@@ -651,8 +688,19 @@ test("zoom motion Ken Burns from a 2× cover matching the preview 1.0→1.30 eas
   }, "/tmp/job");
   const args = zoomJob.clips[0].args.join(" ");
   assert.match(args, /crop=1440:2560:/);
-  assert.match(args, /z='1\+0\.3000\*\(0\.5-0\.5\*cos\(PI\*on\/\d+\)\)'/);
+  // Absent motion_strength is gentle: 1.00 to 1.06, so the frame keeps 6% of the
+  // picture and text printed near an edge is not cropped away.
+  assert.match(args, /z='1\+0\.0600\*\(0\.5-0\.5\*cos\(PI\*on\/\d+\)\)'/);
   assert.match(args, /flags=lanczos/);
+
+  const strongJob = buildRenderJob({
+    ...snapshot,
+    brief: { ...snapshot.brief, motion_strength: "strong" },
+    scenes: [{ ...snapshot.scenes[0], motion: "zoom", media_id: "asset-1" }]
+  }, "preview.mp4", {
+    "asset-1": { path: "/tmp/tall.jpg", type: "image/jpeg", width: 1080, height: 1920 }
+  }, "/tmp/job");
+  assert.match(strongJob.clips[0].args.join(" "), /z='1\+0\.3000\*\(0\.5-0\.5\*cos\(PI\*on\/\d+\)\)'/);
 
   const noneJob = buildRenderJob(snapshot, "preview.mp4", {}, "/tmp/job");
   assert.doesNotMatch(noneJob.clips[0].args.join(" "), /zoompan/);
@@ -663,8 +711,15 @@ test("push motion pans within the frame instead of a no-op", () => {
     scenes: [{ ...snapshot.scenes[0], motion: "push" }]
   }, "preview.mp4", {}, "/tmp/job");
   assert.match(pushJob.clips[0].args.join(" "), /zoompan/);
-  assert.match(pushJob.clips[0].args.join(" "), /z=1\.25/);
+  assert.match(pushJob.clips[0].args.join(" "), /z=1\.06/);
   assert.match(pushJob.clips[0].args.join(" "), /\(ih-ih\/zoom\)\*\(0\.5-0\.5\*cos/);
+
+  const strongPush = buildRenderJob({
+    ...snapshot,
+    brief: { ...snapshot.brief, motion_strength: "strong" },
+    scenes: [{ ...snapshot.scenes[0], motion: "push" }]
+  }, "preview.mp4", {}, "/tmp/job");
+  assert.match(strongPush.clips[0].args.join(" "), /z=1\.25/);
 });
 test("push pans sideways on a wide still and vertically on a tall still", () => {
   const scene = { ...snapshot.scenes[0], motion: "push", media_id: "asset-1" };
@@ -677,6 +732,74 @@ test("push pans sideways on a wide still and vertically on a tall still", () => 
   }, "/tmp/job");
   assert.match(tall.clips[0].args.join(" "), /y=.\(ih-ih\/zoom\)\*\(0\.5-0\.5\*cos\(PI\*on\//);
 });
+test("a whole-picture scene layers the picture over a blurred fill instead of cropping it", () => {
+  const scene = {
+    ...snapshot.scenes[0],
+    media_id: "asset-1",
+    motion: "push",
+    fit: "contain",
+    caption: "Wide line"
+  };
+  const job = buildRenderJob({ ...snapshot, scenes: [scene] }, "preview.mp4", {
+    "asset-1": { path: "/tmp/wide.jpg", type: "image/jpeg", width: 1920, height: 1080 }
+  }, "/tmp/job");
+  const args = job.clips[0].args.join(" ");
+  assert.match(args, /-filter_complex \[0:v\]split=2\[fill\]\[whole\]/);
+  // The fill is the usual 2x cover crop, moving, blurred, and dimmed.
+  assert.match(args, /\[fill\]scale=1440:2560:force_original_aspect_ratio=increase:flags=lanczos/);
+  assert.match(args, /\[fill\][^[]*zoompan=z=1\.06:/);
+  assert.match(args, /gblur=sigma=21/, "a 1280 tall frame blurs at sigma 21");
+  assert.match(args, /eq=brightness=-0\.14:saturation=0\.85\[back\]/);
+  // The picture itself is scaled to fit whole inside the frame, never cropped.
+  assert.match(args, /\[whole\]scale=720:1280:force_original_aspect_ratio=decrease:flags=lanczos,setsar=1\[fit\]/);
+  assert.match(args, /\[back\]\[fit\]overlay=\(W-w\)\/2:\(H-h\)\/2:shortest=1,subtitles=/);
+  assert.match(args, /-map \[vout\]/);
+  // Text is burned in over the composite, so the fill's motion cannot scale it.
+  assert.ok(args.indexOf("overlay=(W-w)/2") < args.indexOf("subtitles="));
+
+  const cover = buildRenderJob({ ...snapshot, scenes: [{ ...scene, fit: "cover" }] }, "preview.mp4", {
+    "asset-1": { path: "/tmp/wide.jpg", type: "image/jpeg", width: 1920, height: 1080 }
+  }, "/tmp/job");
+  const coverArgs = cover.clips[0].args.join(" ");
+  assert.doesNotMatch(coverArgs, /-filter_complex/);
+  assert.doesNotMatch(coverArgs, /gblur=/);
+  assert.match(coverArgs, /scale=1440:2560:force_original_aspect_ratio=increase/, "cover keeps the full-bleed crop");
+});
+
+test("the gentle default keeps the text band that the old 1.30 crop ate", () => {
+  const job = (strength, motion = "zoom") => buildRenderJob({
+    ...snapshot,
+    brief: { ...snapshot.brief, ...(strength ? { motion_strength: strength } : {}) },
+    scenes: [{ ...snapshot.scenes[0], motion, media_id: "asset-1" }]
+  }, "preview.mp4", {
+    "asset-1": { path: "/tmp/tall.jpg", type: "image/jpeg", width: 1080, height: 1920 }
+  }, "/tmp/job").clips[0].args.join(" ");
+
+  // ASS keeps 44 of 720 units clear on each side: 6.1% of the frame width.
+  const safeInset = 44 / 720;
+  // zoompan samples 1/zoom of the cover frame, so each edge loses half the rest.
+  const zoomEdgeLoss = (args) => {
+    const match = args.match(/z='1\+([\d.]+)\*/);
+    assert.ok(match, "zoompan keeps an eased zoom expression");
+    return (1 - 1 / (1 + Number(match[1]))) / 2;
+  };
+  // A pan holds its overscale and travels the whole overscan.
+  const panEdgeLoss = (args) => {
+    const match = args.match(/zoompan=z=([\d.]+):/);
+    assert.ok(match, "pan keeps its preset overscale");
+    return 1 - 1 / Number(match[1]);
+  };
+
+  const gentleZoom = zoomEdgeLoss(job());
+  const strongZoom = zoomEdgeLoss(job("strong"));
+  assert.ok(gentleZoom < safeInset, `gentle zoom keeps ${(1 - safeInset - gentleZoom).toFixed(3)} of the band`);
+  assert.ok(strongZoom > safeInset, "the old 1.30 move cropped into the printed text");
+  assert.ok(panEdgeLoss(job(undefined, "push")) < safeInset, "gentle pan stays inside the text band");
+  assert.ok(panEdgeLoss(job("strong", "push")) > safeInset, "the strong pan is the opt-in crop");
+  // The words themselves are burned after the move, so motion never scales them.
+  assert.ok(job().indexOf("zoompan=") < job().indexOf("subtitles="));
+});
+
 test("render job gives every clip a frame-exact cut on the cumulative beat grid", () => {
   const bpm = 174;
   const beat = 60_000 / bpm;
@@ -1214,57 +1337,75 @@ function zoompanAt(filter, on, iw, ih) {
   const zoom = evalExpr(part("z"), 1);
   return { zoom, x: evalExpr(part("x"), zoom), y: evalExpr(part("y"), zoom) };
 }
-function motionFilterFor(motion, media) {
+function motionFilterFor(motion, media, strength) {
   const job = buildRenderJob({
     ...snapshot,
+    brief: strength ? { ...snapshot.brief, motion_strength: strength } : snapshot.brief,
     scenes: [{ ...snapshot.scenes[0], motion, duration_ms: 3000, media_id: "asset-1" }]
   }, "final.mp4", { "asset-1": media }, "/tmp/job", { width: 1080, height: 1920 });
   const args = job.clips[0].args;
   return args[args.indexOf("-vf") + 1].split(",").find((part) => part.startsWith("zoompan="));
 }
-test("zoom eases from 1.0 to 1.30 and stays centred", () => {
-  const filter = motionFilterFor("zoom", { path: "/tmp/w.jpg", type: "image/jpeg", width: 3000, height: 2000 });
+test("zoom eases between the preset endpoints and stays centred", () => {
+  const media = { path: "/tmp/w.jpg", type: "image/jpeg", width: 3000, height: 2000 };
   const iw = 2160, ih = 3840, last = 89;
-  const first = zoompanAt(filter, 0, iw, ih), mid = zoompanAt(filter, 44.5, iw, ih), end = zoompanAt(filter, last, iw, ih);
-  assert.ok(Math.abs(first.zoom - 1) < 1e-9);
-  assert.ok(Math.abs(end.zoom - 1.3) < 1e-9);
-  assert.ok(Math.abs(mid.zoom - 1.15) < 1e-6, "ease-in-out is symmetric");
-  assert.ok(zoompanAt(filter, 3, iw, ih).zoom - first.zoom < (end.zoom - first.zoom) / 89, "eases in");
-  for (const on of [0, 30, 60, last]) {
-    const at = zoompanAt(filter, on, iw, ih);
-    assert.ok(at.x >= 0 && at.x + iw / at.zoom <= iw + 1e-6, "no edge on x");
-    assert.ok(at.y >= 0 && at.y + ih / at.zoom <= ih + 1e-6, "no edge on y");
+  for (const strength of [undefined, "gentle", "strong"]) {
+    // Absent motion_strength has to read as gentle, which is 1.00 to 1.06.
+    const preset = MOTION_PRESETS[strength ?? "gentle"];
+    const filter = motionFilterFor("zoom", media, strength);
+    const first = zoompanAt(filter, 0, iw, ih), mid = zoompanAt(filter, 44.5, iw, ih), end = zoompanAt(filter, last, iw, ih);
+    assert.ok(Math.abs(first.zoom - preset.zoomStart) < 1e-9, `${strength} starts at ${preset.zoomStart}`);
+    assert.ok(Math.abs(end.zoom - preset.zoomEnd) < 1e-9, `${strength} ends at ${preset.zoomEnd}`);
+    assert.ok(Math.abs(mid.zoom - (preset.zoomStart + preset.zoomEnd) / 2) < 1e-6, "ease-in-out is symmetric");
+    assert.ok(zoompanAt(filter, 3, iw, ih).zoom - first.zoom < (end.zoom - first.zoom) / 89, "eases in");
+    for (const on of [0, 30, 60, last]) {
+      const at = zoompanAt(filter, on, iw, ih);
+      assert.ok(at.x >= 0 && at.x + iw / at.zoom <= iw + 1e-6, "no edge on x");
+      assert.ok(at.y >= 0 && at.y + ih / at.zoom <= ih + 1e-6, "no edge on y");
+    }
   }
 });
-test("zoom out starts at 1.30 and eases back to the plain cover", () => {
-  const filter = motionFilterFor("zoom_out", { path: "/tmp/w.jpg", type: "image/jpeg", width: 3000, height: 2000 });
+test("zoom out starts on the preset end and eases back to the plain cover", () => {
+  const media = { path: "/tmp/w.jpg", type: "image/jpeg", width: 3000, height: 2000 };
   const iw = 2160, ih = 3840, last = 89;
-  const first = zoompanAt(filter, 0, iw, ih), mid = zoompanAt(filter, 44.5, iw, ih), end = zoompanAt(filter, last, iw, ih);
-  assert.ok(Math.abs(first.zoom - 1.3) < 1e-9);
-  assert.ok(Math.abs(end.zoom - 1) < 1e-9);
-  assert.ok(Math.abs(mid.zoom - 1.15) < 1e-6, "ease-in-out is symmetric");
-  assert.ok(first.zoom - zoompanAt(filter, 3, iw, ih).zoom < (first.zoom - end.zoom) / 89, "eases out");
-  for (const on of [0, 30, 60, last]) {
-    const at = zoompanAt(filter, on, iw, ih);
-    assert.ok(at.x >= 0 && at.x + iw / at.zoom <= iw + 1e-6, "no edge on x");
-    assert.ok(at.y >= 0 && at.y + ih / at.zoom <= ih + 1e-6, "no edge on y");
+  for (const strength of [undefined, "gentle", "strong"]) {
+    const preset = MOTION_PRESETS[strength ?? "gentle"];
+    const filter = motionFilterFor("zoom_out", media, strength);
+    const first = zoompanAt(filter, 0, iw, ih), mid = zoompanAt(filter, 44.5, iw, ih), end = zoompanAt(filter, last, iw, ih);
+    assert.ok(Math.abs(first.zoom - preset.zoomEnd) < 1e-9);
+    assert.ok(Math.abs(end.zoom - preset.zoomStart) < 1e-9);
+    assert.ok(Math.abs(mid.zoom - (preset.zoomStart + preset.zoomEnd) / 2) < 1e-6, "ease-in-out is symmetric");
+    assert.ok(first.zoom - zoompanAt(filter, 3, iw, ih).zoom < (first.zoom - end.zoom) / 89, "eases out");
+    for (const on of [0, 30, 60, last]) {
+      const at = zoompanAt(filter, on, iw, ih);
+      assert.ok(at.x >= 0 && at.x + iw / at.zoom <= iw + 1e-6, "no edge on x");
+      assert.ok(at.y >= 0 && at.y + ih / at.zoom <= ih + 1e-6, "no edge on y");
+    }
   }
 });
-test("pan overscales to 1.25 and travels 25% of the frame width on a wide still", () => {
-  const filter = motionFilterFor("push", { path: "/tmp/w.jpg", type: "image/jpeg", width: 3000, height: 2000 });
+test("pan overscales to the preset and travels its overscan on a wide still", () => {
+  const media = { path: "/tmp/w.jpg", type: "image/jpeg", width: 3000, height: 2000 };
   const iw = 2160, ih = 3840;
-  const first = zoompanAt(filter, 0, iw, ih), end = zoompanAt(filter, 89, iw, ih);
-  assert.equal(first.zoom, 1.25);
-  const travelOfFrame = (end.x - first.x) / (iw / first.zoom);
-  assert.ok(Math.abs(travelOfFrame - 0.25) < 1e-9, `travel ${travelOfFrame}`);
-  assert.ok(first.x >= 0 && end.x + iw / end.zoom <= iw + 1e-6, "pan stays inside the overscan");
-  assert.ok(Math.abs(first.y - (ih - ih / 1.25) / 2) < 1e-9, "wide pan keeps y centred");
+  for (const strength of [undefined, "gentle", "strong"]) {
+    const preset = MOTION_PRESETS[strength ?? "gentle"];
+    const filter = motionFilterFor("push", media, strength);
+    const first = zoompanAt(filter, 0, iw, ih), end = zoompanAt(filter, 89, iw, ih);
+    assert.equal(first.zoom, preset.panScale);
+    const travelOfFrame = (end.x - first.x) / (iw / first.zoom);
+    assert.ok(Math.abs(travelOfFrame - (preset.panScale - 1)) < 1e-9, `travel ${travelOfFrame}`);
+    assert.ok(first.x >= 0 && end.x + iw / end.zoom <= iw + 1e-6, "pan stays inside the overscan");
+    assert.ok(Math.abs(first.y - (ih - ih / preset.panScale) / 2) < 1e-9, "wide pan keeps y centred");
+  }
 });
-test("pan travels 25% of the frame height on a tall still, None stays static", () => {
-  const filter = motionFilterFor("push", { path: "/tmp/t.jpg", type: "image/jpeg", width: 2000, height: 3000 });
+test("pan travels the same fraction of the frame height on a tall still, None stays static", () => {
+  const media = { path: "/tmp/t.jpg", type: "image/jpeg", width: 2000, height: 3000 };
   const iw = 2160, ih = 3840;
-  const first = zoompanAt(filter, 0, iw, ih), end = zoompanAt(filter, 89, iw, ih);
-  assert.ok(Math.abs((end.y - first.y) / (ih / 1.25) - 0.25) < 1e-9);
-  assert.ok(end.y + ih / end.zoom <= ih + 1e-6);
-  assert.equal(motionFilterFor("none", { path: "/tmp/t.jpg", type: "image/jpeg", width: 2000, height: 3000 }), undefined);
+  for (const strength of [undefined, "gentle", "strong"]) {
+    const preset = MOTION_PRESETS[strength ?? "gentle"];
+    const filter = motionFilterFor("push", media, strength);
+    const first = zoompanAt(filter, 0, iw, ih), end = zoompanAt(filter, 89, iw, ih);
+    assert.ok(Math.abs((end.y - first.y) / (ih / first.zoom) - (preset.panScale - 1)) < 1e-9);
+    assert.ok(end.y + ih / end.zoom <= ih + 1e-6);
+  }
+  assert.equal(motionFilterFor("none", media), undefined);
 });

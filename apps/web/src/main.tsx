@@ -4,6 +4,7 @@ import {
   ApiClient,
   ApiResponseError,
   briefPurposeFromChat,
+  brandMarkLayout,
   newCommandId,
   buildStoryboardDraft,
   conceptIdForArchitecture,
@@ -33,6 +34,7 @@ import {
   focusFromPoint,
   formatPlayTime,
   livePlayhead,
+  motionTuning,
   spokenMixKey,
   spokenNarrationReady,
   voiceoverPlayback,
@@ -1601,7 +1603,12 @@ export function App() {
     }
   }
 
-  async function saveReel(patch: { cta?: string | null; brand_mark?: boolean }) {
+  async function saveReel(patch: {
+    cta?: string | null;
+    brand_mark?: boolean;
+    brand_mark_size?: "compact" | "standard" | null;
+    motion_strength?: "gentle" | "strong" | null;
+  }) {
     if (!project) return false;
     setStatus("Saving…");
     try {
@@ -3272,11 +3279,25 @@ export function App() {
     x: clampFocus(previewHeld ? previewScene?.focal_x ?? cropFocus.x : cropFocus.x),
     y: clampFocus(previewHeld ? previewScene?.focal_y ?? cropFocus.y : cropFocus.y)
   };
+  const previewContain = previewScene?.fit === "contain";
+  const previewTuning = motionTuning(project?.brief.motion_strength);
+  const previewMark = brandMarkLayout(project?.brief.brand_mark_size);
   const previewPosition = {
     objectPosition: `${previewFocus.x * 100}% ${previewFocus.y * 100}%`,
     ["--scene-ms" as string]: `${Math.max(500, previewScene?.duration_ms ?? 3000)}ms`,
     ["--focus-x" as string]: `${previewFocus.x * 100}%`,
-    ["--focus-y" as string]: `${previewFocus.y * 100}%`
+    ["--focus-y" as string]: `${previewFocus.y * 100}%`,
+    // The same presets the worker renders with, so preview and export move alike.
+    ["--zoom-from" as string]: `${previewTuning.zoomStart}`,
+    ["--zoom-to" as string]: `${previewTuning.zoomEnd}`,
+    ["--pan-scale" as string]: `${previewTuning.panScale}`,
+    ["--pan-travel" as string]: `${Number((previewTuning.panScale - 1).toFixed(4))}`
+  };
+  const previewMarkStyle = {
+    ["--mark-width" as string]: `${previewMark.width * 100}%`,
+    ["--mark-right" as string]: `${previewMark.right * 100}%`,
+    ["--mark-top" as string]: `${previewMark.top * 100}%`,
+    ["--mark-opacity" as string]: `${previewMark.opacity}`
   };
   const previewWide = isWideMedia(previewMedia?.detected?.width, previewMedia?.detected?.height)
     || isWideMedia(measuredPreview?.width, measuredPreview?.height);
@@ -3286,6 +3307,11 @@ export function App() {
     previewFrozen ? "is-frozen" : "",
     previewWide ? "is-wide" : ""
   ].filter(Boolean).join(" ") || undefined;
+  // Contain draws the blurred, moving backdrop and the whole picture above it,
+  // which is what the worker composites for a scene that keeps its text whole.
+  const previewMediaNode = (motionClass: string | undefined) => previewMedia?.detected?.type === "video/mp4"
+    ? <video ref={previewVideoRef} key={previewScene?.id} src={previewUrl} muted playsInline autoPlay={livePlaying} loop={previewMediaShouldLoop(livePlaying, previewFrozen)} controls={false} preload="metadata" draggable={false} className={motionClass} style={previewPosition} onLoadedMetadata={(event) => notePreviewPixels(previewUrl, event.currentTarget.videoWidth, event.currentTarget.videoHeight)} />
+    : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} draggable={false} className={motionClass} style={previewPosition} onLoad={(event) => notePreviewPixels(previewUrl, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />;
   const sceneElapsedMs = livePlaying
     ? sceneClock.current.elapsedAtPause + Math.max(0, playTick - sceneClock.current.startedAt)
     : sceneClock.current.elapsedAtPause;
@@ -3833,7 +3859,7 @@ export function App() {
       </div>}
       <div className="concepts drafts-grid">{drafts.map((item) =>
         <article key={item.id} className="card draft-card">
-          <button type="button" className="draft-open" disabled={busy} onClick={() => void openDraft(item.id)}>
+          <button type="button" className="draft-open" data-project-id={item.id} disabled={busy} onClick={() => void openDraft(item.id)}>
             <strong>{item.brief.purpose || "Untitled draft"}</strong>
             <span className="draft-meta">Revision {item.revision}</span>
           </button>
@@ -4165,9 +4191,12 @@ export function App() {
             onPointerUp={endPreviewPan}
             onPointerCancel={endPreviewPan}
           >
-        {previewUrl && (previewMedia?.detected?.type === "video/mp4"
-          ? <video ref={previewVideoRef} key={previewScene?.id} src={previewUrl} muted playsInline autoPlay={livePlaying} loop={previewMediaShouldLoop(livePlaying, previewFrozen)} controls={false} preload="metadata" draggable={false} className={previewMotionClass} style={previewPosition} onLoadedMetadata={(event) => notePreviewPixels(previewUrl, event.currentTarget.videoWidth, event.currentTarget.videoHeight)} />
-          : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} draggable={false} className={previewMotionClass} style={previewPosition} onLoad={(event) => notePreviewPixels(previewUrl, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />)}
+        {previewUrl && (previewContain ? (
+          <>
+            <span className="preview-fit-backdrop" aria-hidden="true">{previewMediaNode(previewMotionClass)}</span>
+            <span className="preview-fit-picture">{previewMediaNode(undefined)}</span>
+          </>
+        ) : previewMediaNode(previewMotionClass))}
         {previewMedia && !previewUrl && <span className="media-placeholder">{previewMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
             {!previewMedia && <span className="media-placeholder">Choose stock or upload media</span>}
             {activePreparing && !livePlaying ? (
@@ -4179,6 +4208,7 @@ export function App() {
             {project.brief.brand_mark ? (
               <iframe
                 className="reel-mark"
+                style={previewMarkStyle}
                 title="F-Motion"
                 src={`${import.meta.env.BASE_URL}brand/mark.html`}
                 tabIndex={-1}
@@ -4260,6 +4290,16 @@ export function App() {
                   }}
                 />
               </label>
+              <label htmlFor="reel-motion">Motion
+                <select
+                  id="reel-motion"
+                  value={project.brief.motion_strength ?? "gentle"}
+                  onChange={(event) => void saveReel({ motion_strength: event.target.value as "gentle" | "strong" })}
+                >
+                  <option value="gentle">Gentle</option>
+                  <option value="strong">Strong</option>
+                </select>
+              </label>
               <label className="reel-mark-toggle" htmlFor="reel-mark">
                 <input
                   id="reel-mark"
@@ -4269,8 +4309,19 @@ export function App() {
                 />
                 F-Motion mark
               </label>
+              <label htmlFor="reel-mark-size">Mark size
+                <select
+                  id="reel-mark-size"
+                  disabled={!project.brief.brand_mark}
+                  value={project.brief.brand_mark_size ?? "compact"}
+                  onChange={(event) => void saveReel({ brand_mark_size: event.target.value as "compact" | "standard" })}
+                >
+                  <option value="compact">Compact</option>
+                  <option value="standard">Standard</option>
+                </select>
+              </label>
             </div>
-            <p className="crop-hint">Leave this blank to skip a closing question. When you add one, it is the last shot, large in the center, in time with the voice. The F-Motion wordmark sits in the top right, with the cube turning beside it.</p>
+            <p className="crop-hint">Leave this blank to skip a closing question. When you add one, it is the last shot, large in the center, in time with the voice. Gentle motion keeps a 1.00 to 1.06 zoom so text printed into a photo stays whole; pick Strong for the old bolder move. The F-Motion wordmark sits in the top right at 45 percent opacity, with the cube turning beside it.</p>
             {soundtrack ? (
             <div className="music-lane" aria-label="Music bed">
               {beatMarks.map((mark, index) =>
@@ -4570,6 +4621,16 @@ export function App() {
                 <option value="none">None</option><option value="push">{wideStill ? "Pan sideways" : "Push"}</option><option value="zoom">Zoom</option><option value="zoom_out">Zoom out</option>
               </select>
             </label>
+            <label className="scene-fit-toggle" htmlFor={`fit-${activeScene.id}`}>
+              <input
+                id={`fit-${activeScene.id}`}
+                type="checkbox"
+                checked={activeScene.fit === "contain"}
+                onChange={(event) => void saveScenePatch(activeScene.id, { fit: event.target.checked ? "contain" : "cover" })}
+              />
+              Show the whole picture
+            </label>
+            <p className="crop-hint">On, this picture never crops: it keeps its full frame over a soft blurred fill, so any text inside it survives. Off, it fills the reel edge to edge.</p>
           </div>
 
           <div

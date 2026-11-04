@@ -429,8 +429,8 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.preview-preparing/);
   assert.match(css, /\.scene-card\.is-preparing/);
   assert.match(css, /transform-origin: 50% 50%/);
-  assert.match(css, /preview-zoom \{\s*from \{ transform: scale\(1\); \}\s*to \{ transform: scale\(1\.3\); \}/);
-  assert.match(css, /preview-push-wide \{\s*from \{ transform: scale\(1\.25\) translate3d\(10%, 0, 0\)/);
+  assert.match(css, /preview-zoom \{\s*from \{ transform: scale\(var\(--zoom-from, 1\)\); \}\s*to \{ transform: scale\(var\(--zoom-to, 1\.06\)\); \}/);
+  assert.match(css, /preview-push-wide \{\s*from \{ transform: translate3d\(calc\(var\(--pan-travel, 0\.06\) \* -50%\), 0, 0\) scale\(var\(--pan-scale, 1\.06\)\)/);
   assert.match(css, /preview-zoom var\(--scene-ms, 3s\) ease-in-out/);
   assert.match(css, /\.preview img\.is-frozen, \.preview video\.is-frozen \{\s*animation-play-state: paused/);
   assert.match(css, /\.brief-chat/);
@@ -454,9 +454,10 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.caption-burn/);
   assert.match(css, /\.look-title/);
   assert.match(css, /\.look-spoken/);
-  assert.match(css, /\.preview \.reel-mark \{[\s\S]*top:\s*5%/);
-  assert.match(css, /\.preview \.reel-mark \{[\s\S]*right:\s*6%/);
-  assert.match(css, /\.preview \.reel-mark \{[\s\S]*width:\s*42%/);
+  assert.match(css, /\.preview \.reel-mark \{[\s\S]*top: var\(--mark-top, 3\.5%\)/);
+  assert.match(css, /\.preview \.reel-mark \{[\s\S]*right: var\(--mark-right, 4%\)/);
+  assert.match(css, /\.preview \.reel-mark \{[\s\S]*width: var\(--mark-width, 20%\)/);
+  assert.match(css, /\.preview \.reel-mark \{[\s\S]*opacity: var\(--mark-opacity, 0\.45\)/);
   assert.match(css, /\.preview \.reel-mark \{[\s\S]*aspect-ratio:\s*960 \/ 200/);
   assert.match(css, /\.preview\.is-desktop \{[^}]*aspect-ratio:\s*16 \/ 9/);
   assert.match(css, /\.frame-choice label \{[\s\S]*min-height:\s*44px/);
@@ -790,6 +791,48 @@ test("scene editor is split into four accessible tabs (Style, Timing, Text, Medi
   assert.match(source, /scene-panel-timing[\s\S]*duration-\$\{activeScene\.id\}[\s\S]*audio-\$\{activeScene\.id\}[\s\S]*Mute scene/);
   assert.match(source, /scene-panel-text[\s\S]*caption-\$\{activeScene\.id\}[\s\S]*prompt-\$\{activeScene\.id\}/);
   assert.match(source, /scene-panel-media[\s\S]*searchStock[\s\S]*openFalGenerate[\s\S]*openFalAnimate[\s\S]*Upload media/);
+});
+
+test("studio preview reads the same motion presets, fit, and mark size as the worker", async () => {
+  const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
+  const { MOTION_PRESETS, brandMarkLayout } = await import("@f-engine/reel-engine");
+  // Gentle is the default reel move: 1.00 to 1.06, so a photo's own text survives.
+  assert.equal(MOTION_PRESETS.gentle.zoomStart, 1);
+  assert.equal(MOTION_PRESETS.gentle.zoomEnd, 1.06);
+  assert.equal(MOTION_PRESETS.strong.zoomEnd, 1.3);
+  // Compact is the default mark: a fifth of the frame at half opacity.
+  assert.equal(brandMarkLayout(undefined).width, 0.2);
+  assert.equal(brandMarkLayout(undefined).opacity, 0.45);
+  assert.equal(brandMarkLayout("standard").width, 0.42);
+
+  // The preview pulls the numbers from the shared presets instead of hardcoding.
+  assert.match(source, /motionTuning\(project\?\.brief\.motion_strength\)/);
+  assert.match(source, /brandMarkLayout\(project\?\.brief\.brand_mark_size\)/);
+  for (const key of ["--zoom-from", "--zoom-to", "--pan-scale", "--pan-travel"]) {
+    assert.match(source, new RegExp(`"${key}" as string`), key);
+    assert.match(css, new RegExp(`var\\(${key},`), key);
+  }
+  for (const key of ["--mark-width", "--mark-right", "--mark-top", "--mark-opacity"]) {
+    assert.match(source, new RegExp(`"${key}" as string`), key);
+    assert.match(css, new RegExp(`var\\(${key},`), key);
+  }
+
+  // Reel options: a motion strength and a mark size the worker honors.
+  assert.match(source, /id="reel-motion"[\s\S]{0,400}>Gentle</);
+  assert.match(source, /id="reel-motion"[\s\S]{0,400}onChange=\{\(event\) => void saveReel\(\{ motion_strength:/);
+  assert.match(source, /id="reel-mark-size"[\s\S]{0,400}>Compact</);
+  assert.match(source, /id="reel-mark-size"[\s\S]{0,400}onChange=\{\(event\) => void saveReel\(\{ brand_mark_size:/);
+
+  // Per-scene whole picture: contain over a blurred moving fill, never a crop.
+  assert.match(source, /const previewContain = previewScene\?\.fit === "contain"/);
+  assert.match(source, /className="preview-fit-backdrop"/);
+  assert.match(source, /className="preview-fit-picture"/);
+  assert.match(source, /className="scene-fit-toggle"[\s\S]{0,400}Show the whole picture/);
+  assert.match(source, /saveScenePatch\(activeScene\.id, \{ fit: event\.target\.checked \? "contain" : "cover" \}\)/);
+  assert.match(css, /\.preview \.preview-fit-backdrop \{[\s\S]{0,200}filter: blur\(18px\) brightness\(0\.86\) saturate\(0\.85\)/);
+  assert.match(css, /\.preview \.preview-fit-picture img,\n\.preview \.preview-fit-picture video \{ object-fit: contain; \}/);
+  assert.match(css, /\.scene-fit-toggle \{[\s\S]{0,120}min-height: 44px/);
 });
 
 test("music catalogue credits and LICENSE.md never use U+2014", async () => {

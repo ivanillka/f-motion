@@ -128,7 +128,9 @@
           "type": "object",
           "properties": {
             "cta": { "type": ["string", "null"], "maxLength": 180 },
-            "brand_mark": { "type": "boolean" }
+            "brand_mark": { "type": "boolean" },
+            "brand_mark_size": { "enum": ["compact", "standard", null] },
+            "motion_strength": { "enum": ["gentle", "strong", null] }
           }
         }
       }
@@ -145,7 +147,8 @@
         "duration_ms": { "type": "number", "minimum": 500, "maximum": 15000 },
         "focal_x": { "type": "number", "minimum": 0, "maximum": 1 },
         "focal_y": { "type": "number", "minimum": 0, "maximum": 1 },
-        "motion": { "enum": ["none", "push", "zoom"] },
+        "motion": { "enum": ["none", "push", "zoom", "zoom_out"] },
+        "fit": { "enum": ["cover", "contain"] },
         "audio_level": { "type": "number", "minimum": 0, "maximum": 1 },
         "ducking": { "type": "boolean" },
         "media_id": { "type": "string", "minLength": 1 },
