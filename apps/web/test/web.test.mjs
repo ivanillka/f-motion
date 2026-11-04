@@ -430,7 +430,10 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.scene-card\.is-preparing/);
   assert.match(css, /transform-origin: 50% 50%/);
   assert.match(css, /preview-zoom \{\s*from \{ transform: scale\(var\(--zoom-from, 1\)\); \}\s*to \{ transform: scale\(var\(--zoom-to, 1\.06\)\); \}/);
-  assert.match(css, /preview-push-wide \{\s*from \{ transform: translate3d\(calc\(var\(--pan-travel, 0\.06\) \* -50%\), 0, 0\) scale\(var\(--pan-scale, 1\.06\)\)/);
+  // The pan starts on the leading edge of the overscan and ends on the trailing
+  // one, which is the direction the worker's zoompan filter travels it.
+  assert.match(css, /preview-push \{\s*from \{ transform: translate3d\(0, calc\(var\(--pan-travel, 0\.06\) \* 50%\), 0\) scale\(var\(--pan-scale, 1\.06\)\)/);
+  assert.match(css, /preview-push-wide \{\s*from \{ transform: translate3d\(calc\(var\(--pan-travel, 0\.06\) \* 50%\), 0, 0\) scale\(var\(--pan-scale, 1\.06\)\)/);
   assert.match(css, /preview-zoom var\(--scene-ms, 3s\) ease-in-out/);
   assert.match(css, /\.preview img\.is-frozen, \.preview video\.is-frozen \{\s*animation-play-state: paused/);
   assert.match(css, /\.brief-chat/);

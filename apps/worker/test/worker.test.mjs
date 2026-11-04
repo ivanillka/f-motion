@@ -1394,6 +1394,10 @@ test("pan overscales to the preset and travels its overscan on a wide still", ()
     const travelOfFrame = (end.x - first.x) / (iw / first.zoom);
     assert.ok(Math.abs(travelOfFrame - (preset.panScale - 1)) < 1e-9, `travel ${travelOfFrame}`);
     assert.ok(first.x >= 0 && end.x + iw / end.zoom <= iw + 1e-6, "pan stays inside the overscan");
+    // The window starts on the leading edge of the overscan and ends on the
+    // trailing one, which is the direction the studio preview has to follow.
+    assert.ok(Math.abs(first.x) < 1e-9, "pan starts on the left edge of the overscan");
+    assert.ok(Math.abs(end.x + iw / end.zoom - iw) < 1e-6, "pan ends on the right edge of the overscan");
     assert.ok(Math.abs(first.y - (ih - ih / preset.panScale) / 2) < 1e-9, "wide pan keeps y centred");
   }
 });
@@ -1405,7 +1409,10 @@ test("pan travels the same fraction of the frame height on a tall still, None st
     const filter = motionFilterFor("push", media, strength);
     const first = zoompanAt(filter, 0, iw, ih), end = zoompanAt(filter, 89, iw, ih);
     assert.ok(Math.abs((end.y - first.y) / (ih / first.zoom) - (preset.panScale - 1)) < 1e-9);
-    assert.ok(end.y + ih / end.zoom <= ih + 1e-6);
+    assert.ok(first.y >= 0 && end.y + ih / end.zoom <= ih + 1e-6, "pan stays inside the overscan");
+    assert.ok(Math.abs(first.y) < 1e-9, "pan starts on the top edge of the overscan");
+    assert.ok(Math.abs(end.y + ih / end.zoom - ih) < 1e-6, "pan ends on the bottom edge of the overscan");
+    assert.ok(Math.abs(first.x - (iw - iw / preset.panScale) / 2) < 1e-9, "tall pan keeps x centred");
   }
   assert.equal(motionFilterFor("none", media), undefined);
 });

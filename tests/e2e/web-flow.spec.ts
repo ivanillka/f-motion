@@ -60,6 +60,96 @@ async function firstSceneFit(page: Page): Promise<string> {
   return scenes[0]?.fit ?? "cover";
 }
 
+/**
+ * Where the picture sits inside the frame at one moment of a scene: the scale it
+ * is drawn at, and the point of the picture the middle of the frame shows, as
+ * fractions of the frame width and height from the picture's centre. A positive
+ * offset means the frame shows a point below or right of the picture's centre.
+ */
+interface MotionFrame {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+interface PreviewMotion {
+  /** A wide picture pans sideways, which is what the preview's is-wide class says. */
+  wide: boolean;
+  /** The tuning the studio published on the picture, read back from its styles. */
+  tuning: { zoomStart: number; zoomEnd: number; panScale: number };
+  frames: Array<MotionFrame & { progress: number }>;
+}
+
+/**
+ * The frame the worker's zoompan filter samples at `progress` 0..1 of a scene,
+ * spelled out here rather than called from the app so this assertion cannot pass
+ * just because both renderers read the same wrong number. The worker tests pin
+ * the same maths to the filter itself: the preset endpoints, the symmetric ease,
+ * the whole overscan travelled from the leading edge to the trailing one, and a
+ * wide picture panning sideways instead of down. The filter eases with
+ * `0.5 - 0.5 * cos(PI * on / (frames - 1))`; the studio eases with CSS
+ * ease-in-out, and the two agree at 0, 0.5 and 1, which is what is sampled here.
+ */
+function workerFrame(
+  motion: "zoom" | "zoom_out" | "push" | "none",
+  tuning: { zoomStart: number; zoomEnd: number; panScale: number },
+  progress: number,
+  wide: boolean
+): MotionFrame {
+  const ease = 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, Math.max(0, progress)));
+  const range = tuning.zoomEnd - tuning.zoomStart;
+  if (motion === "zoom") return { scale: tuning.zoomStart + range * ease, offsetX: 0, offsetY: 0 };
+  if (motion === "zoom_out") return { scale: tuning.zoomEnd - range * ease, offsetX: 0, offsetY: 0 };
+  if (motion !== "push") return { scale: 1, offsetX: 0, offsetY: 0 };
+  const travel = (1 - 1 / tuning.panScale) * (ease - 0.5);
+  return wide
+    ? { scale: tuning.panScale, offsetX: travel, offsetY: 0 }
+    : { scale: tuning.panScale, offsetX: 0, offsetY: travel };
+}
+
+/** The motion the studio preview draws, in the same terms as workerFrame. */
+async function previewMotion(page: Page, progress: readonly number[] = [0, 0.5, 1]): Promise<PreviewMotion> {
+  const pause = page.getByRole("button", { name: "Pause preview" });
+  if (await pause.isVisible()) await pause.click();
+  const play = page.getByRole("button", { name: "Play preview" });
+  if (await play.isVisible()) {
+    await play.click();
+    await expect(pause).toBeVisible();
+    await pause.click();
+  }
+  return page.locator(".preview img").first().evaluate(async (node, steps) => {
+    const moving = node.getAnimations().filter((animation) =>
+      animation instanceof CSSAnimation && animation.animationName.startsWith("preview-"));
+    if (!moving.length) throw new Error("the preview picture is not moving");
+    const style = getComputedStyle(node);
+    const tuning = {
+      zoomStart: Number.parseFloat(style.getPropertyValue("--zoom-from")) || 1,
+      zoomEnd: Number.parseFloat(style.getPropertyValue("--zoom-to")) || 1,
+      panScale: Number.parseFloat(style.getPropertyValue("--pan-scale")) || 1
+    };
+    const sceneMs = Number.parseFloat(style.getPropertyValue("--scene-ms")) || 3000;
+    const width = node.clientWidth;
+    const height = node.clientHeight;
+    const frames = [];
+    for (const at of steps) {
+      for (const animation of moving) {
+        animation.pause();
+        animation.currentTime = sceneMs * at;
+      }
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const transform = getComputedStyle(node).transform;
+      const matrix = transform === "none" ? new DOMMatrixReadOnly() : new DOMMatrixReadOnly(transform);
+      frames.push({
+        progress: at,
+        scale: matrix.a,
+        offsetX: -matrix.e / (matrix.a * width),
+        offsetY: -matrix.f / (matrix.d * height)
+      });
+    }
+    return { wide: node.classList.contains("is-wide"), tuning, frames };
+  }, [...progress]);
+}
+
 /** Type of every attached asset, in scene order. */
 async function sceneMediaTypes(page: Page): Promise<Array<{ order: number; type: string }>> {
   return page.evaluate(async () => {
@@ -532,6 +622,49 @@ test("studio options drive the same gentle motion, whole picture, and quiet mark
   await page.getByLabel("Show the whole picture").click();
   await expect.poll(() => firstSceneFit(page)).toBe("cover");
   await expect(page.locator(".preview .preview-fit-picture")).toHaveCount(0);
+});
+
+test("the studio preview draws the same frame as the worker for every motion in both presets", async ({ page }) => {
+  test.setTimeout(150_000);
+  await page.route("https://e2e-storage.invalid/**", (route) =>
+    route.fulfill({ status: 200, body: "" }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await briefWithOwnStill(page, "A calm launch teaser for a small team");
+  await createStoryboard(page);
+  await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
+
+  // The three moments the CSS ease-in-out and the worker's cosine agree on: the
+  // first frame, the middle and the last. A 90 frame scene puts its middle frame
+  // at 44/89, half a frame either side of the middle, which is well inside the
+  // 0.005 tolerance for both presets.
+  // The presets the worker ships, so the browser assertion stands on its own.
+  const presets = { gentle: { zoomStart: 1, zoomEnd: 1.06, panScale: 1.06 }, strong: { zoomStart: 1, zoomEnd: 1.3, panScale: 1.25 } };
+  for (const strength of ["gentle", "strong"] as const) {
+    await page.locator("#reel-motion").selectOption(strength);
+    await expect.poll(async () => (await savedBrief(page)).motion_strength ?? "gentle").toBe(strength);
+    for (const motion of ["zoom", "zoom_out", "push"] as const) {
+      await page.getByLabel("Scene 1 motion").selectOption(motion);
+      await expect.poll(async () => (await projectScenes(page))[0]?.motion).toBe(motion);
+      const preview = await previewMotion(page);
+      // The studio has to publish the shared preset for the comparison to mean
+      // anything: a preview that moved by its own amount would still match itself.
+      expect(preview.tuning, `${strength} preset`).toEqual(presets[strength]);
+      for (const frame of preview.frames) {
+        const worker = workerFrame(motion, preview.tuning, frame.progress, preview.wide);
+        const at = `${strength} ${motion} at ${Math.round(frame.progress * 100)} percent`;
+        expect(Math.abs(frame.scale - worker.scale), `${at}: scale ${frame.scale} vs ${worker.scale}`).toBeLessThan(0.005);
+        expect(Math.abs(frame.offsetX - worker.offsetX), `${at}: across ${frame.offsetX} vs ${worker.offsetX}`).toBeLessThan(0.005);
+        expect(Math.abs(frame.offsetY - worker.offsetY), `${at}: down ${frame.offsetY} vs ${worker.offsetY}`).toBeLessThan(0.005);
+      }
+      // The gentle zoom is the one the printed text depends on: 1.00 to 1.06, so
+      // the middle of the scene is 1.03 and each edge only loses 2.83% of height.
+      if (strength === "gentle" && motion === "zoom") {
+        const middle = preview.frames.find(({ progress }) => progress === 0.5);
+        expect(middle?.scale).toBeCloseTo(1.03, 3);
+      }
+    }
+  }
 });
 
 test("locked provider actions explain the blocker and next action", async ({ page }) => {

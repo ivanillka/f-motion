@@ -735,13 +735,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
    both ease-in-out. Translate resolves against the untransformed box, so half
    the travel each side of centre is (scale - 1) / 2 of the frame: a gentle 1.06
    pan moves 6% and the strong 1.25 pan moves 25%. */
+/* The pan starts high and travels down, the way the worker's zoompan filter
+   slides its window from the top edge of the overscan to the bottom one: the
+   translate is applied before the scale, so it moves the picture in frame space
+   and -half/ +half of the overscan puts the first frame's middle above the
+   picture's centre, as zoompan's y='(ih-ih/zoom)*ease' does. */
 @keyframes preview-push {
-  from { transform: translate3d(0, calc(var(--pan-travel, 0.06) * -50%), 0) scale(var(--pan-scale, 1.06)); }
-  to { transform: translate3d(0, calc(var(--pan-travel, 0.06) * 50%), 0) scale(var(--pan-scale, 1.06)); }
+  from { transform: translate3d(0, calc(var(--pan-travel, 0.06) * 50%), 0) scale(var(--pan-scale, 1.06)); }
+  to { transform: translate3d(0, calc(var(--pan-travel, 0.06) * -50%), 0) scale(var(--pan-scale, 1.06)); }
 }
 @keyframes preview-push-wide {
-  from { transform: translate3d(calc(var(--pan-travel, 0.06) * -50%), 0, 0) scale(var(--pan-scale, 1.06)); }
-  to { transform: translate3d(calc(var(--pan-travel, 0.06) * 50%), 0, 0) scale(var(--pan-scale, 1.06)); }
+  from { transform: translate3d(calc(var(--pan-travel, 0.06) * 50%), 0, 0) scale(var(--pan-scale, 1.06)); }
+  to { transform: translate3d(calc(var(--pan-travel, 0.06) * -50%), 0, 0) scale(var(--pan-scale, 1.06)); }
 }
 @keyframes preview-zoom {
   from { transform: scale(var(--zoom-from, 1)); }
