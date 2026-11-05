@@ -10,6 +10,18 @@ export const MAX_STORYBOARD_SCENES = 32;
 
 export type AccountState = "active" | "suspended" | "deletion_pending";
 export type MotionPreset = "none" | "push" | "zoom" | "zoom_out";
+/**
+ * How far a reel lets its stills move. Absent means gentle, so every reel
+ * recorded before this field calms down instead of cropping its text.
+ */
+export const motionStrengths = ["gentle", "strong"] as const;
+export type MotionStrength = (typeof motionStrengths)[number];
+/** How a picture fills the frame. Absent means cover, the full-bleed crop. */
+export const sceneFits = ["cover", "contain"] as const;
+export type SceneFit = (typeof sceneFits)[number];
+/** Brand mark lockup size. Absent means compact, the quiet corner mark. */
+export const brandMarkSizes = ["compact", "standard"] as const;
+export type BrandMarkSize = (typeof brandMarkSizes)[number];
 export const overlayPlaces = ["bottom", "center", "top"] as const;
 export type OverlayPlace = (typeof overlayPlaces)[number];
 export const overlayLooks = ["caption", "title", "poster", "spoken"] as const;
@@ -46,6 +58,11 @@ export interface Scene {
   overlay_look?: OverlayLook;
   /** Mix reels only. Stock footage, AI footage, or a documental diagram. */
   picture?: PictureKind;
+  /**
+   * Contain insets the whole picture over a blurred fill so nothing leaves the
+   * frame. Absent means cover, the full-bleed crop.
+   */
+  fit?: SceneFit;
 }
 
 /**
@@ -215,6 +232,10 @@ export interface ProjectBrief {
   cta?: string;
   /** Landing cube lockup in the top-right corner. Absent means off. */
   brand_mark?: boolean;
+  /** Lockup width. Absent means compact. */
+  brand_mark_size?: BrandMarkSize;
+  /** Reel-wide motion amount. Absent means gentle. */
+  motion_strength?: MotionStrength;
   /** Output frame. Absent means a vertical reel. Both renders each frame, cover-cropped. */
   frame?: "reel" | "desktop" | "both";
   /** Stock footage, AI footage, and documental diagrams in one reel. Absent means off. */
@@ -394,6 +415,7 @@ function isScene(value: unknown, order: number): value is Scene {
   }
   if ("overlay_place" in value && !isOverlayPlace(value.overlay_place)) return false;
   if ("overlay_look" in value && !isOverlayLook(value.overlay_look)) return false;
+  if ("fit" in value && value.fit !== "cover" && value.fit !== "contain") return false;
   if ("picture" in value && value.picture !== "stock" && value.picture !== "footage" && value.picture !== "document") {
     return false;
   }
@@ -504,6 +526,8 @@ export function isProjectBrief(value: unknown): value is ProjectBrief {
       || value.cta !== value.cta.trim()
       || value.cta.length > 180))
     || ("brand_mark" in value && value.brand_mark !== true)
+    || ("brand_mark_size" in value && value.brand_mark_size !== "compact" && value.brand_mark_size !== "standard")
+    || ("motion_strength" in value && value.motion_strength !== "gentle" && value.motion_strength !== "strong")
     || ("frame" in value && value.frame !== "reel" && value.frame !== "desktop" && value.frame !== "both")
     || ("mix" in value && value.mix !== true)
     || ("spoken_audio" in value && value.spoken_audio != null && !isSpokenAudio(value.spoken_audio))) {

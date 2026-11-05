@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { beatGridCuts, RENDER_FPS, MAX_STORYBOARD_SCENES, conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief, mixPicture, sceneUsesStock, picturePrompt } from "../dist/index.js";
+import { beatGridCuts, RENDER_FPS, MAX_STORYBOARD_SCENES, conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief, mixPicture, sceneUsesStock, picturePrompt, MOTION_PRESETS, motionTuning, motionZoomRange, BRAND_MARK_OPACITY, brandMarkLayout, brandMarkLayouts } from "../dist/index.js";
 
 const EM_DASH = "\u2014";
 
@@ -739,3 +739,83 @@ test("a mix reel assigns stock, AI footage, and a diagram without dropping the r
   }, "direct", () => "scene");
   assert.equal(plain[0].picture, undefined);
 });
+
+test("gentle motion is the default move and strong is opt-in", () => {
+  assert.deepEqual(MOTION_PRESETS.gentle, { zoomStart: 1, zoomEnd: 1.06, panScale: 1.06 });
+  assert.deepEqual(MOTION_PRESETS.strong, { zoomStart: 1, zoomEnd: 1.3, panScale: 1.25 });
+  // Absent strength calms a reel down instead of cropping its own headlines.
+  assert.deepEqual(motionTuning(undefined), MOTION_PRESETS.gentle);
+  assert.deepEqual(motionTuning("gentle"), MOTION_PRESETS.gentle);
+  assert.deepEqual(motionTuning("strong"), MOTION_PRESETS.strong);
+  assert.equal(motionZoomRange(MOTION_PRESETS.gentle).toFixed(2), "0.06");
+  assert.equal(motionZoomRange(MOTION_PRESETS.strong).toFixed(2), "0.30");
+  // The safe text band is 6% a side, and the gentle move never reaches it.
+  const safeInset = 0.06;
+  assert.ok((1 - 1 / MOTION_PRESETS.gentle.zoomEnd) / 2 < safeInset, "gentle zoom keeps the text band");
+  assert.ok(1 - 1 / MOTION_PRESETS.gentle.panScale < safeInset, "gentle pan keeps the text band");
+  assert.ok((1 - 1 / MOTION_PRESETS.strong.zoomEnd) / 2 > safeInset, "strong is the opt-in crop");
+});
+
+test("the corner mark is compact and quiet by default", () => {
+  assert.equal(BRAND_MARK_OPACITY, 0.45);
+  assert.deepEqual(brandMarkLayout(undefined), brandMarkLayouts.compact);
+  assert.deepEqual(brandMarkLayout("compact"), brandMarkLayouts.compact);
+  assert.deepEqual(brandMarkLayout("standard"), brandMarkLayouts.standard);
+  assert.deepEqual(brandMarkLayouts.compact, { width: 0.2, right: 0.04, top: 0.035, opacity: 0.45 });
+  // Compact at 1080 wide draws 216px ending 5.8% down, above the 6% text inset.
+  const width = 1080;
+  const height = 1920;
+  assert.equal(Math.round(brandMarkLayouts.compact.width * width), 216);
+  assert.equal(Math.round(brandMarkLayouts.compact.right * width), 43);
+  assert.equal(Math.round(brandMarkLayouts.compact.top * height), 67);
+  const markHeight = (216 * 200) / 960;
+  assert.ok((67 + markHeight) / height < 0.06, "the compact mark stays inside the top safe band");
+});
+
+test("update_reel stores the motion strength and the mark size, and null restores the defaults", () => {
+  const calmed = applyCommand(snapshot, command("update_reel", {
+    brand_mark: true,
+    brand_mark_size: "standard",
+    motion_strength: "strong"
+  }));
+  assert.equal(calmed.brief.brand_mark_size, "standard");
+  assert.equal(calmed.brief.motion_strength, "strong");
+  const reset = applyCommand(calmed, command("update_reel", {
+    brand_mark_size: null,
+    motion_strength: null
+  }, 1));
+  assert.equal(reset.brief.brand_mark_size, undefined);
+  assert.equal(reset.brief.motion_strength, undefined);
+  assert.equal(reset.brief.brand_mark, true, "clearing the style keeps the mark itself");
+  const plan = renderPlan(reset, referenceProfile);
+  assert.equal(plan.motion_strength, undefined, "an unset strength reads as gentle downstream");
+  assert.throws(
+    () => applyCommand(snapshot, command("update_reel", { brand_mark_size: "huge" })),
+    /brand mark size/
+  );
+  assert.throws(
+    () => applyCommand(snapshot, command("update_reel", { motion_strength: "wild" })),
+    /motion strength/
+  );
+});
+
+test("a scene keeps the whole picture when its fit is contain", () => {
+  const contained = applyCommand(snapshot, command("update_scene", {
+    scene: { ...snapshot.scenes[0], fit: "contain" }
+  }));
+  assert.equal(contained.scenes[0].fit, "contain");
+  assert.equal(contained.scenes[0].caption, "Hello", "fit is a picture setting, not a copy change");
+  const back = applyCommand(contained, command("update_scene", {
+    scene: { ...contained.scenes[0], fit: "cover" }
+  }, 1));
+  assert.equal(back.scenes[0].fit, "cover");
+  assert.throws(
+    () => applyCommand(snapshot, command("update_scene", {
+      scene: { ...snapshot.scenes[0], fit: "stretch" }
+    })),
+    /invalid (scene|fit)/
+  );
+  assert.equal(renderPlan(contained, referenceProfile).scenes[0].fit, "contain");
+  assert.equal(renderPlan(snapshot, referenceProfile).scenes[0].fit, undefined, "cover stays implicit");
+});
+

@@ -64,12 +64,16 @@ test("private package tarballs install and run outside the monorepo without regi
   assert.deepEqual(
     engine.files.map(({ path }) => path).sort(),
     [
+      "dist/brand-mark.d.ts",
+      "dist/brand-mark.js",
       "dist/brief-architecture.d.ts",
       "dist/brief-architecture.js",
       "dist/index.d.ts",
       "dist/index.js",
       "dist/media-intent.d.ts",
       "dist/media-intent.js",
+      "dist/motion.d.ts",
+      "dist/motion.js",
       "dist/photos-to-reel.d.ts",
       "dist/photos-to-reel.js",
       "dist/spoken-narration.d.ts",

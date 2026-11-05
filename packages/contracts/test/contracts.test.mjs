@@ -20,6 +20,7 @@ import { parseNotifyUrl, renderNotifyConfigFromEnv, signRenderNotify, verifyRend
 const fixture = async (name) => JSON.parse(await readFile(new URL(`../fixtures/${name}`, import.meta.url)));
 const inventory = JSON.parse(await readFile(new URL("../route-inventory.json", import.meta.url), "utf8"));
 const openapi = await readFile(new URL("../openapi.yaml", import.meta.url), "utf8");
+const schema = await readFile(new URL("../schema/f-engine-v1.schema.json", import.meta.url), "utf8");
 
 const snapshotWithPrompt = (visual_prompt) => ({
   schema_version: 1,
@@ -196,6 +197,36 @@ test("brief voiceover is optional and validated when present", () => {
     ...base,
     brief: { ...base.brief, voiceover: { media_id: "vo-1", offset_ms: -1, level: 1 } }
   }), false);
+});
+
+test("gentle motion, whole picture fits, and quiet mark sizes stay in every contract copy", () => {
+  const base = snapshotWithPrompt();
+  const scene = base.scenes[0];
+  // Absent fields mean gentle motion, a cover fit, and the compact mark.
+  assert.equal(isProjectSnapshot(base), true);
+  assert.equal(isProjectSnapshot({
+    ...base,
+    brief: { ...base.brief, motion_strength: "gentle", brand_mark_size: "compact" },
+    scenes: [{ ...scene, fit: "contain" }]
+  }), true);
+  assert.equal(isProjectSnapshot({
+    ...base,
+    brief: { ...base.brief, motion_strength: "strong", brand_mark_size: "standard" },
+    scenes: [{ ...scene, fit: "cover" }]
+  }), true);
+  assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, motion_strength: "bold" } }), false);
+  assert.equal(isProjectSnapshot({ ...base, brief: { ...base.brief, brand_mark_size: "tiny" } }), false);
+  assert.equal(isProjectSnapshot({ ...base, scenes: [{ ...scene, fit: "stretch" }] }), false);
+
+  // The JSON schema and the OpenAPI spell the same choices the types allow.
+  assert.match(schema, /"brand_mark_size": \{ "enum": \["compact", "standard", null\] \}/);
+  assert.match(schema, /"motion_strength": \{ "enum": \["gentle", "strong", null\] \}/);
+  assert.match(schema, /"fit": \{ "enum": \["cover", "contain"\] \}/);
+  assert.match(schema, /"motion": \{ "enum": \["none", "push", "zoom", "zoom_out"\] \}/);
+  assert.match(openapi, /brand_mark_size: \{ type: string, enum: \[compact, standard\] \}/);
+  assert.match(openapi, /motion_strength: \{ type: string, enum: \[gentle, strong\] \}/);
+  assert.match(openapi, /fit: \{ type: string, enum: \[cover, contain\] \}/);
+  assert.match(openapi, /motion: \{ type: string, enum: \[none, push, zoom, zoom_out\] \}/);
 });
 
 test("storyboard lifecycle validation enforces scene count, IDs, order, and prompts", () => {
