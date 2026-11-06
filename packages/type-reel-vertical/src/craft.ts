@@ -91,7 +91,9 @@ export function generateReelCraft(input: {
     tone: architecture.tone,
     architecture,
     ...(cta ? { cta } : {}),
-    ...(input.settings.brandMark ? { brand_mark: true as const } : {})
+    ...(input.settings.brandMark ? { brand_mark: true as const } : {}),
+    ...(input.settings.brandMarkSize ? { brand_mark_size: input.settings.brandMarkSize } : {}),
+    ...(input.settings.motionStrength ? { motion_strength: input.settings.motionStrength } : {})
   };
   // Prefer planStoryboardScenes (Studio create path); fall back to draft builder.
   // Every photo in the pool needs a scene: a five-shot plan that only holds

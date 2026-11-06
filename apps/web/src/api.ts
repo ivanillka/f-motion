@@ -9,6 +9,7 @@ import {
 import {
   beatGridCuts,
   beatMs,
+  brandMarkLayout,
   briefWantsWordsOnScreen,
   buildStoryboardDraft,
   clampBpm,
@@ -28,6 +29,7 @@ import {
   VOICEOVER_DUCK,
   COMMENT_CTA,
   mixPicture,
+  motionTuning,
   parseBeatPattern,
   photoFitTarget,
   photoReelText,
@@ -84,6 +86,8 @@ export interface Scene {
   overlay_place?: "bottom" | "center" | "top";
   overlay_look?: "caption" | "title" | "poster" | "spoken";
   picture?: "stock" | "footage" | "document";
+  /** Absent means cover: the frame fills edge to edge. */
+  fit?: "cover" | "contain";
 }
 
 export interface Soundtrack {
@@ -116,6 +120,10 @@ export interface ProjectSnapshot {
     media_glance?: MediaGlanceHints;
     cta?: string;
     brand_mark?: boolean;
+    /** Absent means compact: the small corner credit. */
+    brand_mark_size?: "compact" | "standard";
+    /** Absent means gentle: the 1.00 to 1.06 zoom that leaves text whole. */
+    motion_strength?: "gentle" | "strong";
     frame?: "reel" | "desktop" | "both";
     mix?: true;
   };
@@ -171,6 +179,7 @@ export interface SceneMediaView {
 }
 
 export {
+  brandMarkLayout,
   briefWantsWordsOnScreen,
   buildStoryboardDraft,
   conceptIdForArchitecture,
@@ -180,6 +189,7 @@ export {
   spokenWordIndex,
   spokenWordsForCues,
   defaultVideoArchitecture,
+  motionTuning,
   recommendVideoArchitecture,
   setMediaIntentAdapter,
   VOICEOVER_DUCK,

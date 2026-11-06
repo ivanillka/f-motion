@@ -6,11 +6,14 @@ import {
   isSpokenAudio,
   isVoiceover,
   isStoryboardScenes,
+  type BrandMarkSize,
   type CaptionCue,
   type CommandEnvelope,
   type MediaGlanceHints,
+  type MotionStrength,
   type ProjectSnapshot,
   type Scene,
+  type SceneFit,
   type VideoArchitecture
 } from "@f-engine/contracts";
 import { defaultVideoArchitecture, recommendVideoArchitecture } from "./brief-architecture.js";
@@ -84,7 +87,21 @@ export {
   spokenTimelineMs
 } from "./spoken-narration.js";
 export type { SpokenLineSlot } from "./spoken-narration.js";
-export type { MediaGlanceHints, VideoArchitecture } from "@f-engine/contracts";
+export { MOTION_PRESETS, motionTuning, motionZoomRange } from "./motion.js";
+export type { MotionTuning } from "./motion.js";
+export {
+  BRAND_MARK_OPACITY,
+  brandMarkLayout,
+  brandMarkLayouts
+} from "./brand-mark.js";
+export type { BrandMarkLayout } from "./brand-mark.js";
+export type {
+  BrandMarkSize,
+  MediaGlanceHints,
+  MotionStrength,
+  SceneFit,
+  VideoArchitecture
+} from "@f-engine/contracts";
 
 export interface Concept {
   id: string;
@@ -108,6 +125,8 @@ export interface RenderPlan {
   width: number;
   height: number;
   watermark?: string;
+  /** Reel-wide motion amount, resolved from the brief. Absent means gentle. */
+  motion_strength?: MotionStrength;
   scenes: Array<Scene & { caption_cues: CaptionCue[] }>;
 }
 
@@ -599,6 +618,9 @@ function boundedScene(scene: Scene): Scene {
   if (scene.overlay_look !== undefined && !isOverlayLookValue(scene.overlay_look)) {
     throw new Error("invalid overlay look");
   }
+  if (scene.fit !== undefined && scene.fit !== "cover" && scene.fit !== "contain") {
+    throw new Error("invalid fit");
+  }
   if (scene.picture !== undefined && scene.picture !== "stock" && scene.picture !== "footage" && scene.picture !== "document") {
     throw new Error("invalid picture");
   }
@@ -812,6 +834,7 @@ function validatedScene(value: unknown): Scene {
     || ("overlay_place" in scene && scene.overlay_place !== "bottom"
       && scene.overlay_place !== "center" && scene.overlay_place !== "top")
     || ("overlay_look" in scene && !isOverlayLookValue(scene.overlay_look))
+    || ("fit" in scene && scene.fit !== "cover" && scene.fit !== "contain")
     || ("caption_cues" in scene && !isValidCueShape(scene.caption_cues))) {
     throw new Error("invalid scene");
   }
@@ -971,13 +994,29 @@ function freshSceneId(scenes: Scene[], base: string): string {
 }
 
 function applyReel(snapshot: ProjectSnapshot, payload: Record<string, unknown>): ProjectSnapshot {
-  if (!("cta" in payload) && !("brand_mark" in payload)) throw new Error("invalid reel options");
+  if (!("cta" in payload) && !("brand_mark" in payload)
+    && !("brand_mark_size" in payload) && !("motion_strength" in payload)) {
+    throw new Error("invalid reel options");
+  }
   const brief = { ...snapshot.brief };
   let scenes = snapshot.scenes.map(copyScene);
   if ("brand_mark" in payload) {
     if (payload.brand_mark === true) brief.brand_mark = true;
     else if (payload.brand_mark === false) delete brief.brand_mark;
     else throw new Error("invalid brand mark");
+  }
+  // null clears the field, so the reel falls back to the gentle defaults.
+  if ("brand_mark_size" in payload) {
+    const size = payload.brand_mark_size;
+    if (size === null) delete brief.brand_mark_size;
+    else if (size === "compact" || size === "standard") brief.brand_mark_size = size;
+    else throw new Error("invalid brand mark size");
+  }
+  if ("motion_strength" in payload) {
+    const strength = payload.motion_strength;
+    if (strength === null) delete brief.motion_strength;
+    else if (strength === "gentle" || strength === "strong") brief.motion_strength = strength;
+    else throw new Error("invalid motion strength");
   }
   if ("cta" in payload) {
     const raw = payload.cta;
@@ -1269,6 +1308,7 @@ export function renderPlan(snapshot: ProjectSnapshot, profile: RenderProfile): R
     width: profile.width,
     height: profile.height,
     ...(profile.watermark === undefined ? {} : { watermark: profile.watermark }),
+    ...(snapshot.brief.motion_strength === "strong" ? { motion_strength: "strong" as const } : {}),
     scenes: scenes.map((scene) => ({ ...scene, caption_cues: cuesForScene(scene) }))
   };
 }

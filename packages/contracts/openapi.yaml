@@ -1388,6 +1388,8 @@ components:
         media_glance: { $ref: "#/components/schemas/MediaGlanceHints" }
         cta: { type: string, minLength: 1, maxLength: 180 }
         brand_mark: { type: boolean, const: true }
+        brand_mark_size: { type: string, enum: [compact, standard] }
+        motion_strength: { type: string, enum: [gentle, strong] }
         frame: { type: string, enum: [reel, desktop, both] }
         mix: { type: boolean, const: true }
     VideoArchitecture:
@@ -1456,7 +1458,8 @@ components:
         duration_ms: { type: number, minimum: 500, maximum: 15000 }
         focal_x: { type: number, minimum: 0, maximum: 1 }
         focal_y: { type: number, minimum: 0, maximum: 1 }
-        motion: { type: string, enum: [none, push, zoom] }
+        motion: { type: string, enum: [none, push, zoom, zoom_out] }
+        fit: { type: string, enum: [cover, contain] }
         audio_level: { type: number, minimum: 0, maximum: 1 }
         ducking: { type: boolean }
         media_id: { type: string, minLength: 1 }
@@ -1559,6 +1562,14 @@ components:
           type: string
           maxLength: 180
         brand_mark: { type: boolean }
+        brand_mark_size:
+          nullable: true
+          type: string
+          enum: [compact, standard]
+        motion_strength:
+          nullable: true
+          type: string
+          enum: [gentle, strong]
     UploadDeclaration:
       type: object
       required: [content_type, byte_length]

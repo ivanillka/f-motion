@@ -26,6 +26,7 @@ interface StudioScene {
   caption: string;
   title?: string;
   motion: string;
+  fit?: string;
   duration_ms: number;
   media_id?: string;
 }
@@ -39,6 +40,114 @@ async function projectScenes(page: Page): Promise<StudioScene[]> {
     const { project } = await response.json() as { project: { scenes: StudioScene[] } };
     return project.scenes;
   });
+}
+
+/** One saved brief field, read back from the API so a save can be awaited. */
+async function savedBrief(page: Page): Promise<Record<string, unknown>> {
+  return page.evaluate(async () => {
+    const projectId = localStorage.getItem("fengine-project");
+    if (!projectId) throw new Error("project id missing");
+    const response = await fetch(`/api/projects/${projectId}`);
+    if (!response.ok) throw new Error(`project unavailable: ${response.status}`);
+    const { project } = await response.json() as { project: { brief: Record<string, unknown> } };
+    return project.brief;
+  });
+}
+
+/** Fit of the first scene, read back from the API so a save can be awaited. */
+async function firstSceneFit(page: Page): Promise<string> {
+  const scenes = await projectScenes(page);
+  return scenes[0]?.fit ?? "cover";
+}
+
+/**
+ * Where the picture sits inside the frame at one moment of a scene: the scale it
+ * is drawn at, and the point of the picture the middle of the frame shows, as
+ * fractions of the frame width and height from the picture's centre. A positive
+ * offset means the frame shows a point below or right of the picture's centre.
+ */
+interface MotionFrame {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+interface PreviewMotion {
+  /** A wide picture pans sideways, which is what the preview's is-wide class says. */
+  wide: boolean;
+  /** The tuning the studio published on the picture, read back from its styles. */
+  tuning: { zoomStart: number; zoomEnd: number; panScale: number };
+  frames: Array<MotionFrame & { progress: number }>;
+}
+
+/**
+ * The frame the worker's zoompan filter samples at `progress` 0..1 of a scene,
+ * spelled out here rather than called from the app so this assertion cannot pass
+ * just because both renderers read the same wrong number. The worker tests pin
+ * the same maths to the filter itself: the preset endpoints, the symmetric ease,
+ * the whole overscan travelled from the leading edge to the trailing one, and a
+ * wide picture panning sideways instead of down. The filter eases with
+ * `0.5 - 0.5 * cos(PI * on / (frames - 1))`; the studio eases with CSS
+ * ease-in-out, and the two agree at 0, 0.5 and 1, which is what is sampled here.
+ */
+function workerFrame(
+  motion: "zoom" | "zoom_out" | "push" | "none",
+  tuning: { zoomStart: number; zoomEnd: number; panScale: number },
+  progress: number,
+  wide: boolean
+): MotionFrame {
+  const ease = 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, Math.max(0, progress)));
+  const range = tuning.zoomEnd - tuning.zoomStart;
+  if (motion === "zoom") return { scale: tuning.zoomStart + range * ease, offsetX: 0, offsetY: 0 };
+  if (motion === "zoom_out") return { scale: tuning.zoomEnd - range * ease, offsetX: 0, offsetY: 0 };
+  if (motion !== "push") return { scale: 1, offsetX: 0, offsetY: 0 };
+  const travel = (1 - 1 / tuning.panScale) * (ease - 0.5);
+  return wide
+    ? { scale: tuning.panScale, offsetX: travel, offsetY: 0 }
+    : { scale: tuning.panScale, offsetX: 0, offsetY: travel };
+}
+
+/** The motion the studio preview draws, in the same terms as workerFrame. */
+async function previewMotion(page: Page, progress: readonly number[] = [0, 0.5, 1]): Promise<PreviewMotion> {
+  const pause = page.getByRole("button", { name: "Pause preview" });
+  if (await pause.isVisible()) await pause.click();
+  const play = page.getByRole("button", { name: "Play preview" });
+  if (await play.isVisible()) {
+    await play.click();
+    await expect(pause).toBeVisible();
+    await pause.click();
+  }
+  return page.locator(".preview img").first().evaluate(async (node, steps) => {
+    const moving = node.getAnimations().filter((animation) =>
+      animation instanceof CSSAnimation && animation.animationName.startsWith("preview-"));
+    if (!moving.length) throw new Error("the preview picture is not moving");
+    const style = getComputedStyle(node);
+    const tuning = {
+      zoomStart: Number.parseFloat(style.getPropertyValue("--zoom-from")) || 1,
+      zoomEnd: Number.parseFloat(style.getPropertyValue("--zoom-to")) || 1,
+      panScale: Number.parseFloat(style.getPropertyValue("--pan-scale")) || 1
+    };
+    const sceneMs = Number.parseFloat(style.getPropertyValue("--scene-ms")) || 3000;
+    const width = node.clientWidth;
+    const height = node.clientHeight;
+    const frames = [];
+    for (const at of steps) {
+      for (const animation of moving) {
+        animation.pause();
+        animation.currentTime = sceneMs * at;
+      }
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const transform = getComputedStyle(node).transform;
+      const matrix = transform === "none" ? new DOMMatrixReadOnly() : new DOMMatrixReadOnly(transform);
+      frames.push({
+        progress: at,
+        scale: matrix.a,
+        offsetX: -matrix.e / (matrix.a * width),
+        offsetY: -matrix.f / (matrix.d * height)
+      });
+    }
+    return { wide: node.classList.contains("is-wide"), tuning, frames };
+  }, [...progress]);
 }
 
 /** Type of every attached asset, in scene order. */
@@ -108,6 +217,49 @@ async function expectRenderedProject(
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+/** A flat still with white bands at 1.0 to 2.2 percent and 9.0 to 12.0 percent. */
+const EDGE_STILL = "apps/worker/test/fixtures/edge-text.jpg";
+
+/** One rendered frame as 8 bit gray pixels, so bands can be measured. */
+function renderedFrameGrays(video: string, atSeconds: number): Buffer {
+  return execFileSync("ffmpeg", [
+    "-v", "error",
+    "-ss", atSeconds.toFixed(3),
+    "-i", video,
+    "-frames:v", "1",
+    "-vf", "format=gray",
+    "-f", "rawvideo",
+    "-"
+  ], { maxBuffer: 64 * 1024 * 1024 });
+}
+
+/**
+ * Rows of one frame whose average luma clears 200, as fractions of the frame
+ * height. The edge fixture is flat slate apart from its two white bands, so a
+ * band that survives proves that part of the picture was not cropped away.
+ */
+function brightBands(gray: Buffer, size: { width: number; height: number }): Array<[number, number]> {
+  const bands: Array<[number, number]> = [];
+  let start = -1;
+  for (let row = 0; row < size.height; row += 1) {
+    let total = 0;
+    for (let column = 0; column < size.width; column += 1) total += gray[row * size.width + column] ?? 0;
+    const bright = total / size.width >= 200;
+    if (bright && start < 0) start = row;
+    if (!bright && start >= 0) {
+      bands.push([start / size.height, (row - 1) / size.height]);
+      start = -1;
+    }
+  }
+  if (start >= 0) bands.push([start / size.height, 1]);
+  return bands;
+}
+
+/** Bands long enough to be the baked in text line, not a resampled sliver. */
+function textLineBands(bands: Array<[number, number]>): Array<[number, number]> {
+  return bands.filter(([from, to]) => to - from > 0.008);
 }
 
 async function signIn(page: import("@playwright/test").Page) {
@@ -237,6 +389,45 @@ async function scrollStudioToEnd(page: Page): Promise<void> {
   });
 }
 
+interface CreateAttachmentsLayout {
+  chatHeight: number;
+  stripHeight: number;
+  lastMessageInChat: boolean;
+  stripInView: boolean;
+  stripAboveComposer: boolean;
+  composerInView: boolean;
+  sendInView: boolean;
+  sideways: boolean;
+}
+
+/**
+ * What the Create card did with the chat, the attached photos, and the composer.
+ * Short screens scroll the card itself, so "in view" means inside the viewport
+ * with the pinned composer still clear of the strip above it.
+ */
+async function createAttachmentsLayout(page: Page): Promise<CreateAttachmentsLayout> {
+  return page.evaluate(() => {
+    const inPort = (rect?: DOMRect) => !!rect && rect.width > 0 && rect.height > 0
+      && rect.top >= -0.5 && rect.bottom <= window.innerHeight + 0.5;
+    const box = (selector: string) => document.querySelector(selector)?.getBoundingClientRect();
+    const chat = box(".brief-chat");
+    const last = box(".brief-chat-msg:last-of-type");
+    const strip = box(".create-attachments");
+    const composer = box(".brief-composer");
+    return {
+      chatHeight: Math.round(chat?.height ?? 0),
+      stripHeight: Math.round(strip?.height ?? 0),
+      lastMessageInChat: !!chat && !!last
+        && last.top >= chat.top - 0.5 && last.bottom <= chat.bottom + 0.5,
+      stripInView: inPort(strip),
+      stripAboveComposer: !!strip && !!composer && strip.bottom <= composer.top + 0.5,
+      composerInView: inPort(composer),
+      sendInView: inPort(box(".brief-composer button[type=submit]")),
+      sideways: document.documentElement.scrollWidth > document.documentElement.clientWidth
+    };
+  });
+}
+
 /**
  * Phone screens keep growing after a step change (fonts, decoded media, the live
  * cut), so re-scroll and re-measure until the tail stops moving instead of
@@ -291,6 +482,180 @@ test("E2E worker rejects empty snapshots and missing fixture mappings", async ({
     }
   });
   expect(missing.status()).toBe(400);
+});
+
+test("the gentle default keeps printed text that the strong crop eats, and the whole picture keeps it all", async ({ request }) => {
+  test.setTimeout(120_000);
+  const directory = await mkdtemp(join(tmpdir(), "fengine-e2e-edge-"));
+  const size = { width: 1080, height: 1920 };
+  const render = async (
+    name: string,
+    jobNumber: string,
+    brief: Record<string, unknown>,
+    scene: Record<string, unknown>
+  ): Promise<string> => {
+    const jobId = `00000000-0000-4000-8000-0000000000${jobNumber}`;
+    const posted = await request.post("http://127.0.0.1:43141/jobs", {
+      data: {
+        jobId,
+        projectId: "edge-text",
+        revision: 1,
+        kind: "final",
+        renderProfile: size,
+        snapshot: {
+          schema_version: 1,
+          id: "edge-text",
+          owner_id: "owner",
+          revision: 1,
+          brief: { purpose: "Edge text", audience: "Teams", tone: "Warm", ...brief },
+          scenes: [{
+            id: "edge-scene",
+            order: 0,
+            caption: "Edge",
+            duration_ms: 1200,
+            focal_x: 0.5,
+            focal_y: 0.5,
+            motion: "zoom",
+            media_id: "edge-media",
+            audio_level: 1,
+            ducking: false,
+            ...scene
+          }]
+        },
+        mediaInputs: { "edge-media": { path: EDGE_STILL, type: "image/jpeg" } }
+      }
+    });
+    const detail = await posted.text();
+    expect(posted.ok(), `${name} render: ${detail}`).toBeTruthy();
+    const download = await request.get(`http://127.0.0.1:43141/downloads/${jobId}`);
+    expect(download.ok(), `${name} download`).toBeTruthy();
+    const path = join(directory, `${name}.mp4`);
+    await writeFile(path, await download.body());
+    return path;
+  };
+  try {
+    // The zoom widens toward the end of the clip, so read the last frame.
+    const gentle = brightBands(renderedFrameGrays(await render("gentle", "11", {}, {}), 1.1), size);
+    // Gentle keeps the 9 percent band whole, inside a 1.06 zoom.
+    expect(textLineBands(gentle).some(([from, to]) => from > 0.04 && from < 0.1 && to - from > 0.015)).toBe(true);
+    // The 1 percent band at the very edge is still cover cropped, so the
+    // studio offers a per scene whole picture switch for pictures like it.
+    expect(textLineBands(gentle).every(([from]) => from > 0.02)).toBe(true);
+
+    // Strong is the old 1.30 move, which cropped the 9 percent band away.
+    const strong = brightBands(renderedFrameGrays(await render("strong", "12", { motion_strength: "strong" }, {}), 1.1), size);
+    expect(textLineBands(strong).filter(([from]) => from < 0.2)).toEqual([]);
+
+    // The whole picture keeps both bands, even with the strong fill behind it.
+    const contain = brightBands(
+      renderedFrameGrays(await render("contain", "13", { motion_strength: "strong" }, { fit: "contain" }), 1.1),
+      size
+    );
+    expect(textLineBands(contain).some(([from, to]) => from < 0.03 && to - from > 0.01)).toBe(true);
+    expect(textLineBands(contain).some(([from, to]) => from > 0.04 && from < 0.1 && to - from > 0.015)).toBe(true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("studio options drive the same gentle motion, whole picture, and quiet mark presets as the worker", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.route("https://e2e-storage.invalid/**", (route) =>
+    route.fulfill({ status: 200, body: "" }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await briefWithOwnStill(page, "A calm launch teaser for a small team");
+  await createStoryboard(page);
+  // The brief upload already lands on scene 1, which is what the preview shows.
+  await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
+  await page.getByLabel("Scene 1 motion").selectOption("zoom");
+  await expect(page.getByRole("status").filter({ hasText: "All changes saved" })).toBeVisible();
+
+  // Motion defaults to gentle: the 1.00 to 1.06 move the worker renders.
+  await expect(page.locator("#reel-motion")).toHaveValue("gentle");
+  const motionVars = await page.locator(".preview img").first().evaluate((node) => {
+    const style = getComputedStyle(node);
+    return ["--zoom-from", "--zoom-to", "--pan-scale", "--pan-travel"]
+      .map((name) => style.getPropertyValue(name).trim());
+  });
+  expect(motionVars).toEqual(["1", "1.06", "1.06", "0.06"]);
+
+  // The mark is a quiet corner credit sized by the shared compact layout.
+  await page.locator("#reel-mark").click();
+  await expect.poll(async () => (await savedBrief(page)).brand_mark).toBe(true);
+  await expect(page.locator("#reel-mark-size")).toHaveValue("compact");
+  await expect(page.locator("#reel-mark-size")).toBeEnabled();
+  const markBox = page.locator(".preview .reel-mark");
+  await expect(markBox).toBeVisible();
+  const mark = await page.locator(".preview").evaluate((preview) => {
+    const node = preview.querySelector(".reel-mark");
+    if (!node) throw new Error("mark missing");
+    const box = preview.getBoundingClientRect();
+    const markRect = node.getBoundingClientRect();
+    return {
+      widthDelta: Math.abs(markRect.width - preview.clientWidth * 0.2),
+      rightDelta: Math.abs((box.right - 1 - markRect.right) - preview.clientWidth * 0.04),
+      topDelta: Math.abs((markRect.top - box.top - 1) - preview.clientHeight * 0.035),
+      opacity: Number(getComputedStyle(node).opacity)
+    };
+  });
+  expect(mark.widthDelta).toBeLessThan(1.5);
+  expect(mark.rightDelta).toBeLessThan(1.5);
+  expect(mark.topDelta).toBeLessThan(1.5);
+  expect(mark.opacity).toBeCloseTo(0.45, 2);
+
+  // Whole picture swaps the cover crop for a contained picture over a fill.
+  await page.getByLabel("Show the whole picture").click();
+  await expect.poll(() => firstSceneFit(page)).toBe("contain");
+  await expect(page.locator(".preview .preview-fit-picture img")).toHaveCSS("object-fit", "contain");
+  await expect(page.locator(".preview .preview-fit-backdrop img")).toHaveCSS("object-fit", "cover");
+
+  await page.getByLabel("Show the whole picture").click();
+  await expect.poll(() => firstSceneFit(page)).toBe("cover");
+  await expect(page.locator(".preview .preview-fit-picture")).toHaveCount(0);
+});
+
+test("the studio preview draws the same frame as the worker for every motion in both presets", async ({ page }) => {
+  test.setTimeout(150_000);
+  await page.route("https://e2e-storage.invalid/**", (route) =>
+    route.fulfill({ status: 200, body: "" }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await briefWithOwnStill(page, "A calm launch teaser for a small team");
+  await createStoryboard(page);
+  await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
+
+  // The three moments the CSS ease-in-out and the worker's cosine agree on: the
+  // first frame, the middle and the last. A 90 frame scene puts its middle frame
+  // at 44/89, half a frame either side of the middle, which is well inside the
+  // 0.005 tolerance for both presets.
+  // The presets the worker ships, so the browser assertion stands on its own.
+  const presets = { gentle: { zoomStart: 1, zoomEnd: 1.06, panScale: 1.06 }, strong: { zoomStart: 1, zoomEnd: 1.3, panScale: 1.25 } };
+  for (const strength of ["gentle", "strong"] as const) {
+    await page.locator("#reel-motion").selectOption(strength);
+    await expect.poll(async () => (await savedBrief(page)).motion_strength ?? "gentle").toBe(strength);
+    for (const motion of ["zoom", "zoom_out", "push"] as const) {
+      await page.getByLabel("Scene 1 motion").selectOption(motion);
+      await expect.poll(async () => (await projectScenes(page))[0]?.motion).toBe(motion);
+      const preview = await previewMotion(page);
+      // The studio has to publish the shared preset for the comparison to mean
+      // anything: a preview that moved by its own amount would still match itself.
+      expect(preview.tuning, `${strength} preset`).toEqual(presets[strength]);
+      for (const frame of preview.frames) {
+        const worker = workerFrame(motion, preview.tuning, frame.progress, preview.wide);
+        const at = `${strength} ${motion} at ${Math.round(frame.progress * 100)} percent`;
+        expect(Math.abs(frame.scale - worker.scale), `${at}: scale ${frame.scale} vs ${worker.scale}`).toBeLessThan(0.005);
+        expect(Math.abs(frame.offsetX - worker.offsetX), `${at}: across ${frame.offsetX} vs ${worker.offsetX}`).toBeLessThan(0.005);
+        expect(Math.abs(frame.offsetY - worker.offsetY), `${at}: down ${frame.offsetY} vs ${worker.offsetY}`).toBeLessThan(0.005);
+      }
+      // The gentle zoom is the one the printed text depends on: 1.00 to 1.06, so
+      // the middle of the scene is 1.03 and each edge only loses 2.83% of height.
+      if (strength === "gentle" && motion === "zoom") {
+        const middle = preview.frames.find(({ progress }) => progress === 0.5);
+        expect(middle?.scale).toBeCloseTo(1.03, 3);
+      }
+    }
+  }
 });
 
 test("locked provider actions explain the blocker and next action", async ({ page }) => {
@@ -636,9 +1001,12 @@ test("Remove bed wins over a pending tempo edit instead of asking for a conflict
   await expect(page.getByRole("heading", { name: "Newer changes exist" })).toHaveCount(0);
   await expect(dockToggle).toHaveText("Add music");
   await expect.poll(() => projectSoundtrack(page)).toBe("none");
+  // Several drafts share this title, so reopen the one this test just edited.
+  const projectId = await page.evaluate(() => localStorage.getItem("fengine-project"));
+  expect(projectId).toBeTruthy();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
-  await page.getByRole("button").filter({ hasText: "A calm studio introduction" }).first().click();
+  await page.locator(`.draft-open[data-project-id="${projectId}"]`).click();
   await expect(dockToggle).toHaveText("Add music");
   await expect(page.getByLabel("BPM", { exact: true })).toHaveCount(0);
 });
@@ -1491,5 +1859,90 @@ test("Start over asks before it clears the create chat", async ({ page }) => {
   await expect(chat).toContainText("What do you want to make?");
   await expect(page.getByLabel("Message F-Motion")).toHaveValue("");
   await expect(startOver).toHaveCount(0);
+});
+
+test.describe("Create keeps the chat readable with a batch of photos", () => {
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 1024, height: 700 },
+    { width: 390, height: 844 }
+  ]) {
+    test(`six photos at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+      test.setTimeout(90_000);
+      await page.setViewportSize(viewport);
+      // The e2e storage is a stub, so uploads only need to answer 200.
+      await page.route("https://e2e-storage.invalid/**", (route) => route.fulfill({ status: 200, body: "" }));
+      await signIn(page);
+      await page.getByRole("button", { name: "Create new video" }).click();
+      await page.getByLabel("Message F-Motion").fill("A calm launch teaser for a small team");
+      await page.getByRole("button", { name: "Send" }).click();
+      await expect(page.locator(".brief-chat-msg.is-user")).toHaveCount(1);
+
+      // Six stills with their own names: one compact strip, not six full rows.
+      const still = await readFile("apps/worker/test/fixtures/still.jpg");
+      await page.locator("section.create-brief input[type=file]").setInputFiles(
+        Array.from({ length: 6 }, (_, index) => ({
+          name: `_IMG${8733 - index}.jpg`,
+          mimeType: "image/jpeg",
+          buffer: still
+        }))
+      );
+      await expect(page.locator(".create-attachments-count")).toHaveText("6 photos added");
+      await expect(page.locator(".create-attachments-list li")).toHaveCount(6);
+      await expect(page.locator(".create-attachments-list img")).toHaveCount(6);
+      // The local glance answers the batch with another line, which moves the card,
+      // so measure once the conversation has settled on its next question.
+      await expect(page.locator(".brief-chat-choices").last()).toBeVisible({ timeout: 30_000 });
+
+      await expect.poll(async () => {
+        const layout = await createAttachmentsLayout(page);
+        return {
+          lastMessageInChat: layout.lastMessageInChat,
+          stripInView: layout.stripInView,
+          stripAboveComposer: layout.stripAboveComposer,
+          composerInView: layout.composerInView,
+          sendInView: layout.sendInView,
+          sideways: layout.sideways
+        };
+      }, {
+        message: `the chat, the photos, and the composer share ${viewport.width}x${viewport.height}`,
+        timeout: 15_000
+      }).toEqual({
+        lastMessageInChat: true,
+        stripInView: true,
+        stripAboveComposer: true,
+        composerInView: true,
+        sendInView: true,
+        sideways: false
+      });
+
+      // A readable pane, not the caption sliver six full rows used to leave.
+      const layout = await createAttachmentsLayout(page);
+      expect(layout.chatHeight, "the chat keeps a readable height").toBeGreaterThanOrEqual(220);
+      expect(layout.stripHeight, "six photos take at most two rows").toBeLessThanOrEqual(200);
+
+      // Removing one photo keeps the strip and the composer where they were.
+      await page.locator(".create-attachments-list li").first().getByRole("button", { name: /^Remove / }).click();
+      await expect(page.locator(".create-attachments-count")).toHaveText("5 photos added");
+      await expect(page.locator(".create-attachments-list li")).toHaveCount(5);
+      await expect(page.locator(".create-attachments-list button")).toHaveCount(5);
+      const afterRemove = await createAttachmentsLayout(page);
+      expect(afterRemove.composerInView).toBe(true);
+      expect(afterRemove.stripAboveComposer).toBe(true);
+
+      // Eight is the cap, and the strip still reads as two rows at the cap.
+      await page.locator("section.create-brief input[type=file]").setInputFiles(
+        Array.from({ length: 3 }, (_, index) => ({
+          name: `_IMG${8710 - index}.jpg`,
+          mimeType: "image/jpeg",
+          buffer: still
+        }))
+      );
+      await expect(page.locator(".create-attachments-count")).toHaveText("8 photos added");
+      await expect(page.locator(".create-attachments-list li")).toHaveCount(8);
+      const atCap = await createAttachmentsLayout(page);
+      expect(atCap.stripHeight, "eight photos stay within two rows").toBeLessThanOrEqual(200);
+    });
+  }
 });
 
