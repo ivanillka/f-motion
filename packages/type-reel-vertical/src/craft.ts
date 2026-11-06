@@ -3,6 +3,7 @@ import { MAX_STORYBOARD_SCENES } from "@f-engine/contracts";
 import type { Scene, VideoArchitecture } from "@f-engine/contracts";
 import {
   buildStoryboardDraft,
+  briefWantsWordsOnScreen,
   conceptIdForArchitecture,
   planStoryboardScenes,
   recommendVideoArchitecture
@@ -93,15 +94,20 @@ export function generateReelCraft(input: {
     ...(input.settings.brandMark ? { brand_mark: true as const } : {})
   };
   // Prefer planStoryboardScenes (Studio create path); fall back to draft builder.
+  // Every photo in the pool needs a scene: a five-shot plan that only holds
+  // four of eight photos silently drops the rest after the craft is made.
+  const ownMediaCount = input.catalog.ownRanked.length;
+  const source = {
+    ...(cta ? { callToAction: cta } : {}),
+    ...(ownMediaCount > 0 ? { ownMediaCount } : {}),
+    // A deliberate "no words" answer keeps every caption empty.
+    ...(briefWantsWordsOnScreen(purpose) ? {} : { wordsOnScreen: "none" as const })
+  };
   let scenes: Scene[];
   try {
-    scenes = planStoryboardScenes(brief, conceptId, input.makeId, architecture, {
-      ...(cta ? { callToAction: cta } : {})
-    });
+    scenes = planStoryboardScenes(brief, conceptId, input.makeId, architecture, source);
   } catch {
-    scenes = buildStoryboardDraft(purpose, input.makeId, architecture, {
-      ...(cta ? { callToAction: cta } : {})
-    });
+    scenes = buildStoryboardDraft(purpose, input.makeId, architecture, source);
   }
   const ranked = [
     ...input.catalog.ownRanked,

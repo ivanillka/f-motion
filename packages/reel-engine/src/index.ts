@@ -116,6 +116,24 @@ export interface StoryboardSource {
   callToAction?: string;
   visualHint?: string;
   glance?: MediaGlanceHints;
+  /** Own photos and clips waiting for a scene; every one of them gets one. */
+  ownMediaCount?: number;
+  /** Short descriptions read from those photos, in the order they were added. */
+  photoNotes?: readonly string[];
+  /** Words to put on screen, or a deliberate "none at all". */
+  wordsOnScreen?: "fromBrief" | "none";
+}
+
+/** The stand-in purpose a photo-only chat gets, kept out of the captions. */
+const PHOTO_PLACEHOLDER_BRIEF = /^video\s+from\s+\d+\s+(?:photos?|clips?)$/iu;
+
+export function isPhotoPlaceholderBrief(value: string): boolean {
+  return PHOTO_PLACEHOLDER_BRIEF.test(value.trim());
+}
+
+/** False when the owner asked for a video without words on screen. */
+export function briefWantsWordsOnScreen(brief: string): boolean {
+  return !/\b(?:no|without)\s+(?:words?|text|captions?|subtitles?)\b/iu.test(brief);
 }
 
 const STORY_ROLES = [
@@ -154,7 +172,12 @@ const TONE_FOOTAGE_WORD: Record<VideoArchitecture["tone"], string> = {
 function architectureIndexes(sceneCount: number): number[] {
   if (sceneCount === 4) return [0, 1, 4, 5];
   if (sceneCount === 5) return [0, 1, 2, 4, 5];
-  return [0, 1, 2, 3, 4, 5];
+  if (sceneCount === 6) return [0, 1, 2, 3, 4, 5];
+  // A photo-rich chat grows past the six-shot plan, so the roles cycle from the
+  // midpoint instead of the whole storyboard collapsing back to six scenes.
+  const indexes = [0, 1, 2, 3, 4, 5];
+  while (indexes.length < sceneCount) indexes.push(2 + (indexes.length % 4));
+  return indexes.slice(0, sceneCount);
 }
 
 function footageSubject(brief: string): string {
@@ -288,12 +311,13 @@ function shotMsForLine(line: string): number {
 function fillCaptions(brief: string, source: StoryboardSource, sceneCount: number, cta: string): string[] {
   const bodyCount = cta ? Math.max(0, sceneCount - 1) : sceneCount;
   const unwrapped = unwrapHostCopy(source.caption ?? "", brief);
-  const narrative = unwrapped || brief.trim();
+  // "Video from 5 photos" is a stand-in for an empty brief, not copy for a card.
+  const narrative = unwrapped || (isPhotoPlaceholderBrief(brief) ? "" : brief.trim());
   const fragments = narrative
     .split(/(?:[.!?]+(?:\s+|$)|[,;]\s*)/u)
     .map((part) => part.trim())
     .filter((part) => part.length >= 12 && !isGenericCta(part));
-  const titleParts = splitTitleParts(brief.trim());
+  const titleParts = isPhotoPlaceholderBrief(brief) ? [] : splitTitleParts(brief.trim());
   const unique: string[] = [];
   const seen = new Set<string>();
   const push = (value: string, asSentence: boolean) => {
@@ -368,39 +392,75 @@ export function buildStoryboardDraft(
       return spokenScene(makeId(), order, caption, visual || "Closing question", shotMsForLine(caption));
     });
   }
-  const narrative = unwrapHostCopy(source.caption ?? "", brief) || brief;
-  const visualSubject = [source.visualHint?.trim(), brief].filter(Boolean).join(" ");
+  const narrative = unwrapHostCopy(source.caption ?? "", brief)
+    || (isPhotoPlaceholderBrief(brief) ? "" : brief);
+  const visualSubject = [source.visualHint?.trim(), isPhotoPlaceholderBrief(brief) ? "" : brief]
+    .filter(Boolean)
+    .join(" ");
   const fragments = narrative
     .split(/(?:[.!?]+(?:\s+|$)|[,;]\s*)/u)
     .map((part) => part.trim())
     .filter((part) => part.length >= 12 && !isGenericCta(part))
     .slice(0, 6);
-  const sceneCount = architecture ? (architecture.durationSeconds === 15 ? 4 : architecture.durationSeconds === 30 ? 5 : 6) : 0;
+  const plannedCount = architecture
+    ? (architecture.durationSeconds === 15 ? 4 : architecture.durationSeconds === 30 ? 5 : 6)
+    : (fragments.length >= 3 ? fragments.length : STORY_ROLES.length);
+  // Every photo the owner added gets one scene: the storyboard grows to hold
+  // them instead of dropping whatever does not fit a fixed shot list.
+  const ownMediaCount = Math.max(0, Math.min(
+    MAX_STORYBOARD_SCENES,
+    Math.floor(source.ownMediaCount ?? 0)
+  ));
+  const sceneCount = Math.min(MAX_STORYBOARD_SCENES, Math.max(plannedCount, ownMediaCount));
   const architectureSceneIndexes = architecture ? architectureIndexes(sceneCount) : [];
   const glance = source.glance;
-  const visualPrompts = architecture
-    ? architectureSceneIndexes.map((roleIndex, index) => footagePrompt(
-      `${source.visualHint?.trim() || fragments[index] || visualSubject}`,
-      ARCHITECTURE_FOOTAGE[architecture.structure][roleIndex] ?? "cinematic scene",
-      architecture.tone,
-      glance
-    ))
-    : fragments.length >= 3
-      ? fragments.map((fragment) => fragment.slice(0, 240).trim())
-      : STORY_ROLES.map((role) => promptWithRole(visualSubject, role));
-  const totalDurationMs = (architecture?.durationSeconds ?? visualPrompts.length * 3) * 1000;
+  const visualPrompts: string[] = [];
+  for (let index = 0; index < sceneCount; index += 1) {
+    if (architecture) {
+      const roleIndex = architectureSceneIndexes[index] ?? 2 + (index % 4);
+      visualPrompts.push(footagePrompt(
+        `${source.visualHint?.trim() || fragments[index] || visualSubject}`,
+        ARCHITECTURE_FOOTAGE[architecture.structure][roleIndex] ?? "cinematic scene",
+        architecture.tone,
+        glance
+      ));
+      continue;
+    }
+    const fragment = fragments.length >= 3 ? fragments[index] : undefined;
+    visualPrompts.push(fragment
+      ? fragment.slice(0, 240).trim()
+      : promptWithRole(visualSubject, STORY_ROLES[index % STORY_ROLES.length] ?? "cinematic scene"));
+  }
+  const baseDurationMs = (architecture?.durationSeconds ?? visualPrompts.length * 3) * 1000;
+  // More photos than the plan holds means shorter beats, never fewer photos.
+  const totalDurationMs = Math.max(baseDurationMs, sceneCount * MIN_SCENE_MS);
   const durationBase = Math.floor(totalDurationMs / visualPrompts.length);
   const durationExtra = totalDurationMs % visualPrompts.length;
   // Both paths use plain sentence captions. Without an architecture the old
   // word split turned "make a short reel about my summer trip" into request
   // fragments ("make a", "short reel"), not copy anyone wants on screen.
   const plainCaptions = fillCaptions(brief, source, visualPrompts.length, cta);
-  const captions = visualPrompts.map((_, order) => plainCaptions[order] ?? "");
+  const photoNotes = (source.photoNotes ?? [])
+    // One note per photo: an empty slot keeps the following notes on their own
+    // picture instead of sliding up to a photo they do not describe.
+    .map((note) => note.trim())
+    .slice(0, MAX_STORYBOARD_SCENES);
+  const captionAt = (order: number): string => {
+    // "No words on screen" is an answer, not a gap to fill later.
+    if (source.wordsOnScreen === "none") return "";
+    const written = plainCaptions[order] ?? "";
+    if (written) return written;
+    const note = photoNotes[order];
+    if (!note) return "";
+    return note.length > CAPTION_MAX_CHARS
+      ? `${note.slice(0, CAPTION_MAX_CHARS - 1).replace(/\s+\S*$/u, "").trim()}.`
+      : `${note.replace(/[.!?]+$/u, "")}.`;
+  };
   const durations = visualPrompts.map((_, order) => durationBase + (order < durationExtra ? 1 : 0));
   return visualPrompts.map((visual_prompt, order) => spokenScene(
     makeId(),
     order,
-    captions[order] ?? "",
+    captionAt(order),
     visual_prompt,
     durations[order] ?? 500
   ));

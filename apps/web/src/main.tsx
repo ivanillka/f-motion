@@ -27,6 +27,9 @@ import {
   briefShouldGlance,
   isBriefReadyMessage,
   mediaNotesFromGlances,
+  photoCaptionConfirmText,
+  photoNotesFromCaptions,
+  withPhotoCaptions,
   type BriefChatMessage,
   type BriefQuestionId,
   type BriefVisualSources,
@@ -76,7 +79,7 @@ import {
   type VideoArchitecture,
   type Voiceover
 } from "./api";
-import { glanceLocalMedia } from "./local-media";
+import { captionPhotoLocally, CAPTION_MAX_PHOTOS, glanceLocalMedia, type CaptionedPhoto } from "./local-media";
 import { fitPhotoForUpload, photoCaptionFromName } from "./photos-to-reel";
 import { APP_VERSION, RELEASE_NOTES } from "./release";
 import { AuthConfigurationError, authCallbackError, createAuthGateway, studioOrigin } from "./auth";
@@ -300,6 +303,15 @@ export function App() {
   const [architecture, setArchitecture] = useState<VideoArchitecture>(defaultVideoArchitecture);
   const [mediaGlance, setMediaGlance] = useState<MediaGlanceHints | undefined>(undefined);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  // Your-key photo descriptions. Off until the owner turns it on, and cached by
+  // photo hash so the same photo is never read (or charged) twice.
+  const [describePhotos, setDescribePhotos] = useState(false);
+  const [photoNotes, setPhotoNotes] = useState<string[]>([]);
+  const [captionBusy, setCaptionBusy] = useState(false);
+  const captionCache = useRef(new Map<string, string>());
+  // Descriptions are index-aligned with the photos, so a changed set clears them.
+  const captionKey = pendingFiles.map((file) => `${file.name}:${file.size}:${file.lastModified}`).join("|");
+  const captionKeyRef = useRef<string | undefined>(undefined);
   const [mediaLooking, setMediaLooking] = useState(false);
   const createUpload = useRef<HTMLInputElement>(null);
   const briefChatPane = useRef<HTMLDivElement>(null);
@@ -695,6 +707,16 @@ export function App() {
   }, [pendingFiles, step]);
 
   useEffect(() => {
+    if (captionKeyRef.current === captionKey) return;
+    const first = captionKeyRef.current === undefined;
+    captionKeyRef.current = captionKey;
+    if (first || !photoNotes.some(Boolean)) return;
+    // A different set of photos means the old descriptions no longer line up,
+    // so they go, and a turned-on toggle reads the new set (free from cache).
+    setPhotoNotes([]);
+    if (describePhotos && !captionBusy) void describeMyPhotos(true);
+  }, [captionKey]);
+  useEffect(() => {
     if (!token) return;
     void loadFalCredential();
     void loadPexelsCredential();
@@ -861,7 +883,8 @@ export function App() {
   function briefForStoryboard(): ProjectSnapshot["brief"] {
     const plan = planFromChat();
     return {
-      purpose: briefPurposeFromChat(briefDraftRef.current, pendingFiles.length),
+      // Every line the owner wrote, then what the photos themselves show.
+      purpose: briefPurposeFromChat(briefDraftRef.current, pendingFiles.length, photoNotes),
       audience: plan.audience,
       tone: `${plan.tone}, ${plan.pace}`,
       architecture: plan,
@@ -966,7 +989,7 @@ export function App() {
       setBriefChat((chat) => {
         const stripped = chat.filter((message) => message.text !== LOOKING_AT_MEDIA);
         const withNotes: BriefChatMessage[] = [...stripped, { role: "assistant", text: notes }];
-        if (!next) return [...withNotes, { role: "assistant", text: briefReadyMessage(nextDraft, briefSources) }];
+        if (!next) return [...withNotes, { role: "assistant", text: briefReadyMessage(nextDraft, briefSources, files.length) }];
         return [...withNotes, {
           role: "assistant",
           text: next.prompt,
@@ -980,6 +1003,92 @@ export function App() {
       mediaLookLock.current = false;
       setMediaLooking(false);
     }
+  }
+
+  /**
+   * Reads the photos with the owner's own FAL key, one time, after the price is
+   * confirmed. Nothing leaves the browser unless the toggle was turned on, and a
+   * photo that was already described is served from the cache instead of read
+   * again.
+   */
+  async function describeMyPhotos(alreadyConfirmed = false) {
+    const photos = pendingFiles.filter((file) => !file.type.startsWith("video/"));
+    if (captionBusy || !falCredential?.connected || falUnavailable) return;
+    if (!photos.length) {
+      setStatus("Drop a few photos first, then I can describe them.");
+      return;
+    }
+    if (photos.length > CAPTION_MAX_PHOTOS) {
+      setStatus(`Describe up to ${CAPTION_MAX_PHOTOS} photos at a time. Remove ${photos.length - CAPTION_MAX_PHOTOS} and try again.`);
+      return;
+    }
+    if (!alreadyConfirmed && !window.confirm(photoCaptionConfirmText(photos.length))) return;
+    setCaptionBusy(true);
+    setStatus("Describing your photos with your FAL key…");
+    try {
+      const prepared: Array<{ index: number; photo: CaptionedPhoto }> = [];
+      for (const [index, file] of pendingFiles.entries()) {
+        if (file.type.startsWith("video/")) continue;
+        const photo = await captionPhotoLocally(file);
+        if (photo) prepared.push({ index, photo });
+      }
+      const missing = prepared.filter((item) => !captionCache.current.has(item.photo.hash));
+      // Already described photos cost nothing, so only the new ones are sent.
+      if (missing.length) {
+        const read = await api.describePhotos(missing.map((item) => ({ hash: item.photo.hash, image: item.photo.image })));
+        for (const item of read.captions) {
+          const caption = item.caption.replace(/\s+/gu, " ").trim();
+          if (caption) captionCache.current.set(item.hash, caption);
+        }
+      }
+      const described = photoNotesFromCaptions({
+        captions: prepared.map((item) => ({ caption: captionCache.current.get(item.photo.hash) ?? "" }))
+      });
+      // One note per file, so a photo keeps its own description even when clips
+      // sit between the pictures.
+      const notes = pendingFiles.map(() => "");
+      prepared.forEach((item, slot) => { notes[item.index] = described[slot] ?? ""; });
+      setPhotoNotes(notes);
+      const read = notes.filter(Boolean);
+      if (!read.length) {
+        setStatus("Your photos could not be described. Nothing else changed, so you can still make the storyboard.");
+        return;
+      }
+      setBriefChat((chat) => [...chat, {
+        role: "assistant",
+        text: `Your photos show: ${read.slice(0, 6).join(" ")}`
+      }]);
+      setStatus("Photo details added to your brief.");
+    } catch (error) {
+      const detail = error instanceof ApiResponseError
+        ? (typeof error.body.message === "string" ? error.body.message : error.type)
+        : undefined;
+      setStatus(detail
+        ? `Photo descriptions are unavailable right now (${detail}). You can still make the storyboard.`
+        : "Photo descriptions are unavailable right now. You can still make the storyboard.");
+    } finally {
+      setCaptionBusy(false);
+    }
+  }
+
+  /** The toggle never turns on without the price confirmation. */
+  function toggleDescribePhotos() {
+    if (describePhotos) {
+      setDescribePhotos(false);
+      return;
+    }
+    if (!falCredential?.connected || falUnavailable) {
+      showFalLock();
+      return;
+    }
+    const photos = pendingFiles.filter((file) => !file.type.startsWith("video/"));
+    if (!photos.length) {
+      setStatus("Drop a few photos first, then turn on photo descriptions.");
+      return;
+    }
+    if (!window.confirm(photoCaptionConfirmText(photos.length))) return;
+    setDescribePhotos(true);
+    void describeMyPhotos(true);
   }
 
   function sendBrief(text: string) {
@@ -1018,7 +1127,7 @@ export function App() {
       setBriefChat((current) => {
         const last = current[current.length - 1];
         if (last && isBriefReadyMessage(last.text)) return [...current, user];
-        return [...current, user, { role: "assistant", text: briefReadyMessage(conversation, briefSources) }];
+        return [...current, user, { role: "assistant", text: briefReadyMessage(conversation, briefSources, pendingFiles.length) }];
       });
       void continueToStoryboard();
       return;
@@ -1127,7 +1236,8 @@ export function App() {
       ...(projectBrief.media_glance ? { media_glance: projectBrief.media_glance } : {})
     });
     updated = await api.command(updated.id, updated.revision, "replace_storyboard", {
-      scenes: scenesFromReelCraft(craft)
+      // A photo the plan left without words still gets its own description.
+      scenes: withPhotoCaptions(scenesFromReelCraft(craft), photoNotes, brief.purpose)
     });
     updated = await attachSpokenVoice(updated);
     setSceneMedia({});
@@ -1141,6 +1251,30 @@ export function App() {
     return updated;
   }
 
+  /**
+   * Puts every dropped file on its own scene. The plan already grew to hold one
+   * scene per photo, so a file only stays out when the storyboard is full, and
+   * the owner is told how many did not fit instead of losing them quietly.
+   */
+  async function admitPendingFiles(current: ProjectSnapshot): Promise<void> {
+    if (!pendingFiles.length) return;
+    setStatus("Uploading your media…");
+    const files = pendingFiles;
+    setPendingFiles([]);
+    let unplaced = 0;
+    for (const [index, file] of files.entries()) {
+      const scene = current.scenes[index];
+      if (!scene) {
+        unplaced += 1;
+        continue;
+      }
+      await admitFile(file, scene.id, current);
+    }
+    if (unplaced > 0) {
+      setStatus(`${unplaced} of ${files.length} files stayed out: a storyboard holds ${current.scenes.length} scenes. Delete a scene and add them again.`);
+    }
+  }
+
   /** Editor + own-media admit or stock fill, same polish path as before. */
   async function hydrateReelEditor(
     current: ProjectSnapshot,
@@ -1149,14 +1283,7 @@ export function App() {
   ) {
     setStep("editor");
     if (pendingFiles.length) {
-      setStatus("Uploading your media…");
-      const files = pendingFiles;
-      setPendingFiles([]);
-      for (const [index, file] of files.entries()) {
-        const scene = current.scenes[index];
-        if (!scene) break;
-        await admitFile(file, scene.id, current);
-      }
+      await admitPendingFiles(current);
       if (options.animateStills) await beginAnimateStillsQueue(current.id);
       return;
     }
@@ -1269,14 +1396,7 @@ export function App() {
     }
     setStep("editor");
     if (pendingFiles.length) {
-      setStatus("Uploading your media…");
-      const files = pendingFiles;
-      setPendingFiles([]);
-      for (const [index, file] of files.entries()) {
-        const scene = current.scenes[index];
-        if (!scene) break;
-        await admitFile(file, scene.id, current);
-      }
+      await admitPendingFiles(current);
       return;
     }
     if (plan.media === "own" || choice === "own" || choice === "civitai" || choice === "fal") {
@@ -3595,6 +3715,9 @@ export function App() {
     && isBriefReadyMessage(lastBriefMessage.text));
   const briefStarted = briefChat.some((message) => message.role === "user");
   const offerMakeNow = step === "brief" && pendingFiles.length > 0 && !lastBriefMessage?.choices && !briefReady;
+  // Photo descriptions are for stills, so a clip never sends a frame to FAL.
+  const photoFileCount = pendingFiles.filter((file) => !file.type.startsWith("video/")).length;
+  const photoNoteCount = photoNotes.filter(Boolean).length;
   const offerStoryboard = step === "brief" && briefReady && !status.startsWith("Your storyboard could not");
 
   function onSourceChip(id: SourceId) {
@@ -3862,6 +3985,24 @@ export function App() {
           <span>{file.name}</span>
           <button type="button" className="secondary" onClick={() => setPendingFiles((current) => current.filter((_, item) => item !== index))}>Remove</button>
         </li>)}</ul>}
+      {photoFileCount > 0 && <div className="brief-photo-captions">
+        <label>
+          <input
+            type="checkbox"
+            checked={describePhotos}
+            disabled={captionBusy || mediaLooking}
+            onChange={() => toggleDescribePhotos()}
+          />
+          Describe my photos with my FAL key
+        </label>
+        <span className="brief-photo-captions-note">
+          {captionBusy
+            ? "Reading your photos…"
+            : photoNoteCount
+              ? `${photoNoteCount} photo description${photoNoteCount === 1 ? "" : "s"} ready`
+              : "Off by default. You confirm the price before any photo is read."}
+        </span>
+      </div>}
       <form
         className="brief-composer"
         onSubmit={(event) => {

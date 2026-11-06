@@ -126,16 +126,17 @@ function briefChoiceLabels(page: Page) {
   return page.locator(".brief-chat-choices button:not(.is-primary)");
 }
 
-/** Clicks the audience and length answers a topic alone cannot give. */
-async function answerBriefSetup(
-  page: Page,
-  answers: readonly string[] = ["General viewers", "About 30 seconds"]
-): Promise<void> {
-  for (const answer of answers) {
-    const choice = page.getByRole("button", { name: answer, exact: true });
-    await expect(choice).toBeVisible();
-    await choice.click();
-  }
+const BRIEF_DETAILS = "tonight, warm and calm, words on screen, end on a question, about 30 seconds";
+
+/**
+ * Answers the detail questions in one line so the picture question comes next.
+ * The intake asks at most three questions, so a topic alone would run out of
+ * turns before the sources; the owner can say the rest in their own words.
+ */
+async function answerBriefSetup(page: Page, details = BRIEF_DETAILS): Promise<void> {
+  await page.getByLabel("Message F-Motion").fill(details);
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(briefChoiceLabels(page).first()).toBeVisible();
 }
 
 async function describeVideo(page: Page, text: string): Promise<void> {
@@ -181,18 +182,8 @@ async function sayOwnMedia(page: Page): Promise<void> {
 async function briefWithOwnStill(page: Page, text: string): Promise<void> {
   await page.getByLabel("Message F-Motion").fill(text);
   await page.getByRole("button", { name: "Send" }).click();
-  let pickedOwn = false;
-  for (let step = 0; step < 6; step += 1) {
-    const next = await briefAdvance(page);
-    if (next === "storyboard") return;
-    if (next === "own") {
-      await page.getByRole("button", { name: "Use my photos", exact: true }).click();
-      pickedOwn = true;
-      break;
-    }
-    await (await nextBriefChoice(page)).click();
-  }
-  if (!pickedOwn) await sayOwnMedia(page);
+  // Say where the pictures come from before the chat runs out of questions.
+  await sayOwnMedia(page);
   if (await page.getByRole("heading", { name: "Storyboard" }).isVisible()) return;
   await page.locator("section.create-brief input[type=file]").setInputFiles("apps/worker/test/fixtures/still.jpg");
   for (let step = 0; step < 4; step += 1) {
@@ -1097,6 +1088,99 @@ test("the storyboard fills to 32 scenes and then stops adding", async ({ page })
   expect(scenes.map((scene) => scene.order)).toEqual(Array.from({ length: 32 }, (_, order) => order));
 });
 
+test("Create asks at most three questions, each named after the owner's own words", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
+  await page.getByRole("button", { name: "Send" }).click();
+  // The first question is about this video, not a menu of topics.
+  await expect(page.getByText("Should the San Francisco mystery feel tense and slow, or warm and calm?")).toBeVisible();
+  await page.getByRole("button", { name: "Warm and calm", exact: true }).click();
+  await expect(page.getByText(/^Should mystery murder in san francisco carry words on screen\?/)).toBeVisible();
+  await page.getByRole("button", { name: "Words on screen", exact: true }).click();
+  await expect(page.getByText("How should mystery murder in san francisco end?")).toBeVisible();
+  await page.getByRole("button", { name: "End on a question", exact: true }).click();
+  // Three is the ceiling: the chat names the plan instead of asking again.
+  await expect(page.getByText(/That is enough to make your storyboard\. It will run about 30 seconds/)).toBeVisible();
+  await expect(page.getByText(/The subject is mystery murder in san francisco\./)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
+});
+
+test("Create reads the photos first and every photo keeps a scene", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route("https://e2e-storage.invalid/**", (route) => route.fulfill({ status: 200, body: "" }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.locator("section.create-brief input[type=file]").setInputFiles([
+    "apps/worker/test/fixtures/still.jpg",
+    "apps/worker/test/fixtures/still.jpg",
+    "apps/worker/test/fixtures/still.jpg"
+  ]);
+  await expect(page.getByText(/I looked at 3 photos/i)).toBeVisible();
+  // The question names the owner's own photos instead of asking about a topic.
+  await expect(page.getByText(/What is happening in your 3 photos, in your own words\?/)).toBeVisible();
+  await expect(page.locator(".brief-chat-choices button").first()).toHaveText("Make my storyboard now");
+  await page.getByLabel("Message F-Motion").fill("our kitchen at dawn, the kettle singing, the dog waiting");
+  await page.getByRole("button", { name: "Send" }).click();
+  for (let step = 0; step < 4; step += 1) {
+    if (await page.getByRole("heading", { name: "Storyboard" }).isVisible()) break;
+    const choice = await nextBriefChoice(page);
+    if (!await choice.isVisible()) break;
+    await choice.click();
+  }
+  await createStoryboard(page);
+  // Uploads run while the editor opens, so poll until every photo landed.
+  await expect.poll(async () => (await sceneMediaTypes(page)).length, { timeout: 60_000 }).toBe(3);
+  const placed = await sceneMediaTypes(page);
+  expect(placed.every(({ type }) => type === "image/jpeg")).toBe(true);
+  // The words the owner typed are still in the brief and the captions.
+  await expect(page.getByText(/our kitchen at dawn/i).first()).toBeVisible();
+});
+
+test("photo descriptions stay off until the owner confirms the price", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route("https://e2e-storage.invalid/**", (route) => route.fulfill({ status: 200, body: "" }));
+  const posted: Array<{ photos: Array<{ hash: string; image: string }> }> = [];
+  await page.route("**/api/photo-captions", async (route) => {
+    const body = route.request().postDataJSON() as { photos: Array<{ hash: string; image: string }> };
+    posted.push(body);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        model: "fal-ai/moondream2",
+        price_per_1000_chars: 0.01,
+        max_photos: 8,
+        estimated_cost_usd: 0.0042,
+        captions: body.photos.map((photo, index) => ({ hash: photo.hash, caption: `kitchen light ${index + 1}` })),
+        skipped: 0
+      })
+    });
+  });
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await page.locator("section.create-brief input[type=file]").setInputFiles([
+    "apps/worker/test/fixtures/still.jpg",
+    "apps/worker/test/fixtures/still.jpg",
+    "apps/worker/test/fixtures/still.jpg"
+  ]);
+  await expect(page.getByText(/I looked at 3 photos/i)).toBeVisible();
+  const toggle = page.getByRole("checkbox", { name: /Describe my photos with my FAL key/ });
+  await expect(toggle).not.toBeChecked();
+  await expect(page.getByText("Off by default. You confirm the price before any photo is read.")).toBeVisible();
+  // Nothing left the browser while the toggle was off.
+  expect(posted).toHaveLength(0);
+  page.on("dialog", (dialog) => void dialog.accept());
+  await toggle.check();
+  await expect(page.getByRole("status").filter({ hasText: "Photo details added to your brief." })).toBeVisible();
+  expect(posted).toHaveLength(1);
+  expect(posted[0]?.photos).toHaveLength(3);
+  expect(posted[0]?.photos.every((photo) => photo.image.startsWith("data:image/"))).toBe(true);
+  await expect(page.getByText(/Your photos show: /)).toBeVisible();
+  await expect(page.getByText("3 photo descriptions ready")).toBeVisible();
+});
+
 test("the pictures question offers the connected sources, not a Pexels-only list", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await signIn(page);
@@ -1276,7 +1360,8 @@ test("a studio with only own photos is never asked where pictures come from", as
   await page.getByRole("button", { name: "Create new video" }).click();
   await page.getByLabel("Message F-Motion").fill("mystery murder in san francisco");
   await page.getByRole("button", { name: "Send" }).click();
-  await answerBriefSetup(page);
+  await page.getByLabel("Message F-Motion").fill(BRIEF_DETAILS);
+  await page.getByRole("button", { name: "Send" }).click();
   // A single possible source is not a question, so the chat never asks.
   await expect(page.getByRole("button", { name: "Pexels videos" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Use my photos", exact: true })).toHaveCount(0);
