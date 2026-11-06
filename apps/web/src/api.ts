@@ -10,6 +10,7 @@ import {
   beatGridCuts,
   beatMs,
   brandMarkLayout,
+  briefWantsWordsOnScreen,
   buildStoryboardDraft,
   clampBpm,
   conceptIdForArchitecture,
@@ -179,6 +180,7 @@ export interface SceneMediaView {
 
 export {
   brandMarkLayout,
+  briefWantsWordsOnScreen,
   buildStoryboardDraft,
   conceptIdForArchitecture,
   conceptsFor,
@@ -201,7 +203,12 @@ export {
   type VideoArchitecture
 };
 
-export const briefQuestionIds = ["intent", "audience", "length", "visuals"] as const;
+/**
+ * What the Create chat asks, in the order it asks. Each slot is one thing the
+ * storyboard cannot guess: what happens, where and when, how it feels, whether
+ * words appear, how it ends, how long, and where the pictures come from.
+ */
+export const briefQuestionIds = ["subject", "moment", "feel", "words", "ending", "length", "visuals"] as const;
 export type BriefQuestionId = (typeof briefQuestionIds)[number];
 
 export interface BriefQuestion {
@@ -243,21 +250,31 @@ export const DROP_OWN_MEDIA = "Add your photos or clips. I will look at them fir
 export const BRIEF_READY = "That is enough to make your storyboard."
 
 const briefChoiceSets: Record<BriefQuestionId, readonly string[]> = {
-  intent: ["Tell a story", "Explain something", "Promote an idea or product", "Teach the viewer"],
-  audience: ["General viewers", "Social media audience", "Customers", "Internal team"],
+  subject: ["Tell a story", "Explain something", "Promote an idea or product", "Teach the viewer"],
+  moment: ["Right here, right now", "Name a place for me", "Somewhere made up"],
+  feel: ["Warm and calm", "Fast and loud", "Funny and light", "Serious and quiet"],
+  words: ["Words on screen", "No words at all", "Only a title and a closing line"],
+  ending: ["End on a question", "End on the point", "End on my name or logo"],
   length: ["About 15 seconds", "About 30 seconds", "About 45 seconds"],
   visuals: ["Pexels videos", "Use my photos", "Use both photos and Pexels"]
 };
+
+/** Subject answers when the owner came with photos and no words yet. */
+const briefPhotoSubjectChoices = ["Just what the photos show", "A story around them"] as const;
 
 function titledPlace(place: string): string {
   return place.replace(/\b\p{L}/gu, (letter) => letter.toLocaleUpperCase());
 }
 
 function topicPhrase(value: string): string {
-  return value
+  const stripped = value
     .replace(/^(?:i\s+)?(?:need|want)\s+(?:a\s+)?(?:story|video)\s+(?:about|on)\s+/iu, "")
     .replace(/^(?:make|create)\s+(?:a\s+)?(?:story|video)\s+(?:about|on)\s+/iu, "")
+    // "Launch a 15 second reel using stock to promote our product" is a request:
+    // the thing after the verb is what the video is about.
+    .replace(/^[^.?!]*\b(?:promote|advertise|sell|launch|announce|introduce|showcase)\s+(?=(?:our|my|the|a|an)\b)/iu, "")
     .trim();
+  return stripped || value.trim();
 }
 
 function clipSubject(value: string): string {
@@ -394,10 +411,93 @@ export function briefShouldGlance(conversation: string, fileCount: number): bool
 
 const briefMetaLine = /^(I looked at|I added |File names:|Looking at your photos|That is enough (?:for|to make))/iu;
 
+/**
+ * Words an answer is built from: the chat's own question words, the times and
+ * lengths it offers, and the plain words that hold them together. A comma part
+ * made only from these answers a question instead of naming the video.
+ */
+const briefAnswerWords = new Set([
+  "about", "around", "roughly", "and", "or", "with", "without", "no", "not",
+  "only", "just", "the", "a", "an", "my", "our", "me", "it", "its", "this",
+  "that", "they", "them", "on", "at", "in", "to", "of", "for", "up", "like",
+  "should", "feel", "feels", "be", "is", "too", "very", "quite", "more",
+  "some", "all", "then", "now", "as", "into", "over", "from", "by",
+  // How it ends.
+  "end", "ends", "ending", "question", "point", "name", "logo", "closing",
+  "close", "line", "last", "final", "frame", "shot", "card", "call",
+  "action", "cta", "subscribe", "sign", "visit", "us", "link", "bio", "book",
+  // Words on screen.
+  "words", "word", "text", "screen", "caption", "captions", "subtitles",
+  "title", "titles", "cards", "onscreen",
+  // How long.
+  "second", "seconds", "sec", "secs", "s", "15", "30", "45",
+  // How it feels.
+  "calm", "warm", "cozy", "funny", "light", "playful", "serious", "quiet",
+  "dark", "moody", "hopeful", "sad", "epic", "cinematic", "energetic",
+  "upbeat", "fast", "loud", "slow", "dreamy", "nostalgic", "bold", "clean",
+  "minimal", "romantic", "documentary", "tense", "gentle", "soft",
+  // Where and when.
+  "today", "tonight", "yesterday", "tomorrow", "morning", "evening", "night",
+  "sunrise", "sunset", "noon", "summer", "winter", "spring", "autumn",
+  "fall", "weekend", "birthday", "wedding", "trip", "travel", "holiday",
+  "home", "kitchen", "studio", "street", "beach", "city", "mountains",
+  "mountain", "forest", "desert", "ocean", "right", "here", "somewhere",
+  "someplace", "made", "make", "real"
+]);
+
+/** One comma part that is answered material and nothing else. */
+function briefAnswerPart(part: string): boolean {
+  const text = part.trim().toLowerCase();
+  if (briefDetailChipLines.has(text)) return true;
+  const words = text.match(/[\p{L}\p{N}]+/gu) ?? [];
+  return words.length > 0 && words.every((word) => briefAnswerWords.has(word));
+}
+
+/**
+ * A line the owner typed to answer a question the chat asked, instead of naming
+ * the video: "tonight, warm and calm, about 30 seconds", "Warm and calm, like an
+ * old film", "it should feel calm". It still joins the brief as detail, but it
+ * never becomes the subject, so prompts and captions keep the real topic.
+ */
+function briefAnswerShapedLine(line: string): boolean {
+  const parts = line.split(/[,;]+/u).map((part) => part.trim().toLowerCase()).filter(Boolean);
+  if (!parts.length) return false;
+  if (parts.length > 1 && parts.every(briefAnswerPart)) return true;
+  // "Warm and calm" is the chat's own answer word for word.
+  if (briefDetailChipLines.has(parts[0] ?? "")) return true;
+  // "it should feel calm" talks about the video, it does not name it.
+  return /^(?:it|this|that|they|the (?:video|story|reel|film))\b/iu.test(line)
+    && parts.some(briefAnswerPart);
+}
+
 /** Every static chip answer, so a fixed label never reads as the video topic. */
 const briefChipLines = new Set(
   Object.values(briefChoiceSets).flat().map((choice) => choice.toLowerCase())
 );
+
+/**
+ * Chip answers that carry detail the storyboard uses: how it feels, whether
+ * words appear, how it ends. These stay in the brief instead of being dropped
+ * like a topic label.
+ */
+const briefDetailChipLines = new Set(
+  [
+    ...briefChoiceSets.feel,
+    ...briefChoiceSets.words,
+    ...briefChoiceSets.ending
+  ].map((choice) => choice.toLowerCase())
+);
+
+/**
+ * Chip answers from chats saved before the audience slot was removed. None of
+ * them names the video, so they are still read as answers, not as topics.
+ */
+const briefLegacyChipLines = new Set([
+  "general viewers",
+  "social media audience",
+  "customers",
+  "internal team"
+]);
 
 /**
  * Source answers stay answers even when the chat offers a dynamic label list
@@ -406,30 +506,102 @@ const briefChipLines = new Set(
 const briefVisualAnswerLine =
   /^(?:use my photos|pexels videos|civitai images|use both photos and pexels|mix my photos\b.*|ai stills?\b.*|ai images?\b.*|my photos\b.*|your photos\b.*)$/u;
 
+/**
+ * The subject question that comes with photos is answered with these two labels.
+ * Neither names the video, so the photos and their descriptions carry it.
+ */
+const briefPhotoSubjectAnswerLine = /^(?:just what the photos? show|a story around them)$/u;
+
 export function isBriefAnswerLine(line: string): boolean {
   const text = line.trim().toLowerCase();
-  return briefChipLines.has(text) || briefVisualAnswerLine.test(text);
+  // Feel, words and ending answers are details the brief keeps and uses.
+  if (briefDetailChipLines.has(text)) return false;
+  return briefChipLines.has(text)
+    || briefLegacyChipLines.has(text)
+    || briefPhotoSubjectAnswerLine.test(text)
+    || briefVisualAnswerLine.test(text);
 }
 
-/** First user topic, not the later chip answers or glance notes. */
-export function briefPurposeFromChat(conversation: string, fileCount = 0): string {
-  const first = conversation.split(/\n+/u).map((line) => line.trim()).find((line) =>
-    line && !briefMetaLine.test(line) && !isBriefAnswerLine(line)
-  ) ?? "";
-  const purpose = first.slice(0, 500).trim();
+/** A line that reads as more detail on the same video rather than a new topic. */
+const briefDetailLine =
+  /^(?:shot|filmed|recorded|made|set|filmed|at|in|on|with|from|featuring|starring|about|for|the|it|we|our|my)\b/iu;
+
+function briefLineWords(line: string): string[] {
+  return line.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [];
+}
+
+/**
+ * Every line the owner wrote that belongs to this video. The longest line is
+ * the subject, because a saved draft and a short follow up can arrive in either
+ * order and the longer line is always the real subject. The other lines join it
+ * when they share a word with it, or when they read as detail ("in Lisbon",
+ * "shot at dawn"), so extra context is kept instead of being overwritten by the
+ * next chip answer. A line that only repeats known words is dropped, which
+ * keeps a stale saved draft out of a fresh subject.
+ */
+export function briefDetailLines(conversation: string): string[] {
+  const written: string[] = [];
+  const deferred: string[] = [];
+  for (const line of conversation.split(/\n+/u).map((row) => row.trim())) {
+    if (!line || briefMetaLine.test(line) || isBriefAnswerLine(line)) continue;
+    // A chip answer never names the video, so it follows the real lines.
+    if (briefDetailChipLines.has(line.toLowerCase())) {
+      if (!deferred.includes(line)) deferred.push(line);
+      continue;
+    }
+    if (written.some((item) => item.toLowerCase() === line.toLowerCase())) continue;
+    // A line that answers a question keeps its detail but never names the video.
+    if (briefAnswerShapedLine(line)) {
+      if (!deferred.includes(line)) deferred.push(line);
+      continue;
+    }
+    written.push(line);
+  }
+  // Answers alone still say something: better a thin brief than a dead end.
+  if (!written.length) return [...deferred];
+  // The newest line names the video: a draft saved from an earlier video is
+  // older than what the owner just typed. An earlier line only wins when it is
+  // the same topic written in full ("mystery murder i" after "mystery murder in
+  // san francisco"), never when it is a different topic.
+  let primary = written.length - 1;
+  const subjectWords = briefLineWords(written[primary] ?? "");
+  written.slice(0, -1).forEach((line, index) => {
+    const words = briefLineWords(line);
+    const sameTopic = subjectWords.length > 0 && subjectWords.every((word) => words.includes(word));
+    if (sameTopic && line.length > (written[primary] ?? "").length) primary = index;
+  });
+  const subject = written[primary] ?? "";
+  const kept = [subject];
+  const seen = new Set(briefLineWords(subject));
+  for (const line of written) {
+    if (line === subject) continue;
+    const words = briefLineWords(line);
+    const fresh = words.filter((word) => !seen.has(word));
+    const repeats = words.length > 0 && fresh.length === 0;
+    const sharesTopic = words.some((word) => seen.has(word)) || briefDetailLine.test(line);
+    if (repeats || !sharesTopic) continue;
+    for (const word of words) seen.add(word);
+    kept.push(line);
+  }
+  return [...kept, ...deferred];
+}
+
+/** First user line, then every later line that really adds detail, not chips. */
+export function briefPurposeFromChat(conversation: string, fileCount = 0, photoNotes: readonly string[] = []): string {
+  const lines = briefDetailLines(conversation);
+  const purpose = lines.join(". ").slice(0, 500).trim();
   if (purpose) return purpose;
+  // Nothing was written, so what the photos show is the brief.
+  const notes = photoNotes.map((note) => note.trim()).filter(Boolean).join(" ").slice(0, 500).trim();
+  if (notes) return notes;
   if (fileCount > 0) return `Video from ${fileCount} photo${fileCount === 1 ? "" : "s"}`;
   return "";
 }
 
-function briefTopicLine(conversation: string): string {
-  const topics: string[] = [];
-  for (const line of conversation.split(/\n+/u).map((row) => row.trim())) {
-    if (!line || briefMetaLine.test(line)) continue;
-    if (isBriefAnswerLine(line)) break;
-    topics.push(line);
-  }
-  return topics[topics.length - 1] ?? "";
+/** How many photos the chat already says were added. */
+export function briefPhotoCount(conversation: string): number {
+  const match = conversation.match(/\bI added (\d+) photos?\b/iu);
+  return match ? Number(match[1]) : 0;
 }
 
 /** First user line plus the plan inferred from every answer so far. */
@@ -439,8 +611,13 @@ export function briefTopic(conversation: string): {
   hook: string;
   plan: VideoArchitecture;
 } {
-  const first = briefTopicLine(conversation);
-  const place = (first.match(/\bin\s+([^,.!?]+)$/iu)?.[1] ?? "").trim();
+  const lines = briefDetailLines(conversation);
+  const first = lines[0] ?? "";
+  // A place can arrive on its own line ("in Lisbon"), so read every kept line.
+  const place = lines
+    .map((line) => line.match(/\bin\s+([^,.!?]+)$/iu)?.[1] ?? "")
+    .map((value) => value.trim())
+    .find(Boolean) ?? "";
   const looked = /\bI looked at\b/iu.test(conversation);
   const subject = clipSubject(first) === "this video" && looked ? "your media" : clipSubject(first);
   return {
@@ -484,11 +661,85 @@ export function briefWhereFromChat(
 
 export function briefReadyMessage(
   conversation: string,
-  sources?: BriefVisualSources
+  sources?: BriefVisualSources,
+  photoCount = 0
 ): string {
   if (!conversation.trim()) return BRIEF_READY;
-  const { plan } = briefTopic(conversation);
-  return `${BRIEF_READY} It will run about ${plan.durationSeconds} seconds and use ${briefWhereFromChat(conversation, plan, sources)}.`;
+  const { subject, plan } = briefTopic(conversation);
+  const photos = photoCount > 0
+    ? ` and give each of your ${photoCount} photo${photoCount === 1 ? "" : "s"} a scene`
+    : "";
+  return `${BRIEF_READY} It will run about ${plan.durationSeconds} seconds, use ${briefWhereFromChat(conversation, plan, sources)}${photos}. The subject is ${subject}.`;
+}
+
+/** Knows the owner already said what happens, in their own words. */
+function briefSubjectFromChat(conversation: string): boolean {
+  // The upload line alone ("I added 3 photos.") never says what happens.
+  return briefDetailLines(conversation).some((line) => briefLineWords(line).length >= 2);
+}
+
+const briefMomentWords =
+  /\b(in|at|on|near)\s+\p{L}|\b(today|tonight|yesterday|tomorrow|morning|evening|night|sunrise|sunset|noon|summer|winter|spring|autumn|fall|weekend|birthday|wedding|trip|travel|holiday|home|kitchen|studio|street|beach|city|mountains?|forest|desert|ocean)\b/iu;
+const briefFeelWords =
+  /\b(calm|warm|cozy|funny|light|playful|serious|quiet|dark|moody|hopeful|sad|epic|cinematic|energetic|upbeat|fast|slow|dreamy|nostalgic|bold|clean|minimal|romantic|documentary|tense|gentle|loud|soft)\b/iu;
+const briefWordsWords =
+  /\b(captions?|subtitles?|text on screen|words on screen|on-screen text|title cards?|lower thirds?|no words|without words|no text|without text|titles?)\b/iu;
+const briefEndingWords =
+  /\b(end|ends|ending|final frame|last frame|closing (?:line|shot|card)|call to action|cta|logo|subscribe|sign up|book now|visit us|link in bio)\b/iu;
+
+export function answeredBriefQuestions(conversation: string, hasOwnMedia: boolean): Set<BriefQuestionId> {
+  // Notes the chat writes about the photos ("I looked at 1 photo...") are not
+  // the owner's words, so they never answer a question on their behalf.
+  const text = conversation
+    .split(/\n+/u)
+    .map((line) => line.trim())
+    .filter((line) => line && !briefMetaLine.test(line))
+    .join("\n")
+    .normalize("NFKC")
+    .toLowerCase();
+  const matches = (pattern: RegExp) => pattern.test(text);
+  const answered = new Set<BriefQuestionId>();
+  if (briefSubjectFromChat(conversation)) answered.add("subject");
+  if (matches(briefMomentWords)) answered.add("moment");
+  if (matches(briefFeelWords)) answered.add("feel");
+  if (matches(briefWordsWords)) answered.add("words");
+  if (matches(briefEndingWords)) answered.add("ending");
+  if (matches(/\b(15|30|45)[\s-]*(?:seconds?|secs?|s)\b/u)) {
+    answered.add("length");
+  }
+  if (
+    hasOwnMedia
+    || matches(/\b(stock|pexels|civitai|fal|open source|generated|ai visuals?|ai stills?|ai images?)\b/u)
+    || matches(/\b(my|our)\s+(photos?|videos?|footage|media|gallery|assets?|images?)\b/u)
+    || matches(/\bmy own media\b/u)
+  ) {
+    answered.add("visuals");
+  }
+  return answered;
+}
+
+/**
+ * The single question that is worth asking next. Three is the ceiling: past that
+ * the chat offers the storyboard instead of another question, because every
+ * extra question costs the owner a turn and the plan already has what it needs.
+ */
+export const BRIEF_MAX_QUESTIONS = 3;
+
+export function nextBriefQuestion(
+  conversation: string,
+  hasOwnMedia: boolean,
+  asked: readonly BriefQuestionId[],
+  sources?: BriefVisualSources
+): BriefQuestion | undefined {
+  if (asked.length >= BRIEF_MAX_QUESTIONS) return undefined;
+  const answered = answeredBriefQuestions(conversation, hasOwnMedia);
+  for (const id of briefQuestionIds) {
+    if (answered.has(id) || asked.includes(id)) continue;
+    // A single possible source is not a choice: go straight on to the next topic.
+    if (id === "visuals" && sources?.choices?.length === 1) continue;
+    return briefQuestionFor(id, conversation, hasOwnMedia, sources);
+  }
+  return undefined;
 }
 
 export function briefQuestionFor(
@@ -500,25 +751,54 @@ export function briefQuestionFor(
   const { subject, place, hook, plan } = briefTopic(conversation);
   const looked = /\bI looked at\b/iu.test(conversation);
   const portrait = /\bportrait\b/iu.test(conversation);
+  const photos = briefPhotoCount(conversation);
   const about = looked && (subject === "this video" || subject === "your media") ? "this video" : subject;
-  if (id === "intent") {
+  if (id === "subject") {
+    if (photos > 0 || looked) {
+      const count = photos > 0 ? `your ${photos} photo${photos === 1 ? "" : "s"}` : "these photos";
+      return {
+        id,
+        prompt: `What is happening in ${count}, in your own words? Even a few words keep it in the captions.`,
+        choices: briefPhotoSubjectChoices
+      };
+    }
     return {
       id,
-      prompt: `What should ${about} be: a story, an explanation, a promotion, or a lesson?`,
-      choices: briefChoiceSets.intent
+      prompt: "What should the video be about? Type the one thing it must show or say.",
+      choices: briefChoiceSets.subject
     };
   }
-  if (id === "audience") {
+  if (id === "moment") {
+    const prompt = looked || photos > 0
+      ? "Where and when did it happen? A place and a moment, like \"Lisbon, first morning\"."
+      : place
+        ? `Where and when is ${about}? Is ${hook} now, or a memory?`
+        : `Where and when is ${about}?`;
+    return { id, prompt, choices: briefChoiceSets.moment };
+  }
+  if (id === "feel") {
     const prompt = plan.structure === "mystery"
-      ? (place ? `Who is this ${hook} mystery for?` : `Who is this mystery for?`)
-      : looked
-        ? `Who should see this cut of ${about}?`
-        : plan.goal === "promote"
-          ? `Who should see ${about}?`
-          : plan.goal === "educate"
-            ? `Who are you teaching with ${about}?`
-            : `Who is ${about} for?`;
-    return { id, prompt, choices: briefChoiceSets.audience };
+      ? (place ? `Should the ${hook} mystery feel tense and slow, or warm and calm?` : "Should this mystery feel tense and slow, or warm and calm?")
+      : plan.goal === "promote"
+        ? `How should ${about} feel: warm, fast and loud, funny, or serious?`
+        : `How should ${about} feel?`;
+    return { id, prompt, choices: briefChoiceSets.feel };
+  }
+  if (id === "words") {
+    return {
+      id,
+      prompt: `Should ${about} carry words on screen? They go in the captions, and every scene keeps them.`,
+      choices: briefChoiceSets.words
+    };
+  }
+  if (id === "ending") {
+    return {
+      id,
+      prompt: plan.goal === "promote"
+        ? `How should ${about} end: a call to action, a logo, or the point itself?`
+        : `How should ${about} end?`,
+      choices: briefChoiceSets.ending
+    };
   }
   if (id === "length") {
     const preferred = `About ${plan.durationSeconds} seconds`;
@@ -554,50 +834,6 @@ export function briefQuestionFor(
     prompt: [prompt, sources?.hint?.trim()].filter(Boolean).join(" "),
     choices: sources?.choices?.length ? sources.choices : briefChoiceSets.visuals
   };
-}
-
-export function answeredBriefQuestions(conversation: string, hasOwnMedia: boolean): Set<BriefQuestionId> {
-  const text = conversation.normalize("NFKC").toLowerCase();
-  const matches = (pattern: RegExp) => pattern.test(text);
-  const answered = new Set<BriefQuestionId>();
-  if (matches(/\b(how to|tutorial|teach|lesson|guide|learn|explain|overview|demonstrate|process|why does|how does|promote|launch|campaign|advertise|advertising|advertisement|product|service|sale|event|story|mystery|murder|tale|narrative)\b/u)) {
-    answered.add("intent");
-  }
-  if (matches(/\b(reel|tiktok|instagram|social media|shorts?|customers?|internal|employees?|colleagues?|our team|staff training|general viewers?)\b/u)) {
-    answered.add("audience");
-  }
-  for (const choice of briefChoiceSets.audience) {
-    if (text.includes(choice.toLowerCase())) answered.add("audience");
-  }
-  if (matches(/\b(15|30|45)[\s-]*(?:seconds?|secs?|s)\b/u)) {
-    answered.add("length");
-  }
-  if (
-    hasOwnMedia
-    || matches(/\b(stock|pexels|civitai|fal|open source|generated|ai visuals?|ai stills?|ai images?)\b/u)
-    || matches(/\b(my|our)\s+(photos?|videos?|footage|media|gallery|assets?|images?)\b/u)
-    || matches(/\bmy own media\b/u)
-  ) {
-    answered.add("visuals");
-  }
-  return answered;
-}
-
-export function nextBriefQuestion(
-  conversation: string,
-  hasOwnMedia: boolean,
-  asked: readonly BriefQuestionId[],
-  sources?: BriefVisualSources
-): BriefQuestion | undefined {
-  if (asked.length >= 4) return undefined;
-  const answered = answeredBriefQuestions(conversation, hasOwnMedia);
-  for (const id of briefQuestionIds) {
-    if (answered.has(id) || asked.includes(id)) continue;
-    // A single possible source is not a choice: go straight on to the next topic.
-    if (id === "visuals" && sources?.choices?.length === 1) continue;
-    return briefQuestionFor(id, conversation, hasOwnMedia, sources);
-  }
-  return undefined;
 }
 
 export function parseBriefChat(raw: string | null): {
@@ -674,6 +910,68 @@ export function sceneDurationForMedia(detectedDurationMs: unknown, fallbackMs: n
   return Math.min(15_000, Math.max(500, Math.round(detectedDurationMs)));
 }
 
+/** What one owner-key FAL vision read returns for the photos in the chat. */
+export interface PhotoCaptionRead {
+  model: string;
+  price_per_1000_chars: number;
+  max_photos: number;
+  estimated_cost_usd: number;
+  captions: Array<{ hash: string; caption: string }>;
+  skipped: number;
+}
+
+/**
+ * The pinned FAL vision price and output cap, mirrored from the API so the
+ * owner sees the money before the read instead of after it.
+ */
+export const PHOTO_CAPTION_PRICE_PER_1000_CHARS = 0.01;
+export const PHOTO_CAPTION_MAX_CHARS = 120;
+export const PHOTO_CAPTION_MAX_PHOTOS = 8;
+
+/** Upper bound for a read of `photoCount` photos at the pinned price. */
+export function photoCaptionEstimateUsd(photoCount: number): number {
+  const reads = Math.min(PHOTO_CAPTION_MAX_PHOTOS, Math.max(0, Math.trunc(photoCount)));
+  const dollars = (reads * PHOTO_CAPTION_MAX_CHARS * PHOTO_CAPTION_PRICE_PER_1000_CHARS) / 1000;
+  return Math.round(dollars * 10_000) / 10_000;
+}
+
+/** The line the owner confirms before any photo leaves the browser. */
+export function photoCaptionConfirmText(photoCount: number): string {
+  const reads = Math.min(PHOTO_CAPTION_MAX_PHOTOS, Math.max(0, Math.trunc(photoCount)));
+  const cents = Math.max(1, Math.ceil(photoCaptionEstimateUsd(reads) * 100));
+  return `Describe ${reads} photo${reads === 1 ? "" : "s"} with your FAL key? Up to about ${cents} cent${cents === 1 ? "" : "s"} at the pinned price.`;
+}
+
+/**
+ * Turns a caption read into notes, one slot per photo in the order it was sent.
+ * A photo that came back with nothing keeps an empty slot so every note stays
+ * with its own picture.
+ */
+export function photoNotesFromCaptions(read: { captions: ReadonlyArray<{ caption: string }> }): string[] {
+  return read.captions.map((item) => item.caption.replace(/\s+/gu, " ").trim().slice(0, 180));
+}
+
+/**
+ * Puts a photo's own description on its scene when the plan left the caption
+ * empty. Scenes stay in the order the photos were added, and a brief that asked
+ * for no words keeps every caption empty.
+ */
+export function withPhotoCaptions<T extends { caption: string }>(
+  scenes: readonly T[],
+  notes: readonly string[],
+  brief = ""
+): T[] {
+  if (!notes.length || !briefWantsWordsOnScreen(brief)) {
+    return scenes.map((scene) => ({ ...scene }));
+  }
+  return scenes.map((scene, index) => {
+    const note = (notes[index] ?? "").trim();
+    if (!note || scene.caption.trim()) return { ...scene };
+    const bounded = note.length > 180 ? `${note.slice(0, 179).replace(/\s+\S*$/u, "").trim()}.` : note;
+    return { ...scene, caption: bounded };
+  });
+}
+
 export class ApiResponseError extends Error {
   readonly status: number;
   readonly body: Record<string, unknown>;
@@ -713,6 +1011,14 @@ export class ApiClient {
     if (response.status === 401) this.onUnauthorized();
     if (!response.ok) throw new ApiResponseError(response.status, body);
     return body as T;
+  }
+
+  /** Owner-key FAL vision read of the photos the chat already holds. */
+  describePhotos(photos: ReadonlyArray<{ hash: string; image: string }>) {
+    return this.request<PhotoCaptionRead>("/api/photo-captions", {
+      method: "POST",
+      body: JSON.stringify({ photos })
+    });
   }
 
   command(projectId: string, revision: number, kind: string, payload: Record<string, unknown>) {

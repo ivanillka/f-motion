@@ -23,6 +23,7 @@ import {
 } from "@f-engine/fal-host";
 import { PostgresFalCredentialService } from "./fal-credentials.js";
 import { PostgresFalGenerationService } from "./fal-generation.js";
+import { FalPhotoCaptionService } from "./fal-photo-captions.js";
 import {
   PexelsProviderError,
   PostgresPexelsCredentialService,
@@ -98,6 +99,9 @@ const falCredentials = falEnabled
 const falGeneration = falCredentials
   ? new PostgresFalGenerationService(pool, falCredentials)
   : undefined;
+const photoCaptions = falCredentials
+  ? new FalPhotoCaptionService(falCredentials)
+  : undefined;
 const pexelsCredentials = pexelsEnabled
   ? new PostgresPexelsCredentialService(pool, credentialVault!)
   : undefined;
@@ -139,6 +143,7 @@ if (engineEnv(process.env) === "selfhost") {
     ready,
     falCredentials,
     falGeneration,
+    photoCaptions,
     pexelsCredentials,
     civitaiCredentials,
     civitaiPolicy,
@@ -166,6 +171,7 @@ if (engineEnv(process.env) === "selfhost") {
     ready,
     falCredentials,
     falGeneration,
+    photoCaptions,
     pexelsCredentials,
     civitaiCredentials,
     civitaiPolicy,
@@ -183,6 +189,7 @@ if (engineEnv(process.env) === "selfhost") {
     media,
     falCredentials,
     falGeneration,
+    photoCaptions,
     pexelsCredentials,
     civitaiCredentials,
     civitaiPolicy,

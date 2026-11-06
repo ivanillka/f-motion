@@ -965,6 +965,87 @@ export async function speakKokoroLine(
   return bytes;
 }
 
+/**
+ * One captioning read per photo, so Create can look at what the owner actually
+ * added instead of guessing from file names. Checked 2026-11-06 against
+ * https://fal.ai/models/fal-ai/moondream2/api: the input is `image_url`
+ * (public URL or base64 data URI) and the output is `{ output }`. The model page
+ * bills $0.01 per 1000 output characters, so eight short captions cost about a
+ * cent on the owner's own FAL key.
+ */
+export const FAL_VISION_ENDPOINT_ID = "fal-ai/moondream2";
+export const FAL_VISION_MAX_PHOTOS = 8;
+export const FAL_VISION_MAX_CHARS = 120;
+export const FAL_VISION_PRICE_PER_1000_CHARS = 0.01;
+/** A 768px JPEG data URI is far below this; a bigger body is not a caption read. */
+export const FAL_VISION_MAX_IMAGE_CHARS = 4_000_000;
+const falVisionSubmitUrl = `https://fal.run/${FAL_VISION_ENDPOINT_ID}`;
+const falVisionTimeoutMs = 45_000;
+
+/** Honest money for `photoCount` captions at the pinned per-character price. */
+export function falVisionCostUsd(photoCount: number, charsPerPhoto = FAL_VISION_MAX_CHARS): number {
+  if (!Number.isFinite(photoCount) || photoCount <= 0) return 0;
+  const photos = Math.max(0, Math.min(FAL_VISION_MAX_PHOTOS, Math.floor(photoCount)));
+  const chars = photos * Math.max(0, Math.min(FAL_VISION_MAX_CHARS, Math.floor(charsPerPhoto)));
+  return Number(((chars / 1000) * FAL_VISION_PRICE_PER_1000_CHARS).toFixed(4));
+}
+
+/**
+ * Caption one photo with the owner's key. Synchronous on purpose: moondream2
+ * answers in seconds, so the queue dance the stills and speech paths need would
+ * only add latency.
+ */
+export async function describeFalImage(
+  credential: string,
+  imageUrl: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = falVisionTimeoutMs,
+  signal?: AbortSignal
+): Promise<string> {
+  if (typeof imageUrl !== "string") throw new FalImageError("invalid_request");
+  const trimmed = imageUrl.trim();
+  const isDataUri = /^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/u.test(trimmed);
+  const isHttpsUrl = /^https:\/\/\S+$/u.test(trimmed);
+  if ((!isDataUri && !isHttpsUrl) || trimmed.length > FAL_VISION_MAX_IMAGE_CHARS) {
+    throw new FalImageError("invalid_request");
+  }
+  const startedAt = Date.now();
+  const { status, body } = await falJson(
+    credential,
+    falVisionSubmitUrl,
+    { method: "POST", body: JSON.stringify({ image_url: trimmed }) },
+    fetchImpl,
+    timeoutMs,
+    signal
+  );
+  if (status < 200 || status >= 300) {
+    emitFalDiagnostic({
+      stage: "failure",
+      endpoint: FAL_VISION_ENDPOINT_ID,
+      code: classifyHttp(status),
+      elapsedMs: Date.now() - startedAt
+    });
+    throw new FalImageError(classifyHttp(status));
+  }
+  const output = body && typeof body === "object" && !Array.isArray(body)
+    ? (body as { output?: unknown }).output
+    : undefined;
+  const caption = typeof output === "string" ? output.replace(/\s+/gu, " ").trim() : "";
+  if (!caption) {
+    emitFalDiagnostic({
+      stage: "failure",
+      endpoint: FAL_VISION_ENDPOINT_ID,
+      code: "unsafe_output",
+      elapsedMs: Date.now() - startedAt
+    });
+    throw new FalImageError("unsafe_output");
+  }
+  emitFalDiagnostic({ stage: "result", endpoint: FAL_VISION_ENDPOINT_ID, elapsedMs: Date.now() - startedAt });
+  return caption.length > FAL_VISION_MAX_CHARS
+    ? `${caption.slice(0, FAL_VISION_MAX_CHARS - 1).trim()}…`
+    : caption;
+}
+
 export interface CredentialVault {
   activeVersion: number;
   keys: ReadonlyMap<number, Uint8Array>;

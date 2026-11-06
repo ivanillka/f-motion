@@ -68,6 +68,10 @@ import {
   type FalGenerationService
 } from "./fal-generation.js";
 import {
+  photoCaptionHttpError,
+  type PhotoCaptionService
+} from "./fal-photo-captions.js";
+import {
   PexelsProviderError,
   pexelsCredentialHttpError,
   type PexelsCredentialService
@@ -156,6 +160,8 @@ interface AppBaseOptions {
   externalMediaRequest?: typeof fetch;
   falCredentials?: FalCredentialService;
   falGeneration?: FalGenerationService;
+  /** Owner-key FAL vision reads that describe the photos Create was given. */
+  photoCaptions?: PhotoCaptionService;
   pexelsCredentials?: PexelsCredentialService;
   civitaiCredentials?: CivitaiCredentialService;
   civitaiSettings?: CivitaiSettingsService;
@@ -383,6 +389,19 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
   const app = express();
   const projects = options.projects;
   const ready = options.ready ?? (() => true);
+  /**
+   * Photo caption reads carry downscaled stills as data URIs, so this one route
+   * gets its own JSON parser with a larger limit ahead of the global parser.
+   * `/v1` is rewritten to `/api` further down, after the body is already read.
+   */
+  const photoCaptionJson = express.json({ limit: "12mb" });
+  app.use((request, response, next) => {
+    const path = String(request.url).split("?")[0];
+    if (path === "/api/photo-captions" || path === "/v1/photo-captions") {
+      return photoCaptionJson(request, response, next);
+    }
+    next();
+  });
   app.use(express.json());
   // /v1 is the agent-facing alias of /api; keep one route table.
   app.use((request, _response, next) => {
@@ -1417,6 +1436,31 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       response.json(await options.falGeneration.cancel(String(response.locals.ownerId), request.params.jobId));
     } catch (error) {
       const mapped = falGenerationHttpError(error);
+      if (mapped) return response.status(mapped.status).json(mapped.body);
+      next(error);
+    }
+  });
+  const photoCaptionsUnavailable = (response: express.Response) => response.status(503).json({
+    type: "provider_unavailable",
+    message: "FAL photo captions are not enabled on this deployment."
+  });
+  /**
+   * Describe the photos the owner added, with the owner's own FAL key. Gate 0
+   * holds: no managed AI, so no key means no read. The browser downscales first
+   * and caches by file hash, so a retry never pays for the same photo twice.
+   */
+  app.post("/api/photo-captions", async (request, response, next) => {
+    try {
+      if (!options.photoCaptions) return photoCaptionsUnavailable(response);
+      if (!exactObject(request.body, ["photos"])) {
+        return response.status(422).json({ type: "validation", message: "Send the photos to describe." });
+      }
+      response.json(await options.photoCaptions.describePhotos(
+        String(response.locals.ownerId),
+        (request.body as { photos?: unknown }).photos
+      ));
+    } catch (error) {
+      const mapped = photoCaptionHttpError(error);
       if (mapped) return response.status(mapped.status).json(mapped.body);
       next(error);
     }

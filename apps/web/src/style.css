@@ -1645,6 +1645,35 @@ label.mix-choice input {
   font-size: 16px;
   line-height: 1;
 }
+/* The photo description toggle sits under the attachments in one small stack,
+   label then price note, so it never pushes the composer down. */
+.brief-photo-captions {
+  display: grid;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.brief-photo-captions label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: var(--text-support);
+}
+/* The studio input width rule is 100%, which would leave the checkbox 200px wide
+   and squeeze the label into three lines on a phone. */
+.brief-photo-captions input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.brief-photo-captions-note {
+  color: var(--muted);
+  font-size: var(--text-support);
+}
+
+
 
 .settings-card {
   display: grid;
