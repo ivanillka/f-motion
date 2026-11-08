@@ -54,6 +54,26 @@
   --text-display: clamp(1.75rem, 5vw, 2.75rem);
   --rail: 72px;
   --dock: 64px;
+  /* Admin design standard, mapped onto the studio palette so the signed-in shell
+     keeps one rose accent instead of importing a second colour set.
+       --adm-accent    rose, the only decorative accent
+       --adm-positive  connected, saved, unlocked
+       --adm-highlight locked, needs attention
+       --adm-negative  failed actions
+     Surfaces stay matte: cards sit one step above the page, controls on the
+     raised surface, and the sidebar is the only translucent layer. */
+  --adm-accent: var(--accent);
+  --adm-accent-ink: var(--accent-soft);
+  --adm-positive: var(--success);
+  --adm-highlight: var(--warning);
+  --adm-negative: var(--error);
+  --adm-card: color-mix(in srgb, var(--surface) 82%, var(--raised));
+  --adm-radius-card: 20px;
+  --adm-radius-control: 12px;
+  --adm-radius-chip: 8px;
+  --adm-sidebar: 240px;
+  --adm-item: 36px;
+  --adm-icon: 20px;
   /* Chromium never reports env() insets, so --safe-bottom is also the seam the
      390px Playwright check emulates an iOS home indicator with. */
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -226,25 +246,44 @@ dialog h2 {
   margin-inline: auto;
 }
 .app-rail, .app-dock { display: none; }
+/* Sidebar: the one translucent layer in the shell, 240px wide, icons over
+  36px rows with a rose active bar. */
 .rail-brand {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  padding: 10px 4px;
-  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 14px;
+  margin-bottom: 6px;
   color: var(--text);
-  font-size: var(--text-micro);
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-size: var(--text-body);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   text-decoration: none;
   border-bottom: 1px solid var(--border);
 }
-.rail-brand:hover { color: var(--accent-soft); }
+.rail-brand:hover { color: var(--adm-accent-ink); }
+.rail-mark {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: var(--adm-radius-chip);
+  background: var(--adm-accent);
+  color: var(--text);
+  font-family: var(--font-heading);
+  font-size: var(--text-support);
+  font-weight: 700;
+  line-height: 1;
+}
+.rail-wordmark { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-items { display: grid; gap: 4px; }
+.rail-item-icon { width: var(--adm-icon); height: var(--adm-icon); flex: none; }
 .app-rail button, .app-dock button {
   min-height: 44px;
   width: 100%;
-  padding: 8px 6px;
-  border-radius: 8px;
+  padding: 8px;
+  border-radius: var(--adm-radius-chip);
   background: transparent;
   color: var(--muted);
   border: 1px solid transparent;
@@ -252,21 +291,63 @@ dialog h2 {
   font-weight: 600;
   letter-spacing: 0.02em;
 }
+.app-rail button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--adm-item);
+  font-size: var(--text-support);
+  letter-spacing: 0;
+}
 .app-rail button:hover, .app-dock button:hover {
   color: var(--text);
-  background: var(--raised);
+  background: color-mix(in srgb, var(--surface) 55%, var(--raised));
   border-color: var(--border);
 }
+.app-rail button:focus-visible, .app-dock button:focus-visible {
+  outline: 2px solid var(--adm-accent-ink);
+  outline-offset: 2px;
+}
+/* Rose is the only accent that marks the current page. */
 .app-rail button[aria-current="page"],
 .app-dock button[aria-current="page"] {
   color: var(--text);
-  background: var(--raised);
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--adm-accent) 24%, var(--surface));
+  border-color: color-mix(in srgb, var(--adm-accent-ink) 42%, var(--border));
+  box-shadow: inset 2px 0 0 var(--adm-accent-ink);
+}
+.app-rail button[aria-current="page"] .rail-item-icon,
+.app-dock button[aria-current="page"] .rail-item-icon { color: var(--adm-accent-ink); }
+.rail-foot {
+  display: grid;
+  gap: 4px;
+  margin-top: auto;
+  padding: 12px 8px 2px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: var(--text-micro);
+  line-height: 1.35;
+}
+.rail-foot [role="status"] { display: flex; align-items: center; gap: 6px; }
+.rail-foot [role="status"]::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--adm-positive);
+}
+.rail-foot [role="status"][data-online="false"]::before { background: var(--adm-highlight); }
+.rail-versions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: color-mix(in srgb, var(--muted) 78%, transparent);
+  font-variant-numeric: tabular-nums;
 }
 @media (min-width: 900px) {
   .app-shell-signed {
-    grid-template-columns: var(--rail) 1fr;
+    grid-template-columns: var(--adm-sidebar) 1fr;
   }
   .app-rail {
     display: flex;
@@ -275,7 +356,7 @@ dialog h2 {
     position: sticky;
     top: 0;
     height: 100dvh;
-    padding: 12px 8px;
+    padding: 14px 10px;
     background: color-mix(in srgb, var(--surface) 88%, transparent);
     border-right: 1px solid var(--border);
     backdrop-filter: blur(14px);
@@ -285,6 +366,12 @@ dialog h2 {
     align-self: stretch;
     border-radius: 16px 0 0 16px;
   }
+  /* The sidebar owns identity, connection state and build stamp on wide
+     screens, so the header keeps only the project title and save state. */
+  .app-shell-signed .app-stage > header .header-identity > strong,
+  .app-shell-signed .app-stage > header .header-identity > .header-sep,
+  .app-shell-signed .app-stage > header .header-actions > [role="status"],
+  .app-shell-signed .app-stage > header .header-actions > .build-rev { display: none; }
 }
 @media (max-width: 899px) {
   /* The editor footer is the tightest edge, so it clears the dock even if the
@@ -303,6 +390,22 @@ dialog h2 {
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     backdrop-filter: blur(16px);
   }
+  .app-dock button {
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 2px;
+    padding: 4px;
+    box-shadow: none;
+  }
+  .app-dock button[aria-current="page"] {
+    box-shadow: none;
+    color: var(--text);
+  }
+  .rail-item-label { font-size: 0.6875rem; line-height: 1; letter-spacing: 0; }
+  /* The dot only reads as a divider while brand and title share a line, and a
+     long project title wraps on a phone, so it is dropped there. */
+  .app-stage > header .header-identity > .header-sep { display: none; }
 }
 
 header {
@@ -320,6 +423,13 @@ header {
   align-items: center;
   gap: 8px 10px;
   min-width: 0;
+}
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 10px;
 }
 header strong {
   color: var(--text);
@@ -408,7 +518,7 @@ button {
   min-height: 44px;
   padding: 12px 18px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--adm-radius-control);
   background: var(--accent);
   color: var(--text);
   font: inherit;
@@ -428,7 +538,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .concepts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .architecture-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .card {
-  border-radius: 8px;
+  border-radius: var(--adm-radius-card);
   display: grid;
   gap: 10px;
   text-align: left;
@@ -444,30 +554,69 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 
 /* Drafts polish */
+/* Drafts: page title, two pill actions, filter chips, then a matte card grid. */
 .drafts-hero { display: grid; gap: 10px; }
+/* The card grid reads better wider than the 680px form column the studio uses
+   for sign-in and settings. */
+.drafts-page { max-width: 1000px; }
+.drafts-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.drafts-actions button {
+  border-radius: 999px;
+  min-height: 44px;
+  padding: 12px 22px;
+}
+.drafts-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.draft-filter {
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: var(--adm-radius-chip);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  color: var(--muted);
+  font-size: var(--text-support);
+  font-weight: 600;
+}
+.draft-filter:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--adm-accent-ink) 40%, var(--border));
+}
+.draft-filter[aria-pressed="true"] {
+  color: var(--text);
+  background: color-mix(in srgb, var(--adm-accent) 30%, var(--surface));
+  border-color: color-mix(in srgb, var(--adm-accent-ink) 50%, var(--border));
+}
 .drafts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+.drafts-older {
+  justify-self: start;
+  min-height: 40px;
+  padding: 8px 18px;
+  border-radius: 999px;
 }
 .draft-card {
-  min-height: 120px;
-  align-content: space-between;
+  position: relative;
+  align-content: start;
+  min-height: 0;
   padding: 12px;
+  border-radius: var(--adm-radius-card);
+  background: var(--adm-card);
+  border: 1px solid var(--border);
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 .draft-card:hover {
-  background: var(--raised);
-  border-color: color-mix(in srgb, var(--accent-soft) 40%, var(--border));
+  border-color: color-mix(in srgb, var(--adm-accent-ink) 45%, var(--border));
 }
 .draft-card .draft-open {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  min-height: 72px;
-  padding: 8px;
+  min-height: 0;
+  padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--adm-radius-card);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -475,21 +624,90 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   text-align: left;
   cursor: pointer;
 }
+/* The card reads as one target: the open button paints an overlay over the
+   matte surface, and the buttons beside it stay above that overlay. */
+.draft-card .draft-open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.draft-card > button:not(.draft-open) { position: relative; z-index: 1; }
 .draft-card .draft-open:disabled { opacity: 0.45; cursor: not-allowed; }
+.draft-thumb {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: calc(var(--adm-radius-card) - 8px);
+  border: 1px solid color-mix(in srgb, var(--adm-accent-ink) 22%, var(--border));
+  background:
+    radial-gradient(120% 120% at 18% 0%, rgba(217, 137, 160, 0.14), transparent 62%),
+    linear-gradient(160deg, #1c1f22, #141618);
+  overflow: hidden;
+}
+.draft-thumb span {
+  font-family: var(--font-heading);
+  font-size: var(--text-section);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--adm-accent-ink);
+}
+.draft-body { display: grid; gap: 4px; }
 .draft-card strong { font-size: var(--text-card); font-weight: 600; }
-.draft-card .draft-meta { color: var(--muted); font-size: var(--text-support); }
+.draft-card .draft-meta { color: var(--muted); font-size: var(--text-micro); }
+.draft-tag {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: var(--text-micro);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: rgba(17, 18, 19, 0.82);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  backdrop-filter: blur(6px);
+}
+.draft-tag[data-state="new"] {
+  color: var(--adm-accent-ink);
+  border-color: color-mix(in srgb, var(--adm-accent-ink) 45%, var(--border));
+}
+.draft-tag[data-state="progress"] {
+  color: var(--adm-positive);
+  border-color: color-mix(in srgb, var(--adm-positive) 40%, var(--border));
+}
 .draft-card .draft-delete {
   justify-self: start;
   min-height: 44px;
+  padding: 8px 10px;
+  margin-left: -10px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  font-weight: 600;
+}
+.draft-card .draft-delete:hover:not(:disabled) {
+  color: var(--adm-negative);
+  background: color-mix(in srgb, var(--adm-negative) 12%, transparent);
+  border-color: color-mix(in srgb, var(--adm-negative) 30%, transparent);
 }
 .empty-drafts {
   display: grid;
   gap: 12px;
   justify-items: start;
   padding: 28px;
-  border-radius: 12px;
+  border-radius: var(--adm-radius-card);
   border: 1px dashed var(--border);
   background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+/* The sources echo closes the page as a quiet band, so Drafts still opens on
+   the title, the actions and the cards. */
+.drafts-sources-echo {
+  margin-top: 4px;
+  border-radius: var(--adm-radius-card);
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
 }
 
 /* Storyboard studio composition */
