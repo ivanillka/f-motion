@@ -123,6 +123,44 @@ import {
 import "./style.css";
 
 type Step = "sign-in" | "drafts" | "brief" | "media" | "editor" | "render" | "settings";
+/** One page of draft cards; the rest stay behind the Show all drafts control. */
+const DRAFTS_PAGE_SIZE = 6;
+/**
+ * Sidebar and dock glyphs are drawn inline: the shell ships no icon request and
+ * every stroke follows currentColor, so the active item stays rose on rose.
+ */
+function NavIcon({ name }: { name: "drafts" | "create" | "settings" }) {
+  return <svg
+    className="rail-item-icon"
+    viewBox="0 0 24 24"
+    width="20"
+    height="20"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.75}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
+  >
+    {name === "drafts" ? <>
+      <path d="M4 7a3 3 0 0 1 3-3h2.6l2.2 2.6H17a3 3 0 0 1 3 3v6.4a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z" />
+      <path d="M4 11h16" />
+    </> : null}
+    {name === "create" ? <>
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </> : null}
+    {name === "settings" ? <>
+      <path d="M4 7h7" />
+      <path d="M17 7h3" />
+      <path d="M4 17h3" />
+      <path d="M13 17h7" />
+      <circle cx="13.5" cy="7" r="2.5" />
+      <circle cx="9.5" cy="17" r="2.5" />
+    </> : null}
+  </svg>;
+}
 interface PreviewPanState {
   pointerId: number;
   startX: number;
@@ -371,6 +409,10 @@ export function App() {
   const playheadOffsetRef = useRef(0);
   const [drafts, setDrafts] = useState<ProjectSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
+  // The drafts grid shows one page of cards. Filtering happens client-side
+  // because a summary carries no timestamp or status yet, only its revision.
+  const [draftFilter, setDraftFilter] = useState<"all" | "new" | "progress">("all");
+  const [showAllDrafts, setShowAllDrafts] = useState(false);
   const [sceneMedia, setSceneMedia] = useState<Record<string, SceneMediaView>>({});
   const [sceneProgress, setSceneProgress] = useState<Record<string, "finding" | "inspecting" | "ready" | "needs_media">>({});
   const mediaTransition = useRef(0);
@@ -3856,10 +3898,28 @@ export function App() {
   ) : null;
 
   const appNav = inApp ? <>
-    <button type="button" aria-current={step === "drafts" ? "page" : undefined} onClick={() => setStep("drafts")}>Drafts</button>
-    <button type="button" aria-current={createFlow ? "page" : undefined} onClick={goCreate}>Create</button>
-    <button type="button" aria-current={step === "settings" ? "page" : undefined} onClick={() => setStep("settings")}>Settings</button>
+    <button type="button" aria-current={step === "drafts" ? "page" : undefined} title="Drafts" onClick={() => setStep("drafts")}>
+      <NavIcon name="drafts" /><span className="rail-item-label">Drafts</span>
+    </button>
+    <button type="button" aria-current={createFlow ? "page" : undefined} title="Create" onClick={goCreate}>
+      <NavIcon name="create" /><span className="rail-item-label">Create</span>
+    </button>
+    <button type="button" aria-current={step === "settings" ? "page" : undefined} title="Settings" onClick={() => setStep("settings")}>
+      <NavIcon name="settings" /><span className="rail-item-label">Settings</span>
+    </button>
   </> : null;
+
+  // A draft counts as in progress once it has a saved revision; the list
+  // endpoint returns no timestamps, so the card cannot show an updated time yet.
+  const draftState = (item: ProjectSummary) => item.revision > 0 ? "progress" as const : "new" as const;
+  const draftFilters = [
+    { id: "all" as const, label: "All drafts" },
+    { id: "progress" as const, label: "In progress" },
+    { id: "new" as const, label: "New" }
+  ];
+  const filteredDrafts = drafts.filter((item) => draftFilter === "all" || draftState(item) === draftFilter);
+  const visibleDrafts = showAllDrafts ? filteredDrafts : filteredDrafts.slice(0, DRAFTS_PAGE_SIZE);
+  const draftTitle = (item: ProjectSummary) => item.brief.purpose || "Untitled draft";
 
   const workSurface = step === "brief" || step === "media" || step === "editor" || step === "render";
 
@@ -3876,8 +3936,21 @@ export function App() {
       </div>
       <div className={`app-shell${inApp ? " app-shell-signed" : ""}${step === "editor" ? " app-shell-editor" : ""}${step === "brief" ? " app-shell-brief" : ""}`}>
     {inApp && <nav className="app-rail" aria-label="Primary">
-      <a className="rail-brand" href="/">F-MOTION</a>
-      {appNav}
+      <a className="rail-brand" href="/">
+        <span className="rail-mark" aria-hidden="true">F</span>
+        <span className="rail-wordmark">F-Motion</span>
+      </a>
+      <div className="rail-items">{appNav}</div>
+      <div className="rail-foot">
+        <span role="status" data-online={online ? "true" : "false"}>
+          {online ? "Connected" : "Reconnecting. Draft kept locally"}
+        </span>
+        <span className="rail-versions">
+          <span className="build-rev" title={`F-Motion ${APP_VERSION}`}>{APP_VERSION}</span>
+          <span aria-hidden="true">·</span>
+          <span className="build-rev" title="Git revision">{String(import.meta.env.VITE_GIT_SHA ?? "dev").slice(0, 7)}</span>
+        </span>
+      </div>
     </nav>}
     <div className="app-stage">
     <header>
@@ -3940,11 +4013,58 @@ export function App() {
       </>}
       <p role="status">{status}</p>
     </section>}
-    {authReady && step === "drafts" && <section>
+    {authReady && step === "drafts" && <section className="drafts-page">
       <div className="drafts-hero">
         <h1>Drafts</h1>
         <p>Pick up where you left off or start a new video.</p>
       </div>
+      <div className="drafts-actions">
+        <button onClick={() => startCreate({ fresh: true })}>Create new video</button>
+        <button type="button" className="secondary" onClick={() => setTemplatesOpen(true)}>Templates</button>
+      </div>
+      {drafts.length > 0 && <div className="drafts-filters" role="group" aria-label="Filter drafts">
+        {draftFilters.map(({ id, label }) => <button
+          key={id}
+          type="button"
+          className="draft-filter"
+          aria-pressed={draftFilter === id}
+          onClick={() => setDraftFilter(id)}
+        >{label}</button>)}
+      </div>}
+      {draftsLoading && <p role="status">Loading drafts…</p>}
+      {!draftsLoading && drafts.length === 0 && <div className="empty-drafts">
+        <p role="status">No drafts yet.</p>
+        <p>Describe what you want to make. F-Motion will recommend a video plan and storyboard.</p>
+      </div>}
+      {!draftsLoading && drafts.length > 0 && filteredDrafts.length === 0 && <p>
+        No drafts match this filter yet.
+      </p>}
+      {visibleDrafts.length > 0 && <div className="concepts drafts-grid">{visibleDrafts.map((item) => {
+        const state = draftState(item);
+        return <article key={item.id} className="card draft-card">
+          <span className="draft-tag" data-state={state}>{state === "progress" ? "In progress" : "New"}</span>
+          <button type="button" className="draft-open" data-project-id={item.id} disabled={busy} onClick={() => void openDraft(item.id)}>
+            <span className="draft-thumb" aria-hidden="true"><span>{draftTitle(item).trim().charAt(0).toUpperCase() || "F"}</span></span>
+            <span className="draft-body">
+              <strong>{draftTitle(item)}</strong>
+              <span className="draft-meta">Revision {item.revision}</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            className="secondary draft-delete"
+            disabled={busy}
+            onClick={() => void deleteDraft(item)}
+          >
+            Delete
+          </button>
+        </article>;
+      })}</div>}
+      {filteredDrafts.length > DRAFTS_PAGE_SIZE && !showAllDrafts && <button
+        type="button"
+        className="secondary drafts-older"
+        onClick={() => setShowAllDrafts(true)}
+      >Show all drafts ({filteredDrafts.length})</button>}
       <aside className="provider-preview drafts-sources-echo" aria-label="Creation sources">
         <button className="provider-preview-item" data-locked={!pexelsCredential?.connected} onClick={() => onSourceChip("pexels")}>
           <strong>Pexels</strong><span>Real stock video · {pexelsCredential?.connected ? "unlocked" : "locked"}</span>
@@ -3960,41 +4080,22 @@ export function App() {
         </button>
         <button className="secondary" onClick={() => setStep("settings")}>Choose video sources</button>
       </aside>
-      <button onClick={() => startCreate({ fresh: true })}>Create new video</button>
-      <button type="button" className="secondary" onClick={() => setTemplatesOpen(true)}>Templates</button>
-      {draftsLoading && <p role="status">Loading drafts…</p>}
-      {!draftsLoading && drafts.length === 0 && <div className="empty-drafts">
-        <p role="status">No drafts yet.</p>
-        <p>Describe what you want to make. F-Motion will recommend a video plan and storyboard.</p>
-      </div>}
       {templates.length > 0 && <div className="templates-panel" aria-label="Storyboard templates">
         <h2>Templates</h2>
         <p>Reuse captions, timing, and overlay looks without media footage.</p>
         <div className="concepts drafts-grid">{templates.map((item) =>
           <article key={item.id} className="card draft-card">
             <button type="button" className="draft-open" disabled={busy} onClick={() => void applyStoryboardTemplate(item)}>
-              <strong>{item.name}</strong>
-              <span className="draft-meta">{item.scenes.length} scenes · media not stored</span>
+              <span className="draft-thumb" aria-hidden="true"><span>{item.name.trim().charAt(0).toUpperCase() || "T"}</span></span>
+              <span className="draft-body">
+                <strong>{item.name}</strong>
+                <span className="draft-meta">{item.scenes.length} scenes · media not stored</span>
+              </span>
             </button>
             <button type="button" className="secondary" disabled={busy} onClick={() => renameStoryboardTemplate(item)}>Rename</button>
             <button type="button" className="secondary draft-delete" disabled={busy} onClick={() => removeStoryboardTemplate(item)}>Delete</button>
           </article>)}</div>
       </div>}
-      <div className="concepts drafts-grid">{drafts.map((item) =>
-        <article key={item.id} className="card draft-card">
-          <button type="button" className="draft-open" data-project-id={item.id} disabled={busy} onClick={() => void openDraft(item.id)}>
-            <strong>{item.brief.purpose || "Untitled draft"}</strong>
-            <span className="draft-meta">Revision {item.revision}</span>
-          </button>
-          <button
-            type="button"
-            className="secondary draft-delete"
-            disabled={busy}
-            onClick={() => void deleteDraft(item)}
-          >
-            Delete
-          </button>
-        </article>)}</div>
       <p role="status">{status}</p>
     </section>}
     {authReady && step === "brief" && <section className="create-brief">
