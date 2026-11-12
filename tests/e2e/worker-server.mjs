@@ -80,6 +80,20 @@ createServer(async (request, response) => {
       downloadUrl: `/api/download/${job.jobId}`
     }));
   }
+  if (request.url?.startsWith("/uploads/")) {
+    response.setHeader("access-control-allow-origin", "*");
+    response.setHeader("access-control-allow-methods", "PUT, OPTIONS");
+    response.setHeader("access-control-allow-headers", "content-type");
+    if (request.method === "OPTIONS") {
+      response.statusCode = 204;
+      return response.end();
+    }
+    if (request.method === "PUT") {
+      for await (const _chunk of request) { /* drain body */ }
+      response.statusCode = 200;
+      return response.end();
+    }
+  }
   const match = request.url?.match(/^\/downloads\/([^/]+)$/);
   if (match && results.has(match[1])) {
     response.setHeader("content-type", "video/mp4");
