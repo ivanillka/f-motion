@@ -143,7 +143,8 @@ done
 
 The floor is that median minus 2 dB: the slack absorbs run-to-run encoder
 variation without hiding a moved cut, which the structural checks catch on their
-own. Replace the constant with the number, say which device and plan it came
+own. Do the same for SSIM — median of the three, minus the spread between them.
+Replace the two constants with the numbers, say which device and plan they came
 from in this file, and drop the word provisional from the help text.
 
 When the two metrics disagree, SSIM wins. PSNR punishes a full-range versus
