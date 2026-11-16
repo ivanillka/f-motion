@@ -51,7 +51,10 @@ void main() {
   test('shared contracts fixtures parse identically in Dart', () {
     final project = loadSharedObject('project-v1.json');
     expect(ContractFixture.accepts(project), isTrue);
-    expect(ContractFixture.accepts(loadSharedObject('project-v2-breaking.json')), isFalse);
+    expect(
+      ContractFixture.accepts(loadSharedObject('project-v2-breaking.json')),
+      isFalse,
+    );
 
     final incomplete = loadSharedObject('error-render-input-incomplete.json');
     expect(incomplete['type'], 'render_input_incomplete');
