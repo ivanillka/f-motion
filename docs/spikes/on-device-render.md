@@ -115,11 +115,46 @@ apps/mobile/tool/flutter_from_root.sh compare \
   --reference worker.mp4 --device device.mp4 --json report.json
 ```
 
-The comparison is structural, not byte-wise: same size, frame rate, audio
-layout, duration within one frame, frame count within one, and a PSNR floor
-(default 28 dB) on the decoded picture. Byte equality is impossible by design —
-MediaCodec and libx264 are different encoders — so the question the tool asks is
-"same reel, acceptable picture".
+The comparison is structural, not byte-wise: same size, frame rate, an audio
+stream and audio layout, duration within one frame at 30 fps, frame count
+within one, the same number of scene changes, and two floors on the decoded
+picture — PSNR (default 28 dB) and luma SSIM (default 0.95). Byte equality is
+impossible by design — MediaCodec and libx264 are different encoders — so the
+question the tool asks is "same reel, acceptable picture".
+
+Both floors are **provisional**. Nothing has measured a device reel yet, so 28 dB
+and 0.95 are a starting guess, not a quality bar the product has agreed to. They
+live in `tools/render/compare_render.mjs` as `DEFAULT_MIN_PSNR` and
+`DEFAULT_MIN_SSIM`, are overridable per run with `--min-psnr` / `--min-ssim`,
+and the tool prints them next to the measured value and marks them provisional
+in the report. The file to change when the real numbers land is that pair of
+constants.
+
+To calibrate, run the same plan and media on both sides — the worker's reel and
+one phone render, three runs of the phone render on a cold device — and take the
+median of the three:
+
+```sh
+for run in 1 2 3; do
+  apps/mobile/tool/flutter_from_root.sh compare \
+    --reference worker.mp4 --device "device-$run.mp4" --json "report-$run.json"
+done
+```
+
+The floor is that median minus 2 dB: the slack absorbs run-to-run encoder
+variation without hiding a moved cut, which the structural checks catch on their
+own. Replace the constant with the number, say which device and plan it came
+from in this file, and drop the word provisional from the help text.
+
+When the two metrics disagree, SSIM wins. PSNR punishes a full-range versus
+limited-range mismatch and MediaCodec's rate-control choices with a large
+negative number while the picture looks fine; SSIM is far less sensitive to that
+and tracks visible damage more closely. Treat a PSNR failure with a passing SSIM
+as "check colour range and bitrate", not as a broken render.
+
+Exit codes: `0` for MATCH, `1` for MISMATCH (the failing checks are named, so a
+CI log says which one moved), `2` for a usage error, a missing file, or a
+missing `ffmpeg`/`ffprobe`.
 
 ## What it costs
 
@@ -140,9 +175,10 @@ MediaCodec and libx264 are different encoders — so the question the tool asks 
 2. **Brand mark.** The mark is a bundled VP9 WebM overlay, not plan data. Should
    the plan carry its own mark ref, or is the mark a property of the app?
 3. **Encoder quality.** `h264_mediacodec` gives no rate control as predictable as
-   libx264's `-b:v 8M`. The comparison tool gates on PSNR, but the real
-   threshold — and whether device reels need a different bitrate — needs a
-   device run.
+   libx264's `-b:v 8M`. The comparison tool gates on PSNR (28 dB) and luma SSIM
+   (0.95), both provisional — the calibration procedure is above — so the real
+   threshold, and whether device reels need a different bitrate, still needs a
+   device run. If the two disagree, SSIM is the one to trust.
 4. **iOS.** The package supports it, but the retargeting rules assume device
    encoder names (`h264_mediacodec`, `h264_videotoolbox`) and only the Android
    build was produced; nothing on the iOS path has been exercised.
@@ -151,6 +187,8 @@ MediaCodec and libx264 are different encoders — so the question the tool asks 
 
 - Device wall clock for any plan, and how it scales at 1080x1920 output.
 - Thermal throttling over repeated renders, and battery cost.
-- Device picture quality against the 28 dB floor.
+- Device picture quality against either provisional floor: no device reel has
+  been compared with `compare_render.mjs` yet, so 28 dB PSNR and 0.95 SSIM are
+  unvalidated starting values.
 - That MediaCodec accepts every plan in the contract, not just these four
   fixtures.

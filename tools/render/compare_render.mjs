@@ -2,13 +2,19 @@
 // Compares the worker's reference reel with the reel the phone produced.
 //
 // The plan is shared, so the two files should describe the same picture: same
-// size, same frame rate, same number of frames, same audio layout. They are not
-// byte-identical — the phone encodes with MediaCodec, the worker with libx264 —
-// so the check is structural plus a PSNR floor on the decoded picture.
+// size, same frame rate, same scene count, same number of frames, same audio
+// stream. They are not byte-identical — the phone encodes with MediaCodec, the
+// worker with libx264 — so the checks are structural plus two picture gates:
+// PSNR and SSIM on luma.
+//
+// Both gates are provisional, not measured. A pass means "not obviously a
+// different reel", not "as good as the worker's". See
+// docs/spikes/on-device-render.md for the calibration that replaces the
+// defaults.
 //
 // Usage:
 //   node tools/render/compare_render.mjs --reference ref.mp4 --device dev.mp4
-//        [--psnr-min 28] [--json report.json]
+//        [--min-psnr 28] [--min-ssim 0.95] [--json report.json]
 //
 // Exits 0 when every check passes, 1 when one fails, 2 when ffmpeg/ffprobe or
 // an input file is missing.
@@ -17,7 +23,24 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-const PSNR_FLOOR = 28;
+/**
+ * Placeholder PSNR floor. No device run has measured it yet, so the number is
+ * conventional: the calibration in docs/spikes/on-device-render.md replaces it
+ * with "median of three device runs, minus 2 dB".
+ */
+export const DEFAULT_MIN_PSNR = 28;
+
+/** Placeholder luma SSIM floor, conventional for the same reason as PSNR. */
+export const DEFAULT_MIN_SSIM = 0.95;
+
+/** Every render plan is 30 fps; one frame of drift is the duration tolerance. */
+export const PLAN_FPS = 30;
+
+/** scdet score (0-100) a frame must exceed to count as a scene cut. */
+const SCENE_THRESHOLD = 10;
+
+/** Detections closer together than this are transition frames of one cut. */
+const SCENE_MERGE_SECONDS = 0.25;
 
 /** Pulls the average PSNR out of an ffmpeg psnr filter log block. */
 export function parsePsnr(text) {
@@ -26,6 +49,15 @@ export function parsePsnr(text) {
   if (!average) return null;
   const value = average[1].toLowerCase();
   return value === 'inf' ? Infinity : Number.parseFloat(value);
+}
+
+/** Pulls the luma SSIM out of an ffmpeg ssim filter log block. */
+export function parseSsim(text) {
+  if (typeof text !== 'string') return null;
+  const luma = text.match(/SSIM\s+Y:\s*([\d.]+)/i);
+  if (!luma) return null;
+  const value = Number.parseFloat(luma[1]);
+  return Number.isFinite(value) ? value : null;
 }
 
 /** `"30000/1001"` -> `29.97`. */
@@ -39,7 +71,7 @@ export function ratio(value) {
 }
 
 /** One frame at [fps] in seconds, with a small tolerance for muxer rounding. */
-export function frameTolerance(fps) {
+export function frameTolerance(fps = PLAN_FPS) {
   return Number.isFinite(fps) && fps > 0 ? 1 / fps + 0.002 : 0.05;
 }
 
@@ -64,7 +96,7 @@ export function summarize(probe) {
 }
 
 /** Pure structural comparison, so the rules are testable without ffmpeg. */
-export function compareMedia(reference, device) {
+export function compareMedia(reference, device, scenes = {}) {
   const checks = [];
   const same = (label, left, right) =>
     checks.push({ label, ok: left === right, detail: `${left} vs ${right}` });
@@ -77,6 +109,12 @@ export function compareMedia(reference, device) {
     ok: fpsKnown && reference.fps.toFixed(2) === device.fps.toFixed(2),
     detail: `${reference.fps} vs ${device.fps}`,
   });
+  checks.push({
+    label: 'audio stream',
+    ok: Boolean(reference.audio) && Boolean(device.audio),
+    detail: `${reference.audio ? 'present' : 'missing'} vs ` +
+      `${device.audio ? 'present' : 'missing'}`,
+  });
   same('audio layout', JSON.stringify(reference.audio), JSON.stringify(device.audio));
 
   const tolerance = frameTolerance(reference.fps);
@@ -86,7 +124,7 @@ export function compareMedia(reference, device) {
     ok: drift <= tolerance,
     detail: `${reference.durationSeconds.toFixed(3)}s vs ` +
       `${device.durationSeconds.toFixed(3)}s (drift ${drift.toFixed(3)}s, ` +
-      `tolerance ${tolerance.toFixed(3)}s)`,
+      `tolerance ${tolerance.toFixed(3)}s: one frame at 30 fps)`,
   });
 
   const frameDrift = Math.abs(reference.frames - device.frames);
@@ -97,6 +135,15 @@ export function compareMedia(reference, device) {
     detail: framesKnown
       ? `${reference.frames} vs ${device.frames}`
       : 'not reported by one of the files',
+  });
+
+  const scenesKnown = Number.isInteger(scenes.reference) && Number.isInteger(scenes.device);
+  checks.push({
+    label: 'scene count',
+    ok: scenesKnown && scenes.reference === scenes.device,
+    detail: scenesKnown
+      ? `${scenes.reference} vs ${scenes.device} scene changes`
+      : 'not measured',
   });
   return checks;
 }
@@ -135,8 +182,12 @@ export function probeFile(path) {
   return summarize(probe);
 }
 
-/** Decodes both files and scores the picture, which is the pixel-level gate. */
-export function picturePsnr(referencePath, devicePath) {
+/**
+ * Decodes both files once and returns the picture gates: PSNR and luma SSIM.
+ * The luma plane is the one MediaCodec's rate control can soften first, which
+ * is why SSIM is read from `Y` rather than `All`.
+ */
+export function pictureMetrics(referencePath, devicePath) {
   const result = spawnSync(
     'ffmpeg',
     [
@@ -144,9 +195,12 @@ export function picturePsnr(referencePath, devicePath) {
       '-i', referencePath,
       '-i', devicePath,
       '-lavfi',
-      '[0:v]setpts=PTS-STARTPTS,scale=trunc(iw/2)*2:trunc(ih/2)*2[r];' +
-        '[1:v]setpts=PTS-STARTPTS,scale=trunc(iw/2)*2:trunc(ih/2)*2[d];' +
-        '[r][d]psnr',
+      '[0:v]setpts=PTS-STARTPTS,scale=trunc(iw/2)*2:trunc(ih/2)*2,' +
+        'format=yuv420p,split=2[r1][r2];' +
+        '[1:v]setpts=PTS-STARTPTS,scale=trunc(iw/2)*2:trunc(ih/2)*2,' +
+        'format=yuv420p,split=2[d1][d2];' +
+        '[r1][d1]psnr[p];[r2][d2]ssim[s]',
+      '-map', '[p]', '-map', '[s]',
       '-f', 'null', '-',
     ],
     { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
@@ -154,31 +208,101 @@ export function picturePsnr(referencePath, devicePath) {
   if (result.error) {
     throw new Error(`ffmpeg failed to start: ${result.error.message}`);
   }
-  const psnr = parsePsnr(`${result.stderr ?? ''}\n${result.stdout ?? ''}`);
-  if (psnr === null) {
+  const log = `${result.stderr ?? ''}\n${result.stdout ?? ''}`;
+  const psnr = parsePsnr(log);
+  const ssim = parseSsim(log);
+  if (psnr === null || ssim === null) {
     const detail = (result.stderr || '').trim().split('\n').slice(-4).join(' | ');
-    throw new Error(`ffmpeg produced no PSNR reading: ${detail}`);
+    throw new Error(`ffmpeg produced no picture reading: ${detail}`);
   }
-  return psnr;
+  return { psnr, ssim };
+}
+
+/**
+ * Scene-cut times in seconds from an ffmpeg scdet log. A transition can be
+ * flagged on more than one frame, so detections within [SCENE_MERGE_SECONDS]
+ * collapse into one cut.
+ */
+export function sceneCuts(text) {
+  if (typeof text !== 'string') return [];
+  const times = [...text.matchAll(/lavfi\.scd\.time:\s*([\d.]+)/g)]
+    .map((match) => Number.parseFloat(match[1]))
+    .sort((left, right) => left - right);
+  const cuts = [];
+  for (const time of times) {
+    if (!cuts.length || time - cuts[cuts.length - 1] > SCENE_MERGE_SECONDS) cuts.push(time);
+  }
+  return cuts;
+}
+
+/** Scene cuts in one reel, counted by ffmpeg's scdet filter. */
+export function probeSceneCuts(path) {
+  const result = spawnSync(
+    'ffmpeg',
+    [
+      '-hide_banner', '-nostdin',
+      '-i', path,
+      '-vf', `scdet=threshold=${SCENE_THRESHOLD}`,
+      '-f', 'null', '-',
+    ],
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (result.error) {
+    throw new Error(`ffmpeg failed to start: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    const detail = (result.stderr || '').trim().split('\n').slice(-4).join(' | ');
+    throw new Error(`ffmpeg exited ${result.status} on ${path}: ${detail}`);
+  }
+  return sceneCuts(`${result.stderr ?? ''}\n${result.stdout ?? ''}`);
 }
 
 function parseArgs(argv) {
-  const options = { psnrMin: PSNR_FLOOR, json: null };
+  const options = {
+    minPsnr: DEFAULT_MIN_PSNR,
+    minSsim: DEFAULT_MIN_SSIM,
+    json: null,
+  };
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (value === undefined && flag !== '--help') {
+    if (value === undefined && flag !== '--help' && flag !== '-h') {
       throw new Error(`missing value for ${flag}`);
     }
     if (flag === '--reference') options.reference = value;
     else if (flag === '--device') options.device = value;
-    else if (flag === '--psnr-min') options.psnrMin = Number.parseFloat(value);
+    else if (flag === '--min-psnr') options.minPsnr = numberFlag(flag, value);
+    else if (flag === '--min-ssim') options.minSsim = numberFlag(flag, value);
     else if (flag === '--json') options.json = value;
     else if (flag === '--help' || flag === '-h') options.help = true;
     else throw new Error(`unknown option ${flag}`);
   }
   return options;
 }
+
+function numberFlag(flag, value) {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) throw new Error(`${flag} needs a number, got ${value}`);
+  return parsed;
+}
+
+const USAGE =
+  'usage: node tools/render/compare_render.mjs ' +
+  '--reference <worker.mp4> --device <phone.mp4> ' +
+  '[--min-psnr 28] [--min-ssim 0.95] [--json report.json]\n' +
+  '\n' +
+  '  --min-psnr <dB>  PSNR floor on the decoded picture (default 28).\n' +
+  '                   Provisional: no device run has measured it yet; see\n' +
+  '                   docs/spikes/on-device-render.md.\n' +
+  '  --min-ssim <n>   luma (Y) SSIM floor (default 0.95). Provisional, and it\n' +
+  '                   wins over PSNR when colour range or MediaCodec rate\n' +
+  '                   control makes PSNR pessimistic without a quality bug.\n' +
+  '  --json <path>    write the full report as JSON\n' +
+  '\n' +
+  'Structural checks: width, height, frame rate, audio stream, audio layout,\n' +
+  'duration within one frame at 30 fps, total frame count, scene count.\n' +
+  'Exit 0 on MATCH, 1 on MISMATCH (the failing metrics are named), 2 on a\n' +
+  'usage error, a missing input file, or a missing ffmpeg/ffprobe.';
 
 function format(value) {
   return value === Infinity ? 'inf' : value.toFixed(2);
@@ -190,15 +314,16 @@ function main(argv) {
     options = parseArgs(argv);
   } catch (error) {
     console.error(error.message);
+    console.error(USAGE);
     return 2;
   }
-  if (options.help || !options.reference || !options.device) {
-    console.log(
-      'usage: node tools/render/compare_render.mjs ' +
-        '--reference <worker.mp4> --device <phone.mp4> ' +
-        '[--psnr-min 28] [--json report.json]',
-    );
-    return options.help ? 0 : 2;
+  if (options.help) {
+    console.log(USAGE);
+    return 0;
+  }
+  if (!options.reference || !options.device) {
+    console.log(USAGE);
+    return 2;
   }
   for (const path of [options.reference, options.device]) {
     if (!existsSync(path)) {
@@ -209,34 +334,61 @@ function main(argv) {
 
   let reference;
   let device;
-  let psnr;
+  let metrics;
+  let referenceCuts;
+  let deviceCuts;
   try {
     reference = probeFile(options.reference);
     device = probeFile(options.device);
-    psnr = picturePsnr(options.reference, options.device);
+    metrics = pictureMetrics(options.reference, options.device);
+    referenceCuts = probeSceneCuts(options.reference);
+    deviceCuts = probeSceneCuts(options.device);
   } catch (error) {
     console.error(error.message);
     return 2;
   }
 
-  const checks = compareMedia(reference, device);
+  const checks = compareMedia(reference, device, {
+    reference: referenceCuts.length,
+    device: deviceCuts.length,
+  });
   checks.push({
     label: 'picture PSNR',
-    ok: psnr >= options.psnrMin,
-    detail: `${format(psnr)} dB (floor ${options.psnrMin} dB)`,
+    ok: metrics.psnr >= options.minPsnr,
+    detail: `${format(metrics.psnr)} dB (floor ${options.minPsnr} dB, provisional)`,
+  });
+  checks.push({
+    label: 'picture SSIM',
+    ok: metrics.ssim >= options.minSsim,
+    detail: `${metrics.ssim.toFixed(4)} luma (floor ${options.minSsim}, provisional)`,
   });
 
+  const failed = checks.filter((check) => !check.ok);
   const report = {
     reference: options.reference,
     device: options.device,
-    psnr: psnr === Infinity ? 'inf' : Number(psnr.toFixed(3)),
+    psnr: metrics.psnr === Infinity ? 'inf' : Number(metrics.psnr.toFixed(3)),
+    ssim: Number(metrics.ssim.toFixed(5)),
+    thresholds: {
+      minPsnr: options.minPsnr,
+      minSsim: options.minSsim,
+      provisional: true,
+    },
+    sceneCuts: { reference: referenceCuts.length, device: deviceCuts.length },
     checks,
-    ok: checks.every((check) => check.ok),
+    ok: failed.length === 0,
   };
+
+  console.log(`reference ${options.reference}`);
+  console.log(`device    ${options.device}`);
+  console.log(`PSNR      ${format(metrics.psnr)} dB (floor ${options.minPsnr} dB, provisional)`);
+  console.log(`SSIM      ${metrics.ssim.toFixed(4)} luma (floor ${options.minSsim}, provisional)`);
   for (const check of checks) {
     console.log(`${check.ok ? 'ok  ' : 'FAIL'} ${check.label}: ${check.detail}`);
   }
-  console.log(report.ok ? 'MATCH' : 'MISMATCH');
+  console.log(
+    report.ok ? 'MATCH' : `MISMATCH: ${failed.map((check) => check.label).join(', ')}`,
+  );
   if (options.json) writeFileSync(options.json, `${JSON.stringify(report, null, 2)}\n`);
   return report.ok ? 0 : 1;
 }
