@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import {
   RENDER_FPS,
   RENDER_PLAN_BRAND_MARK_REF,
@@ -321,6 +322,60 @@ test("unknown fields are ignored while a wrong one is named", () => {
     /scenes must be a non-empty array/
   );
 });
+
+const sharedFixtures = [
+  "render-plan-v1-photo-reel.json",
+  "render-plan-v1-brand-mark.json",
+  "render-plan-v1-voice-and-bed.json",
+  "render-plan-v1-contain.json"
+];
+
+const sharedFixture = async (name) =>
+  JSON.parse(await readFile(new URL(`../../contracts/fixtures/${name}`, import.meta.url), "utf8"));
+
+const renderPlanSchema = async () =>
+  JSON.parse(await readFile(new URL("../../contracts/schema/render-plan-v1.schema.json", import.meta.url), "utf8"));
+
+test("the committed fixtures are plans the phone can read", async () => {
+  for (const name of sharedFixtures) {
+    const plan = validateRenderPlanV1(await sharedFixture(name));
+    assert.equal(plan.schema, RENDER_PLAN_SCHEMA);
+    assert.equal(plan.version, RENDER_PLAN_VERSION);
+    assert.ok(plan.scenes.length > 0, `${name} has no scenes`);
+    assert.deepEqual(validateRenderPlanV1(JSON.parse(JSON.stringify(plan))), plan);
+  }
+  const refs = sharedFixtures.map(async (name) => (await sharedFixture(name)).scenes.map((s) => s.media.ref));
+  for (const sceneRefs of await Promise.all(refs)) {
+    for (const ref of sceneRefs) assert.doesNotMatch(ref, /^(https?:|\/|s3:|file:)/, "ref must stay opaque");
+  }
+});
+
+test("the JSON schema lists exactly the fields a plan carries", async () => {
+  const schema = await renderPlanSchema();
+  assert.equal(schema.$id, "urn:f-engine:contracts:render-plan:v1");
+  const keys = (object) => Object.keys(object).sort();
+  const required = (name) => [...schema.$defs[name].required].sort();
+
+  for (const name of sharedFixtures) {
+    const plan = validateRenderPlanV1(await sharedFixture(name));
+    assert.deepEqual([...schema.required].sort(), keys(plan), name);
+    assert.deepEqual(required("encode"), keys(plan.encode), name);
+    assert.deepEqual(required("audio"), keys(plan.audio), name);
+    if (plan.audio.bed) assert.deepEqual(required("bed"), keys(plan.audio.bed), name);
+    if (plan.audio.voice) assert.deepEqual(required("track"), keys(plan.audio.voice), name);
+    if (plan.brand_mark) assert.deepEqual(required("brand_mark"), keys(plan.brand_mark), name);
+    for (const scene of plan.scenes) {
+      assert.deepEqual(required("scene"), keys(scene), name);
+      assert.deepEqual(required("media"), keys(scene.media), name);
+      assert.deepEqual(required("crop"), keys(scene.crop), name);
+      assert.deepEqual(required("motion"), keys(scene.motion), name);
+      if (!scene.overlay) continue;
+      assert.deepEqual(required("overlay"), keys(scene.overlay), name);
+      for (const word of scene.overlay.words) assert.deepEqual(required("word"), keys(word), name);
+    }
+  }
+});
+
 
 
 
