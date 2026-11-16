@@ -17,14 +17,18 @@ function run(file, args, cwd, options = {}) {
 }
 
 function pack(workspace, artifacts) {
-  return JSON.parse(run("npm", [
+  const output = JSON.parse(run("npm", [
     "pack",
     "--json",
     "--pack-destination",
     artifacts,
     "--workspace",
     workspace
-  ], repositoryRoot))[0];
+  ], repositoryRoot));
+  // npm 11 reports an array of tarballs, npm 12 a map keyed by package name.
+  const entry = Array.isArray(output) ? output[0] : Object.values(output)[0];
+  assert.ok(entry?.files, `npm pack reported no files for ${workspace}`);
+  return entry;
 }
 
 test("private package tarballs install and run outside the monorepo without registry access", async (t) => {
@@ -40,6 +44,10 @@ test("private package tarballs install and run outside the monorepo without regi
   const contracts = pack("@f-engine/contracts", artifacts);
   const engine = pack("@f-engine/reel-engine", artifacts);
 
+  // The four render-plan fixtures are part of the contract a consumer installs.
+  // `fixtures/compile/` is not: those files are the worker's recorded compiler
+  // output, read only by the worker recorder and the Dart parity test, so
+  // packages/contracts/package.json excludes them from the tarball.
   assert.deepEqual(
     contracts.files.map(({ path }) => path).sort(),
     [
@@ -52,13 +60,18 @@ test("private package tarballs install and run outside the monorepo without regi
       "fixtures/error-unauthorized.json",
       "fixtures/project-v1.json",
       "fixtures/project-v2-breaking.json",
+      "fixtures/render-plan-v1-brand-mark.json",
+      "fixtures/render-plan-v1-contain.json",
+      "fixtures/render-plan-v1-photo-reel.json",
+      "fixtures/render-plan-v1-voice-and-bed.json",
       "fixtures/scene-media-ready.json",
       "fixtures/sse-progress.json",
       "fixtures/storyboard-plan-v1.json",
       "openapi.yaml",
       "package.json",
       "route-inventory.json",
-      "schema/f-engine-v1.schema.json"
+      "schema/f-engine-v1.schema.json",
+      "schema/render-plan-v1.schema.json"
     ]
   );
   assert.deepEqual(
@@ -76,6 +89,8 @@ test("private package tarballs install and run outside the monorepo without regi
       "dist/motion.js",
       "dist/photos-to-reel.d.ts",
       "dist/photos-to-reel.js",
+      "dist/render-plan.d.ts",
+      "dist/render-plan.js",
       "dist/spoken-narration.d.ts",
       "dist/spoken-narration.js",
       "package.json"
