@@ -60,6 +60,25 @@ export {
 };
 export type { PhotoFitLimits, PhotosToReelPlan, PhotosToReelSceneOptions, PhotosToReelShot };
 
+import { brandMarkOverlay } from "./brand-mark.js";
+import { motionTuning } from "./motion.js";
+import {
+  RENDER_PLAN_BRAND_MARK_REF,
+  RENDER_PLAN_ENCODE_DEFAULTS,
+  RENDER_PLAN_FONTS,
+  RENDER_PLAN_FPS,
+  RENDER_PLAN_SCHEMA,
+  RENDER_PLAN_VERSION,
+  renderPlanMusicRef,
+  type RenderPlanAudio,
+  type RenderPlanBrandMark,
+  type RenderPlanMedia,
+  type RenderPlanMotion,
+  type RenderPlanOverlay,
+  type RenderPlanScene,
+  type RenderPlanV1
+} from "./render-plan.js";
+
 export {
   defaultVideoArchitecture,
   recommendVideoArchitecture
@@ -92,9 +111,39 @@ export type { MotionTuning } from "./motion.js";
 export {
   BRAND_MARK_OPACITY,
   brandMarkLayout,
-  brandMarkLayouts
+  brandMarkLayouts,
+  brandMarkOverlay
 } from "./brand-mark.js";
 export type { BrandMarkLayout } from "./brand-mark.js";
+export {
+  RENDER_PLAN_BRAND_MARK_REF,
+  RENDER_PLAN_ENCODE_DEFAULTS,
+  RENDER_PLAN_FONTS,
+  RENDER_PLAN_FPS,
+  RENDER_PLAN_SCHEMA,
+  RENDER_PLAN_VERSION,
+  RenderPlanError,
+  isRenderPlanV1,
+  renderPlanMusicId,
+  renderPlanMusicRef,
+  validateRenderPlanV1
+} from "./render-plan.js";
+export type {
+  RenderPlanAudio,
+  RenderPlanAudioTrack,
+  RenderPlanBed,
+  RenderPlanBrandMark,
+  RenderPlanCrop,
+  RenderPlanEncode,
+  RenderPlanMedia,
+  RenderPlanMediaKind,
+  RenderPlanMotion,
+  RenderPlanMotionType,
+  RenderPlanOverlay,
+  RenderPlanScene,
+  RenderPlanV1,
+  RenderPlanWord
+} from "./render-plan.js";
 export type {
   BrandMarkSize,
   MediaGlanceHints,
@@ -1312,3 +1361,159 @@ export function renderPlan(snapshot: ProjectSnapshot, profile: RenderProfile): R
     scenes: scenes.map((scene) => ({ ...scene, caption_cues: cuesForScene(scene) }))
   };
 }
+
+/** Media the renderer already holds, keyed by the id the snapshot references. */
+export interface RenderPlanMediaDescriptor {
+  kind: "still" | "video";
+  width?: number;
+  height?: number;
+  /** Absent assumes audio present, matching the worker's MediaInput contract. */
+  has_audio?: boolean;
+}
+
+/** Same gray placeholder the worker draws for a snapshot with no scenes. */
+const emptyRenderPlanScene: Scene & { caption_cues: CaptionCue[] } = {
+  id: "empty",
+  order: 0,
+  caption: "",
+  duration_ms: 200,
+  focal_x: 0.5,
+  focal_y: 0.5,
+  motion: "none",
+  audio_level: 1,
+  ducking: false,
+  caption_cues: []
+};
+
+/**
+ * Motion preset as plan numbers. A pull out is a zoom with the range reversed,
+ * and a still scene carries `sample_scale` 1 so the compiler drops the 2x
+ * overscan from the plan instead of re-deriving it from the preset name.
+ */
+function planMotion(scene: Scene, strength: MotionStrength | undefined, wide: boolean): RenderPlanMotion {
+  const tuning = motionTuning(strength);
+  const pull = scene.motion === "zoom_out";
+  const type = scene.motion === "none" ? "none" : scene.motion === "push" ? "push" : "zoom";
+  return {
+    type,
+    zoom_start: pull ? tuning.zoomEnd : tuning.zoomStart,
+    zoom_end: pull ? tuning.zoomStart : tuning.zoomEnd,
+    pan_scale: tuning.panScale,
+    axis: wide ? "x" : "y",
+    easing: "cosine",
+    sample_scale: type === "none" ? 1 : 2
+  };
+}
+
+/**
+ * Burned copy for one scene, resolved the way the ASS writer resolves it: a
+ * title look without a title borrows the caption (and drops the caption words),
+ * a spoken look never keeps a title, and anything with no words and no title
+ * burns nothing at all.
+ */
+function planOverlay(scene: Scene & { caption_cues: CaptionCue[] }): RenderPlanOverlay | null {
+  const look = scene.overlay_look ?? "caption";
+  const title = scene.title?.trim() ?? "";
+  const words = scene.caption_cues;
+  if (!title && look !== "title" && look !== "spoken" && !words.length) return null;
+  const borrowed = look === "title" && !title;
+  const resolved = look === "spoken" ? "" : title || (borrowed ? scene.caption.trim() : "");
+  return {
+    look,
+    place: scene.overlay_place ?? (look === "title" ? "center" : "bottom"),
+    title: resolved || null,
+    words: borrowed ? [] : spokenWordsForCues(words),
+    font_title: RENDER_PLAN_FONTS.title,
+    font_caption: RENDER_PLAN_FONTS.caption
+  };
+}
+
+function planMedia(
+  scene: Scene,
+  media: Readonly<Record<string, RenderPlanMediaDescriptor | undefined>>
+): RenderPlanMedia {
+  if (!scene.media_id) return { ref: "", kind: "none", width: 0, height: 0, has_audio: false };
+  const descriptor = media[scene.media_id];
+  // A declared media id with no resolved input must fail closed, not render gray.
+  if (!descriptor) throw new Error("scene media input missing");
+  return {
+    ref: scene.media_id,
+    kind: descriptor.kind,
+    width: descriptor.width ?? 0,
+    height: descriptor.height ?? 0,
+    has_audio: descriptor.kind === "video" && descriptor.has_audio !== false
+  };
+}
+
+function planAudio(
+  snapshot: ProjectSnapshot,
+  media: Readonly<Record<string, RenderPlanMediaDescriptor | undefined>>
+): RenderPlanAudio {
+  const soundtrack = snapshot.brief.soundtrack;
+  let bed: RenderPlanAudio["bed"] = null;
+  if (soundtrack) {
+    const ref = soundtrack.kind === "upload"
+      ? soundtrack.media_id
+      : soundtrack.stock_id ? renderPlanMusicRef(soundtrack.stock_id) : "";
+    if (!ref || (soundtrack.kind === "upload" && !media[ref])) {
+      throw new Error(soundtrack.kind === "upload" ? "soundtrack media input missing" : "stock music bed missing");
+    }
+    bed = { ref, level: soundtrack.level, offset_ms: soundtrack.offset_ms, loop: true };
+  }
+  const voice = snapshot.brief.voiceover;
+  if (voice && !media[voice.media_id]) throw new Error("voiceover media input missing");
+  return {
+    bed,
+    voice: voice ? { ref: voice.media_id, level: voice.level, offset_ms: voice.offset_ms } : null,
+    duck: VOICEOVER_DUCK
+  };
+}
+
+function planBrandMark(snapshot: ProjectSnapshot, width: number, height: number): RenderPlanBrandMark | null {
+  if (!snapshot.brief.brand_mark) return null;
+  return { ref: RENDER_PLAN_BRAND_MARK_REF, ...brandMarkOverlay(width, height, snapshot.brief.brand_mark_size) };
+}
+
+/**
+ * Compile a snapshot, a render profile and the media descriptors the renderer
+ * holds into render plan v1. This is the only place those numbers come from:
+ * the worker compiles the plan into FFmpeg arguments and the app compiles the
+ * same plan into FFmpegKit arguments.
+ */
+export function buildRenderPlanV1(
+  snapshot: ProjectSnapshot,
+  profile: RenderProfile,
+  media: Readonly<Record<string, RenderPlanMediaDescriptor | undefined>> = {}
+): RenderPlanV1 {
+  const plan = renderPlan(snapshot, profile);
+  const scenes = plan.scenes.length
+    ? [...plan.scenes].sort((a, b) => a.order - b.order)
+    : [emptyRenderPlanScene];
+  return {
+    schema: RENDER_PLAN_SCHEMA,
+    version: RENDER_PLAN_VERSION,
+    width: plan.width,
+    height: plan.height,
+    fps: RENDER_PLAN_FPS,
+    scenes: scenes.map((scene): RenderPlanScene => {
+      const resolved = planMedia(scene, media);
+      const wide = resolved.kind !== "none" && resolved.width > resolved.height;
+      return {
+        id: scene.id,
+        duration_ms: scene.duration_ms,
+        media: resolved,
+        crop: { focal_x: scene.focal_x, focal_y: scene.focal_y },
+        motion: planMotion(scene, plan.motion_strength, wide),
+        overlay: planOverlay(scene),
+        fit: scene.fit === "contain" ? "contain" : "cover",
+        audio_level: Math.min(1, Math.max(0, scene.audio_level))
+      };
+    }),
+    audio: planAudio(snapshot, media),
+    brand_mark: planBrandMark(snapshot, plan.width, plan.height),
+    watermark: plan.watermark ?? null,
+    encode: RENDER_PLAN_ENCODE_DEFAULTS
+  };
+}
+
+
