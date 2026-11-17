@@ -116,11 +116,12 @@ apps/mobile/tool/flutter_from_root.sh compare \
 ```
 
 The comparison is structural, not byte-wise: same size, frame rate, an audio
-stream and audio layout, duration within one frame at 30 fps, frame count
-within one, the same number of scene changes, and two floors on the decoded
-picture — PSNR (default 28 dB) and luma SSIM (default 0.95). Byte equality is
-impossible by design — MediaCodec and libx264 are different encoders — so the
-question the tool asks is "same reel, acceptable picture".
+stream and audio layout, duration within one frame of the reference at the frame
+rate ffprobe reports (30 fps for these plans, and a failure names that rate),
+frame count within one, the same number of scene changes, and two floors on the
+decoded picture — PSNR (default 28 dB) and luma SSIM (default 0.95). Byte
+equality is impossible by design — MediaCodec and libx264 are different
+encoders — so the question the tool asks is "same reel, acceptable picture".
 
 Both floors are **provisional**. Nothing has measured a device reel yet, so 28 dB
 and 0.95 are a starting guess, not a quality bar the product has agreed to. They
