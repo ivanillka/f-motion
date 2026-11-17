@@ -75,6 +75,13 @@ export function frameTolerance(fps = PLAN_FPS) {
   return Number.isFinite(fps) && fps > 0 ? 1 / fps + 0.002 : 0.05;
 }
 
+/** The frame rate a duration failure is explained against, as it was probed. */
+export function frameRateLabel(fps) {
+  return Number.isFinite(fps) && fps > 0
+    ? `${Number.parseFloat(fps.toFixed(2))} fps`
+    : `${PLAN_FPS} fps (plan default)`;
+}
+
 /** The fields of an ffprobe `-show_streams` report the comparison needs. */
 export function summarize(probe) {
   const streams = Array.isArray(probe?.streams) ? probe.streams : [];
@@ -124,7 +131,8 @@ export function compareMedia(reference, device, scenes = {}) {
     ok: drift <= tolerance,
     detail: `${reference.durationSeconds.toFixed(3)}s vs ` +
       `${device.durationSeconds.toFixed(3)}s (drift ${drift.toFixed(3)}s, ` +
-      `tolerance ${tolerance.toFixed(3)}s: one frame at 30 fps)`,
+      `tolerance ${tolerance.toFixed(3)}s: one frame at ` +
+      `${frameRateLabel(reference.fps)})`,
   });
 
   const frameDrift = Math.abs(reference.frames - device.frames);

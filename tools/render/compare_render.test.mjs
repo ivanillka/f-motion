@@ -137,6 +137,20 @@ test("an unmeasured scene count fails instead of passing silently", () => {
   assert.match(scenes.detail, /not measured/);
 });
 
+test("the duration detail names the probed frame rate, not a hardcoded 30", () => {
+  const drift = (fps) =>
+    compareMedia(
+      { ...reference, fps, frames: 600 },
+      { ...reference, fps, frames: 600, durationSeconds: 10.5 },
+      sameCut,
+    ).find((check) => check.label === "duration").detail;
+
+  assert.match(drift(60), /tolerance 0\.019s: one frame at 60 fps\)$/);
+  assert.doesNotMatch(drift(60), /30 fps/);
+  assert.match(drift(30), /one frame at 30 fps\)$/);
+  assert.match(drift(Number.NaN), /one frame at 30 fps \(plan default\)\)$/);
+});
+
 test("one extra frame of muxer rounding is tolerated", () => {
   const checks = compareMedia(reference, {
     ...reference,
