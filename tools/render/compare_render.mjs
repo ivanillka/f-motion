@@ -308,7 +308,8 @@ const USAGE =
   '  --json <path>    write the full report as JSON\n' +
   '\n' +
   'Structural checks: width, height, frame rate, audio stream, audio layout,\n' +
-  'duration within one frame at 30 fps, total frame count, scene count.\n' +
+  'duration within one frame of the reference at its probed frame rate (30 fps\n' +
+  'for the plan), total frame count, scene count.\n' +
   'Exit 0 on MATCH, 1 on MISMATCH (the failing metrics are named), 2 on a\n' +
   'usage error, a missing input file, or a missing ffmpeg/ffprobe.';
 

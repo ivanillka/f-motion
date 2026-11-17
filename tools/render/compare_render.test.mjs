@@ -191,6 +191,7 @@ test("--help exits 0 and documents both provisional gates", () => {
   assert.match(run.stdout, /--min-psnr <dB>/);
   assert.match(run.stdout, /--min-ssim <n>/);
   assert.match(run.stdout, /Provisional/);
+  assert.match(run.stdout, /probed frame rate/);
   assert.equal(DEFAULT_MIN_PSNR, 28);
   assert.equal(DEFAULT_MIN_SSIM, 0.95);
 });
