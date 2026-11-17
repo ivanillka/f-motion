@@ -141,11 +141,13 @@ for run in 1 2 3; do
 done
 ```
 
-The floor is that median minus 2 dB: the slack absorbs run-to-run encoder
+The PSNR floor is that median minus 2 dB: the slack absorbs run-to-run encoder
 variation without hiding a moved cut, which the structural checks catch on their
-own. Do the same for SSIM — median of the three, minus the spread between them.
-Replace the two constants with the numbers, say which device and plan they came
-from in this file, and drop the word provisional from the help text.
+own. The SSIM floor is the same three-run median minus **0.02** luma — a fixed
+decrement, not the observed spread, so three runs that happen to agree closely do
+not end up with a floor pinned to their own exact value. Replace the two
+constants with the numbers, say which device and plan they came from in this
+file, and drop the word provisional from the help text.
 
 When the two metrics disagree, SSIM wins. PSNR punishes a full-range versus
 limited-range mismatch and MediaCodec's rate-control choices with a large
