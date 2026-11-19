@@ -6,7 +6,7 @@ TypeScript, app Dart) that produce byte-identical FFmpeg argument lists for all
 four shared fixtures, and the app rendered three of them on a Samsung Z Flip4
 with an LGPL FFmpeg build: `photo-reel`, `brand-mark` and `voice-and-bed` all
 pass `compare_render.mjs` against the worker's reel at 30.3–31.7 dB PSNR and
-0.99 luma SSIM, in 1.3–8.0 s per reel. The fourth, `contain`, does not render on
+0.99 luma SSIM, in 1.3–7.4 s per reel. The fourth, `contain`, does not render on
 the phone at all — the FFmpeg Kit build has no `eq` filter, which that plan's
 letterbox dim needs. That gap is the spike's sharpest finding and is written up
 below. The phone run stays manual: there is no Android device in CI.
@@ -77,6 +77,10 @@ complete reel:
 | `voice-and-bed` | 2 scenes + concat | 948 ms | 720x1280, 30 fps, 2.133 s |
 | `contain` | 1 scene + concat | 1083 ms | 720x1280, 30 fps, 1.533 s |
 
+That run is also why `contain` looked safe for so long: the host FFmpeg has
+`eq`, so the plan runs there; the phone's build does not, so the same arguments
+fail on the device.
+
 That run exercised the parts that are easy to get wrong and hard to see in unit
 tests: libass loaded both bundled Inter files from the plan's `fontsdir` and
 resolved `Inter SemiBold` to them, the ASS burn and its karaoke tags rendered,
@@ -101,7 +105,7 @@ against the same media bytes — see "Running the bench" for why that matters.
 
 | Plan | Passes | Device time | Output | PSNR vs worker | luma SSIM |
 | --- | --- | --- | --- | --- | --- |
-| `photo-reel` | 3 scenes + concat | 5.2–8.0 s (median 5.8 s) | 720x1280, 30 fps, 5.733 s | 30.33 dB | 0.9929 |
+| `photo-reel` | 3 scenes + concat | 5.4–7.4 s (median 5.8 s) | 720x1280, 30 fps, 5.733 s | 30.33 dB | 0.9929 |
 | `brand-mark` | 1 scene + concat | 1.6 s | 720x1280, 30 fps, 1.834 s | 30.66 dB | 0.9914 |
 | `voice-and-bed` | 2 scenes + concat | 1.3 s | 720x1280, 30 fps, 2.133 s | 31.68 dB | 0.9917 |
 | `contain` | 1 scene + concat | — | — | — | — |
@@ -288,7 +292,7 @@ missing `ffmpeg`/`ffprobe`.
   number here is 720x1280 on one Snapdragon 8 Gen 1 device.
 - Thermal behaviour over a longer soak. Three cold `photo-reel` runs moved the
   application processor 38.1 → 46.2 °C with no throttle message, but the
-  run-to-run spread (5.2–8.0 s) does not separate heat from page-cache state.
+  run-to-run spread (5.4–7.4 s) does not separate heat from page-cache state.
 - That the phone's FFmpeg build accepts every plan in the contract. `contain`
   already shows the opposite for one filter, and nothing enumerates the filter
   set the LGPL build actually ships.
