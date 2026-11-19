@@ -7,14 +7,14 @@
 // worker with libx264 — so the checks are structural plus two picture gates:
 // PSNR and SSIM on luma.
 //
-// Both gates are provisional, not measured. A pass means "not obviously a
-// different reel", not "as good as the worker's". See
-// docs/spikes/on-device-render.md for the calibration that replaces the
-// defaults.
+// Both gates are the measured floors from docs/spikes/on-device-render.md: the
+// median of the phone renders of the photo-reel fixture against the worker's
+// reel, minus encoder slack. A pass still means "not obviously a different
+// reel", not "as good as the worker's"; both floors are overridable per run.
 //
 // Usage:
 //   node tools/render/compare_render.mjs --reference ref.mp4 --device dev.mp4
-//        [--min-psnr 28] [--min-ssim 0.95] [--json report.json]
+//        [--min-psnr 28.3] [--min-ssim 0.972] [--json report.json]
 //
 // Exits 0 when every check passes, 1 when one fails, 2 when ffmpeg/ffprobe or
 // an input file is missing.
@@ -24,14 +24,26 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 /**
- * Placeholder PSNR floor. No device run has measured it yet, so the number is
- * conventional: the calibration in docs/spikes/on-device-render.md replaces it
- * with "median of three device runs, minus 2 dB".
+ * PSNR floor for a phone reel against the worker's reel.
+ *
+ * Measured on a Samsung Z Flip4 (SM-F721B, Android 16) running the
+ * `render-plan-v1-photo-reel` fixture: the cold runs (bundle re-materialised
+ * before each) scored 30.33 dB against the worker's reel, and the two other
+ * fixtures landed slightly higher. The floor is that median minus 2 dB of
+ * encoder slack, 28.33 dB, rounded down to 28.3.
+ *
+ * The slack is for run-to-run encoder variation, not for a moved cut: the
+ * structural checks catch a different reel on their own. Re-measure with the
+ * procedure in docs/spikes/on-device-render.md before changing this number.
  */
-export const DEFAULT_MIN_PSNR = 28;
+export const DEFAULT_MIN_PSNR = 28.3;
 
-/** Placeholder luma SSIM floor, conventional for the same reason as PSNR. */
-export const DEFAULT_MIN_SSIM = 0.95;
+/**
+ * Luma SSIM floor from the same runs: 0.9929 minus a fixed 0.02 decrement, so
+ * runs that happen to agree closely do not pin the floor to their own exact
+ * value.
+ */
+export const DEFAULT_MIN_SSIM = 0.972;
 
 /** Every render plan is 30 fps; one frame of drift is the duration tolerance. */
 export const PLAN_FPS = 30;
@@ -269,6 +281,7 @@ function parseArgs(argv) {
   const options = {
     minPsnr: DEFAULT_MIN_PSNR,
     minSsim: DEFAULT_MIN_SSIM,
+    overrides: { psnr: false, ssim: false },
     json: null,
   };
   for (let index = 0; index < argv.length; index += 2) {
@@ -279,9 +292,13 @@ function parseArgs(argv) {
     }
     if (flag === '--reference') options.reference = value;
     else if (flag === '--device') options.device = value;
-    else if (flag === '--min-psnr') options.minPsnr = numberFlag(flag, value);
-    else if (flag === '--min-ssim') options.minSsim = numberFlag(flag, value);
-    else if (flag === '--json') options.json = value;
+    else if (flag === '--min-psnr') {
+      options.minPsnr = numberFlag(flag, value);
+      options.overrides.psnr = true;
+    } else if (flag === '--min-ssim') {
+      options.minSsim = numberFlag(flag, value);
+      options.overrides.ssim = true;
+    } else if (flag === '--json') options.json = value;
     else if (flag === '--help' || flag === '-h') options.help = true;
     else throw new Error(`unknown option ${flag}`);
   }
@@ -297,14 +314,16 @@ function numberFlag(flag, value) {
 const USAGE =
   'usage: node tools/render/compare_render.mjs ' +
   '--reference <worker.mp4> --device <phone.mp4> ' +
-  '[--min-psnr 28] [--min-ssim 0.95] [--json report.json]\n' +
+  '[--min-psnr 28.3] [--min-ssim 0.972] [--json report.json]\n' +
   '\n' +
-  '  --min-psnr <dB>  PSNR floor on the decoded picture (default 28).\n' +
-  '                   Provisional: no device run has measured it yet; see\n' +
-  '                   docs/spikes/on-device-render.md.\n' +
-  '  --min-ssim <n>   luma (Y) SSIM floor (default 0.95). Provisional, and it\n' +
-  '                   wins over PSNR when colour range or MediaCodec rate\n' +
-  '                   control makes PSNR pessimistic without a quality bug.\n' +
+  '  --min-psnr <dB>  PSNR floor on the decoded picture (default 28.3).\n' +
+  '                   Measured: cold Z Flip4 runs of the photo-reel fixture\n' +
+  '                   scored 30.33 dB, so the floor is that median minus 2 dB.\n' +
+  '                   See docs/spikes/on-device-render.md.\n' +
+  '  --min-ssim <n>   luma (Y) SSIM floor (default 0.972). Measured the same\n' +
+  '                   way — 0.9929 minus 0.02 — and it wins over PSNR when\n' +
+  '                   colour range or MediaCodec rate control makes PSNR\n' +
+  '                   pessimistic without a quality bug.\n' +
   '  --json <path>    write the full report as JSON\n' +
   '\n' +
   'Structural checks: width, height, frame rate, audio stream, audio layout,\n' +
@@ -315,6 +334,11 @@ const USAGE =
 
 function format(value) {
   return value === Infinity ? 'inf' : value.toFixed(2);
+}
+
+/** Whether a floor is the measured default or a per-run override. */
+function floorLabel(overridden) {
+  return overridden ? 'override' : 'measured';
 }
 
 function main(argv) {
@@ -364,12 +388,14 @@ function main(argv) {
   checks.push({
     label: 'picture PSNR',
     ok: metrics.psnr >= options.minPsnr,
-    detail: `${format(metrics.psnr)} dB (floor ${options.minPsnr} dB, provisional)`,
+    detail: `${format(metrics.psnr)} dB (floor ${options.minPsnr} dB, ` +
+      `${floorLabel(options.overrides.psnr)})`,
   });
   checks.push({
     label: 'picture SSIM',
     ok: metrics.ssim >= options.minSsim,
-    detail: `${metrics.ssim.toFixed(4)} luma (floor ${options.minSsim}, provisional)`,
+    detail: `${metrics.ssim.toFixed(4)} luma (floor ${options.minSsim}, ` +
+      `${floorLabel(options.overrides.ssim)})`,
   });
 
   const failed = checks.filter((check) => !check.ok);
@@ -381,7 +407,10 @@ function main(argv) {
     thresholds: {
       minPsnr: options.minPsnr,
       minSsim: options.minSsim,
-      provisional: true,
+      overridden: {
+        psnr: options.overrides.psnr,
+        ssim: options.overrides.ssim,
+      },
     },
     sceneCuts: { reference: referenceCuts.length, device: deviceCuts.length },
     checks,
@@ -390,8 +419,14 @@ function main(argv) {
 
   console.log(`reference ${options.reference}`);
   console.log(`device    ${options.device}`);
-  console.log(`PSNR      ${format(metrics.psnr)} dB (floor ${options.minPsnr} dB, provisional)`);
-  console.log(`SSIM      ${metrics.ssim.toFixed(4)} luma (floor ${options.minSsim}, provisional)`);
+  console.log(
+    `PSNR      ${format(metrics.psnr)} dB (floor ${options.minPsnr} dB, ` +
+      `${floorLabel(options.overrides.psnr)})`,
+  );
+  console.log(
+    `SSIM      ${metrics.ssim.toFixed(4)} luma (floor ${options.minSsim}, ` +
+      `${floorLabel(options.overrides.ssim)})`,
+  );
   for (const check of checks) {
     console.log(`${check.ok ? 'ok  ' : 'FAIL'} ${check.label}: ${check.detail}`);
   }

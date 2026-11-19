@@ -51,14 +51,36 @@ test("the luma SSIM line is read, not the all-plane average", () => {
 
 test("scene cuts are the times scdet flags, merged per transition", () => {
   const log = [
-    "[Parsed_scdet_0 @ 0x1] lavfi.scd.score: 15.625, lavfi.scd.time: 0.5",
-    "[Parsed_scdet_0 @ 0x1] lavfi.scd.score: 31.25, lavfi.scd.time: 1.9",
-    "[Parsed_scdet_0 @ 0x1] lavfi.scd.score: 12.5, lavfi.scd.time: 1.933",
-    "[Parsed_scdet_0 @ 0x1] lavfi.scd.score: 44.0, lavfi.scd.time: 4.2",
+    "[Parsed_scdet_0 @ 0x7f7e74003f40] lavfi.scd.score: 17.834, lavfi.scd.time: 0.500000",
+    "[Parsed_scdet_0 @ 0x7f7e74003f40] lavfi.scd.score: 31.250, lavfi.scd.time: 1.900000",
+    "[Parsed_scdet_0 @ 0x7f7e74003f40] lavfi.scd.score: 12.500, lavfi.scd.time: 1.933333",
+    "[Parsed_scdet_0 @ 0x7f7e74003f40] lavfi.scd.score: 44.000, lavfi.scd.time: 4.200000",
   ].join("\n");
   assert.deepEqual(sceneCuts(log), [0.5, 1.9, 4.2]);
   assert.deepEqual(sceneCuts("no cuts here"), []);
   assert.deepEqual(sceneCuts(undefined), []);
+});
+
+test("detections on both sides of the merge window stay separate cuts", () => {
+  const log = [
+    "[Parsed_scdet_0 @ 0x1] lavfi.scd.score: 20.0, lavfi.scd.time: 2.000000",
+    "[Parsed_scdet_0 @ 0x1] lavfi.scd.score: 21.0, lavfi.scd.time: 2.233333",
+    "[Parsed_scdet_0 @ 0x1] lavfi.scd.score: 22.0, lavfi.scd.time: 2.533333",
+  ].join("\n");
+  assert.deepEqual(sceneCuts(log), [2, 2.533333]);
+});
+
+test("the committed device scdet log yields the photo reel's two cuts", async () => {
+  // ffmpeg -i reel-photo-reel.mp4 -vf scdet=threshold=10 -f null -, captured
+  // from the Z Flip4 render: the reel is 720x1280 h264_mediacodec from Lavf
+  // 62.12.102, and scdet flags the two transitions the plan asks for.
+  const log = await readFile(
+    new URL("./fixtures/device-scdet-photo-reel.log", import.meta.url),
+    "utf8",
+  );
+  assert.match(log, /encoder\s*: Lavc62\.28\.102 h264_mediacodec/);
+  assert.equal(sceneCuts(log).length, 2);
+  assert.deepEqual(sceneCuts(log), [1.933333, 3.833333]);
 });
 
 test("frame rates arrive as rational strings", () => {
@@ -185,15 +207,16 @@ test("the command line refuses to run without both files", () => {
   assert.match(missing.stderr, /missing file: nope\.mp4/);
 });
 
-test("--help exits 0 and documents both provisional gates", () => {
+test("--help exits 0 and documents both measured gates", () => {
   const run = spawnSync(process.execPath, [cli, "--help"], { encoding: "utf8" });
   assert.equal(run.status, 0);
   assert.match(run.stdout, /--min-psnr <dB>/);
   assert.match(run.stdout, /--min-ssim <n>/);
-  assert.match(run.stdout, /Provisional/);
+  assert.match(run.stdout, /Measured/);
+  assert.doesNotMatch(run.stdout, /provisional/i);
   assert.match(run.stdout, /probed frame rate/);
-  assert.equal(DEFAULT_MIN_PSNR, 28);
-  assert.equal(DEFAULT_MIN_SSIM, 0.95);
+  assert.equal(DEFAULT_MIN_PSNR, 28.3);
+  assert.equal(DEFAULT_MIN_SSIM, 0.972);
 });
 
 test("a gate that is not a number is a usage error", () => {
@@ -264,7 +287,11 @@ test("a re-encoded reel with the same cut matches and prints both gates", { skip
 
   const report = JSON.parse(await readFile(join(directory, "report.json"), "utf8"));
   assert.equal(report.ok, true);
-  assert.deepEqual(report.thresholds, { minPsnr: 28, minSsim: 0.95, provisional: true });
+  assert.deepEqual(report.thresholds, {
+    minPsnr: DEFAULT_MIN_PSNR,
+    minSsim: DEFAULT_MIN_SSIM,
+    overridden: { psnr: false, ssim: false },
+  });
   assert.deepEqual(report.sceneCuts, { reference: 1, device: 1 });
 });
 
@@ -278,6 +305,10 @@ test("--min-psnr is the gate and the failure names it", { skip: !ffmpegReady }, 
   assert.equal(run.status, 1, run.stdout + run.stderr);
   assert.match(run.stdout, /FAIL picture PSNR:/);
   assert.match(run.stdout, /MISMATCH: picture PSNR/);
+  assert.match(run.stdout, /floor 200 dB, override/);
+
+  const report = JSON.parse(await readFile(join(directory, "report.json"), "utf8"));
+  assert.deepEqual(report.thresholds.overridden, { psnr: true, ssim: false });
 });
 
 test("--min-ssim is the gate and the failure names it", { skip: !ffmpegReady }, async (t) => {
