@@ -218,6 +218,8 @@ Future<RenderReport> renderPlanOnDevice({
   void Function(RenderProgress progress)? onProgress,
   void Function(String message)? onLog,
 }) async {
+  await registerBundledFonts(bundle.fontsDir);
+  onLog?.call('Bundled fonts registered with fontconfig');
   final compiled = compileRenderPlan(
     plan,
     RenderPlanAssets(

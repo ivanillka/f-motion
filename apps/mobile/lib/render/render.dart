@@ -8,6 +8,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:ffmpeg_kit_flutter_new_full/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_full/ffmpeg_kit_config.dart';
 import 'package:ffmpeg_kit_flutter_new_full/ffmpeg_session.dart';
 import 'package:ffmpeg_kit_flutter_new_full/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new_full/statistics.dart';
@@ -85,6 +86,20 @@ List<String> retargetEncoder(List<String> args, String? encoder) {
   }
   return retargeted;
 }
+
+/// Registers the bundled faces with the FFmpeg build's fontconfig.
+///
+/// The plan's watermark compiles to a `drawtext` with no `fontfile`, so it asks
+/// fontconfig for the default family. A worker host answers from its system
+/// font directory; the Android build has no such directory and fails the pass
+/// with `Cannot find a valid font for the family Sans`. Registering the
+/// bundle's `fonts/` makes the same argument list run on the phone, without
+/// touching the compiled plan: [family] is mapped onto the bundled [face].
+Future<void> registerBundledFonts(
+  String fontsDir, {
+  String family = 'Sans',
+  String face = 'Inter SemiBold',
+}) => FFmpegKitConfig.setFontDirectory(fontsDir, {family: face});
 
 /// Writes the ASS files and the concat list the compiled job points at. The
 /// files are the exact bytes the compiler produced, so the concat list stays
