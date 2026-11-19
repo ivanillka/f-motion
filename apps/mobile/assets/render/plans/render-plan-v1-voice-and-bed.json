@@ -1,0 +1,133 @@
+{
+  "schema": "fmotion.render-plan",
+  "version": 1,
+  "width": 720,
+  "height": 1280,
+  "fps": 30,
+  "scenes": [
+    {
+      "id": "scene-1",
+      "duration_ms": 1200,
+      "media": {
+        "ref": "clip-2",
+        "kind": "video",
+        "width": 1080,
+        "height": 1920,
+        "has_audio": true
+      },
+      "crop": {
+        "focal_x": 0.5,
+        "focal_y": 0.5
+      },
+      "motion": {
+        "type": "none",
+        "zoom_start": 1,
+        "zoom_end": 1.06,
+        "pan_scale": 1.06,
+        "axis": "y",
+        "easing": "cosine",
+        "sample_scale": 1
+      },
+      "overlay": {
+        "look": "caption",
+        "place": "bottom",
+        "title": null,
+        "words": [
+          {
+            "text": "Low",
+            "start_ms": 0,
+            "end_ms": 514
+          },
+          {
+            "text": "tide",
+            "start_ms": 514,
+            "end_ms": 1200
+          }
+        ],
+        "font_title": "Inter Display ExtraBold",
+        "font_caption": "Inter SemiBold"
+      },
+      "fit": "cover",
+      "audio_level": 1
+    },
+    {
+      "id": "scene-2",
+      "duration_ms": 900,
+      "media": {
+        "ref": "clip-2",
+        "kind": "video",
+        "width": 1080,
+        "height": 1920,
+        "has_audio": true
+      },
+      "crop": {
+        "focal_x": 0.5,
+        "focal_y": 0.5
+      },
+      "motion": {
+        "type": "none",
+        "zoom_start": 1,
+        "zoom_end": 1.06,
+        "pan_scale": 1.06,
+        "axis": "y",
+        "easing": "cosine",
+        "sample_scale": 1
+      },
+      "overlay": {
+        "look": "caption",
+        "place": "bottom",
+        "title": null,
+        "words": [
+          {
+            "text": "Then",
+            "start_ms": 0,
+            "end_ms": 225
+          },
+          {
+            "text": "the",
+            "start_ms": 225,
+            "end_ms": 394
+          },
+          {
+            "text": "wind",
+            "start_ms": 394,
+            "end_ms": 619
+          },
+          {
+            "text": "turns",
+            "start_ms": 619,
+            "end_ms": 900
+          }
+        ],
+        "font_title": "Inter Display ExtraBold",
+        "font_caption": "Inter SemiBold"
+      },
+      "fit": "cover",
+      "audio_level": 1
+    }
+  ],
+  "audio": {
+    "bed": {
+      "ref": "music:pulse",
+      "level": 0.8,
+      "offset_ms": 0,
+      "loop": true
+    },
+    "voice": {
+      "ref": "voice-1",
+      "level": 1,
+      "offset_ms": 250
+    },
+    "duck": 0.22
+  },
+  "brand_mark": null,
+  "watermark": "Reference preview",
+  "encode": {
+    "video": "h264",
+    "video_bitrate": "8M",
+    "pixel_format": "yuv420p",
+    "audio": "aac",
+    "audio_rate": 44100,
+    "audio_channels": 2
+  }
+}

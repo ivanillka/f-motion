@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
 import 'auth.dart';
+import 'render/bench_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -413,6 +414,15 @@ class _WorkflowPageState extends State<WorkflowPage> {
               label: _connectionLabel,
               excludeSemantics: true,
               child: Text(_connectionLabel),
+            ),
+          ),
+          IconButton(
+            tooltip: 'On-device render bench',
+            icon: const Icon(Icons.movie_filter_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => RenderBenchPage.fromBuildEnvironment(),
+              ),
             ),
           ),
           if (stage > 0)

@@ -20,7 +20,14 @@
     "./route-inventory.json": "./route-inventory.json",
     "./fixtures/*": "./fixtures/*"
   },
-  "files": ["dist", "schema", "openapi.yaml", "fixtures", "route-inventory.json"],
+  "files": [
+    "dist",
+    "schema",
+    "openapi.yaml",
+    "fixtures",
+    "!fixtures/compile",
+    "route-inventory.json"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test test/*.test.mjs"

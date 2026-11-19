@@ -37,3 +37,18 @@ export function brandMarkLayout(size: BrandMarkSize | undefined): BrandMarkLayou
   return size === "standard" ? brandMarkLayouts.standard : brandMarkLayouts.compact;
 }
 
+/** Pixel box for the corner lockup on a width x height frame. */
+export function brandMarkOverlay(
+  width: number,
+  height: number,
+  size?: BrandMarkSize
+): { width: number; x: number; y: number; opacity: number } {
+  const layout = brandMarkLayout(size);
+  return {
+    width: Math.max(48, Math.round(width * layout.width)),
+    x: Math.round(width * layout.right),
+    y: Math.round(height * layout.top),
+    opacity: layout.opacity
+  };
+}
+

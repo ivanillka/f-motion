@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:f-engine:contracts:render-plan:v1",
+  "title": "F-Engine render plan v1",
+  "description": "Platform neutral description of one reel render. The worker compiles it to FFmpeg, the phone compiles it to a GL and MediaCodec graph. Media is referenced by opaque ref strings the renderer resolves on its own device; a plan never carries a server path, a URL or a bucket key.",
+  "type": "object",
+  "required": ["schema", "version", "width", "height", "fps", "scenes", "audio", "brand_mark", "watermark", "encode"],
+  "properties": {
+    "schema": { "const": "fmotion.render-plan" },
+    "version": { "const": 1 },
+    "width": { "type": "number", "exclusiveMinimum": 0 },
+    "height": { "type": "number", "exclusiveMinimum": 0 },
+    "fps": { "type": "number", "exclusiveMinimum": 0 },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/scene" }
+    },
+    "audio": { "$ref": "#/$defs/audio" },
+    "brand_mark": { "oneOf": [{ "$ref": "#/$defs/brand_mark" }, { "type": "null" }] },
+    "watermark": { "type": ["string", "null"] },
+    "encode": { "$ref": "#/$defs/encode" }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "media": {
+      "type": "object",
+      "required": ["ref", "kind", "width", "height", "has_audio"],
+      "properties": {
+        "ref": { "type": "string" },
+        "kind": { "enum": ["still", "video", "none"] },
+        "width": { "type": "number" },
+        "height": { "type": "number" },
+        "has_audio": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "crop": {
+      "type": "object",
+      "required": ["focal_x", "focal_y"],
+      "properties": {
+        "focal_x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "focal_y": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": true
+    },
+    "motion": {
+      "type": "object",
+      "required": ["type", "zoom_start", "zoom_end", "pan_scale", "axis", "easing", "sample_scale"],
+      "properties": {
+        "type": { "enum": ["none", "zoom", "push"] },
+        "zoom_start": { "type": "number", "exclusiveMinimum": 0 },
+        "zoom_end": { "type": "number", "exclusiveMinimum": 0 },
+        "pan_scale": { "type": "number", "exclusiveMinimum": 0 },
+        "axis": { "enum": ["x", "y"] },
+        "easing": { "const": "cosine" },
+        "sample_scale": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "word": {
+      "type": "object",
+      "required": ["text", "start_ms", "end_ms"],
+      "properties": {
+        "text": { "type": "string" },
+        "start_ms": { "type": "number" },
+        "end_ms": { "type": "number" }
+      },
+      "additionalProperties": true
+    },
+    "overlay": {
+      "type": "object",
+      "required": ["look", "place", "title", "words", "font_title", "font_caption"],
+      "properties": {
+        "look": { "enum": ["caption", "title", "poster", "spoken"] },
+        "place": { "enum": ["bottom", "center", "top"] },
+        "title": { "type": ["string", "null"] },
+        "words": { "type": "array", "items": { "$ref": "#/$defs/word" } },
+        "font_title": { "type": "string" },
+        "font_caption": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "scene": {
+      "type": "object",
+      "required": ["id", "duration_ms", "media", "crop", "motion", "overlay", "fit", "audio_level"],
+      "properties": {
+        "id": { "type": "string" },
+        "duration_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "media": { "$ref": "#/$defs/media" },
+        "crop": { "$ref": "#/$defs/crop" },
+        "motion": { "$ref": "#/$defs/motion" },
+        "overlay": { "oneOf": [{ "$ref": "#/$defs/overlay" }, { "type": "null" }] },
+        "fit": { "enum": ["cover", "contain"] },
+        "audio_level": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": true
+    },
+    "track": {
+      "type": "object",
+      "required": ["ref", "level", "offset_ms"],
+      "properties": {
+        "ref": { "type": "string" },
+        "level": { "type": "number", "minimum": 0, "maximum": 1 },
+        "offset_ms": { "type": "number" }
+      },
+      "additionalProperties": true
+    },
+    "bed": {
+      "type": "object",
+      "required": ["ref", "level", "offset_ms", "loop"],
+      "properties": {
+        "ref": { "type": "string" },
+        "level": { "type": "number", "minimum": 0, "maximum": 1 },
+        "offset_ms": { "type": "number" },
+        "loop": { "const": true }
+      },
+      "additionalProperties": true
+    },
+    "audio": {
+      "type": "object",
+      "required": ["bed", "voice", "duck"],
+      "properties": {
+        "bed": { "oneOf": [{ "$ref": "#/$defs/bed" }, { "type": "null" }] },
+        "voice": { "oneOf": [{ "$ref": "#/$defs/track" }, { "type": "null" }] },
+        "duck": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": true
+    },
+    "brand_mark": {
+      "type": "object",
+      "required": ["ref", "width", "x", "y", "opacity"],
+      "properties": {
+        "ref": { "type": "string" },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": true
+    },
+    "encode": {
+      "type": "object",
+      "required": ["video", "video_bitrate", "pixel_format", "audio", "audio_rate", "audio_channels"],
+      "properties": {
+        "video": { "const": "h264" },
+        "video_bitrate": { "type": "string" },
+        "pixel_format": { "const": "yuv420p" },
+        "audio": { "const": "aac" },
+        "audio_rate": { "type": "number", "exclusiveMinimum": 0 },
+        "audio_channels": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": true
+    }
+  }
+}
