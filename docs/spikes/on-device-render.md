@@ -142,7 +142,9 @@ problem: it is a filter-availability one, and it means a plan can compile
 byte-identically on both sides and still fail on the device. Either that dim
 moves to a filter the LGPL build actually ships, or the compiler learns the
 device's filter set and rejects the plan at compile time with a named cause
-instead of at runtime with "Filter not found".
+instead of at runtime with "Filter not found". This PR does not fix it — each
+option in open question 4 changes either the plan contract or the APK, so
+`contain` stays a documented failure.
 
 ## Running the bench
 
