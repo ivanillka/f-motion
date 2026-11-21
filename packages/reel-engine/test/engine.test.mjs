@@ -432,6 +432,27 @@ test("explicit caption_cues are validated and returned unchanged", () => {
   const scene = { ...snapshot.scenes[0], caption_cues: explicit };
   assert.deepEqual(cuesForScene(scene), explicit);
 });
+test("written word times are the ones the highlight and the export read", () => {
+  // What narration writes for a measured take: one cue per word, with a pause
+  // between the sentences. The highlight must not re-spread them by character count.
+  const written = [
+    { text: "Read", start_ms: 0, end_ms: 240 },
+    { text: "the", start_ms: 240, end_ms: 390 },
+    { text: "full", start_ms: 600, end_ms: 900 },
+    { text: "post.", start_ms: 900, end_ms: 1410 }
+  ];
+  const scene = {
+    ...snapshot.scenes[0],
+    caption: "Read the full post.",
+    duration_ms: 1530,
+    caption_cues: written
+  };
+  assert.deepEqual(cuesForScene(scene), written);
+  assert.deepEqual(spokenWordsForCues(cuesForScene(scene)), written);
+  assert.equal(spokenWordIndex(spokenWordsForCues(cuesForScene(scene)), 700), 2);
+  // A pause holds the word that just finished, as the karaoke tag does.
+  assert.equal(spokenWordIndex(spokenWordsForCues(cuesForScene(scene)), 500), 1);
+});
 test("overlapping explicit cues are rejected", () => assert.throws(
   () => validateCues([{ text: "a", start_ms: 0, end_ms: 600 }, { text: "b", start_ms: 400, end_ms: 900 }], 1000),
   /overlapping/

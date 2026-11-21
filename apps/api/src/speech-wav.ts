@@ -2,9 +2,9 @@
  * WAV helpers for spoken narration, plus the retired formant mixer.
  * Playback does not call synthesizeSpeech. That robot voice stays here so a
  * test can prove the file you hear is not this mix.
- * ponytail: fitTakeToScene linearly resamples a take that is longer than the
- * scene, which shifts pitch. Ceiling: the whole take, including the tail, lands
- * in the scene. Upgrade: pitch-preserving time-stretch.
+ * A take is never lengthened or shortened to fit a scene: the scene follows the
+ * take (see `spokenSceneMsForTake`), so a rate change moves samples in time but
+ * keeps pitch. A take that still cannot fit its slot is an error, not a resample.
  */
 
 export const SPEECH_SAMPLE_RATE = 16_000;
@@ -481,20 +481,27 @@ function resampleMono(samples: Int16Array, count: number): Int16Array {
   return out;
 }
 
+/** What a stored take says about its own length. */
+export interface TakeMeasurement {
+  sampleRate: number;
+  durationMs: number;
+}
+
+/** Length of a stored take, measured from its PCM instead of the caption. */
+export function measureTake(wav: Uint8Array): TakeMeasurement {
+  const { sampleRate, samples } = wavPcm(wav);
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0) throw new Error("spoken take has no sample rate");
+  return { sampleRate, durationMs: (samples.length * 1000) / sampleRate };
+}
+
 /**
- * A take that already fits the scene keeps its length.
- * A longer take is scaled into the scene so the tail is still the end of that take.
+ * The take at the mix rate. A rate change moves the same moment to a different
+ * sample index, so duration and pitch stay put; the take is never time-stretched.
  */
-export function fitTakeToScene(
-  samples: Int16Array,
-  fromRate: number,
-  toRate: number,
-  slotSamples: number
-): Int16Array {
-  if (slotSamples <= 0 || samples.length === 0 || fromRate <= 0 || toRate <= 0) return new Int16Array(0);
-  const native = Math.max(1, Math.round((samples.length * toRate) / fromRate));
-  if (native <= slotSamples) return resampleMono(samples, native);
-  return resampleMono(samples, slotSamples);
+function nativeTake(samples: Int16Array, fromRate: number, toRate: number): Int16Array {
+  if (samples.length === 0 || fromRate <= 0 || toRate <= 0) return new Int16Array(0);
+  const count = Math.max(1, Math.round((samples.length * toRate) / fromRate));
+  return resampleMono(samples, count);
 }
 
 /** Speech for one caption. Same text always yields the same WAV. */
@@ -504,7 +511,7 @@ export function synthesizeSpeech(text: string): Uint8Array {
   return encodeWav(renderPhones(phonesFor(spoken), spoken.toLowerCase()));
 }
 
-/** Place each Spoken line at its scene start. A long take is fitted, not chopped. */
+/** Place each Spoken line at its scene start at the take's own length. A take that cannot fit fails. */
 export function mixSpokenTimeline(
   timelineMs: number,
   slots: readonly { key: string; startMs: number; durationMs: number }[],
@@ -526,9 +533,11 @@ export function mixSpokenTimeline(
     if (!pcm) continue;
     const start = Math.min(mixed.length, Math.max(0, Math.round((rate * slot.startMs) / 1000)));
     const room = Math.min(mixed.length - start, Math.max(0, Math.round((rate * slot.durationMs) / 1000)));
-    const fitted = fitTakeToScene(pcm.samples, pcm.sampleRate, rate, room);
-    const count = Math.min(fitted.length, mixed.length - start);
-    for (let i = 0; i < count; i += 1) mixed[start + i] = fitted[i]!;
+    const take = nativeTake(pcm.samples, pcm.sampleRate, rate);
+    if (take.length > room) {
+      throw new Error(`spoken take overflows its ${slot.durationMs}ms scene`);
+    }
+    for (let i = 0; i < take.length; i += 1) mixed[start + i] = take[i]!;
   }
   return encodeWav(mixed, rate);
 }

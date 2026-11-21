@@ -571,6 +571,22 @@ test("caption ass builder burns one karaoke line so the full caption stays on sc
   assert.match(dialogues[0], /^Dialogue: 0,0:00:00\.00,0:00:04\.00,Caption,,0,0,0,,/);
   assert.match(dialogues[0], /\\k\d+\}First \{\\k\d+\}phrase \{\\k\d+\}Second \{\\k\d+\}phrase/);
 });
+test("written word times keep their own pauses in the karaoke line", () => {
+  // A measured take can leave a gap between the last word of one sentence and the
+  // first of the next. Karaoke `\k` time accumulates, so a word must keep the floor
+  // until the next word starts or every later highlight fires early.
+  const ass = buildCaptionAss([
+    { text: "Read", start_ms: 0, end_ms: 240 },
+    { text: "the", start_ms: 240, end_ms: 390 },
+    { text: "full", start_ms: 600, end_ms: 900 },
+    { text: "post.", start_ms: 900, end_ms: 1410 }
+  ], { look: "spoken", caption: "Read the full post.", place: "center", durationMs: 1530 });
+  const dialogue = ass.split("\n").find((line) => line.startsWith("Dialogue:"));
+  assert.ok(dialogue, "dialogue line present");
+  assert.match(dialogue, /^Dialogue: 0,0:00:00\.00,0:00:01\.41,Caption/);
+  // Centiseconds each word holds the floor, including the 360ms pause after "the".
+  assert.match(dialogue, /\\k24\}Read \{\\k36\}the \{\\k30\}full \{\\k51\}post\.$/);
+});
 test("caption ass builder neutralizes characters that would corrupt the ASS document", () => {
   const ass = buildCaptionAss([{ text: "100% {ok} [x], don't", start_ms: 0, end_ms: 500 }]);
   const dialogue = ass.split("\n").find((line) => line.startsWith("Dialogue:"));

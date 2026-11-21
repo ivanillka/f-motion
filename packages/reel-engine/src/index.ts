@@ -78,15 +78,21 @@ export {
 } from "./media-intent.js";
 export {
   SPOKEN_VOICE,
+  SPOKEN_CUE_DRIFT_MS,
+  SPOKEN_TAKE_MAX_MS,
+  SPOKEN_TAKE_PAD_MS,
   spokenCaption,
   spokenLineKey,
   spokenLineSlots,
   spokenLinesToGenerate,
   spokenMixKey,
   spokenNarrationReady,
+  spokenSceneMsForTake,
+  spokenSceneTiming,
+  spokenTakeCues,
   spokenTimelineMs
 } from "./spoken-narration.js";
-export type { SpokenLineSlot } from "./spoken-narration.js";
+export type { SpokenLineSlot, SpokenSceneTiming } from "./spoken-narration.js";
 export { MOTION_PRESETS, motionTuning, motionZoomRange } from "./motion.js";
 export type { MotionTuning } from "./motion.js";
 export {
@@ -792,9 +798,14 @@ export function spokenWordsForCues(cues: CaptionCue[]): SpokenWord[] {
 export function spokenWordIndex(words: SpokenWord[], elapsedMs: number): number {
   if (!words.length) return -1;
   const t = Math.max(0, elapsedMs);
-  const index = words.findIndex((word) => t >= word.start_ms && t < word.end_ms);
-  if (index >= 0) return index;
-  return t >= (words[words.length - 1]?.end_ms ?? 0) ? words.length - 1 : 0;
+  let index = -1;
+  for (let i = 0; i < words.length; i += 1) {
+    if (t >= (words[i]?.start_ms ?? Number.POSITIVE_INFINITY)) index = i;
+    else break;
+  }
+  // A pause between written word times keeps the finished word lit, which is
+  // exactly what the worker's karaoke tag does until the next word starts.
+  return index >= 0 ? index : 0;
 }
 
 /** Music-bed gain while a voice-over is attached. ponytail: constant duck; upgrade to sidechain. */
@@ -848,6 +859,41 @@ function copyScene(scene: Scene): Scene {
     ...scene,
     ...(scene.caption_cues ? { caption_cues: scene.caption_cues.map((cue) => ({ ...cue })) } : {})
   };
+}
+
+/**
+ * Applies measured take timing (`scene_timing`) to Spoken scenes. The timing is
+ * written by the narration run, so only a Spoken scene may take it, every id
+ * must exist, and the merged scene still goes through scene validation.
+ */
+function withSpokenTiming(scenes: Scene[], value: unknown): Scene[] {
+  if (!Array.isArray(value)) throw new Error("invalid scene timing");
+  if (!value.length) return scenes;
+  const patches = new Map<string, Record<string, unknown>>();
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("invalid scene timing");
+    const patch = item as Record<string, unknown>;
+    if (typeof patch.id !== "string"
+      || !patch.id
+      || typeof patch.duration_ms !== "number"
+      || !Number.isFinite(patch.duration_ms)) {
+      throw new Error("invalid scene timing");
+    }
+    patches.set(patch.id, patch);
+  }
+  for (const id of patches.keys()) {
+    if (!scenes.some((scene) => scene.id === id)) throw new Error("unknown scene");
+  }
+  return scenes.map((scene) => {
+    const patch = patches.get(scene.id);
+    if (!patch) return scene;
+    if (scene.overlay_look !== "spoken") throw new Error("invalid scene timing");
+    return validatedScene({
+      ...scene,
+      duration_ms: patch.duration_ms,
+      ...(patch.caption_cues === undefined ? {} : { caption_cues: patch.caption_cues })
+    });
+  });
 }
 
 function validatedStoryboard(value: unknown, requireVisualPrompt: boolean): Scene[] {
@@ -971,7 +1017,10 @@ export function applyCommand(snapshot: ProjectSnapshot, command: CommandEnvelope
       else if (isSpokenAudio(audio)) brief.spoken_audio = audio.map((item) => ({ ...item }));
       else throw new Error("invalid spoken audio");
     }
-    return { ...snapshot, brief, revision: snapshot.revision + 1 };
+    const scenes = "scene_timing" in command.payload
+      ? withSpokenTiming(snapshot.scenes, command.payload.scene_timing)
+      : snapshot.scenes;
+    return { ...snapshot, brief, scenes, revision: snapshot.revision + 1 };
   }
   if (command.kind === "update_reel") {
     return applyReel(snapshot, command.payload);
