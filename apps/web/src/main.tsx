@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { registerMediaIntentAdapter } from "./media-intent-adapter";
-import { livePreviewFrame } from "./live-preview";
+import { livePreviewFrame, overlayStyle } from "./live-preview";
 import {
   ApiClient,
   ApiResponseError,
@@ -3424,16 +3424,6 @@ export function App() {
   const previewScene = previewHeld
     ? (project?.scenes.find(({ id }) => id === playSceneId) ?? activeScene)
     : activeScene;
-  const overlayLook = previewScene?.overlay_look === "title"
-    || previewScene?.overlay_look === "poster"
-    || previewScene?.overlay_look === "spoken"
-    ? previewScene.overlay_look
-    : "caption";
-  const overlayPlace = overlayLook === "spoken"
-    ? "center"
-    : previewScene?.overlay_place === "top" || previewScene?.overlay_place === "center"
-      ? previewScene.overlay_place
-      : overlayLook === "title" ? "center" : "bottom";
   const liveOverlay = previewScene?.id === activeScene?.id;
   const shownCaption = (liveOverlay ? overlayCaption : previewScene?.caption ?? "").trim();
   const overlayGhost = !shownCaption && !livePlaying;
@@ -3467,11 +3457,6 @@ export function App() {
     transform: previewSeek?.transform,
     transformOrigin: "50% 50%"
   };
-  const previewTypeStyle = previewSeek ? {
-    ["--type-title" as string]: `${Number((previewSeek.overlay.titleSize * 100).toFixed(4))}`,
-    ["--type-caption" as string]: `${Number((previewSeek.overlay.captionSize * 100).toFixed(4))}`,
-    ["--type-safe-width" as string]: `${Number((previewSeek.overlay.safeWidth * 100).toFixed(4))}%`
-  } : undefined;
   const previewMarkStyle = {
     ["--mark-width" as string]: `${previewMark.width * 100}%`,
     ["--mark-right" as string]: `${previewMark.right * 100}%`,
@@ -3535,12 +3520,19 @@ export function App() {
   // or scrubbed stage highlights exactly the word the export would draw.
   const spoken = previewSeek?.spoken.words ?? [];
   const spokenIndex = previewSeek?.spoken.index ?? -1;
+  const overlayLook = previewSeek?.overlay.look ?? "caption";
+  const overlayPlace = previewSeek?.overlay.place ?? "bottom";
   const overlayHeadline = overlayLook === "title"
     ? (shownCaption || (overlayGhost ? "Title" : ""))
     : "";
   const overlayLine = overlayLook === "title"
     ? ""
     : shownCaption || (overlayGhost ? "Your caption" : "");
+  // The stage paints the export's own look, place, and type: the seek already
+  // read the shared overlay contract, and this style only forwards its numbers.
+  const previewTypeStyle = previewSeek
+    ? overlayStyle(previewSeek.overlay, Boolean(overlayHeadline), Boolean(overlayLine))
+    : undefined;
 
   function readSceneElapsed(now = performance.now()) {
     return livePlaying

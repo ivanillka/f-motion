@@ -17,15 +17,25 @@ import {
 import {
   coverCropFilter,
   brandMarkLayout,
+  chunkOverlayWord,
   MOTION_PRESETS,
   motionTuning,
   motionZoomRange,
+  OVERLAY_BLACK,
+  OVERLAY_PLAYRES_HEIGHT,
+  OVERLAY_PLAYRES_WIDTH,
+  OVERLAY_WHITE,
+  overlayFit,
+  overlayPlacement,
+  overlayStyleBox,
+  overlayType,
   photoFitTarget,
   RENDER_FPS,
   renderPlan,
   spokenWordsForCues,
   VOICEOVER_DUCK,
   type MotionTuning,
+  type OverlayTextFit,
   type RenderPlan,
   type RenderProfile,
   type SpokenWord
@@ -372,158 +382,37 @@ function motionFilter(
 
 const overlayFontsDir = fileURLToPath(new URL("../assets/fonts", import.meta.url));
 
-// Match apps/web overlay: Inter Display ExtraBold titles, Inter SemiBold
-// captions, pill panel ~62% black. ASS cannot round the pill.
-const TITLE_FONT = "Inter Display ExtraBold";
-const CAPTION_FONT = "Inter SemiBold";
-const ASS_WHITE = "&H00FFFFFF";
-const ASS_BLACK = "&H00000000";
-const CAPTION_PILL = "&H61000000";
-
-/**
- * Overlay text keeps 6% of the frame width clear on each side. ASS margins are
- * PlayRes units, so a landscape frame scales its inset with its own width.
- */
-const OVERLAY_SAFE_INSET = 0.06;
-
-function overlaySideMargin(playResWidth: number): number {
-  return Math.ceil(playResWidth * OVERLAY_SAFE_INSET);
-}
-
+// The faces, sizes, insets, and fit rules live in @f-engine/reel-engine, so
+// the studio preview and this ASS builder cannot drift apart.
 function assStyle(
   name: string,
-  font: string,
-  size: number,
-  back: string,
-  spacing: number,
-  borderStyle: 1 | 3,
-  outline: number,
-  shadow: number,
-  secondary = "&H00AAAAAA",
-  box: { align?: number; l?: number; r?: number; v?: number; side?: number } = {}
+  look: OverlayLook,
+  role: "title" | "caption",
+  playResWidth: number
 ): string {
-  const align = box.align ?? 2;
-  // A look may ask for more inset than the safe zone, never less.
-  const marginL = Math.max(box.side ?? overlaySideMargin(720), box.l ?? 0);
-  const marginR = Math.max(box.side ?? overlaySideMargin(720), box.r ?? 0);
-  const marginV = box.v ?? 140;
-  return `Style: ${name},${font},${size},${ASS_WHITE},${secondary},${ASS_BLACK},${back},0,0,0,0,100,100,${spacing},0,${borderStyle},${outline},${shadow},${align},${marginL},${marginR},${marginV},1`;
+  const face = overlayType[look][role];
+  const box = overlayStyleBox(look, playResWidth);
+  return `Style: ${name},${face.assFont},${face.size},${OVERLAY_WHITE},${face.secondary},${OVERLAY_BLACK},${face.back},0,0,0,0,100,100,${face.spacing},0,${face.borderStyle},${face.outline},${face.shadow},${box.align},${box.marginL},${box.marginR},${box.marginV},1`;
 }
 
 function overlayAssStyles(
   look: OverlayLook,
-  playResWidth = 720
-): { title: string; caption: string; titleSize: number; captionSize: number } {
-  const side = overlaySideMargin(playResWidth);
-  const style = (
-    name: string,
-    font: string,
-    size: number,
-    back: string,
-    spacing: number,
-    borderStyle: 1 | 3,
-    outline: number,
-    shadow: number,
-    extra: {
-      secondary?: string;
-      box?: { align?: number; l?: number; r?: number; v?: number };
-    } = {}
-  ) => assStyle(name, font, size, back, spacing, borderStyle, outline, shadow, extra.secondary, {
-    side,
-    ...extra.box
-  });
-  if (look === "title") {
-    return {
-      title: style("Title", TITLE_FONT, 78, ASS_BLACK, -3, 1, 3, 2),
-      caption: style("Caption", CAPTION_FONT, 26, CAPTION_PILL, 0, 3, 8, 0),
-      titleSize: 78,
-      captionSize: 26
-    };
-  }
-  if (look === "poster") {
-    return {
-      title: style("Title", TITLE_FONT, 52, ASS_BLACK, -2, 1, 2, 2),
-      caption: style("Caption", CAPTION_FONT, 26, ASS_BLACK, 0, 1, 0, 1),
-      titleSize: 52,
-      captionSize: 26
-    };
-  }
-  if (look === "spoken") {
-    return {
-      title: style("Title", TITLE_FONT, 68, ASS_BLACK, -1, 1, 3, 2),
-      caption: style("Caption", TITLE_FONT, 68, ASS_BLACK, -1, 1, 3, 2, {
-        secondary: "&H80FFFFFF",
-        box: { align: 5, l: 80, r: 80, v: 0 }
-      }),
-      titleSize: 68,
-      captionSize: 68
-    };
-  }
+  playResWidth = OVERLAY_PLAYRES_WIDTH
+): { title: string; caption: string } {
   return {
-    title: style("Title", TITLE_FONT, 64, ASS_BLACK, -2, 1, 2, 3),
-    caption: style("Caption", CAPTION_FONT, 26, CAPTION_PILL, 0, 3, 8, 0),
-    titleSize: 64,
-    captionSize: 26
+    title: assStyle("Title", look, "title", playResWidth),
+    caption: assStyle("Caption", look, "caption", playResWidth)
   };
-}
-
-/**
- * ASS WrapStyle 0 wraps on spaces only, so one long word walks straight past
- * the safe zone. A line whose longest word does not fit takes a font-size
- * override; a word that stays too wide even shrunk is hard-broken instead.
- * ponytail: the advance is a deliberate overestimate for Inter Display
- * ExtraBold uppercase, so the rendered bounds test is the real check.
- */
-const OVERLAY_GLYPH_ADVANCE = 0.75;
-const OVERLAY_MIN_SCALE = 0.55;
-
-export interface OverlayTextFit {
-  /** Font size override for the line, when the style size is too wide. */
-  fontSize?: number;
-  /** Characters per line for a word too wide even at the smallest size. */
-  chunk?: number;
-}
-
-function fitOverlayText(words: string[], size: number, safeWidth: number): OverlayTextFit {
-  const longest = words.reduce((max, word) => Math.max(max, word.trim().length), 0);
-  if (longest === 0) return {};
-  const expected = (chars: number, at: number) => chars * at * OVERLAY_GLYPH_ADVANCE;
-  if (expected(longest, size) <= safeWidth) return {};
-  const scale = safeWidth / expected(longest, size);
-  if (scale >= OVERLAY_MIN_SCALE) return { fontSize: Math.max(16, Math.floor(size * scale)) };
-  return { chunk: Math.max(1, Math.floor(safeWidth / (size * OVERLAY_GLYPH_ADVANCE))) };
 }
 
 /** `\N` inside a word is the only line break ASS honors without a space. */
 function breakOverlayWord(word: string, chunk: number): string {
-  if (word.length <= chunk) return escapeAssText(word);
-  const pieces: string[] = [];
-  for (let index = 0; index < word.length; index += chunk) {
-    pieces.push(escapeAssText(word.slice(index, index + chunk)));
-  }
-  return pieces.join("\\N");
+  return chunkOverlayWord(word, chunk).map(escapeAssText).join("\\N");
 }
 
 function overlayAssText(text: string, chunk?: number): string {
   if (!chunk) return escapeAssText(text);
   return text.split(" ").map((word) => breakOverlayWord(word, chunk)).join(" ");
-}
-
-function overlayLayout(
-  place: OverlayPlace | undefined,
-  hasTitle: boolean,
-  hasCaption: boolean,
-  look: OverlayLook
-) {
-  if (look === "spoken") return { an: 5, titleV: 0, captionV: 0, marginL: 80, marginR: 80 };
-  if (look === "poster") {
-    if (place === "top") return { an: 7, titleV: 36, captionV: hasTitle ? 110 : 36, marginL: 0, marginR: 0 };
-    if (place === "center") return { an: 4, titleV: hasCaption ? 24 : 0, captionV: hasTitle ? 24 : 0, marginL: 0, marginR: 0 };
-    return { an: 1, titleV: hasCaption ? 96 : 36, captionV: 36, marginL: 0, marginR: 0 };
-  }
-  if (place === "top") return { an: 8, titleV: 88, captionV: hasTitle ? 176 : 88, marginL: 0, marginR: 0 };
-  if (place === "center") return { an: 8, titleV: hasCaption ? 500 : 560, captionV: hasTitle ? 590 : 560, marginL: 0, marginR: 0 };
-  return { an: 2, titleV: hasCaption ? 228 : 0, captionV: 0, marginL: 0, marginR: 0 };
 }
 
 function assDialogue(
@@ -584,16 +473,9 @@ function assTimestamp(ms: number): string {
  * Deterministic ASS subtitle document with one `Dialogue` line per timed
  * cue. Portrait stays PlayRes 720x1280. A landscape plan uses its own
  * PlayRes so captions are not mapped through a portrait script.
- * 40px side margins, text bottom-anchored 140px above the frame bottom
- * so it clears the watermark band.
- */
-/**
- * Deterministic ASS subtitle document with one `Dialogue` line per timed
- * cue. Portrait stays PlayRes 720x1280. A landscape plan uses its own
- * PlayRes so captions are not mapped through a portrait script.
- * Every line keeps a 6% side inset, bottom text sits 140px above the frame
- * bottom so it clears the watermark band, and a line whose longest word cannot
- * fit the inset drops its font size instead of running off the frame.
+ * Every line keeps the same side inset, bottom text clears the watermark
+ * band, and a line whose longest word cannot fit the inset drops its font size
+ * instead of running off the frame; the studio preview reads the same module.
  */
 export function buildCaptionAss(
   cues: CaptionCue[],
@@ -609,6 +491,7 @@ export function buildCaptionAss(
   const look = overlay.look === "title" || overlay.look === "poster" || overlay.look === "spoken"
     ? overlay.look
     : "caption";
+  const face = overlayType[look].title;
   let title = overlay.title?.trim() ?? "";
   let captionCues = cues;
   if (look === "spoken") title = "";
@@ -616,32 +499,29 @@ export function buildCaptionAss(
     title = overlay.caption?.trim() ?? "";
     captionCues = [];
   }
-  if (look === "title" && title) title = title.toUpperCase();
+  if (face.uppercase && title) title = title.toUpperCase();
   const place = overlay.place
     ?? (look === "title" ? "center" : "bottom");
-  const layout = overlayLayout(place, Boolean(title), captionCues.length > 0, look);
+  const layout = overlayPlacement(look, place, Boolean(title), captionCues.length > 0);
   const landscape = Boolean(playRes && playRes.width > playRes.height);
-  const playResWidth = landscape && playRes ? playRes.width : 720;
+  const playResWidth = landscape && playRes ? playRes.width : OVERLAY_PLAYRES_WIDTH;
   const styles = overlayAssStyles(look, playResWidth);
-  const safeWidth = playResWidth - 2 * overlaySideMargin(playResWidth);
   const titleEnd = overlay.durationMs ?? captionCues.at(-1)?.end_ms ?? 0;
   const captionWords = spokenWordsForCues(captionCues);
-  const titleFit = title
-    ? fitOverlayText([title], styles.titleSize, safeWidth)
-    : {};
+  const titleFit = title ? overlayFit(look, "title", [title], playResWidth) : {};
   const captionFit = captionWords.length
-    ? fitOverlayText(captionWords.map((word) => word.text), styles.captionSize, safeWidth)
+    ? overlayFit(look, "caption", captionWords.map((word) => word.text), playResWidth)
     : {};
   const dialogues = [
     ...(title && titleEnd > 0
-      ? [assDialogue("Title", 0, titleEnd, title, layout.titleV, layout.an, titleFit)]
+      ? [assDialogue("Title", 0, titleEnd, title, layout.titleV, layout.align, titleFit)]
       : []),
     ...(captionWords.length
       ? [assKaraokeDialogue(
         "Caption",
         captionWords,
         layout.captionV,
-        layout.an,
+        layout.align,
         layout.marginL,
         layout.marginR,
         captionFit
@@ -652,7 +532,7 @@ export function buildCaptionAss(
     "[Script Info]",
     "ScriptType: v4.00+",
     `PlayResX: ${playResWidth}`,
-    `PlayResY: ${landscape && playRes ? playRes.height : 1280}`,
+    `PlayResY: ${landscape && playRes ? playRes.height : OVERLAY_PLAYRES_HEIGHT}`,
     "WrapStyle: 0",
     "ScaledBorderAndShadow: yes",
     "",
