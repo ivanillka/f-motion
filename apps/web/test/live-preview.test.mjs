@@ -52,6 +52,45 @@ test("the live stage seeks the export's frame instead of animating toward it", a
   }
 });
 
+test("the lit word follows the written take times when the stage is scrubbed", async () => {
+  const vite = await createServer({
+    root: fileURLToPath(new URL("..", import.meta.url)),
+    logLevel: "silent",
+    server: { middlewareMode: true },
+    appType: "custom"
+  });
+  try {
+    const { livePreviewFrame } = await vite.ssrLoadModule("/src/live-preview.ts");
+    // The cues narration writes for a measured take: the line ends with its audio
+    // and a pause sits between the two sentences.
+    const take = {
+      ...scene,
+      caption: "Read the full post.",
+      duration_ms: 1530,
+      overlay_look: "spoken",
+      overlay_place: "center",
+      caption_cues: [
+        { text: "Read", start_ms: 0, end_ms: 240 },
+        { text: "the", start_ms: 240, end_ms: 390 },
+        { text: "full", start_ms: 600, end_ms: 900 },
+        { text: "post.", start_ms: 900, end_ms: 1410 }
+      ]
+    };
+    const at = (ms) => livePreviewFrame(take, ms);
+    assert.deepEqual(at(0).spoken.words, take.caption_cues);
+    assert.equal(at(0).spoken.index, 0);
+    assert.equal(at(300).spoken.index, 1);
+    // Scrubbing into the pause holds the finished word instead of rewinding.
+    assert.equal(at(500).spoken.index, 1);
+    assert.equal(at(700).spoken.index, 2);
+    assert.equal(at(1200).spoken.index, 3);
+    // The tail after the last word still reads as the last word, not silence.
+    assert.equal(at(take.duration_ms).spoken.index, 3);
+  } finally {
+    await vite.close();
+  }
+});
+
 test("a pan reports the worker's pan sign as a CSS translate", async () => {
   const vite = await createServer({
     root: fileURLToPath(new URL("..", import.meta.url)),

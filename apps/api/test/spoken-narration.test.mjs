@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { ProjectService } from "../dist/domain.js";
 import { createTestApp } from "../dist/server.js";
-import { SPOKEN_VOICE, spokenLineKey, spokenLineSlots, spokenTimelineMs } from "@f-engine/reel-engine";
+import { SPOKEN_TAKE_PAD_MS, SPOKEN_VOICE, spokenLineKey, spokenMixKey } from "@f-engine/reel-engine";
 import { ensureSpokenVoiceover, spokenVoiceReasonFromError, spokenVoiceStatus, SpokenVoiceUnavailableError } from "../dist/spoken-narration.js";
 import { FalImageError, FalProviderError } from "@f-engine/fal-host";
-import { encodeWav, fitTakeToScene, mixSpokenTimeline, synthesizeSpeech, wavPcm } from "../dist/speech-wav.js";
+import { encodeWav, measureTake, mixSpokenTimeline, synthesizeSpeech, wavPcm } from "../dist/speech-wav.js";
 
 function scene(id, caption, extra = {}) {
   return {
@@ -66,16 +66,128 @@ function voiceWav(text, long = false) {
   return encodeWav(samples, 24_000);
 }
 
-test("a long take keeps its tail in the scene and a short take keeps its length", () => {
-  const long = new Int16Array(400);
-  long.fill(1_000);
-  long[399] = 30_000;
-  const fitted = fitTakeToScene(long, 16_000, 16_000, 50);
-  assert.equal(fitted.length, 50);
-  assert.equal(fitted[49], 30_000);
-  assert.notEqual(fitted[49], long[49]);
-  const short = Int16Array.from([3, 4, 5]);
-  assert.deepEqual([...fitTakeToScene(short, 16_000, 16_000, 10)], [3, 4, 5]);
+test("a take keeps its own length in the mix and a take that cannot fit fails", () => {
+  const wav = voiceWav("Read the full post.");
+  const measured = measureTake(wav);
+  assert.equal(measured.sampleRate, 24_000);
+  assert.equal(Math.round(measured.durationMs), 100);
+  // The scene lasts the take plus the breath. The take itself is copied sample for
+  // sample, with silence after it: no time-stretch, so the voice keeps its pitch.
+  const slot = { key: "k", startMs: 0, durationMs: 220 };
+  const mixed = wavPcm(mixSpokenTimeline(220, [slot], new Map([["k", wav]])));
+  const take = wavPcm(wav);
+  assert.equal(mixed.sampleRate, 24_000);
+  assert.equal(mixed.samples.length, Math.round((24_000 * 220) / 1000));
+  assert.deepEqual([...mixed.samples.slice(0, take.samples.length)], [...take.samples]);
+  assert.ok(mixed.samples.slice(take.samples.length).every((value) => value === 0));
+  assert.throws(
+    () => mixSpokenTimeline(50, [{ key: "k", startMs: 0, durationMs: 50 }], new Map([["k", wav]])),
+    /spoken take overflows its 50ms scene/
+  );
+});
+
+test("a spoken scene takes its length and cues from the finished take", async () => {
+  const takeMs = 1_500;
+  const takeWav = () => {
+    const samples = new Int16Array((24_000 * takeMs) / 1000);
+    samples.fill(900);
+    samples[samples.length - 1] = 30_000;
+    return encodeWav(samples, 24_000);
+  };
+  const projects = new ProjectService();
+  const created = projects.create("owner", { purpose: "A quiet room", audience: "Viewers", tone: "Calm" });
+  const replaced = projects.command("owner", {
+    command_id: "board",
+    project_id: created.id,
+    base_revision: created.revision,
+    client_timestamp: "t",
+    kind: "replace_storyboard",
+    payload: {
+      scenes: [
+        // A planner guess that runs past the take is replaced by the take window.
+        scene("s1", "Read the full post.", {
+          order: 0,
+          duration_ms: 6000,
+          caption_cues: [{ text: "Read the full post.", start_ms: 0, end_ms: 6000 }]
+        }),
+        // A cue window that already fits the take is the editor's, so it is kept.
+        scene("s2", "Then open the gallery.", {
+          order: 1,
+          duration_ms: 6000,
+          caption_cues: [{ text: "Then open the gallery.", start_ms: 0, end_ms: takeMs - 10 }]
+        })
+      ]
+    }
+  });
+  const before = spokenMixKey(replaced.scenes);
+  const audio = memoryAudio();
+  const save = (base, voiceover, spokenAudio, sceneTiming) => projects.command("owner", {
+    command_id: `save-${base.revision}`,
+    project_id: base.id,
+    base_revision: base.revision,
+    client_timestamp: "t",
+    kind: "update_voiceover",
+    payload: {
+      voiceover,
+      spoken_audio: spokenAudio,
+      ...(sceneTiming?.length ? { scene_timing: sceneTiming } : {})
+    }
+  });
+  const opened = await ensureSpokenVoiceover("owner", replaced, audio, save, async () => takeWav());
+  assert.deepEqual(
+    opened.project.scenes.map(({ duration_ms }) => duration_ms),
+    [takeMs + SPOKEN_TAKE_PAD_MS, takeMs + SPOKEN_TAKE_PAD_MS]
+  );
+  assert.deepEqual(opened.project.scenes[0].caption_cues, [
+    { text: "Read the full post.", start_ms: 0, end_ms: takeMs }
+  ]);
+  assert.deepEqual(opened.project.scenes[1].caption_cues, [
+    { text: "Then open the gallery.", start_ms: 0, end_ms: takeMs - 10 }
+  ]);
+  // The mix key follows the measured length, so a mix made for the guess is not reused.
+  assert.notEqual(spokenMixKey(opened.project.scenes), before);
+  const play = wavPcm(audio.files.get(opened.project.brief.voiceover.media_id));
+  assert.equal(play.sampleRate, 24_000);
+  assert.equal(play.samples[takeMs * 24 - 1], 30_000);
+  assert.equal(play.samples.length, Math.round(((takeMs + SPOKEN_TAKE_PAD_MS) * 2 * 24_000) / 1000));
+  const again = await ensureSpokenVoiceover("owner", opened.project, audio, save, async () => {
+    throw new Error("a finished take must not be spoken again");
+  });
+  assert.equal(again.generated, 0);
+  assert.equal(again.project.revision, opened.project.revision);
+});
+
+test("a take past the longest scene fails instead of being crushed", async () => {
+  const projects = new ProjectService();
+  const created = projects.create("owner", { purpose: "A long line", audience: "Viewers", tone: "Calm" });
+  const replaced = projects.command("owner", {
+    command_id: "board",
+    project_id: created.id,
+    base_revision: created.revision,
+    client_timestamp: "t",
+    kind: "replace_storyboard",
+    payload: { scenes: [scene("s1", "Read the full post.")] }
+  });
+  const audio = memoryAudio();
+  const save = (base, voiceover, spokenAudio, sceneTiming) => projects.command("owner", {
+    command_id: `save-${base.revision}`,
+    project_id: base.id,
+    base_revision: base.revision,
+    client_timestamp: "t",
+    kind: "update_voiceover",
+    payload: {
+      voiceover,
+      spoken_audio: spokenAudio,
+      ...(sceneTiming?.length ? { scene_timing: sceneTiming } : {})
+    }
+  });
+  const longWav = encodeWav(new Int16Array(24_000 * 15.6), 24_000);
+  await assert.rejects(
+    () => ensureSpokenVoiceover("owner", replaced, audio, save, async () => longWav),
+    /spoken take is 15600ms, over the 15000ms scene limit/
+  );
+  assert.equal(projects.get("owner", created.id).brief.voiceover, undefined);
+  assert.equal(audio.puts(), 1);
 });
 
 test("retired formant speech is a 16 kHz mix and is not the played voice", () => {
@@ -110,13 +222,17 @@ test("opening spoken captions stores narration once and a second open does not s
     calls.push(request);
     return voiceWav(request.text);
   };
-  const save = (base, voiceover, spokenAudio) => projects.command("owner", {
+  const save = (base, voiceover, spokenAudio, sceneTiming) => projects.command("owner", {
     command_id: `save-${base.revision}`,
     project_id: base.id,
     base_revision: base.revision,
     client_timestamp: "t",
     kind: "update_voiceover",
-    payload: { voiceover, spoken_audio: spokenAudio }
+    payload: {
+      voiceover,
+      spoken_audio: spokenAudio,
+      ...(sceneTiming?.length ? { scene_timing: sceneTiming } : {})
+    }
   });
   const first = await ensureSpokenVoiceover("owner", replaced, audio, save, synthesize);
   assert.equal(first.generated, 1);
@@ -216,13 +332,17 @@ test("the first spoken line and a later line share one voice, and play is not th
     takes.set(request.text, wav);
     return wav;
   };
-  const save = (base, voiceover, spokenAudio) => projects.command("owner", {
+  const save = (base, voiceover, spokenAudio, sceneTiming) => projects.command("owner", {
     command_id: `save-${base.revision}`,
     project_id: base.id,
     base_revision: base.revision,
     client_timestamp: "t",
     kind: "update_voiceover",
-    payload: { voiceover, spoken_audio: spokenAudio }
+    payload: {
+      voiceover,
+      spoken_audio: spokenAudio,
+      ...(sceneTiming?.length ? { scene_timing: sceneTiming } : {})
+    }
   });
   const opened = await ensureSpokenVoiceover("owner", replaced, audio, save, synthesize);
   assert.deepEqual(calls.map((call) => call.text), [firstCaption, laterCaption]);
@@ -232,14 +352,24 @@ test("the first spoken line and a later line share one voice, and play is not th
   assert.equal(calls.some((call) => call.text.includes("\n") || call.text.includes("Selected gallery")), false);
   const lineId = opened.project.brief.spoken_audio.find((item) => item.role === "line" && item.key === spokenLineKey(firstCaption)).media_id;
   assert.deepEqual(Buffer.from(audio.files.get(lineId)), Buffer.from(takes.get(firstCaption)));
+  // Each scene lasts its own take plus the breath, and its cue window is the audio.
+  const firstTake = wavPcm(takes.get(firstCaption));
+  const laterTake = wavPcm(takes.get(laterCaption));
+  const firstMs = Math.ceil(measureTake(takes.get(firstCaption)).durationMs);
+  const laterMs = Math.ceil(measureTake(takes.get(laterCaption)).durationMs);
+  assert.equal(opened.project.scenes[1].duration_ms, firstMs + SPOKEN_TAKE_PAD_MS);
+  assert.deepEqual(opened.project.scenes[1].caption_cues, [
+    { text: firstCaption, start_ms: 0, end_ms: Math.round(firstMs) }
+  ]);
+  assert.equal(opened.project.scenes[2].duration_ms, Math.max(500, laterMs + SPOKEN_TAKE_PAD_MS));
+  // The long line no longer fits a 500ms slot by shrinking: it grows the scene and
+  // its last sample lands at the end of the take, not at the old slot edge.
   const play = audio.files.get(opened.project.brief.voiceover.media_id);
   const playPcm = wavPcm(play);
-  const slotSamples = Math.round((playPcm.sampleRate * 500) / 1000);
   const start = Math.round((playPcm.sampleRate * 500) / 1000);
-  assert.equal(playPcm.samples[start + slotSamples - 1], 30_000);
-  const formantLines = new Map();
-  for (const slot of spokenLineSlots(replaced.scenes)) formantLines.set(slot.key, synthesizeSpeech(slot.text));
-  const formant = mixSpokenTimeline(spokenTimelineMs(replaced.scenes), spokenLineSlots(replaced.scenes), formantLines);
+  assert.equal(playPcm.samples[start + firstTake.samples.length - 1], 30_000);
+  // Repeated words keep one take, so the mix is not the retired formant voice.
+  const formant = synthesizeSpeech(firstCaption);
   assert.notDeepEqual(Buffer.from(play), Buffer.from(formant));
   assert.notEqual(playPcm.sampleRate, wavPcm(formant).sampleRate);
 

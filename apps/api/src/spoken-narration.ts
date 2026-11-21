@@ -2,15 +2,19 @@ import { createHash, randomUUID } from "node:crypto";
 import type { ProjectSnapshot, SpokenAudioRef, Voiceover } from "@f-engine/contracts";
 import {
   SPOKEN_VOICE,
+  spokenCaption,
+  spokenLineKey,
   spokenLineSlots,
   spokenLinesToGenerate,
   spokenMixKey,
   spokenNarrationReady,
-  spokenTimelineMs
+  spokenSceneTiming,
+  spokenTimelineMs,
+  type SpokenSceneTiming
 } from "@f-engine/reel-engine";
 import type { PostgresMediaRepository, PrivateObjectStore } from "./media-storage.js";
 import { FalImageError, FalProviderError } from "@f-engine/fal-host";
-import { mixSpokenTimeline } from "./speech-wav.js";
+import { measureTake, mixSpokenTimeline } from "./speech-wav.js";
 
 /** One spoken line, always SPOKEN_VOICE. Callers do not pick another engine. */
 export interface SpokenSynthesisRequest {
@@ -164,6 +168,10 @@ function voiceRequest(text: string): SpokenSynthesisRequest {
  * Each line is SPOKEN_VOICE speaking that caption. A stored line is reused,
  * so a second open does not synthesize. User-owned voice-over (no spoken_key)
  * is left in place.
+ *
+ * The finished take is the clock: its scene lasts the take plus a short breath,
+ * and its cue window starts and ends with the audio. The scene timing is saved
+ * with the mix, so preview, export, and a later open all read the same clock.
  */
 export async function ensureSpokenVoiceover(
   ownerId: string,
@@ -172,26 +180,16 @@ export async function ensureSpokenVoiceover(
   save: (
     base: ProjectSnapshot,
     voiceover: Voiceover | null,
-    spokenAudio: SpokenAudioRef[]
+    spokenAudio: SpokenAudioRef[],
+    sceneTiming?: SpokenSceneTiming[]
   ) => ProjectSnapshot | Promise<ProjectSnapshot>,
   synthesize?: SpokenSynthesizer
 ): Promise<{ project: ProjectSnapshot; generated: number }> {
   if (spokenNarrationReady(project)) return { project, generated: 0 };
-  const mixKey = spokenMixKey(project.scenes);
   const slots = spokenLineSlots(project.scenes);
-  const previousMix = project.brief.spoken_audio?.find((item) => item.role === "mix" && item.key === mixKey);
   const voice = project.brief.voiceover;
   const offset_ms = voice?.spoken_key ? voice.offset_ms : 0;
   const level = voice?.spoken_key ? voice.level : 1;
-  if (previousMix) {
-    const saved = await save(project, {
-      media_id: previousMix.media_id,
-      offset_ms,
-      level,
-      spoken_key: mixKey
-    }, project.brief.spoken_audio ?? []);
-    return { project: saved, generated: 0 };
-  }
   let snapshot = project;
   const cache = cachedLines(snapshot);
   const missing = new Set(spokenLinesToGenerate(slots, [...cache.keys()]));
@@ -216,11 +214,36 @@ export async function ensureSpokenVoiceover(
     snapshot = await save(
       snapshot,
       null,
-      nextSpokenAudio(snapshot.brief.spoken_audio ?? [], lines, { role: "mix", key: mixKey, media_id: fresh.mediaId })
+      nextSpokenAudio(snapshot.brief.spoken_audio ?? [], lines, { role: "mix", key: slot.key, media_id: fresh.mediaId })
         .filter((item) => item.role === "line")
     );
   }
-  const mixed = mixSpokenTimeline(spokenTimelineMs(snapshot.scenes), slots, wavs);
+  // Every take states its own length. A scene keeps that length plus the breath,
+  // and its cues start and end with the audio instead of the word-count guess.
+  const takes = new Map<string, number>();
+  for (const [key, wav] of wavs) takes.set(key, measureTake(wav).durationMs);
+  const timing: SpokenSceneTiming[] = [];
+  const timed = snapshot.scenes.map((scene) => {
+    const text = spokenCaption(scene);
+    if (!text) return scene;
+    const takeMs = takes.get(spokenLineKey(text));
+    if (takeMs === undefined) return scene;
+    const patch = spokenSceneTiming(scene, takeMs);
+    timing.push(patch);
+    return { ...scene, duration_ms: patch.duration_ms, caption_cues: patch.caption_cues };
+  });
+  const mixKey = spokenMixKey(timed);
+  const previousMix = snapshot.brief.spoken_audio?.find((item) => item.role === "mix" && item.key === mixKey);
+  if (previousMix) {
+    const saved = await save(snapshot, {
+      media_id: previousMix.media_id,
+      offset_ms,
+      level,
+      spoken_key: mixKey
+    }, snapshot.brief.spoken_audio ?? [], timing);
+    return { project: saved, generated };
+  }
+  const mixed = mixSpokenTimeline(spokenTimelineMs(timed), spokenLineSlots(timed), wavs);
   const mixId = await audio.putWav(ownerId, snapshot.id, mixed);
   const lines = lineRefs(cache, slots);
   const saved = await save(snapshot, {
@@ -228,7 +251,7 @@ export async function ensureSpokenVoiceover(
     offset_ms,
     level,
     spoken_key: mixKey
-  }, nextSpokenAudio(snapshot.brief.spoken_audio ?? [], lines, { role: "mix", key: mixKey, media_id: mixId }));
+  }, nextSpokenAudio(snapshot.brief.spoken_audio ?? [], lines, { role: "mix", key: mixKey, media_id: mixId }), timing);
   return { project: saved, generated };
 }
 

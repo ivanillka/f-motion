@@ -14,6 +14,8 @@ export interface LivePreviewScene {
   motion: "none" | "push" | "zoom" | "zoom_out";
   audio_level: number;
   ducking: boolean;
+  /** Measured take timing, so the lit word follows the exported cue window. */
+  caption_cues?: { text: string; start_ms: number; end_ms: number }[];
   title?: string;
   overlay_place?: "bottom" | "center" | "top";
   overlay_look?: "caption" | "title" | "poster" | "spoken";

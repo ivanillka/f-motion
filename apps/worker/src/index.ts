@@ -557,7 +557,11 @@ function assKaraokeDialogue(
     .filter(Boolean)
     .join("");
   const text = words.map((word, index) => {
-    const cs = Math.max(1, Math.round((word.end_ms - word.start_ms) / 10));
+    // Karaoke time accumulates, so a word keeps the floor until the next one
+    // starts. A pause between written word times therefore stays a pause
+    // instead of pulling every later highlight early.
+    const until = words[index + 1]?.start_ms ?? word.end_ms;
+    const cs = Math.max(1, Math.round((until - word.start_ms) / 10));
     const open = index === 0 && align ? `{${align}\\k${cs}}` : `{\\k${cs}}`;
     return `${open}${overlayAssText(word.text, fit.chunk)}`;
   }).join(" ");

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { buildStoryboardDraft, conceptsFor, cuesForScene, outputFrames, sceneUsesStock, spokenWordsForCues } from "@f-engine/reel-engine";
 import { speakKokoroLine, FalImageError, FalProviderError } from "@f-engine/fal-host";
 import type { CommandEnvelope, ProjectSnapshot, Voiceover } from "@f-engine/contracts";
+import type { SpokenSceneTiming } from "@f-engine/reel-engine";
 import { isMediaGlanceHints, isVideoArchitecture, type MediaGlanceHints, type VideoArchitecture } from "@f-engine/contracts";
 import {
   AccountUnavailableError,
@@ -484,7 +485,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
     ownerId: string,
     base: ProjectSnapshot,
     voiceover: Voiceover | null,
-    spokenAudio: ProjectSnapshot["brief"]["spoken_audio"]
+    spokenAudio: ProjectSnapshot["brief"]["spoken_audio"],
+    sceneTiming?: SpokenSceneTiming[]
   ) {
     return projects.command(ownerId, {
       command_id: randomUUID(),
@@ -492,7 +494,11 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       base_revision: base.revision,
       client_timestamp: new Date().toISOString(),
       kind: "update_voiceover",
-      payload: { voiceover, spoken_audio: spokenAudio ?? [] }
+      payload: {
+        voiceover,
+        spoken_audio: spokenAudio ?? [],
+        ...(sceneTiming?.length ? { scene_timing: sceneTiming } : {})
+      }
     });
   }
 
@@ -538,7 +544,8 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
           ownerId,
           project,
           audio,
-          (base, voiceover, spokenAudio) => saveSpokenNarration(ownerId, base, voiceover, spokenAudio),
+          (base, voiceover, spokenAudio, sceneTiming) =>
+            saveSpokenNarration(ownerId, base, voiceover, spokenAudio, sceneTiming),
           synthesize
         );
       } catch (error) {

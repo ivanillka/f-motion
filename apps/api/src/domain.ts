@@ -348,6 +348,19 @@ export class PostgresProjectRepository implements ProjectRepository {
     }
     if (command.kind === "update_soundtrack" || command.kind === "update_voiceover") {
       await client.query(`UPDATE "Project" SET brief = $1 WHERE id = $2`, [updated.brief, command.project_id]);
+      // Narration measures its takes and writes their scene timing with the mix,
+      // so the stored scene carries the measured length and cue window.
+      if (command.kind === "update_voiceover" && Array.isArray(command.payload.scene_timing)) {
+        for (const patch of command.payload.scene_timing) {
+          const sceneId = (patch as { id?: unknown } | undefined)?.id;
+          const scene = updated.scenes.find(({ id }) => id === sceneId);
+          if (!scene) throw new Error("updated scene missing");
+          await client.query(
+            `UPDATE "Scene" SET payload = $1 WHERE "projectId" = $2 AND id = $3`,
+            [scene, command.project_id, scene.id]
+          );
+        }
+      }
       return;
     }
     if (command.kind === "update_reel") {

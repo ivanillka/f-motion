@@ -1554,6 +1554,18 @@ components:
         voiceover:
           nullable: true
           type: object
+        scene_timing:
+          description: Measured spoken take timing, written by the narration run with the mix.
+          type: array
+          items:
+            type: object
+            required: [id, duration_ms, caption_cues]
+            properties:
+              id: { type: string, minLength: 1 }
+              duration_ms: { type: number, minimum: 500, maximum: 15000 }
+              caption_cues:
+                type: array
+                items: { $ref: "#/components/schemas/CaptionCue" }
     UpdateReelPayload:
       type: object
       properties:
