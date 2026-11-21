@@ -73,10 +73,8 @@ interface MotionFrame {
 }
 
 interface PreviewMotion {
-  /** A wide picture pans sideways, which is what the preview's is-wide class says. */
+  /** A wide picture pans sideways, which is what the worker's source size decides. */
   wide: boolean;
-  /** The tuning the studio published on the picture, read back from its styles. */
-  tuning: { zoomStart: number; zoomEnd: number; panScale: number };
   frames: Array<MotionFrame & { progress: number }>;
 }
 
@@ -87,8 +85,8 @@ interface PreviewMotion {
  * the same maths to the filter itself: the preset endpoints, the symmetric ease,
  * the whole overscan travelled from the leading edge to the trailing one, and a
  * wide picture panning sideways instead of down. The filter eases with
- * `0.5 - 0.5 * cos(PI * on / (frames - 1))`; the studio eases with CSS
- * ease-in-out, and the two agree at 0, 0.5 and 1, which is what is sampled here.
+ * `0.5 - 0.5 * cos(PI * on / (frames - 1))`; the studio seeks the same cosine
+ * through the shared helper, so a scrub lands on this exact frame.
  */
 function workerFrame(
   motion: "zoom" | "zoom_out" | "push" | "none",
@@ -107,47 +105,73 @@ function workerFrame(
     : { scale: tuning.panScale, offsetX: 0, offsetY: travel };
 }
 
-/** The motion the studio preview draws, in the same terms as workerFrame. */
-async function previewMotion(page: Page, progress: readonly number[] = [0, 0.5, 1]): Promise<PreviewMotion> {
+/** The pixels the API detected for scene 1, which decide the push direction. */
+async function firstSceneSource(page: Page): Promise<{ width: number; height: number } | undefined> {
+  return page.evaluate(async () => {
+    const projectId = localStorage.getItem("fengine-project");
+    if (!projectId) throw new Error("project id missing");
+    const found = await fetch(`/api/projects/${projectId}`);
+    if (!found.ok) throw new Error(`project unavailable: ${found.status}`);
+    const { project } = await found.json() as { project: { scenes: Array<{ order: number; media_id?: string }> } };
+    const first = [...project.scenes].sort((a, b) => a.order - b.order)[0];
+    if (!first?.media_id) return undefined;
+    const response = await fetch(`/api/projects/${projectId}/media/${first.media_id}`);
+    if (!response.ok) throw new Error(`media unavailable: ${response.status}`);
+    const media = await response.json() as { detected?: { width?: number; height?: number } };
+    const { width, height } = media.detected ?? {};
+    return width && height ? { width, height } : undefined;
+  });
+}
+
+/**
+ * The motion the studio preview draws, in the same terms as workerFrame. The
+ * scrub samples the first, middle, and near-last frame; the last click stays
+ * short of the scene edge so a one-pixel rounding cannot land on scene 2. The
+ * progress comes back from the timeline's own fill, so the worker comparison
+ * uses the moment the stage actually drew rather than the pixel that was asked
+ * for.
+ */
+async function previewMotion(page: Page, progress: readonly number[] = [0, 0.5, 0.98]): Promise<PreviewMotion> {
   const pause = page.getByRole("button", { name: "Pause preview" });
   if (await pause.isVisible()) await pause.click();
-  const play = page.getByRole("button", { name: "Play preview" });
-  if (await play.isVisible()) {
-    await play.click();
-    await expect(pause).toBeVisible();
-    await pause.click();
-  }
-  return page.locator(".preview img").first().evaluate(async (node, steps) => {
-    const moving = node.getAnimations().filter((animation) =>
-      animation instanceof CSSAnimation && animation.animationName.startsWith("preview-"));
-    if (!moving.length) throw new Error("the preview picture is not moving");
-    const style = getComputedStyle(node);
-    const tuning = {
-      zoomStart: Number.parseFloat(style.getPropertyValue("--zoom-from")) || 1,
-      zoomEnd: Number.parseFloat(style.getPropertyValue("--zoom-to")) || 1,
-      panScale: Number.parseFloat(style.getPropertyValue("--pan-scale")) || 1
-    };
-    const sceneMs = Number.parseFloat(style.getPropertyValue("--scene-ms")) || 3000;
-    const width = node.clientWidth;
-    const height = node.clientHeight;
-    const frames = [];
-    for (const at of steps) {
-      for (const animation of moving) {
-        animation.pause();
-        animation.currentTime = sceneMs * at;
-      }
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const scenes = await projectScenes(page);
+  const [first] = scenes;
+  if (!first) throw new Error("the studio has no scene to preview");
+  // The worker decides the push direction from the media it detected, so read
+  // the same metadata instead of waiting on the test storage's image pixels.
+  const source = await firstSceneSource(page);
+  const wide = Boolean(source && source.width > source.height);
+  const total = scenes.reduce((sum, scene) => sum + scene.duration_ms, 0);
+  const slider = page.getByRole("slider", { name: "Play progress" });
+  const box = await slider.boundingBox();
+  if (!box) throw new Error("play progress is not visible");
+  const frames = [];
+  for (const at of progress) {
+    const sceneMs = at * first.duration_ms;
+    const x = Math.max(0.5, Math.min(box.width - 0.5, (sceneMs / total) * box.width));
+    await slider.click({ position: { x, y: box.height / 2 } });
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const shown = await page.locator(".play-progress-scene.is-current").evaluate((node) => {
+      const fill = Number.parseFloat(getComputedStyle(node).getPropertyValue("--fill"));
+      return Number.isFinite(fill) ? fill : 0;
+    });
+    const frame = await page.locator(".preview img").first().evaluate((node) => {
       const transform = getComputedStyle(node).transform;
-      const matrix = transform === "none" ? new DOMMatrixReadOnly() : new DOMMatrixReadOnly(transform);
-      frames.push({
-        progress: at,
+      const matrix = transform && transform !== "none" ? new DOMMatrixReadOnly(transform) : new DOMMatrixReadOnly();
+      return {
         scale: matrix.a,
-        offsetX: -matrix.e / (matrix.a * width),
-        offsetY: -matrix.f / (matrix.d * height)
-      });
-    }
-    return { wide: node.classList.contains("is-wide"), tuning, frames };
-  }, [...progress]);
+        offsetX: -matrix.e / (matrix.a * node.clientWidth),
+        offsetY: -matrix.f / (matrix.d * node.clientHeight)
+      };
+    });
+    frames.push({
+      progress: Math.min(1, Math.max(0, shown / 100)),
+      scale: frame.scale,
+      offsetX: frame.offsetX,
+      offsetY: frame.offsetY
+    });
+  }
+  return { wide, frames };
 }
 
 /** Type of every attached asset, in scene order. */
@@ -573,12 +597,15 @@ test("studio options drive the same gentle motion, whole picture, and quiet mark
 
   // Motion defaults to gentle: the 1.00 to 1.06 move the worker renders.
   await expect(page.locator("#reel-motion")).toHaveValue("gentle");
-  const motionVars = await page.locator(".preview img").first().evaluate((node) => {
-    const style = getComputedStyle(node);
-    return ["--zoom-from", "--zoom-to", "--pan-scale", "--pan-travel"]
-      .map((name) => style.getPropertyValue(name).trim());
-  });
-  expect(motionVars).toEqual(["1", "1.06", "1.06", "0.06"]);
+  // The stage is seeked, not animated: the picture carries an inline transform
+  // from the shared helper and no scene keyframes of its own.
+  const stage = await page.locator(".preview img").first().evaluate((node) => ({
+    transform: (node as HTMLElement).style.transform,
+    animations: node.getAnimations().map((animation) => (animation as CSSAnimation).animationName).filter(Boolean)
+  }));
+  expect(stage.transform).toContain("scale(");
+  expect(stage.animations).not.toContain("preview-zoom");
+  expect(stage.animations).not.toContain("preview-push");
 
   // The mark is a quiet corner credit sized by the shared compact layout.
   await page.locator("#reel-mark").click();
@@ -625,10 +652,9 @@ test("the studio preview draws the same frame as the worker for every motion in 
   await createStoryboard(page);
   await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
 
-  // The three moments the CSS ease-in-out and the worker's cosine agree on: the
-  // first frame, the middle and the last. A 90 frame scene puts its middle frame
-  // at 44/89, half a frame either side of the middle, which is well inside the
-  // 0.005 tolerance for both presets.
+  // The three moments the scrub samples in scene 1: the first frame, the middle,
+  // and just short of the end. The preview seeks the worker's cosine ease, so
+  // all three should agree well inside 0.005.
   // The presets the worker ships, so the browser assertion stands on its own.
   const presets = { gentle: { zoomStart: 1, zoomEnd: 1.06, panScale: 1.06 }, strong: { zoomStart: 1, zoomEnd: 1.3, panScale: 1.25 } };
   for (const strength of ["gentle", "strong"] as const) {
@@ -638,11 +664,8 @@ test("the studio preview draws the same frame as the worker for every motion in 
       await page.getByLabel("Scene 1 motion").selectOption(motion);
       await expect.poll(async () => (await projectScenes(page))[0]?.motion).toBe(motion);
       const preview = await previewMotion(page);
-      // The studio has to publish the shared preset for the comparison to mean
-      // anything: a preview that moved by its own amount would still match itself.
-      expect(preview.tuning, `${strength} preset`).toEqual(presets[strength]);
       for (const frame of preview.frames) {
-        const worker = workerFrame(motion, preview.tuning, frame.progress, preview.wide);
+        const worker = workerFrame(motion, presets[strength], frame.progress, preview.wide);
         const at = `${strength} ${motion} at ${Math.round(frame.progress * 100)} percent`;
         expect(Math.abs(frame.scale - worker.scale), `${at}: scale ${frame.scale} vs ${worker.scale}`).toBeLessThan(0.005);
         expect(Math.abs(frame.offsetX - worker.offsetX), `${at}: across ${frame.offsetX} vs ${worker.offsetX}`).toBeLessThan(0.005);
@@ -651,8 +674,9 @@ test("the studio preview draws the same frame as the worker for every motion in 
       // The gentle zoom is the one the printed text depends on: 1.00 to 1.06, so
       // the middle of the scene is 1.03 and each edge only loses 2.83% of height.
       if (strength === "gentle" && motion === "zoom") {
-        const middle = preview.frames.find(({ progress }) => progress === 0.5);
-        expect(middle?.scale).toBeCloseTo(1.03, 3);
+        const middle = preview.frames.reduce((best, frame) => Math.abs(frame.progress - 0.5) < Math.abs(best.progress - 0.5) ? frame : best);
+        expect(Math.abs(middle.progress - 0.5)).toBeLessThan(0.01);
+        expect(middle.scale).toBeCloseTo(1.03, 2);
       }
     }
   }

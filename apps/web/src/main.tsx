@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { registerMediaIntentAdapter } from "./media-intent-adapter";
+import { livePreviewFrame } from "./live-preview";
 import {
   ApiClient,
   ApiResponseError,
@@ -37,7 +38,6 @@ import {
   focusFromPoint,
   formatPlayTime,
   livePlayhead,
-  motionTuning,
   spokenMixKey,
   spokenNarrationReady,
   voiceoverPlayback,
@@ -58,9 +58,6 @@ import {
   stockBeds,
   suggestedStockBed,
   showsPartnerBrands,
-  cuesForScene,
-  spokenWordIndex,
-  spokenWordsForCues,
   VOICEOVER_DUCK,
   COMMENT_CTA,
   MAX_STORYBOARD_SCENES,
@@ -3417,6 +3414,12 @@ export function App() {
     media_id && sceneMedia[media_id]?.state === "ready"));
   const allScenesHavePreview = Boolean(project?.scenes.length && project.scenes.every((scene) =>
     scenePreviewUrl(scene.media_id ? sceneMedia[scene.media_id] : undefined)));
+  // One clock for the whole stage: the picture, the crop, the mark and the
+  // spoken word all seek from this elapsed time, so a scrub lands on the frame
+  // the export renders at the same time.
+  const sceneElapsedMs = livePlaying
+    ? sceneClock.current.elapsedAtPause + Math.max(0, playTick - sceneClock.current.startedAt)
+    : sceneClock.current.elapsedAtPause;
   const previewHeld = livePlaying || previewFrozen;
   const previewScene = previewHeld
     ? (project?.scenes.find(({ id }) => id === playSceneId) ?? activeScene)
@@ -3442,41 +3445,46 @@ export function App() {
     y: clampFocus(previewHeld ? previewScene?.focal_y ?? cropFocus.y : cropFocus.y)
   };
   const previewContain = previewScene?.fit === "contain";
-  const previewTuning = motionTuning(project?.brief.motion_strength);
   const previewMark = brandMarkLayout(project?.brief.brand_mark_size);
-  const previewPosition = {
-    objectPosition: `${previewFocus.x * 100}% ${previewFocus.y * 100}%`,
-    ["--scene-ms" as string]: `${Math.max(500, previewScene?.duration_ms ?? 3000)}ms`,
-    ["--focus-x" as string]: `${previewFocus.x * 100}%`,
-    ["--focus-y" as string]: `${previewFocus.y * 100}%`,
-    // The same presets the worker renders with, so preview and export move alike.
-    ["--zoom-from" as string]: `${previewTuning.zoomStart}`,
-    ["--zoom-to" as string]: `${previewTuning.zoomEnd}`,
-    ["--pan-scale" as string]: `${previewTuning.panScale}`,
-    ["--pan-travel" as string]: `${Number((previewTuning.panScale - 1).toFixed(4))}`
+  const previewSource = measuredPreview
+    ? { width: measuredPreview.width, height: measuredPreview.height }
+    : previewMedia?.detected?.width && previewMedia.detected.height
+      ? { width: previewMedia.detected.width, height: previewMedia.detected.height }
+      : undefined;
+  // The frame only supplies the aspect ratio and the mark box; the DOM paints
+  // the same fractions the worker prints with.
+  const seekFrame = previewIsDesktop ? { width: 1920, height: 1080 } : { width: 1080, height: 1920 };
+  const previewSeek = previewScene
+    ? livePreviewFrame(previewScene, sceneElapsedMs, project?.brief ?? {}, seekFrame, previewSource)
+    : undefined;
+  const previewStillPosition = {
+    objectPosition: `${previewFocus.x * 100}% ${previewFocus.y * 100}%`
   };
+  const previewPosition = {
+    ...previewStillPosition,
+    // Seeked, never animated: the transform comes from the same elapsed time as
+    // the crop, the mark and the spoken word, so a scrub cannot leave it behind.
+    transform: previewSeek?.transform,
+    transformOrigin: "50% 50%"
+  };
+  const previewTypeStyle = previewSeek ? {
+    ["--type-title" as string]: `${Number((previewSeek.overlay.titleSize * 100).toFixed(4))}`,
+    ["--type-caption" as string]: `${Number((previewSeek.overlay.captionSize * 100).toFixed(4))}`,
+    ["--type-safe-width" as string]: `${Number((previewSeek.overlay.safeWidth * 100).toFixed(4))}%`
+  } : undefined;
   const previewMarkStyle = {
     ["--mark-width" as string]: `${previewMark.width * 100}%`,
     ["--mark-right" as string]: `${previewMark.right * 100}%`,
     ["--mark-top" as string]: `${previewMark.top * 100}%`,
     ["--mark-opacity" as string]: `${previewMark.opacity}`
   };
-  const previewWide = isWideMedia(previewMedia?.detected?.width, previewMedia?.detected?.height)
-    || isWideMedia(measuredPreview?.width, measuredPreview?.height);
-  const previewMotion = previewHeld && previewScene && previewScene.motion !== "none" ? previewScene.motion : undefined;
-  const previewMotionClass = [
-    previewMotion ? `motion-${previewMotion}` : "",
-    previewFrozen ? "is-frozen" : "",
-    previewWide ? "is-wide" : ""
-  ].filter(Boolean).join(" ") || undefined;
+  // No CSS keyframes: the picture is drawn at the helper's frame, so a pause or
+  // a scrub shows the same crop the export would render at that moment.
   // Contain draws the blurred, moving backdrop and the whole picture above it,
   // which is what the worker composites for a scene that keeps its text whole.
-  const previewMediaNode = (motionClass: string | undefined) => previewMedia?.detected?.type === "video/mp4"
-    ? <video ref={previewVideoRef} key={previewScene?.id} src={previewUrl} muted playsInline autoPlay={livePlaying} loop={previewMediaShouldLoop(livePlaying, previewFrozen)} controls={false} preload="metadata" draggable={false} className={motionClass} style={previewPosition} onLoadedMetadata={(event) => notePreviewPixels(previewUrl, event.currentTarget.videoWidth, event.currentTarget.videoHeight)} />
-    : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} draggable={false} className={motionClass} style={previewPosition} onLoad={(event) => notePreviewPixels(previewUrl, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />;
-  const sceneElapsedMs = livePlaying
-    ? sceneClock.current.elapsedAtPause + Math.max(0, playTick - sceneClock.current.startedAt)
-    : sceneClock.current.elapsedAtPause;
+  const previewMediaNode = (motion: boolean) => previewMedia?.detected?.type === "video/mp4"
+    ? <video ref={previewVideoRef} key={previewScene?.id} src={previewUrl} muted playsInline autoPlay={livePlaying} loop={previewMediaShouldLoop(livePlaying, previewFrozen)} controls={false} preload="metadata" draggable={false} style={motion ? previewPosition : previewStillPosition} onLoadedMetadata={(event) => notePreviewPixels(previewUrl, event.currentTarget.videoWidth, event.currentTarget.videoHeight)} />
+    : <img key={previewScene?.id} src={previewUrl} alt={previewMedia?.attribution ? `Selected stock video by ${previewMedia.attribution.creator}` : "Selected gallery media"} draggable={false} style={motion ? previewPosition : previewStillPosition} onLoad={(event) => notePreviewPixels(previewUrl, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />;
   const playhead = livePlayhead(project?.scenes ?? [], playSceneId || previewScene?.id || "", sceneElapsedMs);
   playheadOffsetRef.current = playhead.offsetMs;
   const timeline = liveTimeline(project?.scenes ?? []);
@@ -3523,8 +3531,10 @@ export function App() {
   const voiceover = project?.brief.voiceover;
   const voiceoverUrl = voiceover?.media_id ? scenePreviewUrl(sceneMedia[voiceover.media_id]) : undefined;
   const spokenScriptKey = project ? spokenMixKey(project.scenes) : "";
-  const spoken = previewScene ? spokenWordsForCues(cuesForScene(previewScene)) : [];
-  const spokenIndex = previewHeld ? spokenWordIndex(spoken, playhead.sceneElapsedMs) : -1;
+  // Words and the lit word come from the same seek as the picture, so a paused
+  // or scrubbed stage highlights exactly the word the export would draw.
+  const spoken = previewSeek?.spoken.words ?? [];
+  const spokenIndex = previewSeek?.spoken.index ?? -1;
   const overlayHeadline = overlayLook === "title"
     ? (shownCaption || (overlayGhost ? "Title" : ""))
     : "";
@@ -4435,10 +4445,10 @@ export function App() {
           >
         {previewUrl && (previewContain ? (
           <>
-            <span className="preview-fit-backdrop" aria-hidden="true">{previewMediaNode(previewMotionClass)}</span>
-            <span className="preview-fit-picture">{previewMediaNode(undefined)}</span>
+            <span className="preview-fit-backdrop" aria-hidden="true">{previewMediaNode(true)}</span>
+            <span className="preview-fit-picture">{previewMediaNode(false)}</span>
           </>
-        ) : previewMediaNode(previewMotionClass))}
+        ) : previewMediaNode(true))}
         {previewMedia && !previewUrl && <span className="media-placeholder">{previewMedia.state === "ready" ? "Preview unavailable" : "Media processing…"}</span>}
             {!previewMedia && <span className="media-placeholder">Choose stock or upload media</span>}
             {activePreparing && !livePlaying ? (
@@ -4458,7 +4468,7 @@ export function App() {
               />
             ) : null}
             {(overlayHeadline || overlayLine) ? (
-              <div className={`caption-burn look-${overlayLook} overlay-${overlayPlace}${overlayGhost ? " is-ghost" : ""}`}>
+              <div className={`caption-burn look-${overlayLook} overlay-${overlayPlace}${overlayGhost ? " is-ghost" : ""}`} style={previewTypeStyle}>
                 {overlayHeadline ? <strong className="overlay-title">{overlayHeadline}</strong> : null}
                 {overlayLine ? (
                   previewHeld && spoken.length

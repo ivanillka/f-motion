@@ -102,6 +102,8 @@ export type {
   SceneFit,
   VideoArchitecture
 } from "@f-engine/contracts";
+import { brandMarkLayout } from "./brand-mark.js";
+import { motionTuning, motionZoomRange } from "./motion.js";
 
 export interface Concept {
   id: string;
@@ -1312,3 +1314,211 @@ export function renderPlan(snapshot: ProjectSnapshot, profile: RenderProfile): R
     scenes: scenes.map((scene) => ({ ...scene, caption_cues: cuesForScene(scene) }))
   };
 }
+/** A frame size in pixels, used for the mark box and the overlay proportions. */
+export interface SeekFrame {
+  width: number;
+  height: number;
+}
+
+/** The brief fields that decide motion, mark size, and the moved frame. */
+export interface SeekBrief {
+  motion_strength?: MotionStrength;
+  brand_mark_size?: BrandMarkSize;
+}
+
+export type SeekOverlayLook = "caption" | "title" | "poster" | "spoken";
+export type SeekOverlayPlace = "top" | "center" | "bottom";
+
+/**
+ * Where the worker prints the copy, as fractions of the frame width. The studio
+ * preview and the export read the same numbers, so scrubbing to a moment shows
+ * the type at the size and safe width the finished reel will use.
+ */
+export interface SeekOverlayLayout {
+  look: SeekOverlayLook;
+  place: SeekOverlayPlace;
+  /** Clear space on each side, as a fraction of the frame width. */
+  safeInset: number;
+  /** Text width between the insets, as a fraction of the frame width. */
+  safeWidth: number;
+  /** Title size as a fraction of the frame width, like an ASS PlayRes unit. */
+  titleSize: number;
+  /** Caption size as a fraction of the frame width. */
+  captionSize: number;
+  /** ASS alignment number the worker's styles use for this look and place. */
+  align: number;
+}
+
+/** The corner credit, both as fractions and as a DOM box in `frame`. */
+export interface SeekMark {
+  width: number;
+  right: number;
+  top: number;
+  opacity: number;
+  box: { x: number; y: number; width: number; height: number };
+}
+
+/**
+ * One moment of a scene, in the terms every later prompt needs: the preset's
+ * eased zoom, where the picture sits, the visible crop of the source, the mark
+ * box, the overlay layout, and the spoken word that is current at that time.
+ */
+export interface SeekVisual {
+  elapsedMs: number;
+  durationMs: number;
+  /** Scene progress, 0 at the first frame and 1 at the last. */
+  progress: number;
+  /** The worker's cosine ease, `0.5 - 0.5 * cos(PI * progress)`. */
+  eased: number;
+  zoom: number;
+  /** CSS translate as a fraction of the frame; positive moves the picture right or down. */
+  translate: { x: number; y: number };
+  /** The point of the picture the frame centre shows, in the worker's zoompan terms. */
+  pan: { x: number; y: number };
+  /** Visible source region as fractions of the whole picture, when the source size is known. */
+  crop?: { x: number; y: number; width: number; height: number };
+  mark: SeekMark;
+  overlay: SeekOverlayLayout;
+  spoken: { words: SpokenWord[]; index: number };
+}
+
+/** Overlay copy keeps 6% of the frame width clear on each side. */
+const OVERLAY_SAFE_INSET = 0.06;
+/** Portrait reels print on a 720 wide PlayRes; a landscape frame uses its own width. */
+const OVERLAY_PLAYRES_WIDTH = 720;
+/** Spoken captions sit inside 80 PlayRes units a side, wider than the safe inset. */
+const SPOKEN_SIDE_MARGIN = 80;
+/** The sizes `overlayAssStyles` in the worker prints with, in PlayRes units. */
+const OVERLAY_TYPE_PX: Record<SeekOverlayLook, { title: number; caption: number }> = {
+  caption: { title: 64, caption: 26 },
+  title: { title: 78, caption: 26 },
+  poster: { title: 52, caption: 26 },
+  spoken: { title: 68, caption: 68 }
+};
+
+function seekOverlayLook(scene: Scene): SeekOverlayLook {
+  return scene.overlay_look === "title"
+    || scene.overlay_look === "poster"
+    || scene.overlay_look === "spoken"
+    ? scene.overlay_look
+    : "caption";
+}
+
+function seekOverlayPlace(scene: Scene, look: SeekOverlayLook): SeekOverlayPlace {
+  if (look === "spoken") return "center";
+  if (scene.overlay_place === "top" || scene.overlay_place === "center") return scene.overlay_place;
+  return look === "title" ? "center" : "bottom";
+}
+
+/** Mirrors the alignment numbers `overlayLayout` in the worker hands to ASS. */
+function seekOverlayAlign(look: SeekOverlayLook, place: SeekOverlayPlace): number {
+  if (look === "spoken") return 5;
+  if (look === "poster") return place === "top" ? 7 : place === "center" ? 4 : 1;
+  return place === "bottom" ? 2 : 8;
+}
+
+/**
+ * Everything the worker draws at `elapsedMs` of one scene, without the FFmpeg
+ * filter. The live stage and later prompts (106, 107, 110, 111) call this so the
+ * preview can be scrubbed and still land on the frame the export will render:
+ * the same cosine ease, the same preset range, the same overscan travel, the
+ * same 6% safe inset, and the same spoken word that is highlighted.
+ */
+export function seekSceneVisual(
+  scene: Scene,
+  elapsedMs: number,
+  brief: SeekBrief = {},
+  frame: SeekFrame = { width: 1080, height: 1920 },
+  source?: SeekFrame
+): SeekVisual {
+  const durationMs = Math.max(1, scene.duration_ms);
+  const elapsed = Math.min(durationMs, Math.max(0, elapsedMs));
+  const progress = elapsed / durationMs;
+  const eased = 0.5 - 0.5 * Math.cos(Math.PI * progress);
+  const tuning = motionTuning(brief.motion_strength);
+  const range = motionZoomRange(tuning);
+  let zoom = 1;
+  let along: "x" | "y" | undefined;
+  if (scene.motion === "zoom") {
+    zoom = tuning.zoomStart + range * eased;
+  } else if (scene.motion === "zoom_out") {
+    zoom = tuning.zoomEnd - range * eased;
+  } else if (scene.motion === "push") {
+    zoom = tuning.panScale;
+    // The worker pans a wide picture sideways and anything else down, including
+    // an unknown source, so the preview uses the same test on the same pixels.
+    const wide = Boolean(source && source.width > 0 && source.height > 0 && source.width > source.height);
+    along = wide ? "x" : "y";
+  }
+  // zoompan walks its window from the leading edge of the overscan to the
+  // trailing one, so the frame centre shows a point (1 - 1/zoom) * (ease - 0.5)
+  // away from the picture centre. A zoom keeps its window centred.
+  const travel = along ? (1 - 1 / zoom) * (eased - 0.5) : 0;
+  const pan = { x: along === "x" ? travel : 0, y: along === "y" ? travel : 0 };
+  // The picture moves the other way, and a CSS translate is applied before the
+  // scale, so the frame-space travel is `-zoom * pan`.
+  const translate = { x: -zoom * pan.x, y: -zoom * pan.y };
+  let crop: SeekVisual["crop"];
+  if (source && source.width > 0 && source.height > 0 && frame.width > 0 && frame.height > 0) {
+    const cover = Math.max(frame.width / source.width, frame.height / source.height);
+    const baseWidth = frame.width / (cover * source.width);
+    const baseHeight = frame.height / (cover * source.height);
+    const focalX = Math.min(1, Math.max(0, scene.focal_x));
+    const focalY = Math.min(1, Math.max(0, scene.focal_y));
+    // FFmpeg crops the cover frame at the focal point, then zoompan walks the
+    // window across what is left, exactly as the two offsets below spell out.
+    const left = (1 - baseWidth) * focalX + baseWidth * (1 - 1 / zoom) * (along === "x" ? eased : 0.5);
+    const top = (1 - baseHeight) * focalY + baseHeight * (1 - 1 / zoom) * (along === "y" ? eased : 0.5);
+    crop = { x: left, y: top, width: baseWidth / zoom, height: baseHeight / zoom };
+  }
+
+  const markLayout = brandMarkLayout(brief.brand_mark_size);
+  const markWidth = Math.max(48, Math.round(frame.width * markLayout.width));
+  const mark: SeekMark = {
+    width: markLayout.width,
+    right: markLayout.right,
+    top: markLayout.top,
+    opacity: markLayout.opacity,
+    box: {
+      // The worker overlays the 960x200 asset at `main_w - overlay_w - x`, so
+      // the box starts that inset from the right edge and keeps the asset ratio.
+      x: frame.width - markWidth - Math.round(frame.width * markLayout.right),
+      y: Math.round(frame.height * markLayout.top),
+      width: markWidth,
+      height: Math.round((markWidth * 200) / 960)
+    }
+  };
+  const look = seekOverlayLook(scene);
+  const place = seekOverlayPlace(scene, look);
+  const landscape = frame.width > frame.height;
+  const playResWidth = landscape ? frame.width : OVERLAY_PLAYRES_WIDTH;
+  const side = Math.max(
+    Math.ceil(playResWidth * OVERLAY_SAFE_INSET),
+    look === "spoken" ? SPOKEN_SIDE_MARGIN : 0
+  );
+  const sizes = OVERLAY_TYPE_PX[look];
+  const overlay: SeekOverlayLayout = {
+    look,
+    place,
+    safeInset: side / playResWidth,
+    safeWidth: (playResWidth - 2 * side) / playResWidth,
+    titleSize: sizes.title / playResWidth,
+    captionSize: sizes.caption / playResWidth,
+    align: seekOverlayAlign(look, place)
+  };
+  const words = spokenWordsForCues(cuesForScene(scene));
+  return {
+    elapsedMs: elapsed,
+    durationMs,
+    progress,
+    eased,
+    zoom,
+    translate,
+    pan,
+    crop,
+    mark,
+    overlay,
+    spoken: { words, index: spokenWordIndex(words, elapsed) }
+  };
+}
+

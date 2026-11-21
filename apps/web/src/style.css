@@ -879,6 +879,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
   touch-action: none;
   user-select: none;
+  /* Type sizes below are fractions of the frame width, so cqw matches the
+     worker's PlayRes fractions at every stage size. */
+  container-type: inline-size;
 }
 .preview.is-desktop { aspect-ratio: 16 / 9; }
 .frame-preview { display: flex; gap: 8px; }
@@ -916,18 +919,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   pointer-events: none;
   transform-origin: 50% 50%;
 }
-.preview img.motion-push, .preview video.motion-push {
-  animation: preview-push var(--scene-ms, 3s) ease-in-out forwards;
-}
-.preview img.motion-push.is-wide, .preview video.motion-push.is-wide {
-  animation: preview-push-wide var(--scene-ms, 3s) ease-in-out forwards;
-}
-.preview img.motion-zoom, .preview video.motion-zoom {
-  animation: preview-zoom var(--scene-ms, 3s) ease-in-out forwards;
-}
-.preview img.motion-zoom_out, .preview video.motion-zoom_out {
-  animation: preview-zoom-out var(--scene-ms, 3s) ease-in-out forwards;
-}
+/* The picture is transformed from the shared seek helper on every clock tick,
+   so preview, pause, and scrub all read the same frame. No CSS motion lives
+   here: a keyframe would keep running while the JS clock is paused. */
 /* A scene set to show the whole picture: the blurred fill carries the motion
    and the whole frame sits above it, the way the worker composites it. */
 .preview .preview-fit-backdrop {
@@ -948,43 +942,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     radial-gradient(ellipse at center, transparent 46%, rgba(0, 0, 0, 0.38) 100%),
     linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0%, transparent 18%, transparent 72%, rgba(0, 0, 0, 0.32) 100%);
 }
-/* Mirrors apps/worker motionFilter from the shared MOTION_PRESETS: pan holds the
-   preset overscale and travels its whole overscan, zoom runs the preset range,
-   both ease-in-out. Translate resolves against the untransformed box, so half
-   the travel each side of centre is (scale - 1) / 2 of the frame: a gentle 1.06
-   pan moves 6% and the strong 1.25 pan moves 25%. */
-/* The pan starts high and travels down, the way the worker's zoompan filter
-   slides its window from the top edge of the overscan to the bottom one: the
-   translate is applied before the scale, so it moves the picture in frame space
-   and -half/ +half of the overscan puts the first frame's middle above the
-   picture's centre, as zoompan's y='(ih-ih/zoom)*ease' does. */
-@keyframes preview-push {
-  from { transform: translate3d(0, calc(var(--pan-travel, 0.06) * 50%), 0) scale(var(--pan-scale, 1.06)); }
-  to { transform: translate3d(0, calc(var(--pan-travel, 0.06) * -50%), 0) scale(var(--pan-scale, 1.06)); }
-}
-@keyframes preview-push-wide {
-  from { transform: translate3d(calc(var(--pan-travel, 0.06) * 50%), 0, 0) scale(var(--pan-scale, 1.06)); }
-  to { transform: translate3d(calc(var(--pan-travel, 0.06) * -50%), 0, 0) scale(var(--pan-scale, 1.06)); }
-}
-@keyframes preview-zoom {
-  from { transform: scale(var(--zoom-from, 1)); }
-  to { transform: scale(var(--zoom-to, 1.06)); }
-}
-/* Zoom out is the same travel in reverse, so it lands on the plain frame. */
-@keyframes preview-zoom-out {
-  from { transform: scale(var(--zoom-to, 1.06)); }
-  to { transform: scale(var(--zoom-from, 1)); }
-}
-.preview img.is-frozen, .preview video.is-frozen {
-  animation-play-state: paused;
-}
 .preview .caption-burn {
   z-index: 4;
   display: grid;
   gap: 8px;
   justify-items: center;
   justify-self: center;
-  max-width: 88%;
+  max-width: var(--type-safe-width, 88%);
   pointer-events: none;
   text-align: center;
   color: #fff;
@@ -1001,7 +965,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   margin-top: 8%;
 }
 .preview .overlay-title {
-  font-size: clamp(1.7rem, 9vw, 2.6rem);
+  font-size: calc(var(--type-title, 0.0889) * 100cqw);
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 0.95;
@@ -1014,7 +978,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.62);
   color: #fff;
-  font-size: 0.95rem;
+  font-size: calc(var(--type-caption, 0.0361) * 100cqw);
   font-weight: 600;
   letter-spacing: 0.01em;
   line-height: 1.25;
@@ -1049,13 +1013,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .preview .look-spoken {
   align-self: center;
-  max-width: 78%;
+  /* Spoken copy keeps 80 PlayRes units clear a side, the margin the worker's
+     ASS dialogue uses. */
+  max-width: var(--type-safe-width, 77.78%);
 }
 .preview .look-spoken .overlay-caption {
   padding: 0;
   background: none;
   border-radius: 0;
-  font-size: clamp(1.7rem, 8vw, 2.7rem);
+  font-size: calc(var(--type-caption, 0.0944) * 100cqw);
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1.05;
@@ -1063,14 +1029,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   text-shadow: 0 2px 16px rgba(0, 0, 0, 0.72);
 }
 .preview .look-title {
-  max-width: 92%;
+  max-width: var(--type-safe-width, 86.8%);
 }
 .preview .look-title .overlay-title,
 .preview .look-title .overlay-caption {
   padding: 0;
   background: none;
   border-radius: 0;
-  font-size: clamp(2rem, 11vw, 3.1rem);
   font-weight: 800;
   letter-spacing: -0.04em;
   text-transform: uppercase;
@@ -1102,7 +1067,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   background: rgba(0, 0, 0, 0.5);
 }
 .preview .look-poster .overlay-title {
-  font-size: clamp(1.45rem, 7vw, 2.1rem);
   text-transform: none;
   letter-spacing: -0.03em;
 }
