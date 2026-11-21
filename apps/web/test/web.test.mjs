@@ -423,19 +423,17 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.match(css, /\.music-dock > summary/);
   assert.match(css, /\.music-dock:not\(\[open\]\) > \*:not\(summary\) \{ display: none; \}/);
   assert.match(css, /minmax\(0, 1fr\) 232px/);
-  assert.match(css, /preview-push/);
-  assert.match(css, /preview-push-wide/);
   assert.match(css, /scene-prepare-pulse/);
   assert.match(css, /\.preview-preparing/);
   assert.match(css, /\.scene-card\.is-preparing/);
   assert.match(css, /transform-origin: 50% 50%/);
-  assert.match(css, /preview-zoom \{\s*from \{ transform: scale\(var\(--zoom-from, 1\)\); \}\s*to \{ transform: scale\(var\(--zoom-to, 1\.06\)\); \}/);
-  // The pan starts on the leading edge of the overscan and ends on the trailing
-  // one, which is the direction the worker's zoompan filter travels it.
-  assert.match(css, /preview-push \{\s*from \{ transform: translate3d\(0, calc\(var\(--pan-travel, 0\.06\) \* 50%\), 0\) scale\(var\(--pan-scale, 1\.06\)\)/);
-  assert.match(css, /preview-push-wide \{\s*from \{ transform: translate3d\(calc\(var\(--pan-travel, 0\.06\) \* 50%\), 0, 0\) scale\(var\(--pan-scale, 1\.06\)\)/);
-  assert.match(css, /preview-zoom var\(--scene-ms, 3s\) ease-in-out/);
-  assert.match(css, /\.preview img\.is-frozen, \.preview video\.is-frozen \{\s*animation-play-state: paused/);
+  // The stage is seeked, so the picture carries no scene keyframes; type sizes
+  // are the worker's PlayRes fractions measured against the stage width.
+  assert.doesNotMatch(css, /@keyframes preview-/);
+  assert.match(css, /container-type: inline-size/);
+  assert.match(css, /font-size: calc\(var\(--type-title,/);
+  assert.match(css, /font-size: calc\(var\(--type-caption,/);
+  assert.match(css, /\{ object-fit: contain; \}/);
   assert.match(css, /\.brief-chat/);
   assert.match(css, /\.app-shell-brief/);
   assert.match(css, /\.brief-composer textarea \{[\s\S]*min-height: 44px/);
@@ -809,17 +807,35 @@ test("studio preview reads the same motion presets, fit, and mark size as the wo
   assert.equal(brandMarkLayout(undefined).opacity, 0.45);
   assert.equal(brandMarkLayout("standard").width, 0.42);
 
-  // The preview pulls the numbers from the shared presets instead of hardcoding.
-  assert.match(source, /motionTuning\(project\?\.brief\.motion_strength\)/);
+  // The preview seeks with the shared helper instead of hardcoding a motion.
+  assert.match(source, /livePreviewFrame\(previewScene, sceneElapsedMs/);
   assert.match(source, /brandMarkLayout\(project\?\.brief\.brand_mark_size\)/);
-  for (const key of ["--zoom-from", "--zoom-to", "--pan-scale", "--pan-travel"]) {
-    assert.match(source, new RegExp(`"${key}" as string`), key);
-    assert.match(css, new RegExp(`var\\(${key},`), key);
-  }
   for (const key of ["--mark-width", "--mark-right", "--mark-top", "--mark-opacity"]) {
     assert.match(source, new RegExp(`"${key}" as string`), key);
     assert.match(css, new RegExp(`var\\(${key},`), key);
   }
+
+  // The picture is drawn from the seek, so preview, pause, and scrub cannot
+  // drift: no scene animation keyframes and no preset travel in CSS.
+  assert.match(source, /style=\{motion \? previewPosition : previewStillPosition\}/);
+  assert.doesNotMatch(source, /previewMotionClass|--zoom-from|--scene-ms|--pan-scale/);
+  assert.doesNotMatch(css, /@keyframes preview-(?:push|zoom)/);
+  assert.doesNotMatch(css, /animation: preview!/);
+  assert.doesNotMatch(css, /is-frozen/);
+
+  // Caption and spoken copy print the same fixed PlayRes fractions as the worker.
+  assert.match(source, /--type-title/);
+  assert.match(source, /--type-caption/);
+  assert.match(source, /--type-safe-width/);
+  assert.match(css, /container-type: inline-size/);
+  assert.match(css, /font-size: calc\(var\(--type-title,/);
+  assert.match(css, /font-size: calc\(var\(--type-caption,/);
+  assert.match(css, /max-width: var\(--type-safe-width,/);
+  assert.doesNotMatch(css, /\.look-spoken \{[^}]*max-width: 78%/);
+
+  // Words and the lit word come from the same seek as the picture.
+  assert.match(source, /const spoken = previewSeek\?\.spoken\.words \?\? \[\]/);
+  assert.match(source, /const spokenIndex = previewSeek\?\.spoken\.index \?\? -1/);
 
   // Reel options: a motion strength and a mark size the worker honors.
   assert.match(source, /id="reel-motion"[\s\S]{0,400}>Gentle</);

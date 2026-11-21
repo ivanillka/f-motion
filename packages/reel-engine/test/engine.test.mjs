@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { beatGridCuts, RENDER_FPS, MAX_STORYBOARD_SCENES, conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief, mixPicture, sceneUsesStock, picturePrompt, MOTION_PRESETS, motionTuning, motionZoomRange, BRAND_MARK_OPACITY, brandMarkLayout, brandMarkLayouts } from "../dist/index.js";
+import { beatGridCuts, RENDER_FPS, MAX_STORYBOARD_SCENES, conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief, mixPicture, sceneUsesStock, picturePrompt, MOTION_PRESETS, motionTuning, motionZoomRange, BRAND_MARK_OPACITY, brandMarkLayout, brandMarkLayouts, seekSceneVisual } from "../dist/index.js";
 
 const EM_DASH = "\u2014";
 
@@ -817,5 +817,83 @@ test("a scene keeps the whole picture when its fit is contain", () => {
   );
   assert.equal(renderPlan(contained, referenceProfile).scenes[0].fit, "contain");
   assert.equal(renderPlan(snapshot, referenceProfile).scenes[0].fit, undefined, "cover stays implicit");
+});
+
+
+test("the seek helper lands on the export's frame at the start, middle, and end", () => {
+  const scene = { ...snapshot.scenes[0], caption: "one two three four", duration_ms: 4000, motion: "zoom" };
+  const start = seekSceneVisual(scene, 0);
+  const middle = seekSceneVisual(scene, 2000);
+  const end = seekSceneVisual(scene, 4000);
+  assert.equal(start.progress, 0);
+  assert.equal(end.progress, 1);
+  assert.equal(start.eased, 0);
+  assert.ok(Math.abs(middle.eased - 0.5) < 1e-12);
+  // Gentle is 1.00 to 1.06 on the worker's cosine ease, so the middle is 1.03.
+  assert.ok(Math.abs(start.zoom - 1) < 0.005, String(start.zoom));
+  assert.ok(Math.abs(middle.zoom - 1.03) < 0.005, String(middle.zoom));
+  assert.ok(Math.abs(end.zoom - 1.06) < 0.005, String(end.zoom));
+  assert.equal(seekSceneVisual(scene, 9000).elapsedMs, 4000, "past the scene clamps to the last frame");
+  assert.equal(seekSceneVisual(scene, -50).elapsedMs, 0, "before the scene clamps to the first frame");
+  // The lit word follows the same elapsed time.
+  assert.equal(start.spoken.index, 0);
+  assert.ok(end.spoken.index > start.spoken.index, `${start.spoken.index} -> ${end.spoken.index}`);
+  assert.deepEqual(middle.spoken.words, start.spoken.words);
+});
+
+test("a pan seek reports the worker's zoompan window and the opposite CSS translate", () => {
+  const scene = { ...snapshot.scenes[0], duration_ms: 3000, motion: "push" };
+  const frame = { width: 1080, height: 1920 };
+  const start = seekSceneVisual(scene, 0, {}, frame, frame);
+  const middle = seekSceneVisual(scene, 1500, {}, frame, frame);
+  const end = seekSceneVisual(scene, 3000, {}, frame, frame);
+  // zoompan walks its window from the top edge of the overscan to the bottom.
+  assert.ok(start.pan.y < 0, String(start.pan.y));
+  assert.ok(end.pan.y > 0, String(end.pan.y));
+  assert.ok(Math.abs(start.pan.y + end.pan.y) < 1e-12);
+  assert.ok(Math.abs(middle.pan.y) < 1e-12);
+  // The picture moves the other way: down at the start, up at the end.
+  assert.ok(Math.abs(start.translate.y - 0.03) < 1e-9, String(start.translate.y));
+  assert.ok(Math.abs(end.translate.y + 0.03) < 1e-9, String(end.translate.y));
+  assert.equal(start.zoom, MOTION_PRESETS.gentle.panScale);
+  // The visible region starts at the top and ends flush with the bottom.
+  assert.ok(start.crop);
+  assert.ok(Math.abs(start.crop.y) < 1e-12);
+  assert.ok(Math.abs(start.crop.y + start.crop.height - (1 - (1 - 1 / start.zoom))) < 1e-12);
+  assert.ok(Math.abs(end.crop.y + end.crop.height - 1) < 1e-12);
+  assert.ok(Math.abs(start.crop.width - 1 / start.zoom) < 1e-12);
+});
+
+test("the seek mirrors the worker's overlay layout, mark box, and spoken margin", () => {
+  const spokenScene = { ...snapshot.scenes[0], caption: "one two three four", duration_ms: 3000, overlay_look: "spoken" };
+  const portrait = seekSceneVisual(spokenScene, 1500, {}, { width: 1080, height: 1920 });
+  // Spoken keeps 80 PlayRes units a side on the worker's 720 wide playres.
+  assert.ok(Math.abs(portrait.overlay.safeInset - 80 / 720) < 1e-12);
+  assert.ok(Math.abs(portrait.overlay.safeWidth - 560 / 720) < 1e-12);
+  assert.ok(Math.abs(portrait.overlay.captionSize - 68 / 720) < 1e-12);
+  assert.equal(portrait.overlay.align, 5);
+  assert.equal(portrait.overlay.place, "center");
+  // The mark sits in the corner the worker overlays, keeping the 960x200 ratio.
+  const mark = portrait.mark;
+  assert.equal(mark.width, brandMarkLayout(undefined).width);
+  assert.equal(mark.box.width, Math.round(1080 * mark.width));
+  assert.equal(mark.box.height, Math.round((mark.box.width * 200) / 960));
+  assert.equal(mark.box.x + mark.box.width + Math.round(1080 * mark.right), 1080);
+  assert.equal(mark.box.y, Math.round(1920 * mark.top));
+
+  // A landscape frame uses its own PlayRes width, so 6% is the only margin.
+  const captionScene = { ...snapshot.scenes[0], overlay_look: "caption" };
+  const landscape = seekSceneVisual(captionScene, 0, {}, { width: 1920, height: 1080 });
+  assert.ok(Math.abs(landscape.overlay.safeInset - Math.ceil(1920 * 0.06) / 1920) < 1e-12);
+  assert.ok(Math.abs(landscape.overlay.safeWidth - (1920 - 2 * Math.ceil(1920 * 0.06)) / 1920) < 1e-12);
+  assert.ok(Math.abs(landscape.overlay.titleSize - 64 / 1920) < 1e-12);
+
+  // The brief's mark size and the strong motion change the same numbers the
+  // worker reads, without a second implementation.
+  const strong = seekSceneVisual({ ...spokenScene, motion: "zoom" }, 1500, { motion_strength: "strong" });
+  assert.ok(Math.abs(strong.zoom - (MOTION_PRESETS.strong.zoomStart + motionZoomRange(motionTuning("strong")) / 2)) < 1e-12);
+  const standard = seekSceneVisual(spokenScene, 0, { brand_mark_size: "standard" }, { width: 1080, height: 1920 });
+  assert.equal(standard.mark.width, brandMarkLayout("standard").width);
+  assert.ok(standard.mark.box.width > portrait.mark.box.width);
 });
 
