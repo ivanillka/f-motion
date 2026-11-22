@@ -101,6 +101,7 @@ export {
   brandMarkLayouts
 } from "./brand-mark.js";
 export type { BrandMarkLayout } from "./brand-mark.js";
+export * from "./overlay-type.js";
 export type {
   BrandMarkSize,
   MediaGlanceHints,
@@ -109,6 +110,14 @@ export type {
   VideoArchitecture
 } from "@f-engine/contracts";
 import { brandMarkLayout } from "./brand-mark.js";
+import {
+  OVERLAY_PLAYRES_HEIGHT,
+  OVERLAY_PLAYRES_WIDTH,
+  overlayAlign,
+  overlaySafeWidth,
+  overlaySideMargin,
+  overlayType
+} from "./overlay-type.js";
 import { motionTuning, motionZoomRange } from "./motion.js";
 
 export interface Concept {
@@ -1386,6 +1395,8 @@ export type SeekOverlayPlace = "top" | "center" | "bottom";
 export interface SeekOverlayLayout {
   look: SeekOverlayLook;
   place: SeekOverlayPlace;
+  /** The ASS canvas the worker prints this look on. */
+  playRes: { width: number; height: number };
   /** Clear space on each side, as a fraction of the frame width. */
   safeInset: number;
   /** Text width between the insets, as a fraction of the frame width. */
@@ -1431,20 +1442,6 @@ export interface SeekVisual {
   spoken: { words: SpokenWord[]; index: number };
 }
 
-/** Overlay copy keeps 6% of the frame width clear on each side. */
-const OVERLAY_SAFE_INSET = 0.06;
-/** Portrait reels print on a 720 wide PlayRes; a landscape frame uses its own width. */
-const OVERLAY_PLAYRES_WIDTH = 720;
-/** Spoken captions sit inside 80 PlayRes units a side, wider than the safe inset. */
-const SPOKEN_SIDE_MARGIN = 80;
-/** The sizes `overlayAssStyles` in the worker prints with, in PlayRes units. */
-const OVERLAY_TYPE_PX: Record<SeekOverlayLook, { title: number; caption: number }> = {
-  caption: { title: 64, caption: 26 },
-  title: { title: 78, caption: 26 },
-  poster: { title: 52, caption: 26 },
-  spoken: { title: 68, caption: 68 }
-};
-
 function seekOverlayLook(scene: Scene): SeekOverlayLook {
   return scene.overlay_look === "title"
     || scene.overlay_look === "poster"
@@ -1457,13 +1454,6 @@ function seekOverlayPlace(scene: Scene, look: SeekOverlayLook): SeekOverlayPlace
   if (look === "spoken") return "center";
   if (scene.overlay_place === "top" || scene.overlay_place === "center") return scene.overlay_place;
   return look === "title" ? "center" : "bottom";
-}
-
-/** Mirrors the alignment numbers `overlayLayout` in the worker hands to ASS. */
-function seekOverlayAlign(look: SeekOverlayLook, place: SeekOverlayPlace): number {
-  if (look === "spoken") return 5;
-  if (look === "poster") return place === "top" ? 7 : place === "center" ? 4 : 1;
-  return place === "bottom" ? 2 : 8;
 }
 
 /**
@@ -1539,21 +1529,20 @@ export function seekSceneVisual(
   };
   const look = seekOverlayLook(scene);
   const place = seekOverlayPlace(scene, look);
-  const landscape = frame.width > frame.height;
-  const playResWidth = landscape ? frame.width : OVERLAY_PLAYRES_WIDTH;
-  const side = Math.max(
-    Math.ceil(playResWidth * OVERLAY_SAFE_INSET),
-    look === "spoken" ? SPOKEN_SIDE_MARGIN : 0
-  );
-  const sizes = OVERLAY_TYPE_PX[look];
+  const playRes = frame.width > frame.height
+    ? { width: frame.width, height: frame.height }
+    : { width: OVERLAY_PLAYRES_WIDTH, height: OVERLAY_PLAYRES_HEIGHT };
+  const side = overlaySideMargin(playRes.width, look);
+  const type = overlayType[look];
   const overlay: SeekOverlayLayout = {
     look,
     place,
-    safeInset: side / playResWidth,
-    safeWidth: (playResWidth - 2 * side) / playResWidth,
-    titleSize: sizes.title / playResWidth,
-    captionSize: sizes.caption / playResWidth,
-    align: seekOverlayAlign(look, place)
+    playRes,
+    safeInset: side / playRes.width,
+    safeWidth: overlaySafeWidth(playRes.width, look) / playRes.width,
+    titleSize: type.title.size / playRes.width,
+    captionSize: type.caption.size / playRes.width,
+    align: overlayAlign(look, place)
   };
   const words = spokenWordsForCues(cuesForScene(scene));
   return {

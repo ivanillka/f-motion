@@ -551,6 +551,11 @@ test("poster overlay drops the caption pill and left-aligns", () => {
   assert.match(ass, /Style: Title,Inter Display ExtraBold,/);
   assert.match(ass, /Style: Caption,Inter SemiBold,/);
   assert.doesNotMatch(ass, /Style: Caption,.*&H61000000/);
+  assert.match(
+    ass,
+    /Style: Caption,Inter SemiBold,26,&H00FFFFFF,&H00AAAAAA,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,1,2,44,44,140,1$/m,
+    "poster caption stays outlined-free and shadowed, the face it has always printed"
+  );
   assert.match(ass, /\{\\an1\\k\d+\}Lower \{\\k\d+\}line/);
 });
 test("title-only scene still gets a subtitle filter", () => {

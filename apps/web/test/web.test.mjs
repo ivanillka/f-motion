@@ -477,9 +477,12 @@ test("320px and reduced motion styles are explicit", async () => {
   assert.doesNotMatch(mark, /Fotium/i);
   assert.doesNotMatch(css, /\.preview \.reel-mark \{[^}]*left:\s*8%/);
   assert.match(css, /\.look-poster/);
-  assert.match(css, /\.look-poster\.overlay-bottom \{\s*align-self: end;\s*margin-bottom: 0;/);
+  // The poster look draws a fade band that flips to the bottom edge, and its own
+  // copy aligns to the left inset the way its ASS style does.
+  assert.match(css, /\.preview \.look-poster\.overlay-bottom::before \{\s*top: auto;\s*bottom: 0;/);
+  assert.match(css, /\.preview \.look-poster > \* \{\s*right: auto;\s*left: var\(--type-inset, 6%\);/);
   assert.match(css, /\.overlay-look-tile/);
-  assert.match(css, /\.caption-burn \{\s*z-index: 4;/);
+  assert.match(css, /\.preview \.caption-burn \{[^}]*z-index: 4;/);
   assert.match(css, /\.spoken-word\.is-current/);
   assert.match(css, /#d989a0/);
   assert.match(css, /font-family: Inter/);
@@ -824,13 +827,21 @@ test("studio preview reads the same motion presets, fit, and mark size as the wo
   assert.doesNotMatch(css, /is-frozen/);
 
   // Caption and spoken copy print the same fixed PlayRes fractions as the worker.
-  assert.match(source, /--type-title/);
-  assert.match(source, /--type-caption/);
-  assert.match(source, /--type-safe-width/);
+  // The numbers live in live-preview.ts, which turns the seek's overlay into the
+  // stage's custom properties; main.tsx only forwards them.
+  const stage = await readFile(new URL("../src/live-preview.ts", import.meta.url), "utf8");
+  assert.match(source, /overlayStyle\(previewSeek\.overlay,/);
+  assert.match(stage, /"--type-title": scale\(layout\.titleSize\)/);
+  assert.match(stage, /"--type-caption": scale\(layout\.captionSize\)/);
+  assert.match(stage, /"--type-safe-width": `\$\{fraction\(layout\.safeWidth\)\}%`/);
+  assert.match(stage, /"--type-inset": `\$\{fraction\(layout\.safeInset\)\}%`/);
   assert.match(css, /container-type: inline-size/);
   assert.match(css, /font-size: calc\(var\(--type-title,/);
   assert.match(css, /font-size: calc\(var\(--type-caption,/);
-  assert.match(css, /max-width: var\(--type-safe-width,/);
+  // The line hugs its content inside the safe width; only the plate adds its
+  // own pad, because libass draws that pad outside the wrapped text.
+  assert.match(css, /\.preview \.caption-burn > \* \{[^}]*max-width: var\(--type-safe-width, 87\.78%\)/);
+  assert.match(css, /\.preview \.overlay-caption \{[^}]*max-width: calc\(var\(--type-safe-width, 87\.78%\) \+ 2 \* var\(--type-pill-pad, 0\) \* 1em\)/);
   assert.doesNotMatch(css, /\.look-spoken \{[^}]*max-width: 78%/);
 
   // Words and the lit word come from the same seek as the picture.
@@ -853,6 +864,71 @@ test("studio preview reads the same motion presets, fit, and mark size as the wo
   assert.match(css, /\.preview \.preview-fit-picture img,\n\.preview \.preview-fit-picture video \{ object-fit: contain; \}/);
   assert.match(css, /\.scene-fit-toggle \{[\s\S]{0,120}min-height: 44px/);
 });
+test("the stage prints the export's overlay contract at any stage size", async () => {
+  const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
+  const { overlayStyle } = await import("../src/live-preview.ts");
+  const { seekSceneVisual } = await import("@f-engine/reel-engine");
+
+  const scene = {
+    id: "s1", order: 0, caption: "Two lines of copy", duration_ms: 4000,
+    focal_x: 0.5, focal_y: 0.5, motion: "none", audio_level: 1, ducking: false
+  };
+
+  // The caption look: 26 of 720 is 0.0361 of the stage width, the size the
+  // worker's ASS style prints, and the pill is 62% black with no radius.
+  const caption = overlayStyle(seekSceneVisual(scene, 0).overlay, false, true);
+  assert.equal(caption["--type-caption"], "0.0361");
+  assert.equal(caption["--type-title"], "0.0889");
+  assert.equal(caption["--type-safe-width"], "87.7778%");
+  assert.equal(caption["--type-inset"], "6.1111%");
+  assert.equal(caption["--type-align"], "center");
+  assert.equal(caption["--type-pill"], "rgba(0, 0, 0, 0.62)");
+  assert.equal(caption["--type-pill-pad"], "0.3077");
+  assert.equal(caption["--type-caption-family"], "Inter, ui-sans-serif, system-ui, sans-serif");
+  assert.equal(caption["--type-caption-weight"], "600");
+  assert.equal(caption["--type-caption-tracking"], "0.01em");
+  assert.equal(caption["--type-caption-leading"], "1.25");
+  assert.equal(caption["--type-caption-case"], "none");
+  assert.equal(caption["--type-title-weight"], "800");
+  assert.equal(caption["--type-title-case"], "none");
+  // A lone line keeps the ASS style's own 140 bottom margin.
+  assert.equal(caption["--type-caption-bottom"], "19.4444cqw");
+  assert.equal(caption["--type-caption-top"], "auto");
+  assert.equal(caption["--type-caption-transform"], "none");
+
+  // Spoken prints in the headline face at 68, centered, with no plate.
+  const spoken = overlayStyle(seekSceneVisual({ ...scene, overlay_look: "spoken" }, 0).overlay, false, true);
+  assert.equal(spoken["--type-caption"], "0.0944");
+  assert.equal(spoken["--type-caption-weight"], "800");
+  assert.equal(spoken["--type-caption-tracking"], "-0.03em");
+  assert.equal(spoken["--type-safe-width"], "77.7778%");
+  assert.equal(spoken["--type-pill"], "none");
+  assert.equal(spoken["--type-pill-pad"], "0");
+  assert.equal(spoken["--type-caption-top"], "50%");
+  assert.equal(spoken["--type-caption-bottom"], "auto");
+  assert.equal(spoken["--type-caption-transform"], "translateY(-50%)");
+
+  // A poster's lower third aligns to the inset, 36 up, with its title 96 above.
+  const poster = overlayStyle(seekSceneVisual({ ...scene, overlay_look: "poster" }, 0).overlay, true, true);
+  assert.equal(poster["--type-align"], "left");
+  assert.equal(poster["--type-caption-bottom"], "5cqw");
+  assert.equal(poster["--type-title-bottom"], "13.3333cqw");
+
+  // A landscape stage prints on its own width, which is the ASS canvas there.
+  const wide = overlayStyle(seekSceneVisual(scene, 0, {}, { width: 1920, height: 1080 }).overlay, false, true);
+  assert.equal(wide["--type-caption"], "0.0135");
+  assert.equal(wide["--type-safe-width"], "87.9167%");
+  assert.equal(wide["--type-inset"], "6.0417%");
+
+  // The stage reads the seek's overlay and the stylesheet only paints it.
+  assert.match(source, /const previewTypeStyle = previewSeek\s*\? overlayStyle\(previewSeek\.overlay,/);
+  assert.match(source, /className=\{`caption-burn look-\$\{overlayLook\} overlay-\$\{overlayPlace\}/);
+  assert.match(css, /libass BorderStyle 3 draws a square box, so the stage never rounds it\. \*\/\s*border-radius: 0;/);
+  assert.doesNotMatch(css, /\.preview \.caption-burn \{[^}]*font-size:\s*[\d.]+px/);
+});
+
+
 
 test("music catalogue credits and LICENSE.md never use U+2014", async () => {
   const { stockBeds, stockBedCredit } = await import("@f-engine/contracts");

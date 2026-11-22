@@ -942,46 +942,65 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     radial-gradient(ellipse at center, transparent 46%, rgba(0, 0, 0, 0.38) 100%),
     linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0%, transparent 18%, transparent 72%, rgba(0, 0, 0, 0.32) 100%);
 }
+/* The type on the stage is the export's type. Every size, weight, spacing,
+   leading, case, pill, inset, and edge below arrives as a custom property from
+   the shared overlay contract in @f-engine/reel-engine, which the worker's ASS
+   builder reads too. This block paints; it does not measure. */
 .preview .caption-burn {
+  position: absolute;
+  inset: 0;
   z-index: 4;
-  display: grid;
-  gap: 8px;
-  justify-items: center;
-  justify-self: center;
-  max-width: var(--type-safe-width, 88%);
-  pointer-events: none;
-  text-align: center;
   color: #fff;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--type-caption-family, Inter, ui-sans-serif, system-ui, sans-serif);
+  pointer-events: none;
+  text-align: var(--type-align, center);
 }
 .preview .caption-burn.is-ghost { opacity: 0.72; }
-.preview .caption-burn.overlay-bottom {
-  align-self: end;
-  margin-bottom: 8%;
-}
-.preview .caption-burn.overlay-center { align-self: center; }
-.preview .caption-burn.overlay-top {
-  align-self: start;
-  margin-top: 8%;
+/* Each line is a dialogue: it sits where the worker's dialogue sits, hugs its
+   content, and wraps inside the safe width, which is the box libass draws. Only
+   the plate has a pad, and libass draws it outside the text, so a wrapped
+   caption line may cross the inset by exactly that pad and the headline, which
+   is outlined text, wraps at the safe width itself. */
+.preview .caption-burn > * {
+  position: absolute;
+  right: 0;
+  left: 0;
+  width: fit-content;
+  max-width: var(--type-safe-width, 87.78%);
+  margin-inline: auto;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 .preview .overlay-title {
-  font-size: calc(var(--type-title, 0.0889) * 100cqw);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 0.95;
+  top: var(--type-title-top, auto);
+  bottom: var(--type-title-bottom, auto);
+  transform: var(--type-title-transform, none);
   color: #fff;
+  font-family: var(--type-title-family, Inter, ui-sans-serif, system-ui, sans-serif);
+  font-size: calc(var(--type-title, 0.0889) * 100cqw);
+  font-weight: var(--type-title-weight, 800);
+  letter-spacing: var(--type-title-tracking, -0.03em);
+  line-height: var(--type-title-leading, 0.95);
+  text-transform: var(--type-title-case, none);
   text-shadow: 0 1px 0 #000, 0 12px 28px rgba(0, 0, 0, 0.75);
 }
 .preview .overlay-caption {
-  max-width: 100%;
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.62);
+  top: var(--type-caption-top, auto);
+  bottom: var(--type-caption-bottom, auto);
+  transform: var(--type-caption-transform, none);
+  /* libass BorderStyle 3 draws a square box, so the stage never rounds it. */
+  border-radius: 0;
+  background: var(--type-pill, none);
+  padding: calc(var(--type-pill-pad, 0) * 1em);
+  /* The plate is drawn around the wrapped text, so its pad may cross the inset. */
+  max-width: calc(var(--type-safe-width, 87.78%) + 2 * var(--type-pill-pad, 0) * 1em);
   color: #fff;
+  font-family: var(--type-caption-family, Inter, ui-sans-serif, system-ui, sans-serif);
   font-size: calc(var(--type-caption, 0.0361) * 100cqw);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  line-height: 1.25;
+  font-weight: var(--type-caption-weight, 600);
+  letter-spacing: var(--type-caption-tracking, 0.01em);
+  line-height: var(--type-caption-leading, 1.25);
+  text-transform: var(--type-caption-case, none);
   text-shadow: 0 1px 2px #000;
 }
 .preview .spoken-word { color: inherit; }
@@ -1011,72 +1030,62 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   pointer-events: none;
   color-scheme: normal;
 }
-.preview .look-spoken {
-  align-self: center;
-  /* Spoken copy keeps 80 PlayRes units clear a side, the margin the worker's
-     ASS dialogue uses. */
-  max-width: var(--type-safe-width, 77.78%);
-}
+/* The spoken look carries no plate: the export prints the line in the headline
+   face and fades the words already read, which the spans above do. */
 .preview .look-spoken .overlay-caption {
-  padding: 0;
-  background: none;
-  border-radius: 0;
-  font-size: calc(var(--type-caption, 0.0944) * 100cqw);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1.05;
-  text-transform: none;
   text-shadow: 0 2px 16px rgba(0, 0, 0, 0.72);
 }
-.preview .look-title {
-  max-width: var(--type-safe-width, 86.8%);
+.preview .look-title .overlay-title {
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.78);
 }
-.preview .look-title .overlay-title,
-.preview .look-title .overlay-caption {
-  padding: 0;
-  background: none;
-  border-radius: 0;
-  font-weight: 800;
-  letter-spacing: -0.04em;
-  text-transform: uppercase;
-}
-.preview .look-poster {
-  width: 100%;
-  max-width: none;
-  justify-self: stretch;
-  padding: 22% 16px 14px;
-  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.82) 62%);
-  justify-items: start;
-  text-align: left;
-}
-.preview .look-poster.overlay-bottom {
-  align-self: end;
-  margin-bottom: 0;
-}
-.preview .look-poster.overlay-top {
-  align-self: start;
-  margin-top: 0;
-  padding: 14px 16px 22%;
+/* The poster look's fade band and centered plate are stage chrome: the ASS burn
+   prints the same left-aligned copy with no drawbox, so the contract does not
+   cover them and the band keeps the height the studio has always drawn. */
+.preview .look-poster { --poster-band: 22cqw; }
+.preview .look-poster::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: var(--poster-band);
   background: linear-gradient(0deg, transparent 0%, rgba(0, 0, 0, 0.82) 62%);
 }
+.preview .look-poster.overlay-bottom::before {
+  top: auto;
+  bottom: 0;
+  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.82) 62%);
+}
+/* A poster line aligns to the left inset, the way its ASS style does. */
+.preview .look-poster > * {
+  right: auto;
+  left: var(--type-inset, 6%);
+  margin-inline: 0;
+  text-align: left;
+}
+.preview .look-poster .overlay-title,
+.preview .look-poster .overlay-caption {
+  text-shadow: 0 1px 2px #000;
+}
 .preview .look-poster.overlay-center {
-  width: 88%;
-  max-width: 88%;
+  top: 50%;
+  right: 6%;
+  bottom: auto;
+  left: 6%;
+  height: auto;
   padding: 16px 18px;
   border-radius: 16px;
   background: rgba(0, 0, 0, 0.5);
+  transform: translateY(-50%);
 }
-.preview .look-poster .overlay-title {
-  text-transform: none;
-  letter-spacing: -0.03em;
-}
-.preview .look-poster .overlay-caption {
-  padding: 0;
-  background: none;
-  border-radius: 0;
-  font-size: 0.95rem;
-  font-weight: 600;
-  opacity: 0.92;
+.preview .look-poster.overlay-center::before { display: none; }
+.preview .look-poster.overlay-center > * {
+  position: static;
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+  transform: none;
 }
 .preview .media-placeholder {
   z-index: 1;

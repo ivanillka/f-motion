@@ -74,6 +74,8 @@ test("private package tarballs install and run outside the monorepo without regi
       "dist/media-intent.js",
       "dist/motion.d.ts",
       "dist/motion.js",
+      "dist/overlay-type.d.ts",
+      "dist/overlay-type.js",
       "dist/photos-to-reel.d.ts",
       "dist/photos-to-reel.js",
       "dist/spoken-narration.d.ts",

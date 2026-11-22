@@ -1969,4 +1969,192 @@ test.describe("Create keeps the chat readable with a batch of photos", () => {
     });
   }
 });
+/** One line of burned type, measured against the stage it is painted in. */
+interface StageType {
+  /** Stage width in pixels. The contract prints the export's 720-wide canvas in it. */
+  stageWidth: number;
+  stageHeight: number;
+  fontSize: number;
+  pad: number;
+  pill: string;
+  align: string;
+  radius: string;
+  top: number;
+  bottom: number;
+  height: number;
+  /** Edges of the words themselves, inside the pill's own pad. */
+  textLeft: number;
+  textRight: number;
+}
 
+/**
+ * One line of burned type, measured once the paint has settled. A look switch can
+ * replace the stage's subtree between the query and the read, and a node that has
+ * left the document reports no computed style, so this reads until two reads
+ * agree on a painted stage.
+ */
+async function stageType(page: Page, selector: string): Promise<StageType> {
+  const read = (): Promise<StageType> => page.locator(".preview").first().evaluate((preview, selector) => {
+    const node = preview.querySelector(selector);
+    if (!node) throw new Error(`${selector} is not painted on the stage`);
+    // 100cqw is the stage width, the unit the overlay contract prints in.
+    const probe = document.createElement("div");
+    probe.style.cssText = "position:absolute;width:100cqw;height:0;visibility:hidden";
+    preview.append(probe);
+    const stageWidth = probe.getBoundingClientRect().width;
+    probe.remove();
+    // The type is placed inside .caption-burn, which fills the panel's padding
+    // box; the stage's own border is not part of the frame the export prints.
+    const stage = (preview.querySelector(".caption-burn") ?? preview).getBoundingClientRect();
+    const box = node.getBoundingClientRect();
+    const style = getComputedStyle(node);
+    const pad = Number.parseFloat(style.paddingLeft) || 0;
+    return {
+      stageWidth,
+      stageHeight: stage.height,
+      fontSize: Number.parseFloat(style.fontSize),
+      pad,
+      pill: style.backgroundColor,
+      align: style.textAlign,
+      radius: style.borderTopLeftRadius,
+      top: box.top - stage.top,
+      bottom: stage.bottom - box.bottom,
+      height: box.height,
+      textLeft: box.left - stage.left + pad,
+      textRight: stage.right - box.right + pad
+    };
+  }, selector);
+  let type = await read();
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await page.waitForTimeout(50);
+    const next = await read();
+    if (next.stageWidth > 0 && next.fontSize > 0 && JSON.stringify(next) === JSON.stringify(type)) return next;
+    type = next;
+  }
+  return type;
+}
+
+/** A PlayRes number in the pixels of the stage that stands in for the 720 canvas. */
+function playRes(type: StageType, units: number): number {
+  return (units / 720) * type.stageWidth;
+}
+
+/**
+ * The stage and the worker print the same type: the stage measures every
+ * PlayRes number of the overlay contract against its own width, so this test
+ * reads the browser at two sizes and compares with the ASS the worker writes.
+ * Spoken and title are checked next to the caption because all three share one
+ * pill and one safe box.
+ */
+test("the stage prints the export's PlayRes type inside the safe box at any width", async ({ page }, testInfo) => {
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route("https://e2e-storage.invalid/**", (route) => route.fulfill({ status: 200, body: "" }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Create new video" }).click();
+  await briefWithOwnStill(page, "A calm launch teaser for a small team");
+  await createStoryboard(page);
+
+  // A caption long enough to wrap at the safe width on any stage.
+  await page.getByRole("tab", { name: "Text" }).click();
+  const caption = page.getByLabel("Scene 1 caption");
+  const line = "A calm launch teaser for a small team with a line of copy long enough to wrap inside the frame";
+  // The editor saves on blur, and the storyboard's own patch can land after the
+  // first write and print its caption back into the box, so keep writing until
+  // the project — the copy the stage prints — carries the line.
+  const writeCaption = async (text: string) => {
+    await expect.poll(async () => {
+      if (await caption.inputValue() !== text) await caption.fill(text);
+      await caption.press("Tab");
+      return (await projectScenes(page)).some((scene) => scene.caption === text);
+    }, { timeout: 20_000 }).toBe(true);
+  };
+  await writeCaption(line);
+  // The look tiles live on the Style tab; the stage is visible from either one.
+  await page.getByRole("tab", { name: "Style" }).click();
+  const looks = page.getByRole("group", { name: "Overlay look" });
+  // The tile turns its pressed state on only when the saved scene carries the
+  // look, so this waits for the patch instead of for the status line.
+  const chooseLook = async (name: string) => {
+    const tile = looks.getByRole("button", { name, exact: true });
+    await tile.click();
+    await expect(tile).toHaveAttribute("aria-pressed", "true");
+  };
+  // A storyboard can pick any look from the brief, so start from the caption.
+  await chooseLook("Caption");
+
+  // The caption look: 26 of 720, square plate, 6% inset a side, 140 off the floor.
+  const wide = await stageType(page, ".caption-burn .overlay-caption");
+  expect(wide.fontSize / wide.stageWidth).toBeCloseTo(26 / 720, 3);
+  expect(wide.align).toBe("center");
+  expect(wide.radius).toBe("0px");
+  expect(wide.pill).toBe("rgba(0, 0, 0, 0.62)");
+  expect(wide.pad / wide.fontSize).toBeCloseTo(8 / 26, 3);
+  // The line wrapped and its words sit inside the inset the worker margins to.
+  expect(wide.textLeft).toBeGreaterThanOrEqual(playRes(wide, 44) - 0.5);
+  expect(wide.textRight).toBeGreaterThanOrEqual(playRes(wide, 44) - 0.5);
+  expect(wide.bottom).toBeCloseTo(playRes(wide, 140), 0);
+  await page.screenshot({ path: testInfo.outputPath("caption-1440.png") });
+
+  // A phone stage keeps the same numbers: the type shrinks with the frame
+  // instead of getting clipped, and the plate stays square.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const phone = await stageType(page, ".caption-burn .overlay-caption");
+  expect(phone.fontSize / phone.stageWidth).toBeCloseTo(26 / 720, 3);
+  expect(phone.textLeft).toBeGreaterThanOrEqual(playRes(phone, 44) - 0.5);
+  expect(phone.textRight).toBeGreaterThanOrEqual(playRes(phone, 44) - 0.5);
+  await page.locator(".preview").first().scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("caption-390.png") });
+
+  // Shorter copy for the centered looks, so a wrapped line stays inside the
+  // frame the way a spoken line and a title do in the export.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const short = "A calm launch teaser for a small team.";
+  await page.getByRole("tab", { name: "Text" }).click();
+  await writeCaption(short);
+  await page.getByRole("tab", { name: "Style" }).click();
+
+  // The spoken look: headline face at 68 of 720 with no plate, centered, and
+  // 80 a side, so the line breaks where libass breaks it.
+  await chooseLook("Spoken");
+  const spoken = await stageType(page, ".caption-burn .overlay-caption");
+  expect(spoken.fontSize / spoken.stageWidth).toBeCloseTo(68 / 720, 3);
+  expect(spoken.pill).toBe("rgba(0, 0, 0, 0)");
+  expect(spoken.pad).toBe(0);
+  expect(spoken.align).toBe("center");
+  expect(spoken.textLeft).toBeGreaterThanOrEqual(playRes(spoken, 80) - 0.5);
+  expect(spoken.textRight).toBeGreaterThanOrEqual(playRes(spoken, 80) - 0.5);
+  // Centered is where libass puts a middle-aligned dialogue line.
+  expect(spoken.top + spoken.height / 2).toBeCloseTo(spoken.stageHeight / 2, 0);
+  await page.screenshot({ path: testInfo.outputPath("spoken-1440.png") });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const spokenPhone = await stageType(page, ".caption-burn .overlay-caption");
+  expect(spokenPhone.fontSize / spokenPhone.stageWidth).toBeCloseTo(68 / 720, 3);
+  expect(spokenPhone.textLeft).toBeGreaterThanOrEqual(playRes(spokenPhone, 80) - 0.5);
+  expect(spokenPhone.textRight).toBeGreaterThanOrEqual(playRes(spokenPhone, 80) - 0.5);
+  await page.locator(".preview").first().scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("spoken-390.png") });
+
+  // The title look: 78 of 720, uppercased, outlined instead of plated (its ASS
+  // face is BorderStyle 1), inside the same inset, and a scene with no caption
+  // sits where an \an5 dialogue anchored on 560 does.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await chooseLook("Title");
+  const title = await stageType(page, ".caption-burn .overlay-title");
+  expect(title.fontSize / title.stageWidth).toBeCloseTo(78 / 720, 3);
+  expect(title.pill).toBe("rgba(0, 0, 0, 0)");
+  expect(title.textLeft).toBeGreaterThanOrEqual(playRes(title, 44) - 0.5);
+  expect(title.textRight).toBeGreaterThanOrEqual(playRes(title, 44) - 0.5);
+  expect(title.top).toBeCloseTo(playRes(title, 560), 0);
+  expect(await page.locator(".caption-burn .overlay-title").evaluate((node) => getComputedStyle(node).textTransform))
+    .toBe("uppercase");
+  await page.screenshot({ path: testInfo.outputPath("title-1440.png") });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const titlePhone = await stageType(page, ".caption-burn .overlay-title");
+  expect(titlePhone.fontSize / titlePhone.stageWidth).toBeCloseTo(78 / 720, 3);
+  expect(titlePhone.textLeft).toBeGreaterThanOrEqual(playRes(titlePhone, 44) - 0.5);
+  await page.locator(".preview").first().scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("title-390.png") });
+});
