@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -679,6 +679,223 @@ test("the studio preview draws the same frame as the worker for every motion in 
         expect(middle.scale).toBeCloseTo(1.03, 2);
       }
     }
+  }
+});
+
+/** The committed still the raster gate renders in both runtimes. */
+const GOLDEN_STILL = "tests/reel-path/fixtures/golden/golden-still.jpg";
+const GOLDEN_CAPTION = "Golden parity";
+const GOLDEN_DURATION_MS = 3400;
+/** Fixed scene-local moments, in seconds, that both runtimes must agree on. */
+const GOLDEN_TIMES = [0, 1.4667, 3] as const;
+/**
+ * Structural similarity floor for a full 1080x1920 frame. The two runtimes use
+ * different resamplers (the browser draws the 720 wide still directly, the
+ * worker scales it to 2x with Lanczos and lets zoompan sample that), and CI's
+ * FFmpeg may not be this machine's version, so the gate allows resampler and
+ * glyph rasterizer noise but not a moved crop, missing type, or a size change.
+ * The committed fixture scores about 0.975 here.
+ */
+const GOLDEN_MIN_SSIM = 0.95;
+
+/** Fail with a useful message instead of a bare ENOENT when FFmpeg is absent. */
+function requireFfmpeg(): void {
+  const probe = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" });
+  if (probe.error || probe.status !== 0) {
+    throw new Error(`the golden frame gate needs ffmpeg on PATH: ${probe.error?.message ?? probe.stderr}`);
+  }
+}
+
+/** PNG dimensions, read from the IHDR chunk. */
+function pngSize(bytes: Buffer): { width: number; height: number } {
+  if (bytes.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") {
+    throw new Error("preview screenshot is not a PNG");
+  }
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
+/** Full-frame SSIM of two images, both converted to 8 bit RGB first. */
+function ssimBetween(left: string, right: string): number {
+  const compared = spawnSync("ffmpeg", [
+    "-hide_banner",
+    "-nostats",
+    "-i", left,
+    "-i", right,
+    "-lavfi", "[0:v]format=rgb24[a];[1:v]format=rgb24[b];[a][b]ssim",
+    "-f", "null",
+    "-"
+  ], { encoding: "utf8" });
+  const output = `${compared.stdout ?? ""}\n${compared.stderr ?? ""}`;
+  const match = /All:([0-9.]+)/.exec(output);
+  if (compared.error || !match) {
+    throw new Error(`ffmpeg could not score the frames: ${compared.error?.message ?? output.slice(-800)}`);
+  }
+  return Number(match[1]);
+}
+
+interface StudioProject {
+  id: string;
+  revision: number;
+  brief: Record<string, unknown>;
+  scenes: Array<Record<string, unknown> & { order: number; duration_ms: number; media_id?: string }>;
+}
+
+/** The saved project, including the fields a worker snapshot needs. */
+async function savedProject(page: Page): Promise<StudioProject> {
+  return page.evaluate(async () => {
+    const projectId = localStorage.getItem("fengine-project");
+    if (!projectId) throw new Error("project id missing");
+    const response = await fetch(`/api/projects/${projectId}`);
+    if (!response.ok) throw new Error(`project unavailable: ${response.status}`);
+    const { project } = await response.json() as { project: StudioProject };
+    return project;
+  });
+}
+
+/**
+ * Pauses the clock, scrubs scene 1 to `atMs`, and screenshots the stage. The
+ * returned `shownMs` is read from the timeline's own fill, so the worker frame
+ * is extracted at the moment the preview really drew, not the pixel requested.
+ */
+async function seekGoldenPreview(page: Page, atMs: number): Promise<{ png: Buffer; shownMs: number }> {
+  const scenes = await projectScenes(page);
+  const [first] = scenes;
+  if (!first) throw new Error("the studio has no scene to preview");
+  const total = scenes.reduce((sum, scene) => sum + scene.duration_ms, 0);
+  const slider = page.getByRole("slider", { name: "Play progress" });
+  const box = await slider.boundingBox();
+  if (!box) throw new Error("play progress is not visible");
+  const x = Math.max(0.5, Math.min(box.width - 0.5, (atMs / total) * box.width));
+  await slider.click({ position: { x, y: box.height / 2 } });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const fill = await page.locator(".play-progress-scene.is-current").evaluate((node) => {
+    const value = Number.parseFloat(getComputedStyle(node).getPropertyValue("--fill"));
+    return Number.isFinite(value) ? value : 0;
+  });
+  const png = await page.locator(".preview").screenshot();
+  return { png, shownMs: (fill / 100) * first.duration_ms };
+}
+
+test("golden frames match between the studio preview and the worker export", async ({ page, request }) => {
+  test.setTimeout(240_000);
+  requireFfmpeg();
+  const golden = await readFile(GOLDEN_STILL);
+  // Every storage host is a test placeholder, so serve the one still the worker
+  // also reads. The upload metadata (720x1280) still comes from still.jpg.
+  await page.route((url) => url.hostname.endsWith(".invalid"), (route) =>
+    route.fulfill({ status: 200, contentType: "image/jpeg", body: golden }));
+  // The stage is captured at the export's own 1080x1920 so neither side has to
+  // resample the screenshot before SSIM.
+  await page.setViewportSize({ width: 1440, height: 2200 });
+  await signIn(page);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await briefWithOwnStill(page, "A calm launch teaser for a small team");
+  await createStoryboard(page);
+  await expect(page.getByRole("status").filter({ hasText: "Media attached" })).toBeVisible();
+
+  const captionInput = page.getByLabel("Scene 1 caption");
+  if (!await captionInput.isVisible()) await page.getByRole("button", { name: "Edit scene 1" }).click();
+  await page.locator("#scene-tab-timing").click();
+  const seconds = page.getByLabel("Seconds");
+  await seconds.fill((GOLDEN_DURATION_MS / 1000).toString());
+  await seconds.press("Tab");
+  await expect.poll(async () => (await projectScenes(page))[0]?.duration_ms).toBe(GOLDEN_DURATION_MS);
+  await page.locator("#scene-tab-text").click();
+  await captionInput.fill(GOLDEN_CAPTION);
+  await captionInput.press("Tab");
+  await expect.poll(async () => (await projectScenes(page))[0]?.caption).toBe(GOLDEN_CAPTION);
+  await page.locator("#scene-tab-style").click();
+  await page.getByLabel("Scene 1 motion").selectOption("zoom");
+  await expect.poll(async () => (await projectScenes(page))[0]?.motion).toBe("zoom");
+
+  const pause = page.getByRole("button", { name: "Pause preview" });
+  if (await pause.isVisible()) await pause.click();
+  // Paint only what the export paints: the stage at export size, with the
+  // studio's decorative grade and crop guide hidden. The mark is off.
+  await page.addStyleTag({ content: `
+    .preview-panel { position: fixed !important; left: 0 !important; top: 0 !important; width: 1080px !important; max-width: none !important; z-index: 2147483647 !important; }
+    .preview { width: 1080px !important; height: 1920px !important; max-height: none !important; aspect-ratio: auto !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+    .preview .preview-grade { display: none !important; }
+    .preview .crop-guide { display: none !important; }
+  ` });
+  await expect.poll(async () => {
+    const box = await page.locator(".preview").boundingBox();
+    return box ? [Math.round(box.width), Math.round(box.height)] : null;
+  }, { message: "the stage is captured at the export's frame size" }).toEqual([1080, 1920]);
+  await expect.poll(async () => page.locator(".preview img").first().evaluate((node) => {
+    const image = node as HTMLImageElement;
+    return image.complete && image.naturalWidth;
+  }), { message: "the golden still has decoded" }).toBe(720);
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  await expect(page.locator(".preview .overlay-caption")).toBeVisible();
+
+  const project = await savedProject(page);
+  const scene = [...project.scenes].sort((left, right) => left.order - right.order)[0];
+  if (!scene) throw new Error("the studio has no scene to export");
+  const mediaId = scene.media_id;
+  if (typeof mediaId !== "string" || !mediaId) throw new Error("scene 1 has no media");
+  // The export's corner credit is a transparent WebM whose alpha decode is not
+  // deterministic across decoders, so this gate covers the picture, crop, and
+  // type with the mark off. The mark has its own unit tests and e2e size checks.
+  expect(project.brief.brand_mark ?? false).toBe(false);
+
+  const previews: Array<{ at: number; png: Buffer; shownMs: number }> = [];
+  for (const at of GOLDEN_TIMES) {
+    previews.push({ at, ...(await seekGoldenPreview(page, at * 1000)) });
+  }
+
+  const jobId = "00000000-0000-4000-8000-000000000031";
+  const posted = await request.post("http://127.0.0.1:43141/jobs", {
+    data: {
+      jobId,
+      projectId: project.id,
+      revision: project.revision,
+      kind: "final",
+      renderProfile: { width: 1080, height: 1920 },
+      snapshot: {
+        schema_version: 1,
+        id: project.id,
+        owner_id: "e2e-owner",
+        revision: project.revision,
+        brief: project.brief,
+        scenes: [{ ...scene, order: 0 }]
+      },
+      mediaInputs: { [mediaId]: { path: GOLDEN_STILL, type: "image/jpeg" } }
+    }
+  });
+  const postedDetail = await posted.text();
+  expect(posted.ok(), `golden render: ${postedDetail}`).toBeTruthy();
+  const download = await request.get(`http://127.0.0.1:43141/downloads/${jobId}`);
+  expect(download.ok(), "golden download").toBeTruthy();
+
+  const directory = await mkdtemp(join(tmpdir(), "fengine-golden-parity-"));
+  try {
+    const video = join(directory, "golden.mp4");
+    await writeFile(video, await download.body());
+    console.log("at | shown | SSIM");
+    for (const preview of previews) {
+      expect(pngSize(preview.png), `preview frame at ${preview.at}s`).toEqual({ width: 1080, height: 1920 });
+      expect(
+        Math.abs(preview.shownMs - preview.at * 1000),
+        `scrub at ${preview.at}s landed on ${preview.shownMs}ms`
+      ).toBeLessThan(25);
+      const previewPath = join(directory, `preview-${preview.at}.png`);
+      const workerPath = join(directory, `worker-${preview.at}.png`);
+      await writeFile(previewPath, preview.png);
+      execFileSync("ffmpeg", [
+        "-v", "error",
+        "-ss", (preview.shownMs / 1000).toFixed(4),
+        "-i", video,
+        "-frames:v", "1",
+        "-y", workerPath
+      ]);
+      const score = ssimBetween(previewPath, workerPath);
+      console.log(`${preview.at.toFixed(4)} | ${(preview.shownMs / 1000).toFixed(4)} | ${score.toFixed(4)}`);
+      expect(score, `SSIM at ${preview.at}s was ${score.toFixed(4)}`).toBeGreaterThanOrEqual(GOLDEN_MIN_SSIM);
+    }
+  } finally {
+    if (process.env.GOLDEN_PARITY_KEEP) console.log(`golden frames kept in ${directory}`);
+    else await rm(directory, { recursive: true, force: true });
   }
 });
 
