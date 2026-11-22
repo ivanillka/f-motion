@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildStoryboardDraft, conceptsFor, cuesForScene, outputFrames, sceneUsesStock, spokenWordsForCues } from "@f-engine/reel-engine";
+import { buildStoryboardDraft, checkProject, conceptsFor, cuesForScene, outputFrames, sceneUsesStock, spokenWordsForCues } from "@f-engine/reel-engine";
 import { speakKokoroLine, FalImageError, FalProviderError } from "@f-engine/fal-host";
 import type { CommandEnvelope, ProjectSnapshot, Voiceover } from "@f-engine/contracts";
 import type { SpokenSceneTiming } from "@f-engine/reel-engine";
@@ -121,6 +121,7 @@ import {
   type SelfhostOwnerAuth
 } from "./selfhost-auth.js";
 import { ProjectBusyError, type ProjectPurgeResult } from "./project-purge.js";
+import { checkFactsFor } from "./project-check.js";
 import { composeOne, runBatch, type ComposeOneDeps } from "./compose-one.js";
 import { mountCreateFlowRoutes } from "./create-flow.js";
 import {
@@ -1659,6 +1660,23 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       next(error);
     }
   });
+  app.get("/api/projects/:projectId/check", async (request, response, next) => {
+    try {
+      const ownerId = String(response.locals.ownerId);
+      const project = await projects.get(ownerId, request.params.projectId);
+      if (!project) return response.status(404).json({ type: "not_found", message: "not found" });
+      const audio = options.spokenAudio
+        ?? (options.media ? spokenAudioFromMedia(options.media.repository, options.media.store) : undefined);
+      const facts = await checkFactsFor(ownerId, project, {
+        media: options.media?.repository,
+        spokenAudio: audio
+      });
+      response.json(checkProject(project, facts));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.delete("/api/projects/:projectId", async (request, response, next) => {
     try {
       if (!emptyBody(request.body)) {

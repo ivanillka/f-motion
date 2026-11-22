@@ -44,6 +44,7 @@ studio under **Settings → What’s new**. Product version lives in root
 - `POST /compose` is the singular `composeOne` path (create, storyboard, optional stock, optional render).
 - `POST /batches` runs that same function once per item, then hard-deletes the project. Serial, result-only.
 - `fmotion batch` calls `POST /v1/batches` for brief/stock items. Local files still use `composeReel` because the bytes live on the client.
+- `fmotion check <projectId>` calls `GET /v1/projects/{id}/check` and reports missing or not-ready media, an empty storyboard or empty captions, cue timing that does not fit the scene, text that cannot fit the safe area, mark overlap, and spoken takes or cues that run past their scene before a render starts. Errors exit 1; warnings alone exit 0. Ship together with Pages, the API, and the VPS in one release.
 - MCP `delete_project` and result-only bulk docs. Bulk AI generation stays rejected.
 
 ## [0.3.1] — 2026-09-01

@@ -33,6 +33,18 @@ export type ProjectView = {
 
 export type ConceptView = { id: string; title?: string };
 
+/** One pre-render finding from `GET /v1/projects/{id}/check`. */
+export type CheckIssueView = {
+  code: string;
+  scene_id?: string;
+  message: string;
+};
+
+export type CheckReportView = {
+  errors: CheckIssueView[];
+  warnings: CheckIssueView[];
+};
+
 export type FmotionClientOptions = {
   apiOrigin: string;
   apiKey: string;
@@ -289,6 +301,11 @@ export class FmotionClient {
       deleted: boolean;
       storage_failures: string[];
     }>("DELETE", `/v1/projects/${projectId}`);
+  }
+
+  /** Problems that would show in the export, without starting a render. */
+  check(projectId: string) {
+    return this.request<CheckReportView>("GET", `/v1/projects/${projectId}/check`);
   }
 
   async downloadToFile(jobId: string, destPath: string): Promise<{
