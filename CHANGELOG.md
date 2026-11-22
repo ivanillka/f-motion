@@ -25,6 +25,10 @@ studio under **Settings → What’s new**. Product version lives in root
 - Photos to reel shows how many photos are picked, such as **23 photos picked** or **No photos picked yet**, in a live region beside the file input. The input still clears after every pick, so the count is the place to confirm that a second drop of the same file took.
 - The studio stage and the burned captions read one typography contract from `packages/reel-engine`: every look prints the same size, face, safe width, and square plate in the preview and in the export, **Spoken** lines sit inside 80 PlayRes units a side, and the caption plate no longer rounds its corners. Ship together with Pages, the API, and the VPS in one release.
 
+### Agents
+
+- The agent skill teaches the reel standard and requires `fmotion check` before a preview or final render, so heavy zoom, cropped type, or a missing take is fixed first. Ship together with Pages, the API, and the VPS in one release.
+
 ### Site
 
 - Public `/` is the soft-launch landing (English, Czech at `/cs/`). Studio stays labeled Soon / Brzy. GitHub is the primary link.
