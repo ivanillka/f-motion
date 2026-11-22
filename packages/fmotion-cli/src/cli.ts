@@ -5,6 +5,7 @@ import { composeReel } from "./compose.js";
 import { loadCredentials, saveCredentials } from "./config.js";
 import { draftUrl, webOriginFromEnv } from "./draft.js";
 import { readMedia } from "./media.js";
+import { loadLocalRenderInput, renderLocal, resolveLocalRenderProfile } from "./local-render.js";
 
 type Flags = {
   json: boolean;
@@ -20,6 +21,16 @@ function parseArgs(argv: string[]): Flags {
     const token = argv[i]!;
     if (token === "--json") {
       json = true;
+      continue;
+    }
+    if (token === "-o") {
+      const next = argv[i + 1];
+      if (next && !next.startsWith("-")) {
+        options.out = next;
+        i += 1;
+      } else {
+        options.out = true;
+      }
       continue;
     }
     if (token.startsWith("--")) {
@@ -211,6 +222,27 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
         print(await (await clientFromEnv()).render(projectId, kind), flags.json);
         return 0;
       }
+      case "render-local": {
+        const target = rest[0] || String(flags.options.project || "");
+        const output = typeof flags.options.out === "string" ? flags.options.out : rest[1] || "";
+        const profile = resolveLocalRenderProfile(
+          flags.options.profile ? String(flags.options.profile) : undefined
+        );
+        if (!target || !output) {
+          throw new Error(
+            "Usage: fmotion render-local <project-dir|snapshot.json> -o <out.mp4> [--profile preview|final]"
+          );
+        }
+        const result = await renderLocal(await loadLocalRenderInput(target), { output, profile });
+        const scenes = `${result.scenes} scene${result.scenes === 1 ? "" : "s"}`;
+        print(
+          flags.json
+            ? result
+            : `Rendered ${scenes} at ${result.width}x${result.height} in ${result.duration_ms}ms to ${result.output}`,
+          flags.json
+        );
+        return 0;
+      }
       case "wait": {
         const jobId = rest[0] || String(flags.options.job || "");
         if (!jobId) throw new Error("Usage: fmotion wait <jobId>");
@@ -242,7 +274,7 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
       }
       case "help":
       case undefined: {
-        print(`fmotion — thin F-Motion /v1 client
+        print(`fmotion — F-Motion /v1 client and local renderer
 
 Commands:
   login|config --api-key fm_… [--api-origin URL]
@@ -256,6 +288,7 @@ Commands:
   draft <projectId> [--web-origin URL]
   command <projectId> '<json-envelope>'
   render <projectId> [preview|final]
+  render-local <project-dir|snapshot.json> -o <out.mp4> [--profile preview|final]
   wait <jobId> [--timeout seconds]
   download <jobId>
 

@@ -20,3 +20,17 @@ export {
   type BatchOptions,
   type BatchResult
 } from "./batch.js";
+export {
+  LOCAL_RENDER_PROFILES,
+  assertLocalRenderReady,
+  buildLocalRenderJob,
+  loadLocalRenderInput,
+  renderLocal,
+  resolveLocalRenderProfile,
+  type LocalRenderBundle,
+  type LocalRenderInput,
+  type LocalRenderMedia,
+  type LocalRenderOptions,
+  type LocalRenderProfileName,
+  type LocalRenderResult
+} from "./local-render.js";

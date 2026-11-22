@@ -166,6 +166,18 @@ function mimeFromProbe(
   return "application/octet-stream";
 }
 
+/**
+ * The encoders and probe default to PATH for the server. The desktop and CLI
+ * builds can point at a bundled binary instead of changing the host PATH.
+ */
+export function ffmpegPath(): string {
+  return process.env.FENGINE_FFMPEG_PATH?.trim() || "ffmpeg";
+}
+
+export function ffprobePath(): string {
+  return process.env.FENGINE_FFPROBE_PATH?.trim() || "ffprobe";
+}
+
 export type MediaProbeErrorCode = "aborted" | "timeout" | "failed" | "invalid_output";
 
 export class MediaProbeError extends Error {
@@ -190,7 +202,7 @@ export async function probeMediaFile(
   if (signal?.aborted) throw new MediaProbeError("aborted");
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) throw new MediaProbeError("failed");
   const raw = await new Promise<string>((resolve, reject) => {
-    const child = spawn("ffprobe", [
+    const child = spawn(ffprobePath(), [
       "-v", "error",
       "-show_entries", "format=duration,format_name:stream=codec_type,width,height,codec_name,pix_fmt,channels",
       "-of", "json",
@@ -278,7 +290,7 @@ export function renderObjectKey(projectId: string, revision: number) {
 
 export async function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawn("ffmpeg", args, { stdio: "ignore", signal });
+    const child = spawn(ffmpegPath(), args, { stdio: "ignore", signal });
     child.once("error", reject);
     child.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`)));
   });
@@ -381,6 +393,15 @@ function motionFilter(
 }
 
 const overlayFontsDir = fileURLToPath(new URL("../assets/fonts", import.meta.url));
+
+/**
+ * Absolute font directory the caption filter passes as `fontsdir=`. The local
+ * CLI checks this exists before spawning FFmpeg so a missing asset reads as a
+ * setup error instead of an opaque libass failure.
+ */
+export function captionFontsDir(): string {
+  return overlayFontsDir;
+}
 
 // The faces, sizes, insets, and fit rules live in @f-engine/reel-engine, so
 // the studio preview and this ASS builder cannot drift apart.
@@ -967,6 +988,19 @@ export async function renderPreview(
     dirname(outputPath),
     profile
   );
+  await runRenderJob(job, outputPath, signal);
+}
+
+/**
+ * Runs a job built by {@link buildRenderJob} and removes its per-scene files.
+ * The worker and the local CLI both call this, so one encoder loop stays the
+ * only place that writes clips, captions, and the concat list.
+ */
+export async function runRenderJob(
+  job: RenderJob,
+  outputPath: string,
+  signal?: AbortSignal
+): Promise<void> {
   try {
     for (const clip of job.clips) {
       if (clip.assPath && clip.assContents) await writeFile(clip.assPath, clip.assContents, "utf8");

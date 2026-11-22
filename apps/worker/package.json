@@ -3,6 +3,13 @@
   "private": true,
   "type": "module",
   "main": "dist/start.js",
+  "exports": {
+    ".": "./dist/start.js",
+    "./builder": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node test/run.mjs",
