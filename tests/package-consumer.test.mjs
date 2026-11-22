@@ -68,6 +68,8 @@ test("private package tarballs install and run outside the monorepo without regi
       "dist/brand-mark.js",
       "dist/brief-architecture.d.ts",
       "dist/brief-architecture.js",
+      "dist/check.d.ts",
+      "dist/check.js",
       "dist/index.d.ts",
       "dist/index.js",
       "dist/media-intent.d.ts",
