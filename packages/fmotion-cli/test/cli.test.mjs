@@ -131,3 +131,49 @@ test("cli exits 3 on quota_exceeded with --json", async () => {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+test("cli check prints a report and exits non-zero only on errors", async () => {
+  const server = createServer((request, response) => {
+    assert.equal(request.headers.authorization, `Bearer fm_${"g".repeat(64)}`);
+    response.setHeader("content-type", "application/json");
+    if (request.url === "/v1/projects/clean/check") {
+      response.end(JSON.stringify({
+        errors: [],
+        warnings: [{ code: "brand_mark_overlap", scene_id: "s1", message: "The F-Motion mark sits over the top text." }]
+      }));
+      return;
+    }
+    if (request.url === "/v1/projects/broken/check") {
+      response.end(JSON.stringify({
+        errors: [{ code: "media_missing", scene_id: "s2", message: "This scene has no picture yet." }],
+        warnings: []
+      }));
+      return;
+    }
+    response.statusCode = 404;
+    response.end(JSON.stringify({ type: "not_found", message: "not found" }));
+  });
+  const origin = await listen(server);
+  const env = { FMOTION_API_KEY: `fm_${"g".repeat(64)}`, FMOTION_API_ORIGIN: origin };
+  try {
+    const cleanJson = await runCli(["check", "clean", "--json"], env);
+    assert.equal(cleanJson.code, 0);
+    assert.deepEqual(JSON.parse(cleanJson.stdout).warnings[0].code, "brand_mark_overlap");
+
+    const cleanText = await runCli(["check", "clean"], env);
+    assert.equal(cleanText.code, 0);
+    assert.match(cleanText.stdout, /warning brand_mark_overlap \(s1\)/);
+    assert.match(cleanText.stdout, /0 errors, 1 warning/);
+
+    const brokenJson = await runCli(["check", "broken", "--json"], env);
+    assert.equal(brokenJson.code, 1);
+    assert.equal(JSON.parse(brokenJson.stdout).errors[0].code, "media_missing");
+
+    const brokenText = await runCli(["check", "broken"], env);
+    assert.equal(brokenText.code, 1);
+    assert.match(brokenText.stdout, /error media_missing \(s2\)/);
+    assert.match(brokenText.stdout, /1 error, 0 warnings/);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});

@@ -102,6 +102,7 @@ export {
 } from "./brand-mark.js";
 export type { BrandMarkLayout } from "./brand-mark.js";
 export * from "./overlay-type.js";
+export * from "./check.js";
 export type {
   BrandMarkSize,
   MediaGlanceHints,

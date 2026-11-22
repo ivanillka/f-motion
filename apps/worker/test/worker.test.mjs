@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 import {
   MOTION_PRESETS,
   RENDER_FPS,
+  checkProject,
+  cuesForScene,
   photosToReelPlan,
   photosToReelScenes,
   renderPlan
@@ -591,6 +593,51 @@ test("written word times keep their own pauses in the karaoke line", () => {
   assert.match(dialogue, /^Dialogue: 0,0:00:00\.00,0:00:01\.41,Caption/);
   // Centiseconds each word holds the floor, including the 360ms pause after "the".
   assert.match(dialogue, /\\k24\}Read \{\\k36\}the \{\\k30\}full \{\\k51\}post\.$/);
+});
+test("the check and the burned captions share the spoken safe width", () => {
+  const scene = {
+    id: "s1",
+    order: 0,
+    caption: "extraordinary",
+    duration_ms: 3000,
+    focal_x: 0.5,
+    focal_y: 0.5,
+    motion: "gentle",
+    audio_level: 1,
+    ducking: false,
+    media_id: "m1",
+    overlay_look: "spoken"
+  };
+  const snapshot = {
+    id: "p1",
+    revision: 1,
+    brief: { purpose: "launch", audience: "locals", tone: "warm" },
+    scenes: [scene]
+  };
+  const dialogueOf = (ass) => ass.split("\n").find((line) => line.startsWith("Dialogue:")) ?? "";
+  // Spoken keeps 80 PlayRes units a side, so this word shrinks instead of
+  // passing 560. A checker that measured the caption inset would miss it.
+  const shrunk = buildCaptionAss(cuesForScene(scene), {
+    caption: scene.caption,
+    look: "spoken",
+    durationMs: scene.duration_ms
+  }, { width: 720, height: 1280 });
+  assert.match(dialogueOf(shrunk), /\\fs\d+/);
+  assert.deepEqual(checkProject(snapshot).errors, []);
+
+  // Twenty characters cannot shrink enough, so the export breaks the word and
+  // the check reports the same problem.
+  const tooLong = { ...scene, id: "s2", caption: "a".repeat(20) };
+  const broken = buildCaptionAss(cuesForScene(tooLong), {
+    caption: tooLong.caption,
+    look: "spoken",
+    durationMs: tooLong.duration_ms
+  }, { width: 720, height: 1280 });
+  assert.match(dialogueOf(broken), /\\N/);
+  assert.deepEqual(
+    checkProject({ ...snapshot, scenes: [tooLong] }).errors.map((entry) => entry.code),
+    ["overlay_overflow"]
+  );
 });
 test("caption ass builder neutralizes characters that would corrupt the ASS document", () => {
   const ass = buildCaptionAss([{ text: "100% {ok} [x], don't", start_ms: 0, end_ms: 500 }]);

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { FmotionApiError, FmotionClient } from "./client.js";
+import { FmotionApiError, FmotionClient, type CheckReportView } from "./client.js";
 import { batchReels, batchUsage, loadBatchManifest } from "./batch.js";
 import { composeReel } from "./compose.js";
 import { loadCredentials, saveCredentials } from "./config.js";
@@ -70,6 +70,17 @@ async function clientFromEnv(): Promise<FmotionClient> {
   return new FmotionClient({ apiOrigin: credentials.api_origin, apiKey: credentials.api_key });
 }
 
+function checkSummary(report: CheckReportView): string {
+  const lines = [
+    ...report.errors.map((entry) => `error ${entry.code}${entry.scene_id ? ` (${entry.scene_id})` : ""}: ${entry.message}`),
+    ...report.warnings.map((entry) => `warning ${entry.code}${entry.scene_id ? ` (${entry.scene_id})` : ""}: ${entry.message}`)
+  ];
+  if (!lines.length) return "No problems found.";
+  const count = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  lines.push(`${count(report.errors.length, "error")}, ${count(report.warnings.length, "warning")}`);
+  return lines.join("\n");
+}
+
 async function main(argv = process.argv.slice(2)): Promise<number> {
   const flags = parseArgs(argv);
   const [command, ...rest] = flags.args;
@@ -118,6 +129,13 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
           return 0;
         }
         throw new Error("Usage: fmotion projects [list|create|get|delete]");
+      }
+      case "check": {
+        const projectId = rest[0] || String(flags.options.project || "");
+        if (!projectId) throw new Error("Usage: fmotion check <projectId>");
+        const report = await (await clientFromEnv()).check(projectId);
+        print(flags.json ? report : checkSummary(report), flags.json);
+        return report.errors.length ? 1 : 0;
       }
       case "media": {
         const sub = rest[0];
@@ -230,6 +248,7 @@ Commands:
   login|config --api-key fm_… [--api-origin URL]
   usage
   projects list|create|get|delete
+  check <projectId>
   media read <file> [file…]
   media upload <projectId> <file>
   compose [--purpose "…"] [--media a.jpg,b.jpg] [--stock] [--render none|preview|final]
