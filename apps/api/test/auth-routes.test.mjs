@@ -467,6 +467,57 @@ test("scene media view is owner-scoped and exposes only validated public fields"
   }
 });
 
+test("project media list is owner-scoped and returns only public ready media fields", async () => {
+  const projects = new ProjectService();
+  projects.create("authenticated-user", { purpose: "Launch", audience: "Teams", tone: "Warm" }, "project-1");
+  const calls = [];
+  const asset = (id, extra = {}) => ({
+    id,
+    ownerId: "authenticated-user",
+    projectId: "project-1",
+    quarantineObjectKey: `private/${id}`,
+    state: "ready",
+    declaredType: "image/jpeg",
+    maxBytes: 10,
+    ...extra
+  });
+  const server = createServer(createTestApp({
+    projects,
+    media: {
+      repository: {
+        async listReady(ownerId, projectId) {
+          calls.push([ownerId, projectId]);
+          return [
+            asset("asset-ready", {
+              attribution: { source: "Pexels", creator: "Fixture Creator", url: "https://www.pexels.com/video/7" }
+            }),
+            asset("asset-plain")
+          ];
+        }
+      },
+      store: {},
+      pexels: {}
+    }
+  }));
+  const origin = await listen(server);
+  try {
+    const response = await fetch(`${origin}/api/projects/project-1/media`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.media.map(({ id }) => id), ["asset-ready", "asset-plain"]);
+    assert.deepEqual(body.media[0].attribution, {
+      source: "Pexels",
+      creator: "Fixture Creator",
+      attributionUrl: "https://www.pexels.com/video/7"
+    });
+    assert.doesNotMatch(JSON.stringify(body), /quarantineObjectKey|private\//);
+    assert.deepEqual(calls, [["authenticated-user", "project-1"]]);
+    assert.equal((await fetch(`${origin}/api/projects/missing/media`)).status, 404);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("legacy and invalid persisted stock metadata never invents a preview", async () => {
   let legacy = true;
   const server = createServer(createTestApp({

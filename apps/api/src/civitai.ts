@@ -112,6 +112,8 @@ export function civitaiAttributionUrlAllowed(
   }
 }
 
+export type CivitaiMediaType = "image" | "video";
+
 export interface CivitaiResult {
   id: number;
   creator: string;
@@ -120,7 +122,9 @@ export interface CivitaiResult {
   postUrl: string;
   previewUrl: string;
   sourceUrl: string;
-  contentType: "image/jpeg" | "image/png" | "image/webp";
+  contentType: "image/jpeg" | "image/png" | "image/webp" | "video/mp4";
+  /** Videos copy through inspection; images seal immediately. */
+  mediaType: CivitaiMediaType;
   width: number;
   height: number;
   nsfwLevel: CivitaiNsfwLevel;
@@ -138,6 +142,8 @@ export interface CivitaiSearchInput {
   limit?: number;
   orientation?: "portrait" | "landscape";
   modelId?: number;
+  /** Defaults to images. Auto-fill asks for videos only when the owner opts in. */
+  mediaType?: CivitaiMediaType;
 }
 
 export interface CivitaiSearchPage {
@@ -163,6 +169,7 @@ interface CivitaiImageItem {
   baseModel?: unknown;
   postId?: unknown;
   meta?: unknown;
+  thumbnail?: unknown;
 }
 
 interface CivitaiImagesBody {
@@ -184,6 +191,18 @@ function imageContentType(url: URL): CivitaiResult["contentType"] {
 function resizedImageUrl(url: URL, width: number): string {
   const path = url.pathname.replace("/original=true", `/width=${width}`);
   return new URL(path + url.search + url.hash, url).toString();
+}
+
+/** Video items carry the still preview on a nested thumbnail, never on url. */
+function videoThumbnailUrl(thumbnail: unknown): string | undefined {
+  if (!thumbnail || typeof thumbnail !== "object" || Array.isArray(thumbnail)) return undefined;
+  const url = (thumbnail as Record<string, unknown>).url;
+  if (typeof url !== "string") return undefined;
+  try {
+    return new URL(url).toString();
+  } catch {
+    return undefined;
+  }
 }
 
 function numberValue(value: unknown): number | undefined {
@@ -214,8 +233,12 @@ export class CivitaiClient {
     };
   }
 
-  private accepts(item: CivitaiImageItem, orientation: "portrait" | "landscape"): CivitaiResult | undefined {
-    if (item.type !== "image") return undefined;
+  private accepts(
+    item: CivitaiImageItem,
+    orientation: "portrait" | "landscape",
+    mediaType: CivitaiMediaType = "image"
+  ): CivitaiResult | undefined {
+    if (item.type !== mediaType) return undefined;
     const id = numberValue(item.id);
     const width = numberValue(item.width);
     const height = numberValue(item.height);
@@ -229,8 +252,13 @@ export class CivitaiClient {
     if (!level || civitaiLevelRank(level) > civitaiLevelRank(this.policy.nsfwLevel)) return undefined;
     if (browsingLevel > civitaiBrowsingCap[this.policy.nsfwLevel]) return undefined;
     if (typeof item.url !== "string" || !civitaiUrlAllowed(item.url, this.policy.allowedMediaHosts)) return undefined;
-    const sourceUrl = resizedImageUrl(new URL(item.url), 1280);
-    const previewUrl = resizedImageUrl(new URL(item.url), 450);
+    const sourceUrl = mediaType === "video"
+      ? new URL(item.url).toString()
+      : resizedImageUrl(new URL(item.url), 1280);
+    const previewUrl = mediaType === "video"
+      ? videoThumbnailUrl(item.thumbnail)
+      : resizedImageUrl(new URL(item.url), 450);
+    if (!previewUrl) return undefined;
     if (!civitaiUrlAllowed(sourceUrl, this.policy.allowedMediaHosts)
       || !civitaiUrlAllowed(previewUrl, this.policy.allowedMediaHosts)) return undefined;
     const creator = textValue(item.username);
@@ -251,7 +279,8 @@ export class CivitaiClient {
       postUrl: `https://civitai.com/posts/${postId}`,
       previewUrl,
       sourceUrl,
-      contentType: imageContentType(new URL(item.url)),
+      contentType: mediaType === "video" ? "video/mp4" : imageContentType(new URL(item.url)),
+      mediaType,
       width,
       height,
       nsfwLevel: level,
@@ -289,13 +318,14 @@ export class CivitaiClient {
     modelId: number | undefined
   ): Promise<CivitaiSearchPage> {
     const limit = Math.min(50, Math.max(1, Math.trunc(input.limit ?? 12)));
+    const mediaType = input.mediaType ?? "image";
     const params = new URLSearchParams({
       limit: String(limit),
       sort: input.sort && civitaiSorts.includes(input.sort) ? input.sort : "Most Reactions",
       period: input.period && civitaiPeriods.includes(input.period) ? input.period : "Month",
       browsingLevel: String(civitaiBrowsingLevel(this.policy.nsfwLevel)),
-      type: "image",
-      withMeta: "true"
+      type: mediaType,
+      ...(mediaType === "image" ? { withMeta: "true" } : {})
     });
     if (input.username) params.set("username", input.username);
     if (input.cursor) params.set("cursor", input.cursor);
@@ -305,7 +335,7 @@ export class CivitaiClient {
     const nextCursor = typeof body.metadata?.nextCursor === "string" ? body.metadata.nextCursor : undefined;
     return {
       results: (body.items ?? []).flatMap((item) => {
-        const result = this.accepts(item, orientation);
+        const result = this.accepts(item, orientation, mediaType);
         if (!result) return [];
         if (input.username && result.creator.toLowerCase() !== input.username.toLowerCase()) return [];
         return [result];
@@ -315,16 +345,20 @@ export class CivitaiClient {
     };
   }
 
-  async imageById(id: number, orientation: "portrait" | "landscape" = "portrait"): Promise<CivitaiResult | undefined> {
+  async imageById(
+    id: number,
+    orientation: "portrait" | "landscape" = "portrait",
+    mediaType: CivitaiMediaType = "image"
+  ): Promise<CivitaiResult | undefined> {
     const params = new URLSearchParams({
       imageId: String(id),
       limit: "1",
-      withMeta: "true",
+      ...(mediaType === "image" ? { withMeta: "true" } : {}),
       browsingLevel: String(civitaiBrowsingLevel(this.policy.nsfwLevel))
     });
     const body = await this.json<CivitaiImagesBody>(`https://civitai.com/api/v1/images?${params.toString()}`);
     return (body.items ?? []).flatMap((item) => {
-      const result = this.accepts(item, orientation);
+      const result = this.accepts(item, orientation, mediaType);
       return result ? [result] : [];
     })[0];
   }
@@ -360,7 +394,7 @@ export class CivitaiClient {
       const response = await this.request(current, {
         redirect: "manual",
         signal,
-        headers: { accept: "image/jpeg,image/png,image/webp,*/*;q=0.8" }
+        headers: { accept: "image/jpeg,image/png,image/webp,video/mp4,*/*;q=0.8" }
       });
       if (response.status >= 300 && response.status < 400) {
         const location = response.headers.get("location");
@@ -433,6 +467,9 @@ export class CivitaiClient {
         await finished(upload).catch(() => undefined);
       }
       await repository.insert(asset);
+      // Videos keep their admitted state and go through the media inspector, the same
+      // path an upload takes. Only stills can be sealed straight from the object store.
+      if (selected.mediaType === "video" || declaredType === "video/mp4") return asset;
       return sealImportedStillFromObject(
         ownerId,
         projectId,

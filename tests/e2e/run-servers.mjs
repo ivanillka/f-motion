@@ -84,6 +84,11 @@ const mediaRepository = {
     if (!asset || asset.ownerId !== ownerId || asset.projectId !== projectId) return false;
     asset.state = "inspecting";
     return true;
+  },
+  async listReady(ownerId, projectId) {
+    return [...mediaAssets.values()]
+      .filter((asset) => asset.ownerId === ownerId && asset.projectId === projectId && asset.state === "ready")
+      .map((asset) => structuredClone(asset));
   }
 };
 const pexelsResults = [101, 102, 103, 104, 105, 106, 107, 108].map((id) => ({

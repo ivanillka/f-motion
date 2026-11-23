@@ -21,6 +21,7 @@ import {
   PostgresCivitaiSettingsService
 } from "../dist/civitai-settings.js";
 import { createTestApp } from "../dist/server.js";
+import { ProjectService } from "../dist/domain.js";
 
 const vaultEnv = {
   FENGINE_CREDENTIAL_ACTIVE_KEY_VERSION: "1",
@@ -204,6 +205,53 @@ test("Civitai search uses models then images, allows lower NSFW levels, and enfo
 });
 
 
+test("Civitai video search asks for videos and keeps the thumbnail preview", async () => {
+  let requested;
+  const client = new CivitaiClient(undefined, { ...defaultCivitaiPolicy }, async (url) => {
+    requested = url;
+    return new Response(JSON.stringify({
+      items: [
+        {
+          id: 21,
+          url: "https://image.civitai.com/x/u/original=true/clip.mp4",
+          thumbnail: { url: "https://image.civitai.com/x/u/original=true/thumb.jpeg" },
+          width: 1080,
+          height: 1920,
+          nsfwLevel: "None",
+          browsingLevel: 1,
+          type: "video",
+          username: "alice",
+          postId: 77
+        },
+        { ...imageItem({ id: 22 }) },
+        {
+          id: 23,
+          url: "https://image.civitai.com/x/u/original=true/no-thumb.mp4",
+          width: 1080,
+          height: 1920,
+          nsfwLevel: "None",
+          browsingLevel: 1,
+          type: "video",
+          username: "alice",
+          postId: 78
+        }
+      ],
+      metadata: { nextCursor: "feed:2" }
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+  const page = await client.search({ query: "harbor", mediaType: "video" });
+  assert.match(requested, /[?&]type=video(?:&|$)/);
+  assert.doesNotMatch(requested, /withMeta/);
+  assert.equal(page.nextCursor, "feed:2");
+  assert.deepEqual(page.results.map((result) => result.id), [21]);
+  const [video] = page.results;
+  assert.equal(video?.mediaType, "video");
+  assert.equal(video?.contentType, "video/mp4");
+  assert.equal(video?.sourceUrl, "https://image.civitai.com/x/u/original=true/clip.mp4");
+  assert.equal(video?.previewUrl, "https://image.civitai.com/x/u/original=true/thumb.jpeg");
+});
+
+
 function fakeStore() {
   const puts = [];
   return {
@@ -268,6 +316,38 @@ test("Civitai copy refuses a redirect to a non-allowed host without fetching it"
 });
 
 
+test("Civitai video copy stays admitted for the media inspector and keeps the thumbnail preview", async () => {
+  const store = fakeStore();
+  const inserted = [];
+  const repository = {
+    async insert(asset) { inserted.push(asset); },
+    async markImportedStillReady() {
+      throw new Error("videos must not be sealed from the object store");
+    }
+  };
+  const mp4 = new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
+  const client = new CivitaiClient("key", defaultCivitaiPolicy, async (url, init) => {
+    assert.equal(url, "https://image.civitai.com/x/u/original=true/clip.mp4");
+    assert.match(init.headers.accept, /video\/mp4/);
+    return new Response(mp4, { status: 200, headers: { "content-type": "video/mp4" } });
+  });
+  const asset = await client.copy("owner", "project", selectedImage({
+    previewUrl: "https://image.civitai.com/x/u/width=450/thumb.jpeg",
+    sourceUrl: "https://image.civitai.com/x/u/original=true/clip.mp4",
+    contentType: "video/mp4",
+    mediaType: "video"
+  }), repository, store);
+  assert.equal(asset.state, "admitted");
+  assert.equal(asset.declaredType, "video/mp4");
+  assert.equal(inserted.length, 1);
+  assert.deepEqual(store.puts, [{
+    key: `projects/project/media-quarantine/${asset.id}`,
+    type: "video/mp4",
+    length: mp4.byteLength
+  }]);
+  assert.equal(asset.attribution?.previewUrl, "https://image.civitai.com/x/u/width=450/thumb.jpeg");
+});
+
 test("Civitai ranking uses text only", async () => {
   const results = [
     selectedImage({ id: 1, prompt: "portrait", previewUrl: "https://image.civitai.com/p1.jpeg" }),
@@ -307,7 +387,8 @@ test("Civitai owner settings cap the NSFW level and validate the creator allowli
         stored = {
           maxNsfwLevel: params[1],
           allowedCreators: params[2],
-          minShortSide: params[3]
+          minShortSide: params[3],
+          videosInAutoFill: params[4]
         };
         return { rows: [], rowCount: 1 };
       }
@@ -319,16 +400,24 @@ test("Civitai owner settings cap the NSFW level and validate the creator allowli
     maxNsfwLevel: "None",
     allowedCreators: [],
     minShortSide: 1080,
+    videosInAutoFill: false,
     serverMaxNsfwLevel: "None"
   });
   const updated = await service.update("owner", {
     max_nsfw_level: "Mature",
     allowed_creators: ["Alice", "alice", "bob"],
-    min_short_side: 720
+    min_short_side: 720,
+    videos_in_auto_fill: true
   });
   assert.equal(updated.maxNsfwLevel, "None");
   assert.deepEqual(updated.allowedCreators, ["Alice", "bob"]);
   assert.equal(updated.minShortSide, 720);
+  assert.equal(updated.videosInAutoFill, true);
+  assert.equal((await service.get("owner")).videosInAutoFill, true);
+  await assert.rejects(
+    () => service.update("owner", { videos_in_auto_fill: "yes" }),
+    (error) => error instanceof CivitaiSettingsValidationError
+  );
   await assert.rejects(
     () => service.update("owner", { allowed_creators: ["bad creator"] }),
     (error) => error instanceof CivitaiSettingsValidationError
@@ -344,11 +433,23 @@ test("Civitai settings routes are owner-scoped and redacted", async () => {
   const settings = {
     async get(ownerId) {
       calls.push(["get", ownerId]);
-      return { maxNsfwLevel: "None", allowedCreators: [], minShortSide: 1080, serverMaxNsfwLevel: "Soft" };
+      return {
+        maxNsfwLevel: "None",
+        allowedCreators: [],
+        minShortSide: 1080,
+        videosInAutoFill: false,
+        serverMaxNsfwLevel: "Soft"
+      };
     },
     async update(ownerId, value) {
       calls.push(["update", ownerId, value]);
-      return { maxNsfwLevel: "Soft", allowedCreators: ["alice"], minShortSide: 1080, serverMaxNsfwLevel: "Soft" };
+      return {
+        maxNsfwLevel: "Soft",
+        allowedCreators: ["alice"],
+        minShortSide: 1080,
+        videosInAutoFill: true,
+        serverMaxNsfwLevel: "Soft"
+      };
     }
   };
   const server = createServer(createTestApp({ ownerId: "route-owner", civitaiSettings: settings }));
@@ -357,16 +458,106 @@ test("Civitai settings routes are owner-scoped and redacted", async () => {
     const initial = await fetch(`${origin}/api/providers/civitai/settings`);
     assert.equal(initial.status, 200);
     assert.equal((await initial.json()).server_max_nsfw_level, "Soft");
+    assert.equal((await (await fetch(`${origin}/api/providers/civitai/settings`)).json()).videos_in_auto_fill, false);
     const updated = await fetch(`${origin}/api/providers/civitai/settings`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ max_nsfw_level: "Soft", allowed_creators: ["alice"] })
+      body: JSON.stringify({ max_nsfw_level: "Soft", allowed_creators: ["alice"], videos_in_auto_fill: true })
     });
     assert.equal(updated.status, 200);
-    assert.equal((await updated.json()).max_nsfw_level, "Soft");
+    const updatedBody = await updated.json();
+    assert.equal(updatedBody.max_nsfw_level, "Soft");
+    assert.equal(updatedBody.videos_in_auto_fill, true);
+    assert.deepEqual(calls.find(([kind]) => kind === "update")?.[2], {
+      max_nsfw_level: "Soft",
+      allowed_creators: ["alice"],
+      videos_in_auto_fill: true
+    });
     assert.ok(calls.every(([, ownerId]) => ownerId === "route-owner"));
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+test("Civitai search and select routes forward media_type video", async () => {
+  const searched = [];
+  const selectedById = [];
+  const copied = [];
+  const video = {
+    id: 77,
+    creator: "Fixture Creator",
+    attributionUrl: "https://civitai.com/images/77",
+    postId: 7,
+    postUrl: "https://civitai.com/posts/7",
+    previewUrl: "https://image.civitai.com/x/u/original=true/thumb.jpeg",
+    sourceUrl: "https://image.civitai.com/x/u/original=true/clip.mp4",
+    contentType: "video/mp4",
+    mediaType: "video",
+    width: 1080,
+    height: 1920,
+    nsfwLevel: "None",
+    browsingLevel: 1
+  };
+  const client = {
+    async search(input) {
+      searched.push(input);
+      return { results: [video] };
+    },
+    async imageById(id, orientation, mediaType) {
+      selectedById.push([id, orientation, mediaType]);
+      return video;
+    },
+    async copy(ownerId, projectId, picked) {
+      copied.push([ownerId, projectId, picked.id]);
+      return {
+        id: "asset-video",
+        ownerId,
+        projectId,
+        state: "admitted",
+        quarantineObjectKey: "private/quarantine/clip.mp4",
+        declaredType: "video/mp4",
+        maxBytes: 12,
+        detected: { type: "video/mp4", bytes: 12, width: 1080, height: 1920, duration_ms: 4000 },
+        attribution: {
+          source: "Civitai",
+          creator: "Fixture Creator",
+          url: "https://civitai.com/images/77",
+          previewUrl: "https://image.civitai.com/x/u/original=true/thumb.jpeg"
+        }
+      };
+    }
+  };
+  const projects = new ProjectService();
+  projects.create("route-owner", { purpose: "Harbor", audience: "Teams", tone: "Warm" }, "project-1");
+  const server = createServer(createTestApp({
+    ownerId: "route-owner",
+    projects,
+    media: { repository: {}, store: {}, civitai: client }
+  }));
+  const origin = await listen(server);
+  try {
+    const search = await fetch(`${origin}/api/civitai/search?q=harbor&media_type=video`);
+    assert.equal(search.status, 200);
+    assert.equal(searched[0]?.mediaType, "video");
+    const searchBody = await search.json();
+    assert.equal(searchBody.results[0]?.mediaType, "video");
+    assert.doesNotMatch(JSON.stringify(searchBody), /sourceUrl|clip\.mp4/);
+
+    const selected = await fetch(`${origin}/api/projects/project-1/media/civitai`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query: "harbor", civitai_id: 77, media_type: "video" })
+    });
+    assert.equal(selected.status, 201);
+    assert.deepEqual(selectedById, [[77, "portrait", "video"]]);
+    assert.deepEqual(copied, [["route-owner", "project-1", 77]]);
+    const asset = (await selected.json()).asset;
+    assert.equal(asset.state, "admitted");
+    assert.equal(asset.detected.type, "video/mp4");
+    assert.equal(asset.attribution.previewUrl, "https://image.civitai.com/x/u/original=true/thumb.jpeg");
+    assert.doesNotMatch(JSON.stringify(asset), /quarantineObjectKey|private\/quarantine/);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 

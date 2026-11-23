@@ -9,6 +9,7 @@ import {
   newCommandId,
   buildStoryboardDraft,
   conceptIdForArchitecture,
+  fillEmptyScenes,
   mixPicture,
   picturePrompt,
   conceptsFor,
@@ -52,6 +53,7 @@ import {
   sceneMediaIntentForScene,
   sceneDurationForMedia,
   scenePreviewUrl,
+  sceneUsesStock,
   seekLivePlayhead,
   snapScenesToBeat as snapDurationsToBeat,
   stockBedUrl,
@@ -73,6 +75,7 @@ import {
   type ProjectSummary,
   type Scene,
   type SceneMediaView,
+  type FillSceneMedia,
   type Soundtrack,
   type MediaGlanceHints,
   type VideoArchitecture,
@@ -101,6 +104,7 @@ import {
 } from "./create-flow-client";
 import {
   animateStillsToggleState,
+  civitaiMatchIsVideo,
   civitaiPickerParams,
   countStillFiles,
   isReadyStillMedia,
@@ -186,11 +190,15 @@ interface CivitaiMatch {
   postId?: number;
   postUrl?: string;
   nsfwLevel?: string;
+  contentType?: string;
+  media_type?: "image" | "video";
+  mediaType?: "image" | "video";
 }
 interface CivitaiSettingsView {
   max_nsfw_level: "None" | "Soft" | "Mature" | "X";
   allowed_creators: string[];
   min_short_side: number;
+  videos_in_auto_fill: boolean;
   server_max_nsfw_level: "None" | "Soft" | "Mature" | "X";
 }
 const civitaiRightsNotice = "Images on Civitai belong to their creators and may not be licensed for reuse or commercial use. You are responsible for permission.";
@@ -431,6 +439,7 @@ export function App() {
   const [civitaiSettingsBusy, setCivitaiSettingsBusy] = useState(false);
   const [civitaiCreatorsDraft, setCivitaiCreatorsDraft] = useState("");
   const [civitaiMinShortSide, setCivitaiMinShortSide] = useState(1080);
+  const [civitaiVideosInAutoFill, setCivitaiVideosInAutoFill] = useState(false);
   const [musicHits, setMusicHits] = useState<MixkitMatch[]>([]);
   const [musicQuery, setMusicQuery] = useState("trendy");
   const [musicOpen, setMusicOpen] = useState(false);
@@ -1373,10 +1382,16 @@ export function App() {
       if (options.animateStills) {
         setStatus("Turn photos into motion is on. Drop photos on scenes, then use Animate this image (your FAL key).");
       }
+      // Own photos still fill every empty scene, evenly spread, before hand edits.
+      try {
+        await fillEmptyScenesNow(current, { stock: false, quiet: true });
+      } catch {
+        // The guidance above already says what to do next.
+      }
       return;
     }
     try {
-      await fillStockStoryboard(current);
+      await fillEmptyScenesNow(current);
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.type : undefined;
       setStatus(type === "pexels_not_connected"
@@ -1473,10 +1488,15 @@ export function App() {
     }
     if (plan.media === "own" || choice === "own" || choice === "civitai" || choice === "fal") {
       setStatus(ownMediaStatus(choice));
+      try {
+        await fillEmptyScenesNow(current, { stock: false, quiet: true });
+      } catch {
+        // The guidance above already says what to do next.
+      }
       return;
     }
     try {
-      await fillStockStoryboard(current);
+      await fillEmptyScenesNow(current);
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.type : undefined;
       setStatus(type === "pexels_not_connected"
@@ -2189,6 +2209,173 @@ export function App() {
         : `${readyCount} of ${refreshed.scenes.length} scenes have media.`);
   }
 
+  /** Ready media already in this project, oldest first, for an empty-scene fill. */
+  async function ownMediaForFill(projectId: string): Promise<FillSceneMedia[]> {
+    const body = await api.request<{ media: SceneMediaView[] }>(`/api/projects/${projectId}/media`);
+    return body.media.flatMap((media) => {
+      if (media.state !== "ready") return [];
+      const title = media.attribution?.title?.trim() || media.attribution?.creator?.trim();
+      return [{ media_id: media.id, ...(title ? { title } : {}) }];
+    });
+  }
+
+  /**
+   * Fills every scene that still has no media: the owner's own library first,
+   * spread evenly so the reel does not open on three stock clips, then licensed
+   * stock for the scenes that stay empty. Captions the owner wrote stay put.
+   */
+  async function fillEmptyScenesNow(
+    snapshot: ProjectSnapshot,
+    options: { stock?: boolean; quiet?: boolean } = {}
+  ): Promise<ProjectSnapshot> {
+    let current = (await api.getProject(snapshot.id)).project;
+    const emptyBefore = current.scenes.filter((scene) => !scene.media_id).length;
+    if (!emptyBefore) {
+      if (!options.quiet) setStatus("Every scene already has media.");
+      return current;
+    }
+    if (!options.quiet) {
+      setStatus(`Filling ${emptyBefore} empty scene${emptyBefore === 1 ? "" : "s"} from your media…`);
+    }
+    try {
+      const own = await ownMediaForFill(current.id);
+      if (own.length) {
+        const result = fillEmptyScenes(current, { own });
+        for (const pick of result.filled) {
+          const scene = result.scenes.find(({ id }) => id === pick.scene_id);
+          if (!scene) continue;
+          current = await api.command(current.id, current.revision, "update_scene", { scene });
+          applyProject(current);
+          setSceneProgress((progress) => ({ ...progress, [scene.id]: "ready" }));
+        }
+      }
+    } catch (error) {
+      if (error instanceof ApiResponseError && error.status === 409) {
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          operation: "filling empty scenes"
+        });
+        return current;
+      }
+      if (!options.quiet) setStatus("Your own media could not be added just now. Licensed stock will try next.");
+    }
+    const { project: afterOwn } = await api.getProject(current.id);
+    current = afterOwn;
+    let stockRan = false;
+    if (current.scenes.some((scene) => !scene.media_id) && options.stock !== false) {
+      if (pexelsReady) {
+        await fillStockStoryboard(current);
+        stockRan = true;
+        current = (await api.getProject(current.id)).project;
+      }
+      if (current.scenes.some((scene) => !scene.media_id)) {
+        current = await fillEmptyScenesFromCivitaiVideos(current, Boolean(options.quiet));
+      }
+    }
+    const views = await loadSceneMediaViews(api, current);
+    setSceneMedia((existing) => ({ ...existing, ...views }));
+    const readyCount = current.scenes.filter((scene) => scene.media_id).length;
+    if (!options.quiet) {
+      const generated = current.scenes.filter((scene) => scene.picture === "footage" || scene.picture === "document").length;
+      if (generated) {
+        setStatus(`${readyCount} of ${current.scenes.length} scenes have media. ${generated} mix shots still need an AI diagram or footage.`);
+      } else if (readyCount === current.scenes.length) {
+        setStatus(stockRan
+          ? "Licensed media attached for every scene. Review attribution, then render."
+          : "Every scene has media. Review the storyboard, then export.");
+      } else {
+        setStatus(`${readyCount} of ${current.scenes.length} scenes have media. Add the rest by hand or connect licensed stock in Settings.`);
+      }
+    }
+    return current;
+  }
+
+  /**
+   * Last step of auto-fill: safe Civitai videos for the scenes stock left empty.
+   * Runs only when the owner turned videos on in Settings, and copying a video
+   * costs nothing. Each pick is re-read and attached like a hand choice.
+   */
+  async function fillEmptyScenesFromCivitaiVideos(
+    snapshot: ProjectSnapshot,
+    quiet: boolean
+  ): Promise<ProjectSnapshot> {
+    if (civitaiUnavailable || civitaiSettings?.videos_in_auto_fill !== true) return snapshot;
+    let current = snapshot;
+    const orientation = architecture.delivery === "youtube" ? "landscape" : "portrait";
+    const used = new Set<number>();
+    if (!quiet) {
+      const empty = current.scenes.filter((scene) => !scene.media_id).length;
+      setStatus(`Trying safe Civitai videos for ${empty} empty scene${empty === 1 ? "" : "s"}…`);
+    }
+    for (const sceneId of current.scenes.flatMap((scene) => scene.media_id ? [] : [scene.id])) {
+      // Re-read first so a concurrent edit is never overwritten by this pass.
+      current = (await api.getProject(current.id)).project;
+      const scene = current.scenes.find(({ id }) => id === sceneId);
+      if (!scene || scene.media_id || !sceneUsesStock(scene)) continue;
+      let query: string | undefined;
+      try {
+        const intent = await sceneMediaIntentForScene(current, scene, architecture);
+        query = intent.stock_queries[0]?.slice(0, 100);
+      } catch {
+        query = scene.visual_prompt?.trim().slice(0, 100);
+      }
+      if (!query) continue;
+      try {
+        const path = `/api/civitai/search?${civitaiPickerParams({
+          query,
+          orientation,
+          sort: civitaiSort,
+          period: civitaiPeriod,
+          nsfw: civitaiNsfwLevel,
+          mediaType: "video",
+          limit: 8
+        }).toString()}`;
+        const body = await api.request<{ results: CivitaiMatch[] }>(path);
+        const candidate = body.results.find((result) => civitaiMatchIsVideo(result) && !used.has(result.id));
+        if (!candidate) {
+          setSceneProgress((progress) => ({ ...progress, [scene.id]: "needs_media" }));
+          continue;
+        }
+        used.add(candidate.id);
+        setSceneProgress((progress) => ({ ...progress, [scene.id]: "inspecting" }));
+        const copied = await api.request<{ asset: { id: string } }>(`/api/projects/${current.id}/media/civitai`, {
+          method: "POST",
+          body: JSON.stringify({ query, civitai_id: candidate.id, media_type: "video" })
+        });
+        if (!await attachMediaWhenReady(copied.asset.id, current.id, scene.id)) {
+          setSceneProgress((progress) => ({ ...progress, [scene.id]: "needs_media" }));
+        }
+        current = (await api.getProject(current.id)).project;
+      } catch (error) {
+        if (error instanceof ApiResponseError && error.status === 409) {
+          openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+            operation: "filling empty scenes"
+          });
+          return current;
+        }
+        setSceneProgress((progress) => ({ ...progress, [scene.id]: "needs_media" }));
+      }
+    }
+    return current;
+  }
+
+  async function fillEmptyScenesFromToolbar() {
+    if (!project || busy) return;
+    setBusy(true);
+    try {
+      await fillEmptyScenesNow(project);
+    } catch (error) {
+      if (error instanceof ApiResponseError && error.status === 409) {
+        openConflict(error.body.authoritative_snapshot as unknown as ProjectSnapshot, {
+          operation: "filling empty scenes"
+        });
+      } else {
+        setStatus("Empty scenes could not be filled yet. Try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function moveScene(sceneId: string, to: number) {
     if (!project) return;
     try {
@@ -2403,20 +2590,21 @@ export function App() {
     const query = civitaiSearchQueryRef.current || scene?.visual_prompt?.trim().slice(0, 100);
     if (!scene || !query) return;
     setBusy(true);
-    setStatus(`Copying image by ${candidate.creator} for inspection…`);
+    const video = civitaiMatchIsVideo(candidate);
+    setStatus(`Copying ${video ? "video" : "image"} by ${candidate.creator} for inspection…`);
     try {
       const body = await api.request<{ asset: { id: string } }>(`/api/projects/${project.id}/media/civitai`, {
         method: "POST",
-        body: JSON.stringify({ query, civitai_id: candidate.id })
+        body: JSON.stringify({ query, civitai_id: candidate.id, ...(video ? { media_type: "video" } : {}) })
       });
       if (await attachMediaWhenReady(body.asset.id, project.id, sceneId)) {
-        setStatus(`Scene media selected · image by ${candidate.creator} on Civitai`);
+        setStatus(`Scene media selected · ${video ? "video" : "image"} by ${candidate.creator} on Civitai`);
       }
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.body.type : undefined;
       setStatus(type === "civitai_not_connected"
         ? "Connect a Civitai API key in Settings to use this NSFW level, or choose None or Soft."
-        : "That Civitai image could not be attached. Choose another or try again.");
+        : `That Civitai ${video ? "video" : "image"} could not be attached. Choose another or try again.`);
     } finally {
       setBusy(false);
     }
@@ -2785,6 +2973,7 @@ export function App() {
       setCivitaiNsfwLevel(view.max_nsfw_level);
       setCivitaiCreatorsDraft(view.allowed_creators.join(", "));
       setCivitaiMinShortSide(view.min_short_side);
+      setCivitaiVideosInAutoFill(view.videos_in_auto_fill === true);
       setCivitaiUnavailable(false);
     } catch (error) {
       if (error instanceof ApiResponseError && error.status === 503) setCivitaiUnavailable(true);
@@ -2800,13 +2989,15 @@ export function App() {
         body: JSON.stringify({
           max_nsfw_level: civitaiNsfwLevel,
           allowed_creators: civitaiCreatorsDraft.split(",").map((name) => name.trim()).filter(Boolean),
-          min_short_side: civitaiMinShortSide
+          min_short_side: civitaiMinShortSide,
+          videos_in_auto_fill: civitaiVideosInAutoFill
         })
       });
       setCivitaiSettings(view);
       setCivitaiNsfwLevel(view.max_nsfw_level);
       setCivitaiCreatorsDraft(view.allowed_creators.join(", "));
       setCivitaiMinShortSide(view.min_short_side);
+      setCivitaiVideosInAutoFill(view.videos_in_auto_fill === true);
       setStatus("Civitai filters saved.");
     } catch (error) {
       const type = error instanceof ApiResponseError ? error.body.type : undefined;
@@ -4413,6 +4604,9 @@ export function App() {
             <button className="secondary" disabled={activeScene.order === 0} aria-label={`Move scene ${activeSceneNumber} earlier`} onClick={() => void moveScene(activeScene.id, activeScene.order - 1)}>Up</button>
             <button className="secondary" disabled={activeScene.order === project.scenes.length - 1} aria-label={`Move scene ${activeSceneNumber} later`} onClick={() => void moveScene(activeScene.id, activeScene.order + 1)}>Down</button>
             <button className="secondary" disabled={project.scenes.length >= MAX_STORYBOARD_SCENES} onClick={() => void addScene()}>Add scene</button>
+            {project.scenes.some((scene) => !scene.media_id) && (
+              <button className="secondary" disabled={busy} onClick={() => void fillEmptyScenesFromToolbar()}>Fill empty scenes</button>
+            )}
             <button className="secondary" disabled={project.scenes.length <= 1} aria-label={`Remove scene ${activeSceneNumber}`} onClick={() => void removeScene(activeScene.id)}>Remove</button>
           </div>
       </nav>
@@ -5310,6 +5504,12 @@ export function App() {
         <label>Minimum short side
           <input type="number" min="480" max="2160" step="1" value={civitaiMinShortSide} onChange={(event) => setCivitaiMinShortSide(event.target.valueAsNumber)} />
           <small>Default 1080 pixels on the shorter side.</small>
+        </label>
+        <label className="settings-toggle">
+          <input type="checkbox" checked={civitaiVideosInAutoFill}
+            onChange={(event) => setCivitaiVideosInAutoFill(event.target.checked)} />
+          Use Civitai videos in auto-fill
+          <small>Off by default. When on, Studio may fill scenes that licensed stock left empty with safe Civitai videos. Images are unaffected, and filling never calls FAL.</small>
         </label>
         <div className="settings-actions">
           <button disabled={civitaiSettingsBusy || !civitaiSettings} onClick={() => void saveCivitaiSettings()}>Save Civitai filters</button>

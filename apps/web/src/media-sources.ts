@@ -230,6 +230,8 @@ export interface CivitaiPickerInput {
   cursor?: string;
   modelId?: number;
   limit?: number;
+  /** Auto-fill asks for videos only when the owner turns them on. */
+  mediaType?: "image" | "video";
 }
 
 export function civitaiPickerParams(input: CivitaiPickerInput): URLSearchParams {
@@ -244,7 +246,22 @@ export function civitaiPickerParams(input: CivitaiPickerInput): URLSearchParams 
   if (input.username?.trim()) params.set("username", input.username.trim());
   if (input.cursor) params.set("cursor", input.cursor);
   if (input.modelId) params.set("model_id", String(input.modelId));
+  if (input.mediaType === "video") params.set("media_type", "video");
   return params;
+}
+
+/**
+ * Civitai search answers in camelCase (`mediaType`), while the picker routes
+ * ask with `media_type`. Read both so a copied video is never mistaken for still.
+ */
+export function civitaiMatchIsVideo(match: {
+  media_type?: "image" | "video";
+  mediaType?: "image" | "video";
+  contentType?: string;
+}): boolean {
+  return match.media_type === "video"
+    || match.mediaType === "video"
+    || match.contentType === "video/mp4";
 }
 
 /** Reel setting: turn ready photos into motion with FAL image-to-video (your key). */

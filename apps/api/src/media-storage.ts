@@ -409,6 +409,25 @@ export class PostgresMediaRepository {
   }
 
   /**
+   * Ready assets of one project, oldest first. Studio uses this to fill empty
+   * scenes from media the owner already added, without another search.
+   */
+  async listReady(ownerId: string, projectId: string, limit = 60): Promise<StoredMedia[]> {
+    const bounded = Math.min(200, Math.max(1, Math.trunc(limit)));
+    const result = await this.pool.query<MediaRow>(
+      `SELECT id, "ownerId", "projectId", "quarantineObjectKey", "sealedObjectKey",
+              "sealedEtag", "sealedVersionId", "sealedSha256", state, "declaredType",
+              "maxBytes", detected, attribution
+         FROM "MediaAsset"
+        WHERE "ownerId" = $1 AND "projectId" = $2 AND state = 'ready'
+        ORDER BY "createdAt" ASC, id ASC
+        LIMIT $3`,
+      [ownerId, projectId, bounded]
+    );
+    return result.rows;
+  }
+
+  /**
    * Marks the asset `inspecting` and enqueues the inspection work item in one
    * transaction, mirroring `PostgresRenderRepository.create`: a crash between
    * the two writes must not be possible per docs/decisions/queue.md.

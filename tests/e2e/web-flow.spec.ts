@@ -1949,6 +1949,48 @@ test("a Civitai answer stays references and never auto-fills the storyboard", as
   await expect(page.getByRole("button", { name: "Edit scene 1" }).locator("img")).toHaveCount(0);
 });
 
+test("Civitai videos only join auto-fill after the owner saves the opt-in", async ({ page }) => {
+  await page.route("**/api/providers/civitai/credential", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ provider: "civitai", connected: true, hint: "1234" })
+    });
+  });
+  let saved: Record<string, unknown> | undefined;
+  await page.route("**/api/providers/civitai/settings", async (route) => {
+    const settings = {
+      max_nsfw_level: "Soft",
+      allowed_creators: [],
+      min_short_side: 1080,
+      videos_in_auto_fill: false,
+      server_max_nsfw_level: "Soft"
+    };
+    if (route.request().method() === "GET") {
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(settings) });
+    }
+    if (route.request().method() === "PUT") {
+      saved = route.request().postDataJSON() as Record<string, unknown>;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ...settings, videos_in_auto_fill: true })
+      });
+    }
+    return route.continue();
+  });
+  await signIn(page);
+  await page.getByRole("button", { name: "Settings" }).first().click();
+  const toggle = page.getByRole("checkbox", { name: /Use Civitai videos in auto-fill/ });
+  await expect(toggle).not.toBeChecked();
+  await toggle.check();
+  await page.getByRole("button", { name: "Save Civitai filters" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Civitai filters saved." })).toBeVisible();
+  expect(saved?.videos_in_auto_fill).toBe(true);
+  await expect(toggle).toBeChecked();
+});
+
 test("a Pexels-only studio offers one mix answer and names the locked key in Settings", async ({ page }) => {
   await stubProvidersDisconnected(page, ["fal"]);
   await page.setViewportSize({ width: 1440, height: 900 });

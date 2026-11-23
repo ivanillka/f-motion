@@ -564,6 +564,132 @@ export function sceneUsesStock(scene: { picture?: string }): boolean {
   return scene.picture !== "footage" && scene.picture !== "document";
 }
 
+/** One ready asset the caller already resolved for a scene. */
+export interface FillSceneMedia {
+  media_id: string;
+  /** Short human title used only when the scene has no caption yet. */
+  title?: string;
+}
+
+export interface FillEmptyScenesOptions {
+  /** The owner's own photos and clips, in the order they were added. */
+  own?: readonly FillSceneMedia[];
+  /** Licensed stock already resolved for this storyboard, in match order. */
+  stock?: readonly FillSceneMedia[];
+}
+
+export interface FilledScene {
+  scene_id: string;
+  media_id: string;
+  source: "own" | "stock";
+}
+
+export interface FillEmptyScenesResult {
+  scenes: Scene[];
+  filled: FilledScene[];
+  /** Scenes that still have no media after this pass, in storyboard order. */
+  empty: string[];
+}
+
+function usableFillMedia(
+  candidates: readonly FillSceneMedia[] | undefined,
+  inUse: ReadonlySet<string>
+): FillSceneMedia[] {
+  const seen = new Set<string>();
+  const usable: FillSceneMedia[] = [];
+  for (const candidate of candidates ?? []) {
+    const mediaId = candidate.media_id?.trim();
+    if (!mediaId || inUse.has(mediaId) || seen.has(mediaId)) continue;
+    seen.add(mediaId);
+    usable.push({ media_id: mediaId, ...(candidate.title?.trim() ? { title: candidate.title.trim() } : {}) });
+  }
+  return usable;
+}
+
+/** One short sentence for an empty caption; the purpose is used at most once. */
+function filledCaption(title: string | undefined, purpose: string): string {
+  const line = (title ? sentenceCase(title) : captionSentence(purpose))
+    .replace(/[.!?]+$/u, "")
+    .trim();
+  if (!line) return "";
+  const bounded = line.length > CAPTION_MAX_CHARS - 1
+    ? line.slice(0, CAPTION_MAX_CHARS - 1).replace(/\s+\S*$/u, "").trim()
+    : line;
+  return bounded ? `${bounded}.` : "";
+}
+
+/**
+ * Gives every scene without media a picture: the owner's own library first,
+ * spread so the reel does not open on three stock clips in a row, then the
+ * caller's stock picks for whatever is left.
+ *
+ * Scenes that already have media are never touched, a caption the owner wrote
+ * is never replaced, and a second pass over the same project is a no-op. Mix
+ * reels keep their AI footage and diagram scenes free for generation.
+ */
+export function fillEmptyScenes(
+  project: Pick<ProjectSnapshot, "scenes"> & { brief?: Pick<ProjectSnapshot["brief"], "purpose"> },
+  options: FillEmptyScenesOptions = {}
+): FillEmptyScenesResult {
+  const ordered = [...project.scenes].sort((left, right) => left.order - right.order);
+  const emptyIndexes = ordered.flatMap((scene, index) => scene.media_id?.trim() ? [] : [index]);
+  // Assets the storyboard already shows are never spread a second time.
+  const inUse = new Set(ordered.flatMap((scene) => scene.media_id?.trim() ? [scene.media_id.trim()] : []));
+  const own = usableFillMedia(options.own, inUse);
+  const stock = usableFillMedia(options.stock, inUse);
+  const assignments = new Map<number, { media: FillSceneMedia; source: "own" | "stock" }>();
+
+  // Even spread: three photos across nine scenes land on the third, fifth, and
+  // eighth scene instead of bunching up at the opening.
+  const ownCount = Math.min(own.length, emptyIndexes.length);
+  for (let slot = 0; slot < ownCount; slot += 1) {
+    const position = Math.round(((slot + 1) * (emptyIndexes.length + 1)) / (ownCount + 1)) - 1;
+    const index = emptyIndexes[Math.min(emptyIndexes.length - 1, Math.max(0, position))];
+    if (index === undefined || assignments.has(index)) continue;
+    assignments.set(index, { media: own[slot]!, source: "own" });
+  }
+
+  let stockSlot = 0;
+  for (const index of emptyIndexes) {
+    if (stockSlot >= stock.length) break;
+    if (assignments.has(index)) continue;
+    const scene = ordered[index];
+    if (!scene || !sceneUsesStock(scene)) continue;
+    assignments.set(index, { media: stock[stockSlot]!, source: "stock" });
+    stockSlot += 1;
+  }
+
+  const purpose = project.brief?.purpose?.trim() ?? "";
+  let purposeSpent = false;
+  const filled: FilledScene[] = [];
+  const scenes = ordered.map((scene, index) => {
+    const pick = assignments.get(index);
+    if (!pick) return scene;
+    filled.push({ scene_id: scene.id, media_id: pick.media.media_id, source: pick.source });
+    let caption = scene.caption;
+    if (!caption.trim()) {
+      const title = pick.media.title;
+      // The purpose line lands once, so the reel does not repeat one sentence.
+      const usePurpose = !title && Boolean(purpose) && !purposeSpent;
+      if (title || usePurpose) {
+        caption = filledCaption(title, usePurpose ? purpose : "");
+        if (usePurpose && caption) purposeSpent = true;
+      }
+    }
+    return {
+      ...scene,
+      media_id: pick.media.media_id,
+      ...(caption !== scene.caption ? { caption } : {})
+    };
+  });
+
+  return {
+    scenes,
+    filled,
+    empty: scenes.flatMap((scene) => scene.media_id?.trim() ? [] : [scene.id])
+  };
+}
+
 function clipPrompt(text: string): string {
   const trimmed = text.trim().replace(/\s+/gu, " ");
   if (trimmed.length <= 240) return trimmed;
