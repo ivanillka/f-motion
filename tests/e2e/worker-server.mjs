@@ -9,7 +9,13 @@ import { renderPreview } from "../../apps/worker/dist/index.js";
 import { validateRenderProfile } from "../../packages/reel-engine/dist/index.js";
 
 const directory = await mkdtemp(join(tmpdir(), "fengine-e2e-worker-"));
-const fixtureDirectory = await realpath(fileURLToPath(new URL("../../apps/worker/test/fixtures/", import.meta.url)));
+// Two committed fixture roots: the worker's own media, and the reel-path
+// fixtures the parity gate renders in both runtimes. A path outside both is
+// still rejected, so a test cannot point the worker at arbitrary files.
+const fixtureDirectories = await Promise.all([
+  "../../apps/worker/test/fixtures/",
+  "../../tests/reel-path/fixtures/"
+].map((path) => realpath(fileURLToPath(new URL(path, import.meta.url)))));
 const results = new Map();
 
 async function validatedJob(body) {
@@ -34,8 +40,11 @@ async function validatedJob(body) {
       throw new Error(`missing media input for scene ${scene.id}`);
     }
     const path = await realpath(descriptor.path);
-    const fixtureRelative = relative(fixtureDirectory, path);
-    if (!fixtureRelative || fixtureRelative.startsWith("..") || isAbsolute(fixtureRelative)) {
+    const insideFixture = fixtureDirectories.some((root) => {
+      const fixtureRelative = relative(root, path);
+      return Boolean(fixtureRelative) && !fixtureRelative.startsWith("..") && !isAbsolute(fixtureRelative);
+    });
+    if (!insideFixture) {
       throw new Error("media input escaped fixture directory");
     }
     mediaInputs[scene.media_id] = {

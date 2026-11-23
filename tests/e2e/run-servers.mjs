@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { FalCredentialMissingError } from "../../apps/api/dist/fal-credentials.js";
 import { ProjectService } from "../../apps/api/dist/domain.js";
 import { createTestApp } from "../../apps/api/dist/server.js";
 
@@ -156,7 +157,11 @@ const falCredentials = {
   async status() { return { provider: "fal", connected: true, hint: "abcd" }; },
   async connect() { return { provider: "fal", connected: true, hint: "abcd" }; },
   async test() { return { provider: "fal", connected: true, hint: "abcd" }; },
-  async disconnect() {}
+  async disconnect() {},
+  // Narration stays off in e2e: there is no real key to decrypt and no paid
+  // Kokoro call is allowed. Throwing the missing-credential error makes
+  // narrationSynthesizer return undefined instead of crashing on a partial mock.
+  async decryptForOwner() { throw new FalCredentialMissingError("FAL is not connected"); }
 };
 const falGeneration = {
   async quoteVideo(ownerId, projectId, sceneId, sourceMediaId, motionPrompt) {

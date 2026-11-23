@@ -20,6 +20,11 @@
     }
   },
   "files": ["dist"],
+  "dependencies": {
+    "@f-engine/contracts": "^0.1.0",
+    "@f-engine/reference-worker": "*",
+    "@f-engine/reel-engine": "^0.1.0"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test test/*.test.mjs"
