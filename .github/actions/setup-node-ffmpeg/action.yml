@@ -1,5 +1,5 @@
 name: Setup Node and FFmpeg
-description: Install the pinned Node toolchain, restore the npm cache, and optionally add FFmpeg.
+description: Install the pinned Node toolchain, restore the npm cache, and optionally add FFmpeg and the Playwright browsers.
 inputs:
   ffmpeg:
     description: Install FFmpeg from apt when true.
@@ -9,6 +9,10 @@ inputs:
     description: Run npm ci after the toolchain is ready when true.
     required: false
     default: "true"
+  playwright:
+    description: Cache and install the Chromium browser for Playwright when true. Requires install to be true so the Playwright version can be resolved.
+    required: false
+    default: "false"
 runs:
   using: composite
   steps:
@@ -24,3 +28,32 @@ runs:
     - if: ${{ inputs.install == 'true' }}
       shell: bash
       run: npm ci
+    # Playwright resolves browsers from this directory at run time too, so the
+    # cached path and the lookup path cannot drift apart.
+    - if: ${{ inputs.playwright == 'true' }}
+      shell: bash
+      run: echo "PLAYWRIGHT_BROWSERS_PATH=${{ github.workspace }}/.cache/ms-playwright" >> "$GITHUB_ENV"
+    # The installed package version, not the manifest range, so a lockfile bump
+    # moves the cache key even when package.json did not change.
+    - if: ${{ inputs.playwright == 'true' }}
+      id: playwright-version
+      shell: bash
+      run: |
+        version=$(node -p "require('@playwright/test/package.json').version")
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+    - if: ${{ inputs.playwright == 'true' }}
+      id: playwright-cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}-
+    # A miss downloads the browser and its system libraries. A hit keeps the
+    # browser and only refreshes the apt libraries, which is idempotent.
+    - if: ${{ inputs.playwright == 'true' && steps.playwright-cache.outputs.cache-hit != 'true' }}
+      shell: bash
+      run: npx playwright install --with-deps chromium
+    - if: ${{ inputs.playwright == 'true' && steps.playwright-cache.outputs.cache-hit == 'true' }}
+      shell: bash
+      run: npx playwright install-deps chromium

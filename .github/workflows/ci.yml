@@ -79,7 +79,8 @@ jobs:
       - uses: ./.github/actions/setup-node-ffmpeg
         with:
           ffmpeg: "true"
-      - run: npx playwright install --with-deps chromium
+          # One place owns how Chromium arrives, and it is cached across runs.
+          playwright: "true"
       # The webServer builds api/worker, which compile against the
       # declarations emitted by tsc -b.
       - run: npm run lint
