@@ -1,0 +1,52 @@
+# Debian packages the setup-node-ffmpeg action installs.
+#
+# The apt cache key hashes this file, so editing it is what invalidates the
+# cache. Each [scope] header starts a group: the ffmpeg group is installed when
+# the action's ffmpeg input is true, and the playwright group when its
+# playwright input is true. The key also carries the requested groups, and a
+# cache miss downloads only those, so the job that needs ffmpeg never moves the
+# Chromium debs and the two jobs never share or overwrite one entry.
+
+[ffmpeg]
+ffmpeg
+
+# The Chromium system libraries behind `npx playwright install-deps chromium`
+# on ubuntu-24.04-x64, copied from Playwright 1.62.0 nativeDeps so the e2e job
+# can take them from the deb cache instead of running apt during install-deps.
+# install-deps installs its `tools` list and its `chromium` list, so both are
+# here: the fonts and X utilities first, then the libraries the browser links
+# against. Refresh this list when the Playwright version moves.
+[playwright]
+fonts-freefont-ttf
+fonts-ipafont-gothic
+fonts-liberation
+fonts-noto-color-emoji
+fonts-tlwg-loma-otf
+fonts-unifont
+fonts-wqy-zenhei
+libfontconfig1
+libfreetype6
+xfonts-cyrillic
+xfonts-scalable
+xvfb
+libasound2t64
+libatk-bridge2.0-0t64
+libatk1.0-0t64
+libatspi2.0-0t64
+libcairo2
+libcups2t64
+libdbus-1-3
+libdrm2
+libgbm1
+libglib2.0-0t64
+libnspr4
+libnss3
+libpango-1.0-0
+libx11-6
+libxcb1
+libxcomposite1
+libxdamage1
+libxext6
+libxfixes3
+libxkbcommon0
+libxrandr2

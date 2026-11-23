@@ -1,5 +1,5 @@
 name: Setup Node and FFmpeg
-description: Install the pinned Node toolchain, restore the npm cache, and optionally add FFmpeg and the Playwright browsers.
+description: Install the pinned Node toolchain, restore the npm and apt caches, and optionally add FFmpeg and the Playwright browsers.
 inputs:
   ffmpeg:
     description: Install FFmpeg from apt when true.
@@ -20,11 +20,193 @@ runs:
       with:
         node-version: 24.15.0
         cache: npm
-    - if: ${{ inputs.ffmpeg == 'true' }}
+    # apt-get update plus the package fetches were the slowest part of the two
+    # heavy jobs: minutes of mirror latency on every run. The cache holds the
+    # debs and the package index for .github/apt-packages.txt, and its key
+    # hashes that file. v3 also carries the scopes this job asked for, so the
+    # light job and the heavy job keep separate entries instead of sharing one.
+    - if: ${{ inputs.ffmpeg == 'true' || inputs.playwright == 'true' }}
+      id: apt-scopes
+      name: Resolve the apt scopes
       shell: bash
+      env:
+        APT_WANT_FFMPEG: ${{ inputs.ffmpeg }}
+        APT_WANT_PLAYWRIGHT: ${{ inputs.playwright }}
       run: |
+        set -euo pipefail
+        scopes=()
+        if [ "$APT_WANT_FFMPEG" = "true" ]; then scopes+=(ffmpeg); fi
+        if [ "$APT_WANT_PLAYWRIGHT" = "true" ]; then scopes+=(playwright); fi
+        if [ ${#scopes[@]} -eq 0 ]; then
+          echo "apt: this job needs no scopes"
+          exit 0
+        fi
+        # The list goes into the cache key, so its order has to be stable.
+        list=$(IFS=-; echo "${scopes[*]}")
+        echo "scopes=$list" >> "$GITHUB_OUTPUT"
+        echo "apt: this job caches the [$list] scopes"
+    - if: ${{ inputs.ffmpeg == 'true' || inputs.playwright == 'true' }}
+      id: apt-cache
+      name: Restore the apt package cache
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ${{ runner.temp }}/apt-archives
+        # Only an exact key match is usable: the step installs from the cached
+        # debs and keeps them in place, so a partial match would be dead weight.
+        # The scopes keep the two jobs apart: the test job uses
+        # Linux-apt-v3-ffmpeg-<hash> and the e2e job
+        # Linux-apt-v3-ffmpeg-playwright-<hash>, so neither job can restore or
+        # overwrite debs the other one needs.
+        # ponytail: the key ignores the index inside the cache, so an exact hit
+        # keeps installing against the index it was filled with. Ceiling: a
+        # mirror that drops every cached deb version. Upgrade path: fold an
+        # index stamp into the key.
+        key: ${{ runner.os }}-apt-v3-${{ steps.apt-scopes.outputs.scopes }}-${{ hashFiles('.github/apt-packages.txt') }}
+    # A hit installs from the cached debs against the cached index without
+    # touching the network. A miss refreshes the index, keeps a copy of it,
+    # downloads only the scopes this job asked for, then installs from the
+    # debs. Anything unexpected falls back to plain apt and says why.
+    - if: ${{ inputs.ffmpeg == 'true' || inputs.playwright == 'true' }}
+      name: Install apt packages
+      shell: bash
+      env:
+        APT_CACHE_DIR: ${{ runner.temp }}/apt-archives
+        APT_CACHE_HIT: ${{ steps.apt-cache.outputs.cache-hit }}
+        APT_CACHE_KEY: ${{ runner.os }}-apt-v3-${{ steps.apt-scopes.outputs.scopes }}-${{ hashFiles('.github/apt-packages.txt') }}
+        APT_MANIFEST: ${{ github.workspace }}/.github/apt-packages.txt
+        APT_SCOPES: ${{ steps.apt-scopes.outputs.scopes }}
+        APT_WANT_FFMPEG: ${{ inputs.ffmpeg }}
+        APT_WANT_PLAYWRIGHT: ${{ inputs.playwright }}
+      run: |
+        set -euo pipefail
+        started=$SECONDS
+        echo "apt: cache key $APT_CACHE_KEY"
+
+        # apt can leave root-owned lock, partial/ and auxfiles/ entries inside
+        # the cached directory and the save step runs as the runner, so clear
+        # them on every exit rather than letting the cache quietly fail to save.
+        trap 'sudo rm -rf "$APT_CACHE_DIR/partial" "$APT_CACHE_DIR/lock" \
+          "$APT_CACHE_DIR/lists/partial" "$APT_CACHE_DIR/lists/lock" \
+          "$APT_CACHE_DIR/lists/auxfiles"' EXIT
+
+        # Package names listed under a [scope] header in the manifest.
+        section() {
+          awk -v want="$1" '
+            /^\[.+\]$/ { scope = substr($0, 2, length($0) - 2); next }
+            scope == want && $0 !~ /^#/ && NF { print }
+          ' "$APT_MANIFEST"
+        }
+
+        need_ffmpeg=()
+        need_playwright=()
+        if [ "$APT_WANT_FFMPEG" = "true" ]; then mapfile -t need_ffmpeg < <(section ffmpeg); fi
+        if [ "$APT_WANT_PLAYWRIGHT" = "true" ]; then mapfile -t need_playwright < <(section playwright); fi
+        if [ ${#need_ffmpeg[@]} -eq 0 ] && [ ${#need_playwright[@]} -eq 0 ]; then
+          echo "apt: this job needs no packages"
+          exit 0
+        fi
+        echo "apt: installing [${need_ffmpeg[*]:-}] [${need_playwright[*]:-}]"
+
+        install_dir="$RUNNER_TEMP/apt-install"
+        lists_dir="$APT_CACHE_DIR/lists"
+        # apt writes a lock file and partial/ next to the debs it installs, and
+        # it does that as root. Installing from a copy keeps the cached
+        # directory runner-owned, which is what the save step can read.
+        stage_install_dir() {
+          sudo rm -rf "$install_dir"
+          mkdir -p "$install_dir"
+          compgen -G "$APT_CACHE_DIR/*.deb" > /dev/null || return 1
+          cp "$APT_CACHE_DIR"/*.deb "$install_dir"/
+        }
+
+        # Options for an install that must not fetch anything.
+        cache_opts=(-o "Dir::Cache::archives=$install_dir")
+
+        install_from_cache() {
+          if [ ${#need_ffmpeg[@]} -gt 0 ]; then
+            sudo apt-get install --yes --no-download "${cache_opts[@]}" "${need_ffmpeg[@]}" || return 1
+          fi
+          if [ ${#need_playwright[@]} -gt 0 ]; then
+            sudo apt-get install --yes --no-install-recommends --no-download \
+              "${cache_opts[@]}" "${need_playwright[@]}" || return 1
+          fi
+        }
+
+        install_from_network() {
+          if [ ${#need_ffmpeg[@]} -gt 0 ]; then
+            sudo apt-get install --yes "${need_ffmpeg[@]}" || return 1
+          fi
+          if [ ${#need_playwright[@]} -gt 0 ]; then
+            sudo apt-get install --yes --no-install-recommends "${need_playwright[@]}" || return 1
+          fi
+        }
+
+        download_to_cache() {
+          local staging="$RUNNER_TEMP/apt-downloads"
+          local archives="Dir::Cache::archives=$staging"
+          rm -rf "$staging"
+          mkdir -p "$staging" "$APT_CACHE_DIR"
+          if [ ${#need_ffmpeg[@]} -gt 0 ]; then
+            sudo apt-get install --yes --download-only -o "$archives" "${need_ffmpeg[@]}" ||
+              echo "::warning::apt: the ffmpeg debs did not all download, the install below fetches what is missing"
+          fi
+          if [ ${#need_playwright[@]} -gt 0 ]; then
+            sudo apt-get install --yes --no-install-recommends --download-only \
+              -o "$archives" "${need_playwright[@]}" ||
+              echo "::warning::apt: the playwright debs did not all download, the install below fetches what is missing"
+          fi
+          # apt keeps in-flight downloads under partial/, which is left behind.
+          find "$staging" -maxdepth 1 -name '*.deb' -exec cp {} "$APT_CACHE_DIR"/ \;
+        }
+
+        # The index travels with the debs: the runner image ships lists from its
+        # build date, and installing against those resolves versions the cached
+        # debs do not have, so apt refuses them. The copy is byte for byte the
+        # one the debs were downloaded against. Translation files are the bulk
+        # of the directory and only carry descriptions, so they stay behind.
+        publish_index() {
+          mkdir -p "$lists_dir"
+          find /var/lib/apt/lists -maxdepth 1 -type f ! -name 'lock*' ! -name '*Translation*' \
+            -exec cp {} "$lists_dir"/ \; 2>/dev/null || true
+        }
+
+        if [ "$APT_CACHE_HIT" = "true" ] && compgen -G "$APT_CACHE_DIR/*.deb" > /dev/null; then
+          echo "apt: cache hit, $(compgen -G "$APT_CACHE_DIR/*.deb" | wc -l) debs for the [$APT_SCOPES] scopes and the package index in $APT_CACHE_DIR"
+          if [ -d "$lists_dir" ]; then
+            cache_opts+=(-o "Dir::State::lists=$lists_dir")
+          else
+            echo "apt: the cache carries no package index, falling back to the one in the image"
+          fi
+          if stage_install_dir && install_from_cache; then
+            echo "apt: installed from the cached debs in $((SECONDS - started))s"
+            exit 0
+          fi
+          # The index and the debs come from the same update, so this means the
+          # cache was cut short or the mirror dropped a deb. Refreshing the
+          # index and installing from the debs again still avoids the download.
+          echo "::warning::apt: the cached debs did not install, refreshing the index and retrying"
+          cache_opts=(-o "Dir::Cache::archives=$install_dir")
+          sudo apt-get update
+          if install_from_cache; then
+            echo "apt: installed from the cached debs after the index refresh in $((SECONDS - started))s"
+            exit 0
+          fi
+          echo "::warning::apt: the cached debs do not cover these packages, fetching from the network"
+          install_from_network
+          echo "apt: fallback install finished in $((SECONDS - started))s"
+          exit 0
+        fi
+
+        echo "apt: cache miss, refreshing the package index"
         sudo apt-get update
-        sudo apt-get install --yes ffmpeg
+        publish_index
+        download_to_cache
+        echo "apt: downloaded $(compgen -G "$APT_CACHE_DIR/*.deb" | wc -l) debs for the [$APT_SCOPES] scopes"
+        if ! stage_install_dir || ! install_from_cache; then
+          echo "::warning::apt: installing from the downloaded debs failed, fetching from the network instead"
+          install_from_network
+        fi
+        echo "apt: cache populated and packages installed in $((SECONDS - started))s"
     - if: ${{ inputs.install == 'true' }}
       shell: bash
       run: npm ci
@@ -43,17 +225,25 @@ runs:
         echo "version=$version" >> "$GITHUB_OUTPUT"
     - if: ${{ inputs.playwright == 'true' }}
       id: playwright-cache
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ${{ github.workspace }}/.cache/ms-playwright
         key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('package-lock.json') }}
         restore-keys: |
           ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}-
     # A miss downloads the browser and its system libraries. A hit keeps the
-    # browser and only refreshes the apt libraries, which is idempotent.
+    # browser, and its libraries come from the cached debs installed above, so
+    # install-deps only runs when the deb cache did not satisfy them.
     - if: ${{ inputs.playwright == 'true' && steps.playwright-cache.outputs.cache-hit != 'true' }}
       shell: bash
       run: npx playwright install --with-deps chromium
     - if: ${{ inputs.playwright == 'true' && steps.playwright-cache.outputs.cache-hit == 'true' }}
+      name: Verify the Chromium system libraries
       shell: bash
-      run: npx playwright install-deps chromium
+      run: |
+        if npx playwright install-deps chromium --dry-run; then
+          echo "playwright: the Chromium libraries came from the apt deb cache"
+        else
+          echo "::warning::playwright: the apt deb cache did not satisfy the Chromium libraries, falling back to install-deps"
+          npx playwright install-deps chromium
+        fi
