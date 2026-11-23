@@ -1,5 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "outDir": "dist", "rootDir": "src" },
+  "references": [
+    { "path": "../contracts" },
+    { "path": "../reel-engine" },
+    { "path": "../../apps/worker" }
+  ],
   "include": ["src/**/*.ts"]
 }

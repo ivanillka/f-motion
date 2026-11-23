@@ -49,6 +49,7 @@ studio under **Settings → What’s new**. Product version lives in root
 - `POST /batches` runs that same function once per item, then hard-deletes the project. Serial, result-only.
 - `fmotion batch` calls `POST /v1/batches` for brief/stock items. Local files still use `composeReel` because the bytes live on the client.
 - `fmotion check <projectId>` calls `GET /v1/projects/{id}/check` and reports missing or not-ready media, an empty storyboard or empty captions, cue timing that does not fit the scene, text that cannot fit the safe area, mark overlap, and spoken takes or cues that run past their scene before a render starts. Errors exit 1; warnings alone exit 0. Ship together with Pages, the API, and the VPS in one release.
+- `fmotion render-local <project-dir|snapshot.json> -o <out.mp4> [--profile preview|final]` builds the worker's own FFmpeg job and renders on this machine, so a draft becomes an MP4 without the API or queue. It fails before encoding when FFmpeg, ffprobe, the caption fonts, the F-Motion mark, or referenced media are missing, then verifies the frame size and duration before publishing the file. This is CLI groundwork, not the desktop app. Ship together with Pages, the API, and the VPS in one release.
 - MCP `delete_project` and result-only bulk docs. Bulk AI generation stays rejected.
 
 ## [0.3.1] — 2026-09-01
