@@ -1,0 +1,26 @@
+name: Setup Node and FFmpeg
+description: Install the pinned Node toolchain, restore the npm cache, and optionally add FFmpeg.
+inputs:
+  ffmpeg:
+    description: Install FFmpeg from apt when true.
+    required: false
+    default: "false"
+  install:
+    description: Run npm ci after the toolchain is ready when true.
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - if: ${{ inputs.ffmpeg == 'true' }}
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install --yes ffmpeg
+    - if: ${{ inputs.install == 'true' }}
+      shell: bash
+      run: npm ci
