@@ -26,7 +26,7 @@ runs:
     - if: ${{ inputs.ffmpeg == 'true' || inputs.playwright == 'true' }}
       id: apt-cache
       name: Restore the apt package cache
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ${{ runner.temp }}/apt-archives
         key: ${{ runner.os }}-apt-${{ hashFiles('.github/apt-packages.txt') }}
@@ -49,6 +49,11 @@ runs:
         set -euo pipefail
         started=$SECONDS
 
+        # apt can leave root-owned lock and partial/ entries inside the cached
+        # directory and the save step runs as the runner, so clear them on every
+        # exit rather than letting the cache quietly fail to save.
+        trap 'sudo rm -rf "$APT_CACHE_DIR/partial" "$APT_CACHE_DIR/lock"' EXIT
+
         # Package names listed under a [scope] header in the manifest.
         section() {
           awk -v want="$1" '
@@ -69,8 +74,19 @@ runs:
         fi
         echo "apt: installing [${need_ffmpeg[*]:-}] [${need_playwright[*]:-}]"
 
+        install_dir="$RUNNER_TEMP/apt-install"
+        # apt writes a lock file and partial/ next to the debs it installs, and
+        # it does that as root. Installing from a copy keeps the cached
+        # directory runner-owned, which is what the save step can read.
+        stage_install_dir() {
+          sudo rm -rf "$install_dir"
+          mkdir -p "$install_dir"
+          compgen -G "$APT_CACHE_DIR/*.deb" > /dev/null || return 1
+          cp "$APT_CACHE_DIR"/*.deb "$install_dir"/
+        }
+
         install_from_cache() {
-          local archives="Dir::Cache::archives=$APT_CACHE_DIR"
+          local archives="Dir::Cache::archives=$install_dir"
           if [ ${#need_ffmpeg[@]} -gt 0 ]; then
             sudo apt-get install --yes --no-download -o "$archives" "${need_ffmpeg[@]}" || return 1
           fi
@@ -109,7 +125,7 @@ runs:
 
         if [ "$APT_CACHE_HIT" = "true" ] && compgen -G "$APT_CACHE_DIR/*.deb" > /dev/null; then
           echo "apt: cache hit, $(compgen -G "$APT_CACHE_DIR/*.deb" | wc -l) debs in $APT_CACHE_DIR, skipping apt-get update"
-          if install_from_cache; then
+          if stage_install_dir && install_from_cache; then
             echo "apt: installed from the cached debs in $((SECONDS - started))s"
             exit 0
           fi
@@ -127,7 +143,7 @@ runs:
         echo "apt: cache miss, refreshing the package index"
         sudo apt-get update
         download_to_cache
-        if ! install_from_cache; then
+        if ! stage_install_dir || ! install_from_cache; then
           echo "::warning::apt: installing from the downloaded debs failed, fetching from the network instead"
           install_from_network
         fi
@@ -150,7 +166,7 @@ runs:
         echo "version=$version" >> "$GITHUB_OUTPUT"
     - if: ${{ inputs.playwright == 'true' }}
       id: playwright-cache
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ${{ github.workspace }}/.cache/ms-playwright
         key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('package-lock.json') }}
