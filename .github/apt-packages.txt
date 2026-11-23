@@ -12,8 +12,22 @@ ffmpeg
 # The Chromium system libraries behind `npx playwright install-deps chromium`
 # on ubuntu-24.04-x64, copied from Playwright 1.62.0 nativeDeps so the e2e job
 # can take them from the deb cache instead of running apt during install-deps.
-# Refresh this list when the Playwright version moves.
+# install-deps installs its `tools` list and its `chromium` list, so both are
+# here: the fonts and X utilities first, then the libraries the browser links
+# against. Refresh this list when the Playwright version moves.
 [playwright]
+fonts-freefont-ttf
+fonts-ipafont-gothic
+fonts-liberation
+fonts-noto-color-emoji
+fonts-tlwg-loma-otf
+fonts-unifont
+fonts-wqy-zenhei
+libfontconfig1
+libfreetype6
+xfonts-cyrillic
+xfonts-scalable
+xvfb
 libasound2t64
 libatk-bridge2.0-0t64
 libatk1.0-0t64
