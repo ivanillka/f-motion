@@ -23,7 +23,28 @@ runs:
     # apt-get update plus the package fetches were the slowest part of the two
     # heavy jobs: minutes of mirror latency on every run. The cache holds the
     # debs and the package index for .github/apt-packages.txt, and its key
-    # hashes that file. v2 carries the index next to the debs.
+    # hashes that file. v3 also carries the scopes this job asked for, so the
+    # light job and the heavy job keep separate entries instead of sharing one.
+    - if: ${{ inputs.ffmpeg == 'true' || inputs.playwright == 'true' }}
+      id: apt-scopes
+      name: Resolve the apt scopes
+      shell: bash
+      env:
+        APT_WANT_FFMPEG: ${{ inputs.ffmpeg }}
+        APT_WANT_PLAYWRIGHT: ${{ inputs.playwright }}
+      run: |
+        set -euo pipefail
+        scopes=()
+        if [ "$APT_WANT_FFMPEG" = "true" ]; then scopes+=(ffmpeg); fi
+        if [ "$APT_WANT_PLAYWRIGHT" = "true" ]; then scopes+=(playwright); fi
+        if [ ${#scopes[@]} -eq 0 ]; then
+          echo "apt: this job needs no scopes"
+          exit 0
+        fi
+        # The list goes into the cache key, so its order has to be stable.
+        list=$(IFS=-; echo "${scopes[*]}")
+        echo "scopes=$list" >> "$GITHUB_OUTPUT"
+        echo "apt: this job caches the [$list] scopes"
     - if: ${{ inputs.ffmpeg == 'true' || inputs.playwright == 'true' }}
       id: apt-cache
       name: Restore the apt package cache
@@ -32,28 +53,34 @@ runs:
         path: ${{ runner.temp }}/apt-archives
         # Only an exact key match is usable: the step installs from the cached
         # debs and keeps them in place, so a partial match would be dead weight.
+        # The scopes keep the two jobs apart: the test job uses
+        # Linux-apt-v3-ffmpeg-<hash> and the e2e job
+        # Linux-apt-v3-ffmpeg-playwright-<hash>, so neither job can restore or
+        # overwrite debs the other one needs.
         # ponytail: the key ignores the index inside the cache, so an exact hit
         # keeps installing against the index it was filled with. Ceiling: a
         # mirror that drops every cached deb version. Upgrade path: fold an
         # index stamp into the key.
-        key: ${{ runner.os }}-apt-v2-${{ hashFiles('.github/apt-packages.txt') }}
+        key: ${{ runner.os }}-apt-v3-${{ steps.apt-scopes.outputs.scopes }}-${{ hashFiles('.github/apt-packages.txt') }}
     # A hit installs from the cached debs against the cached index without
     # touching the network. A miss refreshes the index, keeps a copy of it,
-    # downloads every group in the manifest so the cache is the same whichever
-    # job fills it first, then installs from the debs. Anything unexpected
-    # falls back to plain apt and says why.
+    # downloads only the scopes this job asked for, then installs from the
+    # debs. Anything unexpected falls back to plain apt and says why.
     - if: ${{ inputs.ffmpeg == 'true' || inputs.playwright == 'true' }}
       name: Install apt packages
       shell: bash
       env:
         APT_CACHE_DIR: ${{ runner.temp }}/apt-archives
         APT_CACHE_HIT: ${{ steps.apt-cache.outputs.cache-hit }}
+        APT_CACHE_KEY: ${{ runner.os }}-apt-v3-${{ steps.apt-scopes.outputs.scopes }}-${{ hashFiles('.github/apt-packages.txt') }}
         APT_MANIFEST: ${{ github.workspace }}/.github/apt-packages.txt
+        APT_SCOPES: ${{ steps.apt-scopes.outputs.scopes }}
         APT_WANT_FFMPEG: ${{ inputs.ffmpeg }}
         APT_WANT_PLAYWRIGHT: ${{ inputs.playwright }}
       run: |
         set -euo pipefail
         started=$SECONDS
+        echo "apt: cache key $APT_CACHE_KEY"
 
         # apt can leave root-owned lock, partial/ and auxfiles/ entries inside
         # the cached directory and the save step runs as the runner, so clear
@@ -70,12 +97,10 @@ runs:
           ' "$APT_MANIFEST"
         }
 
-        mapfile -t all_ffmpeg < <(section ffmpeg)
-        mapfile -t all_playwright < <(section playwright)
         need_ffmpeg=()
         need_playwright=()
-        if [ "$APT_WANT_FFMPEG" = "true" ]; then need_ffmpeg=("${all_ffmpeg[@]}"); fi
-        if [ "$APT_WANT_PLAYWRIGHT" = "true" ]; then need_playwright=("${all_playwright[@]}"); fi
+        if [ "$APT_WANT_FFMPEG" = "true" ]; then mapfile -t need_ffmpeg < <(section ffmpeg); fi
+        if [ "$APT_WANT_PLAYWRIGHT" = "true" ]; then mapfile -t need_playwright < <(section playwright); fi
         if [ ${#need_ffmpeg[@]} -eq 0 ] && [ ${#need_playwright[@]} -eq 0 ]; then
           echo "apt: this job needs no packages"
           exit 0
@@ -121,13 +146,13 @@ runs:
           local archives="Dir::Cache::archives=$staging"
           rm -rf "$staging"
           mkdir -p "$staging" "$APT_CACHE_DIR"
-          if [ ${#all_ffmpeg[@]} -gt 0 ]; then
-            sudo apt-get install --yes --download-only -o "$archives" "${all_ffmpeg[@]}" ||
+          if [ ${#need_ffmpeg[@]} -gt 0 ]; then
+            sudo apt-get install --yes --download-only -o "$archives" "${need_ffmpeg[@]}" ||
               echo "::warning::apt: the ffmpeg debs did not all download, the install below fetches what is missing"
           fi
-          if [ ${#all_playwright[@]} -gt 0 ]; then
+          if [ ${#need_playwright[@]} -gt 0 ]; then
             sudo apt-get install --yes --no-install-recommends --download-only \
-              -o "$archives" "${all_playwright[@]}" ||
+              -o "$archives" "${need_playwright[@]}" ||
               echo "::warning::apt: the playwright debs did not all download, the install below fetches what is missing"
           fi
           # apt keeps in-flight downloads under partial/, which is left behind.
@@ -146,7 +171,7 @@ runs:
         }
 
         if [ "$APT_CACHE_HIT" = "true" ] && compgen -G "$APT_CACHE_DIR/*.deb" > /dev/null; then
-          echo "apt: cache hit, $(compgen -G "$APT_CACHE_DIR/*.deb" | wc -l) debs and the package index in $APT_CACHE_DIR"
+          echo "apt: cache hit, $(compgen -G "$APT_CACHE_DIR/*.deb" | wc -l) debs for the [$APT_SCOPES] scopes and the package index in $APT_CACHE_DIR"
           if [ -d "$lists_dir" ]; then
             cache_opts+=(-o "Dir::State::lists=$lists_dir")
           else
@@ -176,6 +201,7 @@ runs:
         sudo apt-get update
         publish_index
         download_to_cache
+        echo "apt: downloaded $(compgen -G "$APT_CACHE_DIR/*.deb" | wc -l) debs for the [$APT_SCOPES] scopes"
         if ! stage_install_dir || ! install_from_cache; then
           echo "::warning::apt: installing from the downloaded debs failed, fetching from the network instead"
           install_from_network

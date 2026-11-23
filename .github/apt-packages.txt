@@ -3,8 +3,9 @@
 # The apt cache key hashes this file, so editing it is what invalidates the
 # cache. Each [scope] header starts a group: the ffmpeg group is installed when
 # the action's ffmpeg input is true, and the playwright group when its
-# playwright input is true. Every group is downloaded on a cache miss, so the
-# cached debs are the same no matter which job fills the cache first.
+# playwright input is true. The key also carries the requested groups, and a
+# cache miss downloads only those, so the job that needs ffmpeg never moves the
+# Chromium debs and the two jobs never share or overwrite one entry.
 
 [ffmpeg]
 ffmpeg
