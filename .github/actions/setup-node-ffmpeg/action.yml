@@ -1,5 +1,5 @@
 name: Setup Node and FFmpeg
-description: Install the pinned Node toolchain, restore the npm cache, and optionally add FFmpeg and the Playwright browsers.
+description: Install the pinned Node toolchain, restore the npm and apt caches, and optionally add FFmpeg and the Playwright browsers.
 inputs:
   ffmpeg:
     description: Install FFmpeg from apt when true.
@@ -20,11 +20,118 @@ runs:
       with:
         node-version: 24.15.0
         cache: npm
-    - if: ${{ inputs.ffmpeg == 'true' }}
+    # apt-get update plus the package fetches were the slowest part of the two
+    # heavy jobs: minutes of mirror latency on every run. The cache holds the
+    # debs for .github/apt-packages.txt and its key hashes that file.
+    - if: ${{ inputs.ffmpeg == 'true' || inputs.playwright == 'true' }}
+      id: apt-cache
+      name: Restore the apt package cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/apt-archives
+        key: ${{ runner.os }}-apt-${{ hashFiles('.github/apt-packages.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-apt-
+    # A hit installs from the cached debs without touching the package index.
+    # A miss refreshes the index, downloads every group in the manifest so the
+    # cache is the same whichever job fills it first, then installs from the
+    # copy. Anything unexpected falls back to plain apt and says why.
+    - if: ${{ inputs.ffmpeg == 'true' || inputs.playwright == 'true' }}
+      name: Install apt packages
       shell: bash
+      env:
+        APT_CACHE_DIR: ${{ runner.temp }}/apt-archives
+        APT_CACHE_HIT: ${{ steps.apt-cache.outputs.cache-hit }}
+        APT_MANIFEST: ${{ github.workspace }}/.github/apt-packages.txt
+        APT_WANT_FFMPEG: ${{ inputs.ffmpeg }}
+        APT_WANT_PLAYWRIGHT: ${{ inputs.playwright }}
       run: |
+        set -euo pipefail
+        started=$SECONDS
+
+        # Package names listed under a [scope] header in the manifest.
+        section() {
+          awk -v want="$1" '
+            /^\[.+\]$/ { scope = substr($0, 2, length($0) - 2); next }
+            scope == want && $0 !~ /^#/ && NF { print }
+          ' "$APT_MANIFEST"
+        }
+
+        mapfile -t all_ffmpeg < <(section ffmpeg)
+        mapfile -t all_playwright < <(section playwright)
+        need_ffmpeg=()
+        need_playwright=()
+        if [ "$APT_WANT_FFMPEG" = "true" ]; then need_ffmpeg=("${all_ffmpeg[@]}"); fi
+        if [ "$APT_WANT_PLAYWRIGHT" = "true" ]; then need_playwright=("${all_playwright[@]}"); fi
+        if [ ${#need_ffmpeg[@]} -eq 0 ] && [ ${#need_playwright[@]} -eq 0 ]; then
+          echo "apt: this job needs no packages"
+          exit 0
+        fi
+        echo "apt: installing [${need_ffmpeg[*]:-}] [${need_playwright[*]:-}]"
+
+        install_from_cache() {
+          local archives="Dir::Cache::archives=$APT_CACHE_DIR"
+          if [ ${#need_ffmpeg[@]} -gt 0 ]; then
+            sudo apt-get install --yes --no-download -o "$archives" "${need_ffmpeg[@]}" || return 1
+          fi
+          if [ ${#need_playwright[@]} -gt 0 ]; then
+            sudo apt-get install --yes --no-install-recommends --no-download \
+              -o "$archives" "${need_playwright[@]}" || return 1
+          fi
+        }
+
+        install_from_network() {
+          if [ ${#need_ffmpeg[@]} -gt 0 ]; then
+            sudo apt-get install --yes "${need_ffmpeg[@]}" || return 1
+          fi
+          if [ ${#need_playwright[@]} -gt 0 ]; then
+            sudo apt-get install --yes --no-install-recommends "${need_playwright[@]}" || return 1
+          fi
+        }
+
+        download_to_cache() {
+          local staging="$RUNNER_TEMP/apt-downloads"
+          local archives="Dir::Cache::archives=$staging"
+          rm -rf "$staging"
+          mkdir -p "$staging" "$APT_CACHE_DIR"
+          if [ ${#all_ffmpeg[@]} -gt 0 ]; then
+            sudo apt-get install --yes --download-only -o "$archives" "${all_ffmpeg[@]}" ||
+              echo "::warning::apt: the ffmpeg debs did not all download, the install below fetches what is missing"
+          fi
+          if [ ${#all_playwright[@]} -gt 0 ]; then
+            sudo apt-get install --yes --no-install-recommends --download-only \
+              -o "$archives" "${all_playwright[@]}" ||
+              echo "::warning::apt: the playwright debs did not all download, the install below fetches what is missing"
+          fi
+          # apt keeps in-flight downloads under partial/, which is left behind.
+          find "$staging" -maxdepth 1 -name '*.deb' -exec cp {} "$APT_CACHE_DIR"/ \;
+        }
+
+        if [ "$APT_CACHE_HIT" = "true" ] && compgen -G "$APT_CACHE_DIR/*.deb" > /dev/null; then
+          echo "apt: cache hit, $(compgen -G "$APT_CACHE_DIR/*.deb" | wc -l) debs in $APT_CACHE_DIR, skipping apt-get update"
+          if install_from_cache; then
+            echo "apt: installed from the cached debs in $((SECONDS - started))s"
+            exit 0
+          fi
+          # ponytail: an exact-hit cache is never rewritten, so a deb set that
+          # apt stops accepting keeps falling back until the manifest changes or
+          # the cache expires. Upgrade path: fold an apt index stamp into the key
+          # once runner images drift inside a cache lifetime.
+          echo "::warning::apt: the cached debs were incomplete or stale, falling back to apt-get update + install"
+          sudo apt-get update
+          install_from_network
+          echo "apt: fallback install finished in $((SECONDS - started))s"
+          exit 0
+        fi
+
+        echo "apt: cache miss, refreshing the package index"
         sudo apt-get update
-        sudo apt-get install --yes ffmpeg
+        download_to_cache
+        if ! install_from_cache; then
+          echo "::warning::apt: installing from the downloaded debs failed, fetching from the network instead"
+          install_from_network
+        fi
+        echo "apt: cache populated and packages installed in $((SECONDS - started))s"
     - if: ${{ inputs.install == 'true' }}
       shell: bash
       run: npm ci
@@ -50,10 +157,18 @@ runs:
         restore-keys: |
           ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}-
     # A miss downloads the browser and its system libraries. A hit keeps the
-    # browser and only refreshes the apt libraries, which is idempotent.
+    # browser, and its libraries come from the cached debs installed above, so
+    # install-deps only runs when the deb cache did not satisfy them.
     - if: ${{ inputs.playwright == 'true' && steps.playwright-cache.outputs.cache-hit != 'true' }}
       shell: bash
       run: npx playwright install --with-deps chromium
     - if: ${{ inputs.playwright == 'true' && steps.playwright-cache.outputs.cache-hit == 'true' }}
+      name: Verify the Chromium system libraries
       shell: bash
-      run: npx playwright install-deps chromium
+      run: |
+        if npx playwright install-deps chromium --dry-run; then
+          echo "playwright: the Chromium libraries came from the apt deb cache"
+        else
+          echo "::warning::playwright: the apt deb cache did not satisfy the Chromium libraries, falling back to install-deps"
+          npx playwright install-deps chromium
+        fi
