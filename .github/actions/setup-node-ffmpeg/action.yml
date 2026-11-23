@@ -29,9 +29,9 @@ runs:
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ${{ runner.temp }}/apt-archives
+        # Only an exact key match is usable: the step installs from the cached
+        # debs and keeps them in place, so a partial match would be dead weight.
         key: ${{ runner.os }}-apt-${{ hashFiles('.github/apt-packages.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-apt-
     # A hit installs from the cached debs without touching the package index.
     # A miss refreshes the index, downloads every group in the manifest so the
     # cache is the same whichever job fills it first, then installs from the
