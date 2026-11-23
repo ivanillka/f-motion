@@ -22,7 +22,8 @@ runs:
         cache: npm
     # apt-get update plus the package fetches were the slowest part of the two
     # heavy jobs: minutes of mirror latency on every run. The cache holds the
-    # debs for .github/apt-packages.txt and its key hashes that file.
+    # debs and the package index for .github/apt-packages.txt, and its key
+    # hashes that file. v2 carries the index next to the debs.
     - if: ${{ inputs.ffmpeg == 'true' || inputs.playwright == 'true' }}
       id: apt-cache
       name: Restore the apt package cache
@@ -31,11 +32,16 @@ runs:
         path: ${{ runner.temp }}/apt-archives
         # Only an exact key match is usable: the step installs from the cached
         # debs and keeps them in place, so a partial match would be dead weight.
-        key: ${{ runner.os }}-apt-${{ hashFiles('.github/apt-packages.txt') }}
-    # A hit installs from the cached debs without touching the package index.
-    # A miss refreshes the index, downloads every group in the manifest so the
-    # cache is the same whichever job fills it first, then installs from the
-    # copy. Anything unexpected falls back to plain apt and says why.
+        # ponytail: the key ignores the index inside the cache, so an exact hit
+        # keeps installing against the index it was filled with. Ceiling: a
+        # mirror that drops every cached deb version. Upgrade path: fold an
+        # index stamp into the key.
+        key: ${{ runner.os }}-apt-v2-${{ hashFiles('.github/apt-packages.txt') }}
+    # A hit installs from the cached debs against the cached index without
+    # touching the network. A miss refreshes the index, keeps a copy of it,
+    # downloads every group in the manifest so the cache is the same whichever
+    # job fills it first, then installs from the debs. Anything unexpected
+    # falls back to plain apt and says why.
     - if: ${{ inputs.ffmpeg == 'true' || inputs.playwright == 'true' }}
       name: Install apt packages
       shell: bash
@@ -49,10 +55,12 @@ runs:
         set -euo pipefail
         started=$SECONDS
 
-        # apt can leave root-owned lock and partial/ entries inside the cached
-        # directory and the save step runs as the runner, so clear them on every
-        # exit rather than letting the cache quietly fail to save.
-        trap 'sudo rm -rf "$APT_CACHE_DIR/partial" "$APT_CACHE_DIR/lock"' EXIT
+        # apt can leave root-owned lock, partial/ and auxfiles/ entries inside
+        # the cached directory and the save step runs as the runner, so clear
+        # them on every exit rather than letting the cache quietly fail to save.
+        trap 'sudo rm -rf "$APT_CACHE_DIR/partial" "$APT_CACHE_DIR/lock" \
+          "$APT_CACHE_DIR/lists/partial" "$APT_CACHE_DIR/lists/lock" \
+          "$APT_CACHE_DIR/lists/auxfiles"' EXIT
 
         # Package names listed under a [scope] header in the manifest.
         section() {
@@ -75,6 +83,7 @@ runs:
         echo "apt: installing [${need_ffmpeg[*]:-}] [${need_playwright[*]:-}]"
 
         install_dir="$RUNNER_TEMP/apt-install"
+        lists_dir="$APT_CACHE_DIR/lists"
         # apt writes a lock file and partial/ next to the debs it installs, and
         # it does that as root. Installing from a copy keeps the cached
         # directory runner-owned, which is what the save step can read.
@@ -85,14 +94,16 @@ runs:
           cp "$APT_CACHE_DIR"/*.deb "$install_dir"/
         }
 
+        # Options for an install that must not fetch anything.
+        cache_opts=(-o "Dir::Cache::archives=$install_dir")
+
         install_from_cache() {
-          local archives="Dir::Cache::archives=$install_dir"
           if [ ${#need_ffmpeg[@]} -gt 0 ]; then
-            sudo apt-get install --yes --no-download -o "$archives" "${need_ffmpeg[@]}" || return 1
+            sudo apt-get install --yes --no-download "${cache_opts[@]}" "${need_ffmpeg[@]}" || return 1
           fi
           if [ ${#need_playwright[@]} -gt 0 ]; then
             sudo apt-get install --yes --no-install-recommends --no-download \
-              -o "$archives" "${need_playwright[@]}" || return 1
+              "${cache_opts[@]}" "${need_playwright[@]}" || return 1
           fi
         }
 
@@ -123,18 +134,39 @@ runs:
           find "$staging" -maxdepth 1 -name '*.deb' -exec cp {} "$APT_CACHE_DIR"/ \;
         }
 
+        # The index travels with the debs: the runner image ships lists from its
+        # build date, and installing against those resolves versions the cached
+        # debs do not have, so apt refuses them. The copy is byte for byte the
+        # one the debs were downloaded against. Translation files are the bulk
+        # of the directory and only carry descriptions, so they stay behind.
+        publish_index() {
+          mkdir -p "$lists_dir"
+          find /var/lib/apt/lists -maxdepth 1 -type f ! -name 'lock*' ! -name '*Translation*' \
+            -exec cp {} "$lists_dir"/ \; 2>/dev/null || true
+        }
+
         if [ "$APT_CACHE_HIT" = "true" ] && compgen -G "$APT_CACHE_DIR/*.deb" > /dev/null; then
-          echo "apt: cache hit, $(compgen -G "$APT_CACHE_DIR/*.deb" | wc -l) debs in $APT_CACHE_DIR, skipping apt-get update"
+          echo "apt: cache hit, $(compgen -G "$APT_CACHE_DIR/*.deb" | wc -l) debs and the package index in $APT_CACHE_DIR"
+          if [ -d "$lists_dir" ]; then
+            cache_opts+=(-o "Dir::State::lists=$lists_dir")
+          else
+            echo "apt: the cache carries no package index, falling back to the one in the image"
+          fi
           if stage_install_dir && install_from_cache; then
             echo "apt: installed from the cached debs in $((SECONDS - started))s"
             exit 0
           fi
-          # ponytail: an exact-hit cache is never rewritten, so a deb set that
-          # apt stops accepting keeps falling back until the manifest changes or
-          # the cache expires. Upgrade path: fold an apt index stamp into the key
-          # once runner images drift inside a cache lifetime.
-          echo "::warning::apt: the cached debs were incomplete or stale, falling back to apt-get update + install"
+          # The index and the debs come from the same update, so this means the
+          # cache was cut short or the mirror dropped a deb. Refreshing the
+          # index and installing from the debs again still avoids the download.
+          echo "::warning::apt: the cached debs did not install, refreshing the index and retrying"
+          cache_opts=(-o "Dir::Cache::archives=$install_dir")
           sudo apt-get update
+          if install_from_cache; then
+            echo "apt: installed from the cached debs after the index refresh in $((SECONDS - started))s"
+            exit 0
+          fi
+          echo "::warning::apt: the cached debs do not cover these packages, fetching from the network"
           install_from_network
           echo "apt: fallback install finished in $((SECONDS - started))s"
           exit 0
@@ -142,6 +174,7 @@ runs:
 
         echo "apt: cache miss, refreshing the package index"
         sudo apt-get update
+        publish_index
         download_to_cache
         if ! stage_install_dir || ! install_from_cache; then
           echo "::warning::apt: installing from the downloaded debs failed, fetching from the network instead"
