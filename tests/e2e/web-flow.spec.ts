@@ -430,6 +430,23 @@ async function createStoryboard(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
 }
 
+/**
+ * Opens one draft from the drafts grid. The grid shows one page of six cards and
+ * the e2e server files every test's projects under one owner, so a draft created
+ * earlier in the run can sit behind the Show all drafts control. Wait for the
+ * list to settle and expand it instead of waiting on a card a page away.
+ */
+async function openDraftCard(page: Page, projectId: string): Promise<void> {
+  const card = page.locator(`.draft-open[data-project-id="${projectId}"]`);
+  const showAll = page.getByRole("button", { name: /^Show all drafts/ });
+  await expect.poll(async () => {
+    if (await card.count() > 0) return true;
+    if (await showAll.count() > 0) await showAll.click();
+    return (await card.count()) > 0;
+  }).toBe(true);
+  await card.click();
+}
+
 function mediaFileInput(page: Page) {
   return page.locator('input[type="file"][accept*="image/jpeg"]');
 }
@@ -1067,10 +1084,14 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
 
   const attached = await page.evaluate(async () => {
     const projectId = localStorage.getItem("fengine-project");
-    const { project } = await (await fetch(`/api/projects/${projectId}`)).json();
+    const { project } = await (await fetch(`/api/projects/${projectId}`)).json() as {
+      project: { scenes: Array<{ media_id?: string }> };
+    };
     const creators = await Promise.all(project.scenes.map(async ({ media_id }) => {
       if (!media_id) return null;
-      const media = await (await fetch(`/api/projects/${projectId}/media/${media_id}`)).json();
+      const media = await (await fetch(`/api/projects/${projectId}/media/${media_id}`)).json() as {
+        attribution?: { creator?: string };
+      };
       return media.attribution?.creator ?? null;
     }));
     return { sceneCount: project.scenes.length, creators };
@@ -1151,14 +1172,18 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   await expect(page.getByText("AI-generated with FAL").first()).toBeVisible();
   const mediaIdBefore = await page.evaluate(async () => {
     const projectId = localStorage.getItem("fengine-project");
-    const { project } = await (await fetch(`/api/projects/${projectId}`)).json();
+    const { project } = await (await fetch(`/api/projects/${projectId}`)).json() as {
+      project: { scenes: Array<{ order: number; media_id?: string }> };
+    };
     return project.scenes.find((scene) => scene.order === 0)?.media_id ?? null;
   });
   await page.getByRole("button", { name: "Use for scene 1" }).click();
   await expect(page.getByRole("status").filter({ hasText: /AI-generated with FAL/i })).toBeVisible();
   const mediaIdAfter = await page.evaluate(async () => {
     const projectId = localStorage.getItem("fengine-project");
-    const { project } = await (await fetch(`/api/projects/${projectId}`)).json();
+    const { project } = await (await fetch(`/api/projects/${projectId}`)).json() as {
+      project: { scenes: Array<{ order: number; media_id?: string }> };
+    };
     return project.scenes.find((scene) => scene.order === 0)?.media_id ?? null;
   });
   expect(mediaIdAfter).toBeTruthy();
@@ -1294,10 +1319,10 @@ test("Remove bed wins over a pending tempo edit instead of asking for a conflict
   await expect.poll(() => projectSoundtrack(page)).toBe("none");
   // Several drafts share this title, so reopen the one this test just edited.
   const projectId = await page.evaluate(() => localStorage.getItem("fengine-project"));
-  expect(projectId).toBeTruthy();
+  if (!projectId) throw new Error("project id missing");
   await page.reload();
   await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
-  await page.locator(`.draft-open[data-project-id="${projectId}"]`).click();
+  await openDraftCard(page, projectId);
   await expect(dockToggle).toHaveText("Add music");
   await expect(page.getByLabel("BPM", { exact: true })).toHaveCount(0);
 });
