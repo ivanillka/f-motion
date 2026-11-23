@@ -55,6 +55,7 @@ npx fmotion usage --json
 npx fmotion projects create --purpose "Island lighthouse reel" --json
 npx fmotion media read ./still.jpg --json
 npx fmotion compose --purpose "Island lighthouse reel" --media ./still.jpg --json
+npx fmotion check <projectId> --json
 npx fmotion batch ./manifest.json --out ./out --json
 npx fmotion draft <projectId> --json
 npx fmotion render <projectId> preview --json

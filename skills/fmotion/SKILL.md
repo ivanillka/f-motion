@@ -27,7 +27,7 @@ metadata:
 
 # F-Motion
 
-Turn a short chat — with or without photos — into a preview video plus a draft
+Turn a short chat, with or without photos, into a preview video plus a draft
 the user can keep editing.
 
 ## Auth
@@ -57,8 +57,21 @@ Host `render_unit` balance: preview costs 1, final costs 2. Exhaustion →
 2. Ask **at most four** missing questions (intent, audience, length, visuals).
    Skip any answer already obvious from the message or the media.
 3. Call `compose_reel` with a purpose string that includes those answers.
-4. Return the preview (file or download URL) **and** `draft_url`.
-5. Offer: keep the video, edit one thing here, or open the draft in the app.
+4. Run `fmotion check <projectId>` after compose and before `request_render`
+   or a final render. Fix every error first. Read the warnings. The `/v1`
+   equivalent is `GET /v1/projects/{id}/check`.
+5. Return the preview (file or download URL) **and** `draft_url`.
+6. Offer: keep the video, edit one thing here, or open the draft in the app.
+
+Hold the draft to the [reel standard](references/reel-standard.md). In short:
+gentle zoom from about 1.00 to 1.06, text never cropped, a 6% safe inset,
+large sentence-case spoken type centered, a compact quiet mark, spoken shots
+timed to the voice, and a preview that matches the export. No paid FAL or
+Kokoro call unless the user already confirmed the price. Do not give merge or
+deploy advice.
+
+Captions follow [captions.md](references/captions.md): short, plain, sentence
+case, and inside the safe inset.
 
 ### Media first
 
@@ -87,19 +100,20 @@ Those live in more settings (scrolled below the Create brief, or a later
 Prefer `fmotion-mcp` or `fmotion` CLI when the host can attach them. Otherwise
 wrap `/v1` with the owner API key.
 
-- `read_media` — local sniff (not admission)
-- `compose_reel` — create, attach, optional stock fill, optional preview/final.
+- `read_media`: local sniff (not admission)
+- `compose_reel`: create, attach, optional stock fill, optional preview/final.
   Server equivalent: `POST /v1/compose` (`composeOne`). Bulk is that function
   in a loop (`POST /v1/batches`).
-- `open_draft` — `projectUrl` for the studio
-- `delete_project` — purge a project after a result-only download
+- `fmotion check <projectId>`: pre-render findings. Fix errors before a render.
+- `open_draft`: `projectUrl` for the studio
+- `delete_project`: purge a project after a result-only download
 - `usage` / `run_command` / `request_render` / `wait_render` / `download_render`
   for selective follow-ups
 
 ### Result-only bulk
 
 When the user wants many files and no drafts: `POST /v1/batches` or
-`fmotion batch manifest.json` — both reuse `composeOne`, then purge.
+`fmotion batch manifest.json`: both reuse `composeOne`, then purge.
 Local files: `compose_reel` (`render: "final"`), save, then `delete_project`.
 Never open a draft in this mode. One item at a time.
 
