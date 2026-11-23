@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test, type APIResponse, type Page } from "@playwright/test";
+import { expect, test, type APIResponse, type Locator, type Page } from "@playwright/test";
 
 interface ProbeResult {
   streams?: Array<{ codec_name?: string; codec_type?: string; width?: number; height?: number }>;
@@ -123,6 +123,75 @@ async function firstSceneSource(page: Page): Promise<{ width: number; height: nu
   });
 }
 
+interface PreviewSample {
+  /** The timeline fill for the current scene, in percent. */
+  fill: number;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+/**
+ * The progress the timeline reports and the transform the stage draws, read in
+ * one evaluate so both come from the same paint. The scrub below waits for this
+ * sample to settle on the requested moment instead of waiting a fixed number of
+ * animation frames.
+ */
+async function previewSample(page: Page): Promise<PreviewSample> {
+  return page.evaluate(() => {
+    const fillNode = document.querySelector(".play-progress-scene.is-current");
+    if (!fillNode) throw new Error("the timeline fill is not painted");
+    const fill = Number.parseFloat(getComputedStyle(fillNode).getPropertyValue("--fill"));
+    const image = document.querySelector<HTMLElement>(".preview img");
+    if (!image) throw new Error("the preview picture is not painted");
+    const transform = getComputedStyle(image).transform;
+    const matrix = transform && transform !== "none" ? new DOMMatrixReadOnly(transform) : new DOMMatrixReadOnly();
+    return {
+      fill: Number.isFinite(fill) ? fill : 0,
+      scale: matrix.a,
+      offsetX: -matrix.e / (matrix.a * image.clientWidth),
+      offsetY: -matrix.f / (matrix.d * image.clientHeight)
+    };
+  });
+}
+
+/**
+ * Clicks the timeline at the pixel for `targetMs` and waits until the fill
+ * reports that moment and two consecutive reads agree on the transform. This
+ * replaces a fixed two frame wait: the assertion is the state the studio has
+ * really painted, so a slow runner waits longer instead of reading stale type.
+ */
+async function scrubPreview(
+  page: Page,
+  slider: Locator,
+  box: { width: number; height: number },
+  x: number,
+  targetMs: number,
+  durationMs: number,
+  toleranceMs = 50
+): Promise<PreviewSample> {
+  await slider.click({ position: { x, y: box.height / 2 } });
+  let sample: PreviewSample | undefined;
+  let previous: PreviewSample | undefined;
+  await expect.poll(async () => {
+    const next = await previewSample(page);
+    const reached = Math.abs((next.fill / 100) * durationMs - targetMs) <= toleranceMs;
+    const settled = previous !== undefined
+      && next.scale === previous.scale
+      && next.offsetX === previous.offsetX
+      && next.offsetY === previous.offsetY;
+    previous = next;
+    sample = next;
+    return reached && settled;
+  }, {
+    message: `the preview settled on ${Math.round(targetMs)}ms of the scene`,
+    timeout: 15_000,
+    intervals: [50, 100, 200, 400]
+  }).toBe(true);
+  if (!sample) throw new Error("the preview did not report a frame");
+  return sample;
+}
+
 /**
  * The motion the studio preview draws, in the same terms as workerFrame. The
  * scrub samples the first, middle, and near-last frame; the last click stays
@@ -149,26 +218,12 @@ async function previewMotion(page: Page, progress: readonly number[] = [0, 0.5, 
   for (const at of progress) {
     const sceneMs = at * first.duration_ms;
     const x = Math.max(0.5, Math.min(box.width - 0.5, (sceneMs / total) * box.width));
-    await slider.click({ position: { x, y: box.height / 2 } });
-    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    const shown = await page.locator(".play-progress-scene.is-current").evaluate((node) => {
-      const fill = Number.parseFloat(getComputedStyle(node).getPropertyValue("--fill"));
-      return Number.isFinite(fill) ? fill : 0;
-    });
-    const frame = await page.locator(".preview img").first().evaluate((node) => {
-      const transform = getComputedStyle(node).transform;
-      const matrix = transform && transform !== "none" ? new DOMMatrixReadOnly(transform) : new DOMMatrixReadOnly();
-      return {
-        scale: matrix.a,
-        offsetX: -matrix.e / (matrix.a * node.clientWidth),
-        offsetY: -matrix.f / (matrix.d * node.clientHeight)
-      };
-    });
+    const sample = await scrubPreview(page, slider, box, x, sceneMs, first.duration_ms);
     frames.push({
-      progress: Math.min(1, Math.max(0, shown / 100)),
-      scale: frame.scale,
-      offsetX: frame.offsetX,
-      offsetY: frame.offsetY
+      progress: Math.min(1, Math.max(0, sample.fill / 100)),
+      scale: sample.scale,
+      offsetX: sample.offsetX,
+      offsetY: sample.offsetY
     });
   }
   return { wide, frames };
@@ -373,6 +428,23 @@ async function briefWithOwnStill(page: Page, text: string): Promise<void> {
 
 async function createStoryboard(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: "Storyboard" })).toBeVisible({ timeout: 30_000 });
+}
+
+/**
+ * Opens one draft from the drafts grid. The grid shows one page of six cards and
+ * the e2e server files every test's projects under one owner, so a draft created
+ * earlier in the run can sit behind the Show all drafts control. Wait for the
+ * list to settle and expand it instead of waiting on a card a page away.
+ */
+async function openDraftCard(page: Page, projectId: string): Promise<void> {
+  const card = page.locator(`.draft-open[data-project-id="${projectId}"]`);
+  const showAll = page.getByRole("button", { name: /^Show all drafts/ });
+  await expect.poll(async () => {
+    if (await card.count() > 0) return true;
+    if (await showAll.count() > 0) await showAll.click();
+    return (await card.count()) > 0;
+  }).toBe(true);
+  await card.click();
 }
 
 function mediaFileInput(page: Page) {
@@ -766,14 +838,9 @@ async function seekGoldenPreview(page: Page, atMs: number): Promise<{ png: Buffe
   const box = await slider.boundingBox();
   if (!box) throw new Error("play progress is not visible");
   const x = Math.max(0.5, Math.min(box.width - 0.5, (atMs / total) * box.width));
-  await slider.click({ position: { x, y: box.height / 2 } });
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  const fill = await page.locator(".play-progress-scene.is-current").evaluate((node) => {
-    const value = Number.parseFloat(getComputedStyle(node).getPropertyValue("--fill"));
-    return Number.isFinite(value) ? value : 0;
-  });
+  const sample = await scrubPreview(page, slider, box, x, atMs, first.duration_ms, 25);
   const png = await page.locator(".preview").screenshot();
-  return { png, shownMs: (fill / 100) * first.duration_ms };
+  return { png, shownMs: (sample.fill / 100) * first.duration_ms };
 }
 
 test("golden frames match between the studio preview and the worker export", async ({ page, request }) => {
@@ -1017,10 +1084,14 @@ test("licensed stock journey auto-matches distinct scenes then renders", async (
 
   const attached = await page.evaluate(async () => {
     const projectId = localStorage.getItem("fengine-project");
-    const { project } = await (await fetch(`/api/projects/${projectId}`)).json();
+    const { project } = await (await fetch(`/api/projects/${projectId}`)).json() as {
+      project: { scenes: Array<{ media_id?: string }> };
+    };
     const creators = await Promise.all(project.scenes.map(async ({ media_id }) => {
       if (!media_id) return null;
-      const media = await (await fetch(`/api/projects/${projectId}/media/${media_id}`)).json();
+      const media = await (await fetch(`/api/projects/${projectId}/media/${media_id}`)).json() as {
+        attribution?: { creator?: string };
+      };
       return media.attribution?.creator ?? null;
     }));
     return { sceneCount: project.scenes.length, creators };
@@ -1101,14 +1172,18 @@ test("FAL still generation quotes, confirms, and attaches only after review", as
   await expect(page.getByText("AI-generated with FAL").first()).toBeVisible();
   const mediaIdBefore = await page.evaluate(async () => {
     const projectId = localStorage.getItem("fengine-project");
-    const { project } = await (await fetch(`/api/projects/${projectId}`)).json();
+    const { project } = await (await fetch(`/api/projects/${projectId}`)).json() as {
+      project: { scenes: Array<{ order: number; media_id?: string }> };
+    };
     return project.scenes.find((scene) => scene.order === 0)?.media_id ?? null;
   });
   await page.getByRole("button", { name: "Use for scene 1" }).click();
   await expect(page.getByRole("status").filter({ hasText: /AI-generated with FAL/i })).toBeVisible();
   const mediaIdAfter = await page.evaluate(async () => {
     const projectId = localStorage.getItem("fengine-project");
-    const { project } = await (await fetch(`/api/projects/${projectId}`)).json();
+    const { project } = await (await fetch(`/api/projects/${projectId}`)).json() as {
+      project: { scenes: Array<{ order: number; media_id?: string }> };
+    };
     return project.scenes.find((scene) => scene.order === 0)?.media_id ?? null;
   });
   expect(mediaIdAfter).toBeTruthy();
@@ -1244,10 +1319,10 @@ test("Remove bed wins over a pending tempo edit instead of asking for a conflict
   await expect.poll(() => projectSoundtrack(page)).toBe("none");
   // Several drafts share this title, so reopen the one this test just edited.
   const projectId = await page.evaluate(() => localStorage.getItem("fengine-project"));
-  expect(projectId).toBeTruthy();
+  if (!projectId) throw new Error("project id missing");
   await page.reload();
   await expect(page.getByRole("heading", { name: "Drafts" })).toBeVisible();
-  await page.locator(`.draft-open[data-project-id="${projectId}"]`).click();
+  await openDraftCard(page, projectId);
   await expect(dockToggle).toHaveText("Add music");
   await expect(page.getByLabel("BPM", { exact: true })).toHaveCount(0);
 });
@@ -2242,12 +2317,17 @@ async function stageType(page: Page, selector: string): Promise<StageType> {
     };
   }, selector);
   let type = await read();
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    await page.waitForTimeout(50);
+  await expect.poll(async () => {
     const next = await read();
-    if (next.stageWidth > 0 && next.fontSize > 0 && JSON.stringify(next) === JSON.stringify(type)) return next;
+    const ready = next.stageWidth > 0 && next.fontSize > 0;
+    const settled = JSON.stringify(next) === JSON.stringify(type);
     type = next;
-  }
+    return ready && settled;
+  }, {
+    message: "the stage type settled on one layout",
+    timeout: 15_000,
+    intervals: [50, 100, 200, 400]
+  }).toBe(true);
   return type;
 }
 
