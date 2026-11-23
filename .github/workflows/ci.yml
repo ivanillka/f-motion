@@ -54,6 +54,9 @@ jobs:
             cgr.dev/chainguard/minio-client:latest mb --ignore-existing local/fengine-local
       - run: npx prisma migrate deploy
       - run: npx prisma validate
+      # tsc -b emits the workspace declarations that npm test and the
+      # later builds compile against; it is not just a lint pass.
+      - run: npm run lint
       - run: npm test
       - run: npm run build
       - run: npm run smoke:reel
@@ -74,6 +77,9 @@ jobs:
         with:
           ffmpeg: "true"
       - run: npx playwright install --with-deps chromium
+      # The webServer builds api/worker, which compile against the
+      # declarations emitted by tsc -b.
+      - run: npm run lint
       - run: npm run test:e2e:web
 
   mobile:
