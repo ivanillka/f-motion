@@ -122,6 +122,8 @@ model CivitaiOwnerSettings {
   maxNsfwLevel    String   @default("None")
   allowedCreators String[] @default([])
   minShortSide    Int      @default(1080)
+  /** Keep Civitai videos out of Studio auto-fill until the owner opts in. */
+  videosInAutoFill Boolean @default(false)
   updatedAt       DateTime @updatedAt
 }
 
@@ -173,6 +175,8 @@ model MediaAsset {
   owner               User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   projectId           String
   project             Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /** Insertion order, so auto-fill shows the owner's earliest media first. */
+  createdAt           DateTime   @default(now())
   quarantineObjectKey String
   sealedObjectKey     String?    @unique
   sealedEtag          String?

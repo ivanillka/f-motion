@@ -324,6 +324,10 @@ The visual system must support these product truths:
 - FAL is BYOK-only: each user connects an API-scope key, their FAL account is
   charged directly, and a missing key makes generation unavailable. F-Motion
   never supplies a platform key or silently falls back to another account.
+- Studio auto-fill fills every scene the owner left empty from their own ready
+  media first, then licensed Pexels stock; safe Civitai videos join only while
+  the owner turns that on in Settings, and a scene that already has media is
+  never replaced.
 - AI stills are an explicit per-scene fallback after own media and Pexels;
   results are reviewed and attached by the user, never auto-filled.
 - AI video animates one already-approved still for one scene after quote and

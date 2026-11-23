@@ -10,6 +10,8 @@ export interface CivitaiOwnerSettings {
   maxNsfwLevel: CivitaiNsfwLevel;
   allowedCreators: string[];
   minShortSide: number;
+  /** When on, Studio auto-fill may use Civitai videos after stock runs out. */
+  videosInAutoFill: boolean;
 }
 
 export interface CivitaiSettingsView extends CivitaiOwnerSettings {
@@ -26,7 +28,8 @@ export class CivitaiSettingsValidationError extends Error {}
 export const defaultCivitaiOwnerSettings: CivitaiOwnerSettings = {
   maxNsfwLevel: "None",
   allowedCreators: [],
-  minShortSide: 1080
+  minShortSide: 1080,
+  videosInAutoFill: false
 };
 
 function view(settings: CivitaiOwnerSettings, policy: CivitaiPolicy): CivitaiSettingsView {
@@ -74,6 +77,13 @@ function parseMinShortSide(value: unknown): number {
   return side;
 }
 
+function parseVideosInAutoFill(value: unknown): boolean {
+  if (typeof value !== "boolean") {
+    throw new CivitaiSettingsValidationError("invalid Civitai video setting");
+  }
+  return value;
+}
+
 export class PostgresCivitaiSettingsService implements CivitaiSettingsService {
   constructor(
     readonly pool: Pool,
@@ -85,8 +95,9 @@ export class PostgresCivitaiSettingsService implements CivitaiSettingsService {
       maxNsfwLevel: string;
       allowedCreators: string[];
       minShortSide: number;
+      videosInAutoFill: boolean;
     }>(
-      `SELECT "maxNsfwLevel", "allowedCreators", "minShortSide"
+      `SELECT "maxNsfwLevel", "allowedCreators", "minShortSide", "videosInAutoFill"
          FROM "CivitaiOwnerSettings" WHERE "ownerId" = $1`,
       [ownerId]
     );
@@ -97,7 +108,8 @@ export class PostgresCivitaiSettingsService implements CivitaiSettingsService {
         ? row.maxNsfwLevel as CivitaiNsfwLevel
         : "None",
       allowedCreators: Array.isArray(row.allowedCreators) ? row.allowedCreators : [],
-      minShortSide: Number.isInteger(row.minShortSide) ? row.minShortSide : 1080
+      minShortSide: Number.isInteger(row.minShortSide) ? row.minShortSide : 1080,
+      videosInAutoFill: row.videosInAutoFill === true
     };
   }
 
@@ -110,7 +122,7 @@ export class PostgresCivitaiSettingsService implements CivitaiSettingsService {
       throw new CivitaiSettingsValidationError("invalid Civitai settings");
     }
     const body = value as Record<string, unknown>;
-    const allowedKeys = new Set(["max_nsfw_level", "allowed_creators", "min_short_side"]);
+    const allowedKeys = new Set(["max_nsfw_level", "allowed_creators", "min_short_side", "videos_in_auto_fill"]);
     if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
       throw new CivitaiSettingsValidationError("invalid Civitai settings");
     }
@@ -124,18 +136,22 @@ export class PostgresCivitaiSettingsService implements CivitaiSettingsService {
         : parseCreators(body.allowed_creators),
       minShortSide: body.min_short_side === undefined
         ? current.minShortSide
-        : parseMinShortSide(body.min_short_side)
+        : parseMinShortSide(body.min_short_side),
+      videosInAutoFill: body.videos_in_auto_fill === undefined
+        ? current.videosInAutoFill
+        : parseVideosInAutoFill(body.videos_in_auto_fill)
     };
     await this.pool.query(
       `INSERT INTO "CivitaiOwnerSettings"
-         ("ownerId", "maxNsfwLevel", "allowedCreators", "minShortSide", "updatedAt")
-       VALUES ($1, $2, $3, $4, NOW())
+         ("ownerId", "maxNsfwLevel", "allowedCreators", "minShortSide", "videosInAutoFill", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, NOW())
        ON CONFLICT ("ownerId") DO UPDATE SET
          "maxNsfwLevel" = EXCLUDED."maxNsfwLevel",
          "allowedCreators" = EXCLUDED."allowedCreators",
          "minShortSide" = EXCLUDED."minShortSide",
+         "videosInAutoFill" = EXCLUDED."videosInAutoFill",
          "updatedAt" = NOW()`,
-      [ownerId, next.maxNsfwLevel, next.allowedCreators, next.minShortSide]
+      [ownerId, next.maxNsfwLevel, next.allowedCreators, next.minShortSide, next.videosInAutoFill]
     );
     return view(next, this.policy);
   }

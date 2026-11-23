@@ -1571,6 +1571,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         max_nsfw_level: settings.maxNsfwLevel,
         allowed_creators: settings.allowedCreators,
         min_short_side: settings.minShortSide,
+        videos_in_auto_fill: settings.videosInAutoFill,
         server_max_nsfw_level: settings.serverMaxNsfwLevel
       });
     } catch (error) {
@@ -1588,6 +1589,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         max_nsfw_level: settings.maxNsfwLevel,
         allowed_creators: settings.allowedCreators,
         min_short_side: settings.minShortSide,
+        videos_in_auto_fill: settings.videosInAutoFill,
         server_max_nsfw_level: settings.serverMaxNsfwLevel
       });
     } catch (error) {
@@ -1857,6 +1859,23 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
       if (error instanceof ExternalMediaImportError) {
         return response.status(422).json({ type: "validation", message: error.message });
       }
+      next(error);
+    }
+  });
+  /**
+   * Ready media already in this project. Studio fills empty scenes from it
+   * before asking a stock provider, so the owner's own photos come first.
+   */
+  app.get("/api/projects/:projectId/media", async (request, response, next) => {
+    try {
+      if (!options.media) return response.status(503).json({ type: "unavailable" });
+      const ownerId = String(response.locals.ownerId);
+      if (!await projects.get(ownerId, request.params.projectId)) {
+        return response.status(404).json({ type: "not_found", message: "not found" });
+      }
+      const assets = await options.media.repository.listReady(ownerId, request.params.projectId);
+      response.json({ media: assets.map((asset) => sceneMediaView(asset)) });
+    } catch (error) {
       next(error);
     }
   });
@@ -2228,6 +2247,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         return response.status(422).json({ type: "validation", message: "Civitai NSFW level exceeds your setting" });
       }
       const orientation = request.query.orientation === "landscape" ? "landscape" : "portrait";
+      const mediaType = request.query.media_type === "video" ? "video" as const : "image" as const;
       const cursor = typeof request.query.cursor === "string" ? request.query.cursor : undefined;
       const policy = civitaiPolicyForOwner(settings, requestedLevel);
       const client = await civitaiForOwner(options.media, ownerId, policy);
@@ -2238,6 +2258,7 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         period,
         limit,
         orientation,
+        mediaType,
         ...(cursor ? { cursor } : {}),
         ...(modelId ? { modelId } : {})
       });
@@ -2275,12 +2296,13 @@ function buildApp(options: AppBaseOptions, identify: Identify) {
         return response.status(422).json({ type: "validation", message: "invalid Civitai result" });
       }
       const orientation = pexelsOrientation(project.brief.architecture);
+      const civitaiMediaType = request.body?.media_type === "video" ? "video" as const : "image" as const;
       const settings = await civitaiSettingsForOwner(ownerId);
       const hasKey = await civitaiHasKey(ownerId);
       const policy = civitaiPolicyForOwner(settings, civitaiKeylessLevel(settings.maxNsfwLevel, hasKey));
       const client = await civitaiForOwner(options.media, ownerId, policy);
-      const selected = await client.imageById(civitaiId, orientation)
-        ?? (await client.search({ query, orientation })).results.find(({ id }) => id === civitaiId);
+      const selected = await client.imageById(civitaiId, orientation, civitaiMediaType)
+        ?? (await client.search({ query, orientation, mediaType: civitaiMediaType })).results.find(({ id }) => id === civitaiId);
       if (!selected) return response.status(404).json({ type: "not_found", message: "Civitai result unavailable" });
       const asset = await client.copy(
         ownerId,

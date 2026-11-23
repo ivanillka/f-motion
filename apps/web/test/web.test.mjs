@@ -407,6 +407,24 @@ test("brand type scale is self-hosted Space Grotesk over a 16px body, and rose i
   assert.doesNotMatch(css, /0, 229, 255|#00e5ff|#7dffe3|#9ef6ff|#7c5cff|#8b5cff|#05a081|#00dbe9|#ffe000/i);
 });
 
+test("fill every empty scene starts with own media and offers Civitai videos only when opted in", async () => {
+  const source = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
+  assert.match(source, /\{project\.scenes\.some\(\(scene\) => !scene\.media_id\) && \(\s*<button className="secondary" disabled=\{busy\} onClick=\{\(\) => void fillEmptyScenesFromToolbar\(\)\}>Fill empty scenes<\/button>/);
+  assert.match(source, /fillEmptyScenesNow\(current, \{ stock: false, quiet: true \}\)/);
+  assert.match(source, /const own = await ownMediaForFill\(current\.id\)/);
+  assert.match(source, /fillEmptyScenes\(current, \{ own \}\)/);
+  assert.match(source, /setStatus\(`Filling \$\{emptyBefore\} empty scene\$\{emptyBefore === 1 \? "" : "s"\} from your media/);
+  assert.match(source, /fillEmptyScenesFromCivitaiVideos\(current, Boolean\(options\.quiet\)\)/);
+  assert.match(source, /if \(civitaiUnavailable \|\| civitaiSettings\?\.videos_in_auto_fill !== true\) return snapshot;/);
+  assert.match(source, /mediaType: "video"/);
+  assert.match(source, /civitai_id: candidate\.id, media_type: "video"/);
+  assert.match(source, /civitaiMatchIsVideo\(result\) && !used\.has\(result\.id\)/);
+  assert.match(source, /civitaiMatchIsVideo\(candidate\)/);
+  assert.match(source, /videos_in_auto_fill: civitaiVideosInAutoFill/);
+  assert.match(source, /setCivitaiVideosInAutoFill\(view\.videos_in_auto_fill === true\)/);
+  assert.match(source, /Use Civitai videos in auto-fill/);
+});
+
 test("320px and reduced motion styles are explicit", async () => {
   const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
   assert.match(css, /max-width: 520px/);

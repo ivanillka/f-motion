@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { beatGridCuts, RENDER_FPS, MAX_STORYBOARD_SCENES, conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief, mixPicture, sceneUsesStock, picturePrompt, MOTION_PRESETS, motionTuning, motionZoomRange, BRAND_MARK_OPACITY, brandMarkLayout, brandMarkLayouts, seekSceneVisual } from "../dist/index.js";
+import { beatGridCuts, RENDER_FPS, MAX_STORYBOARD_SCENES, conceptsFor, applyCommand, buildStoryboardDraft, planStoryboardScenes, renderPlan, cuesForScene, cueAtElapsed, spokenWordIndex, spokenWords, spokenWordsForCues, validateCues, coverCropFilter, sceneMediaIntent, stockIntentFitScore, outputFrames, frameRenderProfile, renderProfilesForBrief, mixPicture, sceneUsesStock, picturePrompt, fillEmptyScenes, MOTION_PRESETS, motionTuning, motionZoomRange, BRAND_MARK_OPACITY, brandMarkLayout, brandMarkLayouts, seekSceneVisual } from "../dist/index.js";
 
 const EM_DASH = "\u2014";
 
@@ -916,5 +916,90 @@ test("the seek mirrors the worker's overlay layout, mark box, and spoken margin"
   const standard = seekSceneVisual(spokenScene, 0, { brand_mark_size: "standard" }, { width: 1080, height: 1920 });
   assert.equal(standard.mark.width, brandMarkLayout("standard").width);
   assert.ok(standard.mark.box.width > portrait.mark.box.width);
+});
+
+const fillScene = (id, order, overrides = {}) => ({
+  ...snapshot.scenes[0],
+  id,
+  order,
+  caption: "",
+  ...overrides
+});
+
+test("fillEmptyScenes only touches scenes without media and keeps owner captions", () => {
+  const project = {
+    brief: { purpose: "make a short reel about the night market" },
+    scenes: [
+      fillScene("s1", 0),
+      fillScene("s2", 1, { media_id: "keep", caption: "Owner copy." }),
+      fillScene("s3", 2),
+      fillScene("s4", 3)
+    ]
+  };
+  const result = fillEmptyScenes(project, {
+    own: [{ media_id: "m1" }, { media_id: "m2" }]
+  });
+  assert.deepEqual(result.filled.map(({ scene_id, source }) => [scene_id, source]), [["s1", "own"], ["s4", "own"]]);
+  assert.deepEqual(result.empty, ["s3"]);
+  assert.equal(result.scenes[1].media_id, "keep");
+  assert.equal(result.scenes[1].caption, "Owner copy.");
+  // Two photos over three empty scenes land on the first and third, not the first two.
+  assert.deepEqual(result.scenes.map(({ media_id }) => media_id ?? null), ["m1", "keep", null, "m2"]);
+  // No owner caption is replaced.
+  assert.equal(result.scenes[0].caption, "The night market.");
+});
+
+test("fillEmptyScenes puts own media before stock and leaves mix shots for generation", () => {
+  const project = {
+    brief: { purpose: "Launch" },
+    scenes: [
+      fillScene("s1", 0, { caption: "One." }),
+      fillScene("s2", 1, { picture: "footage", caption: "Two." }),
+      fillScene("s3", 2, { caption: "Three." }),
+      fillScene("s4", 3, { picture: "document", caption: "Four." }),
+      fillScene("s5", 4, { caption: "Five." }),
+      fillScene("s6", 5, { media_id: "already", caption: "Six." })
+    ]
+  };
+  const result = fillEmptyScenes(project, {
+    own: [{ media_id: "own-1" }],
+    stock: [{ media_id: "stock-1" }, { media_id: "stock-2" }]
+  });
+  assert.deepEqual(
+    result.scenes.map(({ media_id }) => media_id ?? null),
+    ["stock-1", null, "own-1", null, "stock-2", "already"]
+  );
+  assert.deepEqual(result.filled.map(({ source }) => source), ["stock", "own", "stock"]);
+  assert.deepEqual(result.empty, ["s2", "s4"]);
+  assert.equal(result.scenes[0].caption, "One.");
+});
+
+test("fillEmptyScenes is idempotent and never rewrites a filled storyboard", () => {
+  const project = {
+    brief: { purpose: "Launch" },
+    scenes: [fillScene("s1", 0), fillScene("s2", 1), fillScene("s3", 2)]
+  };
+  const options = { own: [{ media_id: "m1" }, { media_id: "m2" }] };
+  const first = fillEmptyScenes(project, options);
+  assert.equal(first.filled.length, 2);
+  const second = fillEmptyScenes({ ...project, scenes: first.scenes }, options);
+  assert.deepEqual(second.scenes, first.scenes);
+  assert.deepEqual(second.filled, []);
+  assert.deepEqual(second.empty, [first.empty[0]]);
+});
+
+test("fillEmptyScenes writes one short sentence per new picture", () => {
+  const project = {
+    brief: { purpose: "make a short reel about the night market" },
+    scenes: [fillScene("s1", 0), fillScene("s2", 1), fillScene("s3", 2)]
+  };
+  const result = fillEmptyScenes(project, {
+    own: [{ media_id: "m1", title: "harbor lights" }, { media_id: "m2" }, { media_id: "m3" }]
+  });
+  // A media title wins; the brief line lands once because it is not repeated.
+  assert.equal(result.scenes[0].caption, "Harbor lights.");
+  assert.equal(result.scenes[1].caption, "The night market.");
+  assert.equal(result.scenes[2].caption, "");
+  assert.ok(result.scenes.every(({ caption }) => caption.length <= 120));
 });
 

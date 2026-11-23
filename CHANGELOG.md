@@ -8,6 +8,8 @@ studio under **Settings → What’s new**. Product version lives in root
 
 ### Studio
 
+- **Fill empty scenes** in the scene strip fills every scene without media in one pass: your own library first, then licensed Pexels stock when Pexels is connected, and, only while **Use Civitai videos in auto-fill** is on in Settings, safe Civitai videos. Copying a Civitai video stays free, the pick goes through the same media inspection as a hand choice, scenes that already have media are never touched, and mix reels keep their diagram and AI footage scenes free for generation. Ship together with Pages, the API, and the VPS in one release.
+
 - Spoken scenes follow the real voice take: each scene lasts as long as its line plus a short breath, and the word highlight is timed to the audio instead of a word count, so the last word is never cut off and no word is lit during silence. Ship together with Pages, the API, and the VPS in one release.
 - The live preview can be scrubbed: clicking the play bar, stepping with the arrow keys, and pausing all seek motion, crop, the F-Motion mark, and the spoken-word highlight to that exact time, with the same presets, easing, and fit the export renders. Ship together with Pages, the API, and the VPS in one release.
 - Reel motion is gentle by default: a scene drifts from **1.00 to 1.06** instead of the old **1.30** crop, so words printed into a photo, and the edges of the picture, stay in view. **Motion** offers **Gentle** and **Strong**, the F-Motion mark is a smaller corner credit at 45 percent opacity with a **Compact** or **Standard** size, and each scene has a **Show the whole picture** switch that fits the whole picture over a soft fill instead of cropping it. Ship together with Pages, the API, and the VPS in one release.

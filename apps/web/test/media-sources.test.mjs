@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   animateStillsToggleState,
+  civitaiMatchIsVideo,
   civitaiPickerParams,
   countStillFiles,
   isReadyStillMedia,
@@ -91,6 +92,35 @@ test("Civitai picker carries filters and cursor paging", () => {
   assert.equal(params.get("cursor"), "feed:1");
   assert.equal(params.get("model_id"), "11");
   assert.equal(params.get("limit"), "12");
+});
+
+test("Civitai picker asks for videos only when auto-fill opts in", () => {
+  const image = civitaiPickerParams({
+    query: "harbor night",
+    orientation: "portrait",
+    sort: "Most Reactions",
+    period: "Month",
+    nsfw: "None"
+  });
+  assert.equal(image.get("media_type"), null);
+  const video = civitaiPickerParams({
+    query: "harbor night",
+    orientation: "portrait",
+    sort: "Most Reactions",
+    period: "Month",
+    nsfw: "None",
+    mediaType: "video"
+  });
+  assert.equal(video.get("media_type"), "video");
+  assert.equal(video.get("q"), "harbor night");
+});
+
+test("Civitai video matches are recognized in either casing", () => {
+  assert.equal(civitaiMatchIsVideo({ mediaType: "video" }), true);
+  assert.equal(civitaiMatchIsVideo({ media_type: "video" }), true);
+  assert.equal(civitaiMatchIsVideo({ contentType: "video/mp4" }), true);
+  assert.equal(civitaiMatchIsVideo({ mediaType: "image", contentType: "image/jpeg" }), false);
+  assert.equal(civitaiMatchIsVideo({}), false);
 });
 
 test("animate stills toggle stays off unless FAL is connected and pool has stills", () => {
