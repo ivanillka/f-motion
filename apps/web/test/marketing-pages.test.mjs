@@ -72,12 +72,12 @@ test("hosted splash is the static marketing site, not the cube", async () => {
   assert.match(site, /lazy\(\(\) => import\("\.\/main"\)/);
   assert.match(home, /Turn stills and clips into short motion reels/);
   assert.doesNotMatch(home, /fotium/i);
-  assert.doesNotMatch(home, /href="\/app\/"/);
+  assert.match(home, /href="\/app\/"/);
   assert.doesNotMatch(home, /href="\/login"/);
   assert.match(home, /href="\/cs\/"/);
 });
 
-test("soft-launch home shows approved English and Czech copy", async () => {
+test("home links the live studio and shows approved English and Czech copy", async () => {
   const home = await readFile(new URL("../public/web/index.html", import.meta.url), "utf8");
   const cs = await readFile(new URL("../public/web/cs/index.html", import.meta.url), "utf8");
   const en = [
@@ -85,13 +85,31 @@ test("soft-launch home shows approved English and Czech copy", async () => {
     "View on GitHub",
     "https://github.com/ivanillka/f-motion",
     "Open Studio",
-    ">Soon<",
+    "What's in the studio",
     "1. Import.",
     "Bring in stills, clips, or a partner feed.",
     "2. Compose.",
     "Order beats, timing, and look in the studio.",
     "3. Render.",
     "Export a reel ready for the studio or your own host.",
+    "Seekable preview",
+    "Scrub the timeline. A paused frame, a scrub, and playback all show the frame the export would render.",
+    "Voice-timed scenes",
+    "Scenes follow your spoken take, and the lit word follows the measured cue window.",
+    "Type that matches the export",
+    "The stage paints the export's own faces, weights, tracking, and leading.",
+    "Fill empty scenes",
+    "Fill every empty scene from your own media in one step.",
+    "Civitai video toggle",
+    "Turn safe Civitai videos on in Settings, and they fill the scenes stock left empty.",
+    "Gentle motion",
+    "Gentle is a 1.00 to 1.06 zoom, so text printed into a photo stays whole. Strong is there when you want the bigger move.",
+    "Quiet compact mark",
+    "The F-Motion mark sits in the corner at a quiet opacity. Standard makes it larger.",
+    "Reel, desktop, or both",
+    "Render 9:16, 16:9, or both, and switch the preview between them.",
+    "Mix mode",
+    "Mix your own photos with a connected source, then close on your own question.",
     "F-Motion turns photos and clips into short motion reels. Studio UI, partner import API, reel engine. Self-host when you want the pipeline on your own stack.",
     "Atelier, sitting room, still life, mist.",
     "Architecture and design contract on GitHub",
@@ -103,24 +121,50 @@ test("soft-launch home shows approved English and Czech copy", async () => {
     "Proměň fotky a klipy v krátké motion reels.",
     ">GitHub<",
     "Otevřít Studio",
-    ">Brzy<",
+    "Co je ve studiu",
     "Jak to funguje",
     "Fotky, klipy, partner feed.",
     "2. Skladba.",
     "Rytmus, timing, look.",
     "Reel pro studio nebo vlastní host.",
+    "Náhled s posouváním",
+    "Projížděj časovou osu. Pozastavený snímek, posun i přehrávání ukážou frame, který by vyrenderoval export.",
+    "Scény načasované na hlas",
+    "Scény drží tempo tvého namluveného take a rozsvícené slovo sleduje změřené cue okno.",
+    "Typografie jako v exportu",
+    "Stage kreslí stejné řezy, váhy, prostrkání a řádkování jako export.",
+    "Doplnění prázdných scén",
+    "Doplň každou prázdnou scénu z vlastních médií jedním krokem.",
+    "Přepínač videí z Civitai",
+    "Zapni v Nastavení bezpečná videa z Civitai a doplní scény, které stock nechal prázdné.",
+    "Jemný pohyb",
+    "Jemný pohyb je zoom 1,00 až 1,06, takže text vtisknutý do fotky zůstane celý. Silný je tam pro větší pohyb.",
+    "Tichá kompaktní značka",
+    "Značka F-Motion sedí v rohu s tichou průhledností. Standardní ji zvětší.",
+    "Reel, desktop, nebo obojí",
+    "Renderuj 9:16, 16:9, nebo obojí a přepínej mezi nimi náhled.",
+    "Mix režim",
+    "Míchej vlastní fotky s připojeným zdrojem a zakonči vlastní otázkou.",
     "krátké motion reels z fotek a klipů. Studio, partner import API, reel engine. Self-host když chceš pipeline u sebe.",
     "Ateliér, obývák, zátiší, mlha.",
+    "Architektura a kontrakt designu na GitHubu",
     "Pro pražské studio workflow a krátké reels."
   ];
   for (const phrase of en) assert.match(home, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   for (const phrase of czech) assert.match(cs, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(home, /fotium/i);
   assert.doesNotMatch(cs, /fotium/i);
+  assert.doesNotMatch(home, />Soon</);
+  assert.doesNotMatch(cs, />Brzy</);
   assert.match(cs, /href="https:\/\/github\.com\/ivanillka\/f-motion"/);
   assert.match(cs, /href="\/"/);
-  assert.doesNotMatch(home, /href="\/app\/"|href="\/login"/);
-  assert.doesNotMatch(cs, /href="\/app\/"|href="\/login"/);
+  assert.match(home, /href="\/app\/">Open Studio<\/a>/);
+  assert.match(cs, /href="\/app\/">Otevřít Studio<\/a>/);
+  assert.doesNotMatch(home, /href="\/login"/);
+  assert.doesNotMatch(cs, /href="\/login"/);
+  // The page sells what shipped: no desktop app and no public pricing yet.
+  assert.doesNotMatch(home, /desktop app|Download for|pricing|€|\d+ ?Kč/i);
+  assert.doesNotMatch(cs, /desktop aplikace|aplikace pro|pricing|cena|€|\d+ ?Kč/i);
   assert.match(home, /<video id="demo-reel" autoplay muted loop playsinline preload="metadata"/);
   assert.match(cs, /<video id="demo-reel" autoplay muted loop playsinline preload="metadata"/);
   assert.match(home, /aria-label="Studio photographs rendered as a vertical reel"/);

@@ -1,4 +1,4 @@
-/* Marketing shell — DESIGN.md tokens; Stitch layout as structure only. */
+/* Marketing shell: DESIGN.md tokens; Stitch layout as structure only. */
 @font-face {
   font-family: "Syne";
   font-style: normal;
@@ -162,7 +162,7 @@ button, .btn {
 }
 .brand:hover { color: var(--text); }
 
-/* Shared F-MOTION letter logo (same mark as topnav — no PNG) */
+/* Shared F-MOTION letter logo (same mark as topnav, no PNG) */
 .glitch-logo {
   display: inline-flex;
   align-items: center;
@@ -1103,9 +1103,10 @@ button, .btn {
   border: 1px solid var(--border);
 }
 
-.launch-soon {
+.launch a.launch-btn-quiet:hover,
+.launch a.launch-btn-quiet:focus-visible {
+  border-color: var(--accent-soft);
   color: var(--accent-soft);
-  font-weight: 600;
 }
 
 .launch-lang {
