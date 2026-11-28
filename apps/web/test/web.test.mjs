@@ -559,10 +559,11 @@ test("build puts marketing at site root with studio under /app", async () => {
   const redirects = await readFile(new URL("_redirects", dist), "utf8");
   assert.match(home, /Turn stills and clips into short motion reels/);
   assert.doesNotMatch(home, /fotium/i);
-  assert.match(home, />Soon</);
-  assert.doesNotMatch(home, /href="\/app\/"/);
+  assert.doesNotMatch(home, />Soon</);
+  assert.match(home, /href="\/app\/"/);
   const czech = await readFile(new URL("cs/index.html", dist), "utf8");
-  assert.match(czech, />Brzy</);
+  assert.doesNotMatch(czech, />Brzy</);
+  assert.match(czech, /href="\/app\/"/);
   assert.match(czech, /Jak to funguje/);
   assert.doesNotMatch(czech, /fotium/i);
   assert.doesNotMatch(home, /id="root"/);
@@ -618,7 +619,7 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
     "Turn stills and clips into short motion reels.",
     "View on GitHub",
     "Open Studio",
-    ">Soon<",
+    "href=\"/app/\"",
     "How it works",
     "Atelier, sitting room, still life, mist.",
     "Built for Prague studio workflows and short motion reels.",
@@ -693,7 +694,7 @@ test("marketing site ships Stitch-shaped home + integrate without CDN Tailwind",
   assert.doesNotMatch(home, /#docs|View docs/);
   assert.doesNotMatch(integrate, /#docs|View docs/);
   assert.match(integrate, /Partner contract/);
-  assert.doesNotMatch(home, /href="\/app\/"/);
+  assert.match(home, /href="\/app\/"/);
   assert.match(home, /href="https:\/\/github\.com\/ivanillka\/f-motion"/);
   assert.match(integrate, /href="\/app\/"/);
   assert.match(integrate, /href="\.\/terms\.html"/);
